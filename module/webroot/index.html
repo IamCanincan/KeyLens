@@ -33,9 +33,18 @@
      所以这里留 600，让卡片里放得下两到三格。 */
   --measure: 600px;
   --hair: 1px solid var(--outline-variant);
+  /* 系统栏让位量。宿主默认把 WebView 用 padding 顶到状态栏下面，那时 env() 恒为 0
+     且不需要额外留白；开了 edge-to-edge（data-e2e=1）才由界面自己让位，
+     万一 env() 仍读不到就兜一个常见高度，别让标题钻到时钟底下、snackbar 钻到导航条底下。 */
+  --inset-top: env(safe-area-inset-top);
+  --inset-bottom: env(safe-area-inset-bottom);
   --font: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
   --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
+/* 属性选择器的值不带引号时必须是合法标识符，`1` 不是 —— 写成 [data-e2e=1]
+   整条规则会被解析器直接丢掉（不报错、不生效）。数值型属性一律加引号。 */
+html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
+  --inset-bottom:max(env(safe-area-inset-bottom), 24px)}
 
 :root,[data-scheme=light]{
   --primary:oklch(49% calc(.19*var(--sat)) var(--hue));            --on-primary:oklch(100% 0 0);
@@ -110,7 +119,7 @@
 html,body{margin:0;padding:0}
 body{
   background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
-  min-height:100%;padding-bottom:calc(var(--sp7) + env(safe-area-inset-bottom));
+  min-height:100%;padding-bottom:calc(var(--sp7) + var(--inset-bottom));
 }
 h1,h2,h3,p{margin:0}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -121,7 +130,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* ================= 顶栏 ================= */
 /* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
    两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
-.appbar{padding:calc(env(safe-area-inset-top) + var(--sp2)) var(--sp4) var(--sp1);
+.appbar{padding:calc(var(--inset-top) + var(--sp2)) var(--sp4) var(--sp1);
   max-width:var(--measure);margin:0 auto;width:100%}
 .appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
 .kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
@@ -216,7 +225,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .fab:active{border-radius:50%;transform:scale(.9)}
 
 /* ================= 分段标签 ================= */
-.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 4px);z-index:15;display:flex;gap:var(--sp1);
+.tabs{position:sticky;top:calc(var(--inset-top) + 4px);z-index:15;display:flex;gap:var(--sp1);
   padding:var(--sp2) var(--sp4);background:var(--surface);overflow-x:auto;scrollbar-width:none;
   border-radius:0 0 var(--r-l) var(--r-l)}
 .tabs::-webkit-scrollbar{display:none}
@@ -352,12 +361,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .sheet h3{font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
 .sheet p{font-size:13.5px;color:var(--on-variant);line-height:1.55}
 .sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
-.snackbar{position:fixed;left:50%;bottom:calc(var(--sp4) + env(safe-area-inset-bottom));z-index:70;
+.snackbar{position:fixed;left:50%;bottom:calc(var(--sp4) + var(--inset-bottom));z-index:70;
   transform:translate(-50%,140%);max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
   padding:var(--sp2) var(--sp4);border-radius:var(--r-l);
   background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:13px;
   transition:transform var(--d4) var(--e-spring);pointer-events:none}
-.snackbar[data-show=1]{transform:translate(-50%,0)}
+/* 属性选择器的值不加引号时必须是合法标识符，`1` 不是：这条原先写成 [data-show=1]，
+   整条规则被解析器静默丢掉，snackbar 永远停在 translate(-50%,140%) ——
+   也就是说界面提示其实一次都没出现过。 */
+.snackbar[data-show="1"]{transform:translate(-50%,0)}
 .snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .snackbar[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 
@@ -1626,6 +1638,17 @@ function adoptBridge(hit){
   var dir = moduleDirFromBridge();
   if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
   try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
+  /* 状态栏那一条是**宿主窗口**画的，不是页面画的：宿主默认给 WebView 加了等于
+     系统栏高度的 padding，页面背景接不到那条，怎么看都是两块颜色。
+     enableEdgeToEdge 把那个 padding 归零，改由界面自己按安全区让位
+     （--inset-top / --inset-bottom 本来就是为此留的），接缝随之消失。
+     只改绘制范围，不藏任何系统栏——藏了会让人不好退出。 */
+  try {
+    if (typeof BRIDGE.enableEdgeToEdge === 'function') {
+      BRIDGE.enableEdgeToEdge(true);
+      document.documentElement.setAttribute('data-e2e', '1');
+    }
+  } catch (e){ /* 没有就算了 */ }
   refresh();
 }
 
