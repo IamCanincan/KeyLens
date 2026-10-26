@@ -254,6 +254,43 @@ cmd_env() {
     prop_now ro.build.type;                kv build_type "$PROP_NOW"
     prop_now ro.boot.verifiedbootstate;    kv vbstate "$PROP_NOW"
 
+    # ---------- 系统字体 ----------
+    # Chromium / WebView 在 Android 上有自己的一套字体映射（sans-serif 默认就是 Roboto），
+    # 它**不读框架的 config_bodyFontFamily**。所以 ROM 换了系统字体时，
+    # 界面会悄悄退回 Roboto —— 本机就是这一种：启用了
+    # org.lineageos.overlay.font.googlesansflex，系统各处是 Google Sans Flex，
+    # 而这个 WebUI 是 Roboto。只能把字体名显式写进 CSS，名字从设备上读，不写死。
+    # 读法：找出启用的字体 overlay → 从它的 resources.arsc 里取出候选族名
+    #       → 再拿字体注册表验一遍。验不过就当没有，退回 system-ui。
+    fontpkg=$(cmd overlay list 2>/dev/null | sed -n 's/^\[x\] \(.*font.*\)$/\1/p' | head -n 1)
+    sys_font=""
+    if [ -n "$fontpkg" ]; then
+        fontapk=$(pm path "$fontpkg" 2>/dev/null | sed -n '1s/^package://p')
+        if [ -n "$fontapk" ] && [ -r "$fontapk" ]; then
+            # 注册表里的族名当成一个"白名单正则"，一次 grep 同时完成「取候选 + 验注册」。
+            # 不这么做的话：resources.arsc 的字符串池是 UTF-16，直接 grep -o 会吐出
+            # amily / edium 这类碎片（实测），而逐个族名去 grep 又要 160 次 fork。
+            reg=$(cat /product/etc/fonts_customization.xml /system/etc/fonts.xml 2>/dev/null \
+                  | grep -o 'name="[a-z0-9][a-z0-9-]*"' | sed 's/name="//;s/"//' \
+                  | sort -u | tr '\n' '|' | sed 's/|$//')
+            if [ -n "$reg" ]; then
+                # 先 tr -d 把 UTF-16 的 NUL 去掉，否则族名会被拆成单字节碎片。
+                # 再排掉字重/用途别名：overlay 里同时写着 config_bodyFontFamily 与
+                # config_bodyFontFamilyMedium，两个族名都在注册表里，而 -medium 更长 ——
+                # 不排的话"取最长"会挑到 medium（实测踩过），那是 500 字重不是正文。
+                sys_font=$(unzip -p "$fontapk" resources.arsc 2>/dev/null | tr -d '\000' \
+                           | grep -a -o -E "($reg)" 2>/dev/null \
+                           | grep -Ev -- '-(medium|bold|black|thin|light|regular|semibold|italic|clock|condensed|text)$' \
+                           | sort -u \
+                           | awk '{ if (length($0) > m) { m = length($0); s = $0 } } END { print s }')
+            fi
+        fi
+    fi
+    # 这个值会进 CSS：上面是「注册表原样取出的名字」，字符集已被
+    # grep -o 'name="[a-z0-9][a-z0-9-]*"' 限死，引号与分号进不来。
+    kv sys_font "$sys_font"
+    kv sys_font_pkg "$fontpkg"
+
     # ---------- 系统取色 ----------
     # 深浅：以系统算出来的结果为准。管理器的 WebView 有时被钉在浅色，
     #       只看 CSS 的 prefers-color-scheme 会跟系统不一致。

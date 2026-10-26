@@ -12,10 +12,14 @@
 * **只读提取脚本 `backends/teesim_list.awk`**：从 `config.json` 中取出 `profiles.default.apps` 供界面展示，定位方式与 `teesim.awk` 一致（逐级定位失败即不输出）。
 * `lib/tools.sh` 新增 `find_base64()`：与 `find_awk` 同样以「实际执行一次解码」来判定可用性，避免只有 busybox 本体、没编译 applet 时被误判为可用。
 
-* **取色跟随系统（Material You 种子色）**：界面色相与彩度由系统强调色推导。种子按 `settings get secure theme_custom_color` → 壁纸提取色（`dumpsys wallpaper` 的 `colorValue0`）→ 内置默认三级回退，取到哪一级在概览页「关于 → 取色」里照实写出（含换算后的 `#RRGGBB`、生效色相与彩度倍率）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，退回 `mCurUiMode` 的夜间位，最后才是 WebView 媒体查询）。种子写法兼容 `#RRGGBB` / `#AARRGGBB` / `0x…` / 裸十六进制 / 十进制 ARGB——纯数字串按位数区分十六进制颜色与十进制整数，否则 `808080` 会被读成 `0x0C5490` 那种深蓝。近中性的种子只跟彩度、不跟色相（色相在此时没有意义）。**跟的是色相与彩度，各角色明度仍用界面内置档位**——模块侧拿不到系统算好的 12 组色调表，只能拿到种子色。
+* **取色跟随系统（Material You 种子色）**：界面色相与彩度由系统强调色推导。种子按 SystemUI 运行时 overlay（`/data/resource-cache/com.android.systemui-accent-*.frro`）→ `settings get secure theme_custom_color` → 壁纸提取色（`dumpsys wallpaper` 的 `colorValue0`）→ 平台默认 `system_accent1` 四级回退，取到哪一级在概览页「关于 → 取色 / 生效值」里照实写出（含换算后的 `#RRGGBB`、生效色相与彩度倍率）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，退回 `mCurUiMode` 的夜间位，最后才是 WebView 媒体查询）。种子写法兼容 `#RRGGBB` / `#AARRGGBB` / `0x…` / 裸十六进制 / 十进制 ARGB——纯数字串按位数区分十六进制颜色与十进制整数，否则 `808080` 会被读成 `0x0C5490` 那种深蓝。近中性的种子只跟彩度、不跟色相（色相在此时没有意义）。**跟的是色相与彩度，各角色明度仍用界面内置档位**——模块侧拿不到系统算好的 12 组色调表，只能拿到 overlay 文件里那些 ARGB。
 
-* **色相滑杆与「跟随系统」并存**：拖动即转手动，点「跟随系统」交还；偏好存 `localStorage`，取不到时退化为内存值。手动那一档只转色相，彩度沿用它上一次算出的值——不然一开拖就从「平台默认那支灰蓝」跳到满彩度，像两套颜色在打架。
-
+* **字体也跟随系统（从设备上读族名，不再写死）**：原先的栈是 `system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif` —— 里面那几个**具体名字会抢在系统字体之前匹配上**。而 Chromium / WebView 在 Android 上有自己的一套字体映射（`sans-serif` 默认就是 Roboto），**根本不读框架的 `config_bodyFontFamily`**，所以 ROM 换了系统字体时界面会悄悄退回 Roboto。本机正是这一种：启用了 `org.lineageos.overlay.font.googlesansflex`（`cmd overlay dump` 里 `STATE_ENABLED`，目标包 `android`），系统各处都是 Google Sans Flex，只有这个 WebUI 是 Roboto。
+  * 做法：`env` 新增 `sys_font` —— 找启用的字体 overlay → `pm path` 拿到它的 apk → 从 `resources.arsc` 里取出族名 → 用字体注册表（`/product/etc/fonts_customization.xml` 与 `/system/etc/fonts.xml` 的 `name="..."`）当白名单校验 → 界面把这个名字插到字体栈最前面。名字从设备上读，不写死，换 ROM 自动跟着变。
+  * 三个坑都是实测踩到的：① `resources.arsc` 的字符串池是 UTF-16，不先 `tr -d '\000'` 就会吐出 `amily` / `edium` 这类碎片，看着"有输出"其实全废；② 逐个族名去 `grep` 验证要 160 次 fork，改成把注册表拼成一个白名单正则、一次 `grep -o -E "(...)"` 同时完成「取候选 + 验注册」；③ 「取最长」会挑到 `google-sans-flex-medium`（overlay 里 `config_bodyFontFamily` 与 `...FamilyMedium` 都在，medium 更长），那是 500 字重不是正文 —— 必须排掉 `-medium/-bold/-clock/-italic` 这类字重与用途别名。
+  * 界面侧 `applyFont()` 只接受 `^[a-z][a-z0-9]*(-[a-z0-9]+)*$`（族名会进 CSS），实测 `x"; background: red` 被拒并退回 `system-ui, sans-serif`。默认栈也去掉了那几个写死的名字。
+  * 代价：`env` 从 727ms 涨到 1045~1135ms（多 4 次外部命令：`cmd overlay list` 45ms、`pm path` 56ms、注册表与 arsc 各一条管道）。`env` 只在打开界面与点「重新读取」时问一次，不在任何轮询路径上。
+  * 概览页「关于 → 外观」新增「字体」与「生效值」两格，直接写明用的是哪个族名、来自哪个 overlay 包；读不到时那格会照实写"WebView 默认"。
 * **颜色与深浅一律强制跟随系统**：删掉顶栏的色相滑杆与深浅切换按钮，也删掉 `localStorage` 里那两份偏好。理由是这两处都在让人不小心把界面调成和系统不一样的东西 —— 而他连着几轮的抱怨正是"不像系统的一套颜色"。少两个按钮也让顶栏干净下来。
 * **系统强调色新增第一优先来源：SystemUI 的运行时 overlay（`/data/resource-cache/*.frro`）**。原先的两级种子（`theme_custom_color` → 壁纸提取色）在本机**都是空的**：`settings get secure|global theme_custom_color` 均为 `null`，`dumpsys wallpaper` 是 `isColorExtracted=false`（壁纸是 SystemUI 自带的渐变），`cmd overlay list` 里也没有色彩类 overlay —— 于是界面一直落在兜底色上，而系统其实有一套在用的颜色，只是没人去读它。
   * 那份文件是 SystemUI 的 ColorService 生成的 Material You 调色板，**用户手选颜色时它同样会被重新生成**，所以它比任何 setting 都权威。实测本机解出来 `system_accent1` 是一条青蓝阶梯：`400_light #6898a4`、`600_light #356570`，色相 212–216、彩度 C≈.054。

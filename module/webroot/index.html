@@ -39,7 +39,11 @@
      万一 env() 仍读不到就兜一个常见高度，别让标题钻到时钟底下、snackbar 钻到导航条底下。 */
   --inset-top: env(safe-area-inset-top);
   --inset-bottom: env(safe-area-inset-bottom);
-  --font: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  /* 不写死 Roboto / Segoe UI / 微软雅黑：那几个名字会**抢在系统字体之前**匹配上。
+     WebView 在 Android 上有自己的一套字体映射（sans-serif 默认就是 Roboto），
+     根本不读框架的 config_bodyFontFamily，所以 ROM 换了系统字体时界面会退回 Roboto。
+     真名字由 env 的 sys_font 从设备上读出来再注入（见 webui.sh 的「系统字体」段）。 */
+  --font: system-ui, sans-serif;
   --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
 /* 属性选择器的值不带引号时必须是合法标识符，`1` 不是 —— 写成 [data-e2e=1]
@@ -729,8 +733,8 @@ function parseKV(text){
    难怪看着和系统其它地方不是一套。 */
 var HUE_DEFAULT = 267;
 var SAT_DEFAULT = 0.41;
-var THEME = { seedRaw: '', seedSrc: 'none', frro: '', frroSrc: '', frroParsed: null,
-              dark: '', darkSrc: '', applied: '', note: '' };
+var THEME = { seedRaw: '', seedSrc: 'none', frro: '', frroSrc: '', frroParsed: null, frroOk: false,
+              font: '', fontSrc: '', dark: '', darkSrc: '', applied: '', note: '' };
 
 function hex2(v){ return (v < 16 ? '0' : '') + v.toString(16); }
 
@@ -846,6 +850,16 @@ function frroSeed(fr){
     if (mono && got >= 8 && seed !== null) return seed;
   }
   return null;
+}
+
+/* 系统字体名由设备上读出来（webui.sh env 的 sys_font）。
+   写死 Roboto 那一类名字会抢在系统字体之前匹配上，正是"界面不像系统的一部分"的原因。 */
+function applyFont(name, pkg){
+  THEME.font = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name || '') ? name : '';
+  THEME.fontSrc = THEME.font ? (pkg || '') : '';
+  document.documentElement.style.setProperty('--font',
+    THEME.font ? '"' + THEME.font + '", system-ui, sans-serif' : 'system-ui, sans-serif');
+  return THEME.font;
 }
 
 function applyPalette(){
@@ -1080,8 +1094,11 @@ function renderOver(){
         : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
       (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
       THEME.note || '—'),
+    blk('字体', THEME.font || 'WebView 默认', THEME.font ? 'ok' : 'na',
+      THEME.font ? '来自 ' + THEME.fontSrc : 'WebView 不读框架的字体配置，读不到名字时只能用它自己的默认'),
     blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
-      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc)
+      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc),
+    blk('生效值', THEME.applied || '—', null, '色相与彩度都取自系统，界面不提供覆盖')
   ]));
 
   var paths = el('div', 'paths');
@@ -1330,6 +1347,8 @@ function loadEnv(){
     THEME.frroOk = frroSeed(THEME.frroParsed) !== null;
     THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
     THEME.darkSrc = S.env.sys_dark_src || 'none';
+    /* 系统字体名是设备上读出来的，写死会抢在系统之前匹配上 */
+    applyFont(S.env.sys_font, S.env.sys_font_pkg);
     applyPalette();                 // 系统强调色到手，重推一遍色板
     applyScheme();                  // 系统深浅与 WebView 不一致时以系统为准
     return r;
