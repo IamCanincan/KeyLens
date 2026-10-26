@@ -137,9 +137,12 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
 - 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
-- **取色跟随系统**：色相与彩度由系统强调色推导，深浅三态（跟随系统 / 浅色 / 深色）以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。强调色的来源按 `settings get secure theme_custom_color` → 壁纸提取色 → **平台默认强调色** 三级回退，**取不到时会照实说明用的哪一种**（概览页底部「关于 → 取色」）。第三级不是"我挑的一个颜色"：实测本机 `/system/framework/framework-res.apk` 的 `color/system_accent1_600_light = #4b5d8b = oklch(48.4% .078 267.2)`，界面的 `--primary` 是 `oklch(49% .19×sat 267)`，明度几乎同一档，所以取 `sat = .078/.19 ≈ 0.41` 就是照着平台那一个色算的。原先的兜底是 `275 + sat 1`，等于把同一支色放大到 **2.5 倍彩度**——色相没差多少，看起来却完全不像系统的一套东西。
+- **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。
+- **强调色按四级回退，取到哪一级在概览页「关于 → 取色」里照实写出**：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`。
+  界面里 `--primary` 是 `oklch(49% .19×sat hue)`，而系统 `accent1_600` 的明度就在 49% 那一档，所以 `sat = 系统实测C / .19` 即可对上——**彩度按实测比值走，不做审美放大**（放大过的版本色相差不多却完全不像一套东西）。
+  需要说清楚的是：跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套——模块侧拿不到系统算好的 12 组色调表本身，只能拿到这份 overlay 文件里的 ARGB。
   需要说清楚的是：这里跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套（不是把系统 Material You 的 12 组色调表整个搬过来）——因为模块侧拿不到系统算好的调色板，只能拿到种子色。
-- 配色偏好（色相、深浅、是否跟随系统）存在 `localStorage`；若管理器禁用了 DOM storage 则只对当次生效。
+- 松紧只由两组令牌控制：`--r-*`（圆角）与 `--sp-*`（留白），加上少量字号档位。**要整体调密度就改这几行**，不要逐条找元素——上一轮"收一档"是逐条改的，结果改完就变成"很挤"。
 - 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
 - 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
 

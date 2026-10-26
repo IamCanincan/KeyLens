@@ -24,10 +24,11 @@
   --e-emph: cubic-bezier(.3,0,.08,1);
   --e-spatial: cubic-bezier(.2,0,0,1);
   --d1: 120ms; --d2: 220ms; --d3: 340ms; --d4: 500ms;
-  /* 密度：留白与圆角整体收一档（表现力靠不对称圆角与弹性动效保留，不靠尺寸） */
-  --r-xs: 6px; --r-s: 8px; --r-m: 11px; --r-l: 14px;
-  --r-xl: 16px; --r-2xl: 18px; --r-full: 999px;
-  --sp1: 3px; --sp2: 6px; --sp3: 9px; --sp4: 12px; --sp5: 15px; --sp6: 18px; --sp7: 22px;
+  /* 密度。两轮抱怨的方向是相反的（先是「太松太大」，收紧之后变成「很挤」），
+     所以这里把松紧集中成两组令牌：只改这两行就能整体调档，不用逐条找。 */
+  --r-xs: 8px; --r-s: 10px; --r-m: 14px; --r-l: 18px;
+  --r-xl: 20px; --r-2xl: 24px; --r-full: 999px;
+  --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 26px; --sp7: 32px;
   /* 内容列宽上限：真机 WebView 是 626 CSS px 宽（1644px @420dpi）。
      上限只负责别拉成横屏条，真正的空洞靠下面的自适应网格切掉——
      所以这里留 600，让卡片里放得下两到三格。 */
@@ -135,25 +136,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
 .kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
-.appbar h1{font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
-.appbar-actions{margin-left:auto;display:flex;gap:var(--sp1)}
-/* 图标按钮收在 40px：再小就不够拇指点了（M3 建议 48dp，这里已经偏低） */
-.icon-btn{width:40px;height:40px;border:0;border-radius:var(--r-m);background:transparent;color:var(--on-variant);
-  display:grid;place-items:center;cursor:pointer;transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
-.icon-btn:hover{background:var(--surface-high)}
-.icon-btn:active{transform:scale(.86)}
-.icon-btn svg{width:20px;height:20px}
-.huebar{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
-  gap:var(--sp1) var(--sp3);margin:var(--sp2) 0 0;padding:var(--sp2) var(--sp3);
-  background:var(--surface-low);border-radius:var(--r-l)}
-/* 同上：自带 display 的元素必须自己处理 hidden */
-.huebar[hidden]{display:none}
-.huebar span{font-size:11.5px;color:var(--on-variant);white-space:nowrap}
-.hue-src{grid-column:1 / -1;margin:0;font-size:11px;color:var(--on-variant);line-height:1.35}
-input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:8px;border-radius:var(--r-full);
-  background:linear-gradient(90deg,#f43f5e,#f59e0b,#84cc16,#06b6d4,#6366f1,#d946ef,#f43f5e);cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
-  background:var(--surface-lowest);border:2.5px solid var(--primary);box-shadow:var(--shadow)}
+.appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
 /* ================= 卡片 ================= */
 .wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);
@@ -165,7 +148,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
    面板只留一个 220ms 淡入，带延迟的入场动画只给首屏的英雄卡用。 */
 @keyframes fade{from{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
-.card-title{font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
+.card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   margin:0 0 var(--sp3)}
 /* 英雄卡不再整块上色：最大的色块应该装最重要的信息，而它只有一个数字和两个按钮。
    主色只留在数字与主行动上，卡片的分隔交给发丝线。 */
@@ -174,7 +157,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   animation:rise var(--d4) var(--e-spring) backwards}
 .hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2);flex-wrap:wrap}
-.count-num{font-size:34px;font-weight:800;line-height:1.05;letter-spacing:-1px;color:var(--primary);
+.count-num{font-size:38px;font-weight:800;line-height:1.05;letter-spacing:-1px;color:var(--primary);
   font-variant-numeric:tabular-nums;transition:transform var(--d3) var(--e-spring)}
 .count-num.bump{transform:scale(1.06)}
 /* 不用 opacity 压层次：那样审对比度时量到的是叠色前的值，读出来是假的 */
@@ -242,23 +225,23 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
    几百 px 的空洞，整页像一张被拉宽的收据。改成自适应网格：每格自己限宽，
    窄屏自动降列，不需要断点，也不会有行横跨整个画布。 */
 .grp+.grp{margin-top:var(--sp4)}
-.grp-t{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--on-variant);
+.grp-t{font-size:11.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--on-variant);
   margin-bottom:var(--sp2)}
 .grid{display:grid;gap:var(--sp2);grid-template-columns:repeat(auto-fit,minmax(var(--cell,260px),1fr))}
 .blk{background:var(--surface-high);border-radius:var(--r-l);padding:var(--sp3);min-width:0}
-.blk-k{display:block;font-size:11.5px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
-.blk-v{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;line-height:1.3;min-width:0}
+.blk-k{display:block;font-size:12px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
+.blk-v{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;line-height:1.3;min-width:0}
 .blk-v>span{min-width:0}
 .blk-v .pill{font-weight:inherit}
-.blk small{display:block;font-size:11px;font-weight:400;color:var(--on-variant);margin-top:3px;
+.blk small{display:block;font-size:11.5px;font-weight:400;color:var(--on-variant);margin-top:3px;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .blk-num{font-size:22px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .blk-v .blk-num{font-size:22px;font-weight:800}
 /* 路径是脚注不是数据：单独一组小字，别塞进网格里当第 N 行收据 */
 .paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:2px}
 .path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.5}
-.path-k{flex:none;font-size:11px;color:var(--on-variant)}
-.path-v{min-width:0;word-break:break-all;font-size:11px;color:var(--on-variant)}
+.path-k{flex:none;font-size:11.5px;color:var(--on-variant)}
+.path-v{min-width:0;word-break:break-all;font-size:11.5px;color:var(--on-variant)}
 /* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
 .card-quiet .blk{background:transparent;padding:0}
 .card-quiet .grid{gap:var(--sp3)}
@@ -286,16 +269,16 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 .app-row:hover{background:var(--surface-mid)}
 /* 头像：有桌面缓存就用那张真图标，没有就用首字块。
    快捷方式、系统组件、以及压根没有 Launcher3 系缓存的机器都会落到后者，不是异常路径 */
-.app-ic{flex:none;width:34px;height:34px;border-radius:var(--r-m);overflow:hidden;
+.app-ic{flex:none;width:38px;height:38px;border-radius:var(--r-m);overflow:hidden;
   background:var(--surface-high);display:grid;place-items:center;
   color:var(--on-variant);font-size:15px;font-weight:700}
 .app-ic img{width:100%;height:100%;object-fit:contain;display:block}
 .app-txt{flex:1;min-width:0}
 .app-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:13.5px;font-weight:600}
+  font-size:14.5px;font-weight:600}
 .app-name.is-mono{font-family:var(--mono);font-size:12px;font-weight:400;letter-spacing:-.2px}
 .app-pkg{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-family:var(--mono);font-size:11px;font-weight:400;color:var(--on-variant);margin-top:1px}
+  font-family:var(--mono);font-size:11.5px;font-weight:400;color:var(--on-variant);margin-top:1px}
 .app-tag{flex:none;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
 .app-tag[data-tone=miss]{background:var(--error-container);color:var(--on-error-container)}
@@ -411,22 +394,13 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
 <body>
 
 <header class="appbar">
+  <!-- 顶栏不放配色与深浅开关：颜色一律跟随系统（见「关于 → 取色 / 深浅」）。
+       原先那两个按钮会让人不小心把界面调成和系统不一样的东西。 -->
   <div class="appbar-row">
     <div style="min-width:0">
       <span class="kicker" id="kicker">正在读取模块状态</span>
       <h1>TS-AUTO-ADD</h1>
     </div>
-    <div class="appbar-actions">
-      <button class="icon-btn" id="btnHue" aria-label="调整配色" title="调整配色"></button>
-      <button class="icon-btn" id="btnTheme" aria-label="切换深浅色" title="切换深浅色"></button>
-    </div>
-  </div>
-  <div class="huebar" id="huebar" hidden>
-    <span>主色相</span>
-    <input type="range" id="hue" min="0" max="360" step="2" value="267" aria-label="主色相">
-    <span class="mono" id="hueVal">267°</span>
-    <button class="btn btn-text btn-sm" id="btnHueFollow">跟随系统</button>
-    <p class="hue-src" id="hueSrc">读取中</p>
   </div>
 </header>
 
@@ -744,14 +718,9 @@ function parseKV(text){
 }
 
 /* =========================================================
-   2. 偏好（localStorage 在部分 file:// 环境不可用，失败就只用内存值）
+   2. 颜色与深浅：两者都只取自系统，界面不提供覆盖
    ========================================================= */
-var store = {
-  get: function (k, d){ try { var v = localStorage.getItem('tsaa.' + k); return v === null ? d : v; } catch (e){ return d; } },
-  set: function (k, v){ try { localStorage.setItem('tsaa.' + k, v); } catch (e){ /* 忽略 */ } }
-};
-
-/* ---------- 取色：跟随系统强调色 ---------- */
+/* ---------- 取色：一律跟随系统 ---------- */
 /* 取不到系统种子时的兜底，不再是"我喜欢的紫"，而是**这台机器框架自己的默认强调色**。
    实测来源：/system/framework/framework-res.apk 的 color/system_accent1_600_light
    = #4b5d8b = oklch(48.4% .078 267.2)。界面里 --primary 是 oklch(49% .19*sat hue)，
@@ -760,9 +729,8 @@ var store = {
    难怪看着和系统其它地方不是一套。 */
 var HUE_DEFAULT = 267;
 var SAT_DEFAULT = 0.41;
-var hueMode = store.get('hueMode', 'system');            /* system | manual */
-var hueManual = parseInt(store.get('hue', String(HUE_DEFAULT)), 10);
-var THEME = { seedRaw: '', seedSrc: 'none', dark: '', darkSrc: '', applied: '', note: '' };
+var THEME = { seedRaw: '', seedSrc: 'none', frro: '', frroSrc: '', frroParsed: null,
+              dark: '', darkSrc: '', applied: '', note: '' };
 
 function hex2(v){ return (v < 16 ? '0' : '') + v.toString(16); }
 
@@ -798,52 +766,107 @@ function parseSeed(raw){
   return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
 }
 
-/* 系统色偏灰时整套颜色跟着收，否则「壁纸是灰的、界面却满屏高彩度」 */
-function satFromChroma(C){ return 0.35 + Math.min(C / 0.13, 1.15) * 0.65; }
+/* 彩度倍率直接按"要等于系统那一支"来算，不做审美放大。
+   --primary 的基值是 oklch(49% .19 hue)，所以要落到系统实测的 C 就得 sat = C / .19。
+   原先的映射是 0.35 + C/0.13*0.65，本机实测系统 C=.054 会被算成 .62 → 实际彩度 .118，
+   又是系统值的 2.2 倍 —— 这正是"看着就不像系统的一套颜色"的来源。 */
+function satFromChroma(C){ return Math.max(0.2, Math.min(1.1, C / 0.19)); }
 
 function setPalette(h, sat, note){
   var n = parseInt(h, 10); if (isNaN(n)) n = HUE_DEFAULT;
   n = ((n % 360) + 360) % 360;
-  var sv = parseFloat(sat); if (isNaN(sv)) sv = 1;
-  sv = Math.max(0.35, Math.min(1.1, sv));
+  var sv = parseFloat(sat); if (isNaN(sv)) sv = SAT_DEFAULT;
+  sv = Math.max(0.2, Math.min(1.1, sv));
   var st = document.documentElement.style;
   st.setProperty('--hue', n);
   st.setProperty('--hue3', (n + 130) % 360);
   st.setProperty('--sat', sv);
   THEME.applied = n + '° / 彩度 ×' + sv.toFixed(2);
   THEME.note = note;
-  if (note.indexOf('手动') !== 0) THEME.sat = sv;   // 手动那一档不改写"上一次的彩度"
-  if (window.hue) hue.value = n;
-  if (window.hueVal) hueVal.textContent = n + '°';
-  if (window.hueSrc) hueSrc.textContent = note;
+}
+
+/* ---------- SystemUI 运行时 overlay（FRRO）解析 ----------
+   条目形态（本机逐字节确认）：12 08 08 1c 10 <varint ARGB> 紧跟 12 <len> 0a <len2> <资源名>
+   —— 值在前、名字在后成对交替；08 1c 是 ResType TYPE_INT_COLOR_ARGB8888。
+   这是系统"正在拿来画东西的那套色"，用户手选颜色时它也会被重新生成，
+   所以比任何 setting 都权威：本机 theme_custom_color 为 null、壁纸是渐变
+   （isColorExtracted=false），前两级种子都是空的，而它里面明明白白有一套青蓝阶梯。 */
+function b64ToBytes(s){
+  var bin;
+  try { bin = atob(String(s).replace(/\s+/g, '')); } catch (e){ return null; }
+  var out = new Uint8Array(bin.length);
+  for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);
+  return out;
+}
+function parseFrro(b64){
+  var b = b64ToBytes(b64);
+  if (!b || b.length < 16) return null;
+  var map = {}, n = 0, i = 0;
+  while (i + 8 < b.length) {
+    if (b[i] === 0x12 && b[i+1] === 0x08 && b[i+2] === 0x08 && b[i+3] === 0x1c && b[i+4] === 0x10) {
+      var j = i + 5, v = 0, sh = 0, c, bad = false;
+      do {
+        if (j >= b.length) { bad = true; break; }
+        c = b[j++]; v += (c & 0x7f) * Math.pow(2, sh); sh += 7;
+      } while (c & 0x80);
+      if (!bad && b[j] === 0x12) {
+        var nl = b[j+1], k = j + 2;
+        if (b[k] === 0x0a) {
+          var sl = b[k+1], name = '';
+          for (var q = 0; q < sl && k+2+q < b.length; q++) name += String.fromCharCode(b[k+2+q]);
+          if (/^system_[a-z0-9_]+$/.test(name)) { map[name] = v >>> 0; n++; }
+          i = k + nl;
+          continue;
+        }
+      }
+    }
+    i++;
+  }
+  return n ? { map: map, n: n } : null;
+}
+
+/* 自检：一条 tonal 阶梯的明度必须从 0 到 1000 单调下降。
+   不单调 = 配对错位，这份数据就不能信 —— 宁可退回默认，也不要画一个错颜色。
+   （第一次写解析时就是靠这条抓出我把 -dynamic- 当成 -accent- 用了，
+     那份里根本没有 accent1 阶梯，"解析出 94 条"看着挺多却一条都用不上。） */
+var RAMP = [0, 10, 50, 100, 200, 300, 400, 500, 600, 700, 800, 900, 1000];
+function frroSeed(fr){
+  if (!fr) return null;
+  for (var t = 0; t < 2; t++) {
+    var cfg = t ? 'dark' : 'light', prev = null, mono = true, got = 0, seed = null;
+    for (var i = 0; i < RAMP.length; i++) {
+      var v = fr.map['system_accent1_' + RAMP[i] + '_' + cfg];
+      if (v === undefined) continue;
+      got++;
+      var o = srgbToOklch((v >> 16) & 255, (v >> 8) & 255, v & 255);
+      if (prev !== null && o.L > prev + 0.005) { mono = false; break; }
+      prev = o.L;
+      if (RAMP[i] === 400) seed = v;
+    }
+    if (mono && got >= 8 && seed !== null) return seed;
+  }
+  return null;
 }
 
 function applyPalette(){
-  if (hueMode === 'manual') {
-    /* 手动只转色相，彩度沿用它上一次算出的值：
-       不然一开拖就从「平台默认那支灰蓝」跳到满彩度，像是两套颜色在打架 */
-    setPalette(hueManual, THEME.sat || SAT_DEFAULT, '手动色相（点「跟随系统」还原）');
-    return;
-  }
-  var seed = parseSeed(THEME.seedRaw);
-  if (!seed) { setPalette(HUE_DEFAULT, SAT_DEFAULT, '系统未提供自定义强调色，用平台默认强调色 system_accent1'); return; }
-  var ok = srgbToOklch(seed.r, seed.g, seed.b);
-  var rgbHex = '#' + hex2(seed.r) + hex2(seed.g) + hex2(seed.b);
+  var rgb = null, src = '';
+  var fv = frroSeed(THEME.frroParsed);
+  if (fv !== null) { rgb = { r: (fv >> 16) & 255, g: (fv >> 8) & 255, b: fv & 255 }; src = 'systemui overlay'; }
+  if (!rgb) { var s = parseSeed(THEME.seedRaw); if (s) { rgb = s; src = THEME.seedSrc; } }
+  if (!rgb) { setPalette(HUE_DEFAULT, SAT_DEFAULT, '系统没有可读出的强调色，用平台默认 system_accent1'); return; }
+  var ok = srgbToOklch(rgb.r, rgb.g, rgb.b);
+  var hex = '#' + hex2(rgb.r) + hex2(rgb.g) + hex2(rgb.b);
   /* 近中性时色相没有意义（atan2 会乱转），只跟彩度、色相留默认 */
-  if (ok.C < 0.02) { setPalette(HUE_DEFAULT, satFromChroma(ok.C), '系统强调色 ' + rgbHex + ' 近中性，只跟彩度'); return; }
-  setPalette(Math.round(ok.H), satFromChroma(ok.C), '跟随系统强调色 ' + rgbHex + '（' + THEME.seedSrc + '）');
+  if (ok.C < 0.02) { setPalette(HUE_DEFAULT, satFromChroma(ok.C), '系统强调色 ' + hex + ' 近中性，只跟彩度'); return; }
+  setPalette(Math.round(ok.H), satFromChroma(ok.C), '跟随系统强调色 ' + hex + '（' + src + '）');
 }
 
-/* ---------- 深浅 ---------- */
-var SCHEMES = ['auto', 'light', 'dark'];
-var SCHEME_LABEL = { auto: '跟随系统', light: '浅色', dark: '深色' };
-var schemeIdx = Math.max(0, SCHEMES.indexOf(store.get('scheme', 'auto')));
-/* ?scheme=light|dark 强制配色，便于深浅两版对照（界面上的按钮仍是三态循环） */
+/* ---------- 深浅：一律跟随系统，界面不提供覆盖 ---------- */
+/* ?scheme=light|dark 只用于离线对照出图；真机上没有手动档位可点 */
 var FORCE_SCHEME = QUERY.get('scheme');
 
 function resolveScheme(){
   if (FORCE_SCHEME === 'light' || FORCE_SCHEME === 'dark') return FORCE_SCHEME;
-  if (SCHEMES[schemeIdx] !== 'auto') return SCHEMES[schemeIdx];
   /* 系统的计算结果优先：管理器的 WebView 有时被钉在浅色，媒体查询会跟系统不一致 */
   if (THEME.dark === '1') return 'dark';
   if (THEME.dark === '0') return 'light';
@@ -851,11 +874,6 @@ function resolveScheme(){
 }
 function applyScheme(){
   document.documentElement.setAttribute('data-scheme', resolveScheme());
-  if (window.btnTheme) {
-    btnTheme.innerHTML = svg(SCHEMES[schemeIdx] === 'auto' ? 'auto' : (resolveScheme() === 'dark' ? 'moon' : 'sun'));
-    btnTheme.title = '主题：' + SCHEME_LABEL[SCHEMES[schemeIdx]];
-    store.set('scheme', SCHEMES[schemeIdx]);
-  }
 }
 /* 脚本在 body 末尾，这里同步先定一次：否则深色系统上会先闪一帧浅色再切深色 */
 applyScheme();
@@ -1058,12 +1076,11 @@ function renderOver(){
       ' / Tricky Store ' + (st.tricky_enabled === '1' ? '启用' : '未启用'))
   ]));
   about.appendChild(grp('外观', [
-    blk('取色', hueMode === 'manual' ? '手动调整'
-        : (THEME.seedSrc === 'none' ? '默认色相' : '系统强调色'),
-      hueMode === 'manual' ? 'warn' : (THEME.seedSrc === 'none' ? 'na' : 'ok'),
+    blk('取色', THEME.frroOk ? '系统 overlay'
+        : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
+      (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
       THEME.note || '—'),
-    blk('深浅', (SCHEMES[schemeIdx] === 'auto' ? '跟随系统' : SCHEME_LABEL[SCHEMES[schemeIdx]]) +
-      ' → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
+    blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
       THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc)
   ]));
 
@@ -1305,6 +1322,12 @@ function loadEnv(){
     S.env = parseKV(r.text);
     THEME.seedRaw = S.env.sys_seed_raw || '';
     THEME.seedSrc = S.env.sys_seed_src || 'none';
+    /* SystemUI 的运行时 overlay 是第一优先种子：它就是系统正在用的那套色。
+       解析失败（不是这个格式、阶梯不完整、明度不单调）就退回下一档，不报错也不画错。 */
+    THEME.frro = S.env.sys_frro || '';
+    THEME.frroSrc = S.env.sys_frro_src || '';
+    THEME.frroParsed = THEME.frro ? parseFrro(THEME.frro) : null;
+    THEME.frroOk = frroSeed(THEME.frroParsed) !== null;
     THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
     THEME.darkSrc = S.env.sys_dark_src || 'none';
     applyPalette();                 // 系统强调色到手，重推一遍色板
@@ -1584,7 +1607,6 @@ function wire(){
   btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
   btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
   btnSaveRules.innerHTML = svg('save') + '<span>保存并同步</span>';
-  btnHue.innerHTML = svg('palette');
   btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
   btnLogClear.innerHTML = svg('trash') + '<span>清空</span>';
   btnPropsApply.innerHTML = svg('check') + '<span>立即应用一次</span>';
@@ -1666,31 +1688,10 @@ function wire(){
   });
   btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab(); });
 
-  btnTheme.addEventListener('click', function (){
-    schemeIdx = (schemeIdx + 1) % SCHEMES.length;
-    applyScheme();
-    if (S.tab === 'over') renderOver();               // 「关于」里的深浅来源要跟着更新
-  });
-  btnHue.addEventListener('click', function (){ huebar.hidden = !huebar.hidden; });
-
-  /* 拖动滑杆 = 转手动；点「跟随系统」= 交还给系统强调色 */
-  hue.addEventListener('input', function (){
-    hueMode = 'manual';
-    hueManual = parseInt(hue.value, 10);
-    applyPalette();
-  });
-  hue.addEventListener('change', function (){ store.set('hue', String(hueManual)); store.set('hueMode', 'manual'); });
-  btnHueFollow.addEventListener('click', function (){
-    hueMode = 'system';
-    store.set('hueMode', 'system');
-    applyPalette();
-    if (S.tab === 'over') renderOver();
-    snackbar(THEME.note, 'ok');
-  });
-
+  /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
   var mq = matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function (){
-    if (SCHEMES[schemeIdx] === 'auto' && THEME.dark === '') { applyScheme(); if (S.tab === 'over') renderOver(); }
+    if (THEME.dark === '') { applyScheme(); if (S.tab === 'over') renderOver(); }
   });
 }
 

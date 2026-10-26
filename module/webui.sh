@@ -275,8 +275,28 @@ cmd_env() {
             ;;
     esac
 
-    # 强调色：系统并不总是存了种子色（壁纸派生是各应用自己算的，没有全局值），
-    #         取不到就如实报 none，由界面退回默认色相。
+    # 强调色第一优先：SystemUI 运行时生成的 Material You overlay。
+    # 那是系统"正在拿来画东西的那套色"，用户手选颜色时它也会被重新生成，
+    # 所以比任何 setting 都权威 —— 本机 theme_custom_color 是 null、壁纸是渐变
+    # (isColorExtracted=false)，前两个来源都是空的，可实际上 accent1 阶梯明明白白
+    # 存在 /data/resource-cache 里（实测本机是青蓝 H≈215，不是 AOSP 默认的那支灰蓝）。
+    # 文件格式是 FRRO（定长条目 + varint），shell 里没有能读它的东西；
+    # 这里只做「取最新一份 + base64」，解析在界面里做（JS 十几行，且能带自检）。
+    b64cmd=$(find_base64 2>/dev/null)
+    # 先要 -accent-（里面是完整的 system_accent1 阶梯，界面可以拿"明度必须单调"自检）；
+    # 没有才退到 -dynamic-（那是派生出来的语义色，同一支色相但阶梯不全）。
+    # 实测本机两个都在，而 -dynamic- 更新一些 —— 按 mtime 取会挑到没有阶梯的那份。
+    frro=$(ls -t /data/resource-cache/com.android.systemui-accent-*.frro 2>/dev/null | head -n 1)
+    [ -n "$frro" ] || frro=$(ls -t /data/resource-cache/com.android.systemui-dynamic-*.frro 2>/dev/null | head -n 1)
+    if [ -n "$b64cmd" ] && [ -n "$frro" ] && [ -r "$frro" ]; then
+        enc=$($b64cmd < "$frro" 2>/dev/null | tr -d '\r\n')
+        if [ -n "$enc" ]; then
+            kv sys_frro "$enc"
+            kv sys_frro_src "$frro"
+        fi
+    fi
+
+    # 次选：用户手选的颜色；再退到壁纸提取色
     seed=$(settings get secure theme_custom_color 2>/dev/null)
     case "$seed" in
         ''|null|null*) seed="" ;;
