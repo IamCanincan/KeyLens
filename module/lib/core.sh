@@ -18,6 +18,9 @@ TAA_LOG="/data/adb/ts_auto.log"   # /data/adb 为 0700，仅 root 可读，其�
 TAA_LOG_MAX=65536                 # 缓冲上限（字节，64KB）
 TAA_LOG_KEEP=200                  # 超限后保留的末尾行数
 
+# 属性伪装开关（文件存在 = 已关闭）：与日志缓冲同级，覆盖安装模块不会丢失
+TAA_PROPS_OFF="/data/adb/ts_auto.props_off"
+
 # ---------- 运行期状态 ----------
 # 以下变量由 detect_backend 填充，其余为同步过程的中间结果
 TAA_BACKEND=""                # 当前后端：teesim | tricky

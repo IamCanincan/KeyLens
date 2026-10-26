@@ -21,6 +21,14 @@ if backends_conflict; then
     exit 0
 fi
 
+# ---------- 属性伪装 ----------
+# 说明：用户可在模块 WebUI 里关闭伪装（开关文件为 $TAA_PROPS_OFF），
+#       关闭后本阶段跳过写入，其余功能（应用列表维护）不受影响。
+if props_disabled; then
+    log_info "ℹ️ 属性伪装已关闭（$TAA_PROPS_OFF 存在），本次开机跳过"
+    exit 0
+fi
+
 apply_resetprop
 
 exit 0
