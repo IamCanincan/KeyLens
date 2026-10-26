@@ -115,7 +115,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 ### 🖥 WebUI 控制台
 
-在管理器的模块详情页点 **「打开界面」/「Open with WebUI」** 即可（KernelSU Next、SukiSU、SmartPack、APatch，以及支持 WebUI 的 Magisk 管理器都有这个入口；**原版 Magisk 管理器没有**，此时仍可用下面的命令行方式）。
+在管理器的模块详情页点 **「打开界面」/「Open with WebUI」** 即可（KernelSU 主线、KernelSU Next、SukiSU、SmartPack、APatch，以及支持 WebUI 的 Magisk 管理器都有这个入口；**原版 Magisk 管理器没有**，此时仍可用下面的命令行方式）。
 
 界面分五页：
 
@@ -260,7 +260,10 @@ sh /data/adb/modules/ts-auto-add/action.sh
 ## ❓ 常见问题
 
 **Q：点「打开界面」没有反应，或界面提示“当前管理器不支持 WebUI”？**  
-A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧或禁用了 JavaScript，重新覆盖安装模块可确认 `webroot/` 是否完整。
+A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU（主线）/ KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧或禁用了 JavaScript，重新覆盖安装模块可确认 `webroot/` 是否完整。
+
+**Q：界面提示「当前管理器没有提供可用的 exec 桥接」，但我的管理器明明有 WebUI 入口？**  
+A：各家注入的桥接对象名与调用形状不一样（KernelSU 主线是 `window.ksu.exec(cmd, optionsJson, 回调函数名)` 的**异步回调**，部分是同步返回 `{errno, stdout}`）。这种情况下界面会直接把扫描结果列出来——扫到了哪些对象、各自有哪些方法，据此就能判断该认谁；把那一屏反馈给维护者即可。
 
 **Q：怎么看模块日志？为什么 logcat 里一会儿就没了？**  
 A：日志同时写 `logcat`（tag `TS-AUTO`）与本地缓冲 `/data/adb/ts_auto.log`。`logcat` 的缓冲默认只有几百 KB 且由全系统共用，系统繁忙时旧记录很快被挤掉、重启即清空 —— 这正是“一会儿就没了”的原因；缓冲文件跨重启保留，排查请优先看它（超过 64KB 会自动只保留末尾 200 行）。设备上读这两处**都需要 root**（`/data/adb` 为 `0700`，终端里先 `su`，或用 `su -c '...'`）；电脑上 `adb logcat -s TS-AUTO` 不需要 root，读缓冲文件需要 `adb shell su -c '...'`。最省事的方式是在管理器里点模块的“操作”按钮 —— `action.sh` 会附带打印最近 15 条日志。完整命令与排查步骤见上方「🛠 使用方法 → 查看运行状态」。另外模块只在**开机**与**文件变化**时写日志，没有事件时没有输出属正常现象。

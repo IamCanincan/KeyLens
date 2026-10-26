@@ -24,9 +24,10 @@
   --e-emph: cubic-bezier(.3,0,.08,1);
   --e-spatial: cubic-bezier(.2,0,0,1);
   --d1: 120ms; --d2: 220ms; --d3: 340ms; --d4: 500ms;
-  --r-xs: 8px; --r-s: 12px; --r-m: 16px; --r-l: 24px;
-  --r-xl: 28px; --r-2xl: 36px; --r-full: 999px;
-  --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 24px; --sp7: 32px;
+  /* 密度：留白与圆角整体收一档（表现力靠不对称圆角与弹性动效保留，不靠尺寸） */
+  --r-xs: 6px; --r-s: 8px; --r-m: 11px; --r-l: 14px;
+  --r-xl: 18px; --r-2xl: 22px; --r-full: 999px;
+  --sp1: 3px; --sp2: 6px; --sp3: 9px; --sp4: 12px; --sp5: 15px; --sp6: 18px; --sp7: 22px;
   --font: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
   --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
@@ -101,7 +102,7 @@
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
 html,body{margin:0;padding:0}
 body{
-  background:var(--surface);color:var(--on-surface);font:400 15px/1.5 var(--font);
+  background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
   min-height:100%;padding-bottom:calc(var(--sp7) + env(safe-area-inset-bottom));
   background-image:radial-gradient(120% 60% at 100% 0%,var(--primary-container),transparent 62%),
                    radial-gradient(90% 50% at 0% 100%,var(--tertiary-container),transparent 60%);
@@ -110,63 +111,64 @@ body{
 h1,h2,h3,p{margin:0}
 button,input,textarea,select{font:inherit;color:inherit}
 :focus-visible{outline:3px solid var(--primary);outline-offset:2px;border-radius:var(--r-xs)}
-.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:-.2px}
+.mono{font-family:var(--mono);font-size:12px;letter-spacing:-.2px}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ================= 顶栏 ================= */
 /* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
    两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
-.appbar{padding:calc(env(safe-area-inset-top) + var(--sp3)) var(--sp5) var(--sp2)}
+.appbar{padding:calc(env(safe-area-inset-top) + var(--sp2)) var(--sp4) var(--sp1)}
 .appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
-.kicker{display:block;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--on-variant);
+.kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
-.appbar h1{font-size:26px;font-weight:700;letter-spacing:-.7px;line-height:1.2;color:var(--on-surface)}
+.appbar h1{font-size:20px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 .appbar-actions{margin-left:auto;display:flex;gap:var(--sp1)}
-.icon-btn{width:44px;height:44px;border:0;border-radius:var(--r-m);background:transparent;color:var(--on-variant);
+/* 图标按钮收在 40px：再小就不够拇指点了（M3 建议 48dp，这里已经偏低） */
+.icon-btn{width:40px;height:40px;border:0;border-radius:var(--r-m);background:transparent;color:var(--on-variant);
   display:grid;place-items:center;cursor:pointer;transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
 .icon-btn:hover{background:var(--surface-high)}
 .icon-btn:active{transform:scale(.86)}
-.icon-btn svg{width:22px;height:22px}
+.icon-btn svg{width:20px;height:20px}
 .huebar{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
-  gap:var(--sp2) var(--sp3);margin:var(--sp3) 0 0;padding:var(--sp3) var(--sp4);
+  gap:var(--sp1) var(--sp3);margin:var(--sp2) 0 0;padding:var(--sp2) var(--sp3);
   background:var(--surface-low);border-radius:var(--r-l) var(--r-l) var(--r-s) var(--r-s)}
 /* 同上：自带 display 的元素必须自己处理 hidden */
 .huebar[hidden]{display:none}
-.huebar span{font-size:12px;color:var(--on-variant);white-space:nowrap}
-.hue-src{grid-column:1 / -1;margin:0;font-size:11.5px;color:var(--on-variant);line-height:1.4}
-input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:12px;border-radius:var(--r-full);
+.huebar span{font-size:11.5px;color:var(--on-variant);white-space:nowrap}
+.hue-src{grid-column:1 / -1;margin:0;font-size:11px;color:var(--on-variant);line-height:1.35}
+input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:8px;border-radius:var(--r-full);
   background:linear-gradient(90deg,#f43f5e,#f59e0b,#84cc16,#06b6d4,#6366f1,#d946ef,#f43f5e);cursor:pointer}
-input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
-  background:var(--surface-lowest);border:3px solid var(--primary);box-shadow:var(--shadow)}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;height:16px;border-radius:50%;
+  background:var(--surface-lowest);border:2.5px solid var(--primary);box-shadow:var(--shadow)}
 
 /* ================= 卡片 ================= */
-.wrap{padding:0 var(--sp5);display:flex;flex-direction:column;gap:var(--sp4);max-width:760px;margin:0 auto;width:100%}
-.card{background:var(--surface-low);border-radius:var(--r-xl);padding:var(--sp5);box-shadow:var(--shadow);
+.wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);max-width:760px;margin:0 auto;width:100%}
+.card{background:var(--surface-low);border-radius:var(--r-xl);padding:var(--sp4);box-shadow:var(--shadow);
   animation:fade var(--d2) var(--e-emph)}
 /* 标签页切换会让面板从 display:none 变回来、动画随之重播：
    面板只留一个 220ms 淡入，带延迟的入场动画只给首屏的英雄卡用。 */
 @keyframes fade{from{opacity:0}}
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
-.card-title{font-size:13px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
-  margin:0 0 var(--sp4)}
+.card-title{font-size:11.5px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
+  margin:0 0 var(--sp3)}
 .hero{background:var(--primary-container);color:var(--on-primary-container);
-  border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-m);padding:var(--sp5) var(--sp5) var(--sp4);
+  border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-m);padding:var(--sp4) var(--sp4) var(--sp3);
   box-shadow:var(--shadow);animation:rise var(--d4) var(--e-spring) backwards}
 .hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
-.hero-count{display:flex;align-items:flex-end;gap:var(--sp4);margin:var(--sp4) 0 var(--sp3)}
-.count-num{font-size:60px;font-weight:800;line-height:.92;letter-spacing:-3px;color:var(--primary);
+.hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2)}
+.count-num{font-size:34px;font-weight:800;line-height:1.05;letter-spacing:-1px;color:var(--primary);
   font-variant-numeric:tabular-nums;transition:transform var(--d3) var(--e-spring)}
-.count-num.bump{transform:scale(1.07)}
-.count-cap{padding-bottom:var(--sp2);font-size:13px;font-weight:600;color:var(--on-primary-container);opacity:.9}
-.count-cap small{display:block;font-weight:500;opacity:.85;font-size:12px;margin-top:2px}
-.hero-meta{display:flex;flex-wrap:wrap;gap:var(--sp2);margin-bottom:var(--sp4)}
+.count-num.bump{transform:scale(1.06)}
+.count-cap{padding-bottom:2px;font-size:12.5px;font-weight:600;color:var(--on-primary-container);opacity:.9}
+.count-cap small{display:block;font-weight:500;opacity:.85;font-size:11.5px;margin-top:1px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:var(--sp2);margin-bottom:var(--sp3)}
 .hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap}
 
 /* ================= 徽章 / chip ================= */
-.badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:6px 14px;font-size:13px;font-weight:700;
+.badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:3px 10px;font-size:12px;font-weight:700;
   border-radius:var(--r-full) var(--r-s) var(--r-full) var(--r-s);background:var(--surface-lowest);color:var(--on-surface);
   transition:background var(--d2) var(--e-emph)}
-.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--outline);flex:none}
+.badge .dot{width:7px;height:7px;border-radius:50%;background:var(--outline);flex:none}
 .badge[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 .badge[data-tone=ok] .dot{background:var(--success)}
 .badge[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
@@ -174,24 +176,24 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .badge[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .badge[data-tone=bad] .dot{background:var(--error);animation:pulse 1.6s infinite}
 @keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
-.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r-full);
-  background:var(--surface-lowest);color:var(--on-variant);border:1px solid var(--outline-variant);font-size:12px;
+.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-full);
+  background:var(--surface-lowest);color:var(--on-variant);border:1px solid var(--outline-variant);font-size:11.5px;
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 .chip b{color:var(--on-surface);font-weight:600}
 
 /* ================= 按钮 ================= */
-.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp2);min-height:46px;padding:0 var(--sp5);
-  border:0;border-radius:var(--r-full);font-size:14.5px;font-weight:600;cursor:pointer;letter-spacing:.1px;
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp2);min-height:38px;padding:0 var(--sp4);
+  border:0;border-radius:var(--r-full);font-size:13.5px;font-weight:600;cursor:pointer;letter-spacing:.1px;
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph),box-shadow var(--d2) var(--e-emph)}
-.btn svg{width:19px;height:19px;flex:none}
+.btn svg{width:17px;height:17px;flex:none}
 .btn:active{transform:scale(.94)}
 .btn[disabled]{opacity:.42;pointer-events:none}
 .btn-filled{background:var(--primary);color:var(--on-primary)}
 .btn-filled:hover{box-shadow:0 2px 10px var(--primary);filter:brightness(1.06)}
 .btn-tonal{background:var(--secondary-container);color:var(--on-secondary-container)}
 .btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
-.btn-text{background:transparent;color:var(--primary);padding:0 var(--sp4)}
-.btn-sm{min-height:36px;padding:0 var(--sp4);font-size:13px}
+.btn-text{background:transparent;color:var(--primary);padding:0 var(--sp3)}
+.btn-sm{min-height:30px;padding:0 var(--sp3);font-size:12.5px}
 /* 主行动按钮用 primary 而不是 tertiary：tertiary 是 hue+130 的对比色，
    跟随系统取色时它可能正好是红色，把「立即同步」画得像危险操作。
    表现力靠形状与按压形变保留。 */
@@ -199,128 +201,128 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .fab:active{border-radius:50%;transform:scale(.9)}
 
 /* ================= 分段标签 ================= */
-.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 6px);z-index:15;display:flex;gap:var(--sp1);
-  padding:var(--sp3) var(--sp5);background:var(--surface);overflow-x:auto;scrollbar-width:none;
+.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 4px);z-index:15;display:flex;gap:var(--sp1);
+  padding:var(--sp2) var(--sp4);background:var(--surface);overflow-x:auto;scrollbar-width:none;
   border-radius:0 0 var(--r-l) var(--r-l)}
 .tabs::-webkit-scrollbar{display:none}
-.tab{position:relative;flex:none;min-height:44px;padding:0 var(--sp5);border:1.5px solid var(--outline-variant);
-  background:transparent;color:var(--on-variant);border-radius:var(--r-full);font-size:14px;font-weight:600;cursor:pointer;
+.tab{position:relative;flex:none;min-height:38px;padding:0 var(--sp4);border:1.5px solid var(--outline-variant);
+  background:transparent;color:var(--on-variant);border-radius:var(--r-full);font-size:13px;font-weight:600;cursor:pointer;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .tab:active{transform:scale(.94)}
 .tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
-.tab .n{display:inline-block;margin-left:6px;font-variant-numeric:tabular-nums;opacity:.75;font-size:12.5px}
+.tab .n{display:inline-block;margin-left:4px;font-variant-numeric:tabular-nums;opacity:.75;font-size:11.5px}
 
 /* ================= 列表行 ================= */
-.tile{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) 0;border-bottom:1px solid var(--outline-variant)}
+.tile{display:flex;align-items:center;gap:var(--sp2);padding:7px 0;border-bottom:1px solid var(--outline-variant)}
 .tile:last-child{border-bottom:0}
-.tile-k{font-size:13px;color:var(--on-variant);flex:none;min-width:82px}
-.tile-v{flex:1;min-width:0;text-align:right;font-size:14px;font-weight:600;word-break:break-all}
-.tile-v small{display:block;font-weight:400;color:var(--on-variant);font-size:12px;margin-top:2px}
-.pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--r-full);font-size:12px;font-weight:700}
+.tile-k{font-size:12.5px;color:var(--on-variant);flex:none;min-width:72px}
+.tile-v{flex:1;min-width:0;text-align:right;font-size:13.5px;font-weight:600;word-break:break-all}
+.tile-v small{display:block;font-weight:400;color:var(--on-variant);font-size:11.5px;margin-top:1px}
+.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--r-full);font-size:11.5px;font-weight:700}
 .pill[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 .pill[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .pill[data-tone=na]{background:var(--surface-high);color:var(--on-variant)}
-.app-row{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp2) var(--sp3);border-radius:var(--r-s);
+.app-row{display:flex;align-items:center;gap:var(--sp2);padding:4px var(--sp2);border-radius:var(--r-s);
   transition:background var(--d1) var(--e-emph)}
 .app-row:hover{background:var(--surface-mid)}
-.app-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:13px}
-.app-tag{flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);
+.app-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
+.app-tag{flex:none;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
 .app-tag[data-tone=miss]{background:var(--error-container);color:var(--on-error-container)}
-.icon-add{flex:none;width:38px;height:38px;border:0;border-radius:var(--r-s);background:var(--surface-lowest);
+.icon-add{flex:none;width:32px;height:32px;border:0;border-radius:var(--r-s);background:var(--surface-lowest);
   color:var(--primary);cursor:pointer;display:grid;place-items:center;border:1px solid var(--outline-variant);
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
 .icon-add:active{transform:scale(.86)}
-.icon-add svg{width:18px;height:18px}
+.icon-add svg{width:16px;height:16px}
 
 /* ================= 表单 ================= */
 /* 表单：标签一律放在控件上方。浮动标签要和文本域首行算位置，textarea 一定压字 */
 .field{display:block}
-.field textarea,.field input[type=text]{width:100%;padding:var(--sp4);border-radius:var(--r-m);
+.field textarea,.field input[type=text]{width:100%;padding:var(--sp3);border-radius:var(--r-m);
   background:var(--surface-lowest);border:1.5px solid var(--outline-variant);color:var(--on-surface);
   transition:border-color var(--d2) var(--e-emph),background var(--d2) var(--e-emph)}
-.field textarea{min-height:270px;font-family:var(--mono);font-size:13px;line-height:1.7;resize:vertical;tab-size:2}
-.field input[type=text]{min-height:52px}
+.field textarea{min-height:180px;font-family:var(--mono);font-size:12.5px;line-height:1.55;resize:vertical;tab-size:2}
+.field input[type=text]{min-height:42px}
 .field:focus-within textarea,.field:focus-within input{border-color:var(--primary);border-width:2.5px}
-.field label{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;
-  color:var(--on-variant);margin:0 0 var(--sp2) var(--sp1)}
+.field label{display:block;font-size:11.5px;font-weight:700;letter-spacing:.4px;
+  color:var(--on-variant);margin:0 0 var(--sp1) var(--sp1)}
 .field:focus-within label{color:var(--primary)}
-.hint{font-size:12.5px;color:var(--on-variant);margin-top:var(--sp2)}
-.toolbar{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp4)}
-.switch-row{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) 0}
+.hint{font-size:12px;color:var(--on-variant);margin-top:var(--sp1)}
+.toolbar{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp3)}
+.switch-row{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) 0}
 .switch-row .txt{flex:1;min-width:0}
-.switch-row .txt b{display:block;font-size:14.5px;font-weight:600}
-.switch-row .txt span{font-size:12.5px;color:var(--on-variant)}
-.switch{flex:none;width:54px;height:34px;border-radius:var(--r-full);border:2.5px solid var(--outline);
+.switch-row .txt b{display:block;font-size:13.5px;font-weight:600}
+.switch-row .txt span{font-size:12px;color:var(--on-variant)}
+.switch{flex:none;width:46px;height:28px;border-radius:var(--r-full);border:2px solid var(--outline);
   background:var(--surface-highest);position:relative;cursor:pointer;
   transition:background var(--d3) var(--e-spring),border-color var(--d3) var(--e-spring)}
-.switch::after{content:"";position:absolute;top:50%;left:4px;width:22px;height:22px;border-radius:50%;background:var(--outline);
+.switch::after{content:"";position:absolute;top:50%;left:3px;width:14px;height:14px;border-radius:50%;background:var(--outline);
   transform:translateY(-50%);transition:transform var(--d4) var(--e-spring),width var(--d3) var(--e-spring),
   height var(--d3) var(--e-spring),background var(--d3) var(--e-emph)}
 .switch[aria-checked=true]{background:var(--primary);border-color:var(--primary)}
-.switch[aria-checked=true]::after{left:calc(100% - 26px);width:26px;height:26px;background:var(--on-primary)}
+.switch[aria-checked=true]::after{left:calc(100% - 23px);width:20px;height:20px;background:var(--on-primary)}
 
 /* ================= 日志 ================= */
 .console{background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-m);
-  padding:var(--sp3);max-height:58vh;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.75;-webkit-overflow-scrolling:touch}
-.log-line{white-space:pre-wrap;word-break:break-all;padding:1px 0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
+  padding:var(--sp2);max-height:52vh;overflow:auto;font-family:var(--mono);font-size:11.5px;line-height:1.5;-webkit-overflow-scrolling:touch}
+.log-line{white-space:pre-wrap;word-break:break-all;padding:0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
 .log-line:last-child{border-bottom:0}
 .log-line[data-lvl=err]{background:var(--error-container);color:var(--on-error-container)}
 .log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
 .log-line[data-lvl=ok]{color:var(--success)}
-.seg{display:inline-flex;padding:4px;gap:4px;background:var(--surface-mid);border-radius:var(--r-full)}
-.seg button{border:0;background:transparent;color:var(--on-variant);min-height:34px;padding:0 var(--sp4);
-  border-radius:var(--r-full);font-size:13px;font-weight:600;cursor:pointer;
+.seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-mid);border-radius:var(--r-full)}
+.seg button{border:0;background:transparent;color:var(--on-variant);min-height:28px;padding:0 var(--sp3);
+  border-radius:var(--r-full);font-size:12px;font-weight:600;cursor:pointer;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .seg button:active{transform:scale(.93)}
 .seg button.is-active{background:var(--surface-lowest);color:var(--on-surface);box-shadow:0 1px 4px var(--scrim)}
 
 /* ================= 提示条 / 对话框 / snackbar ================= */
-.banner{display:flex;gap:var(--sp3);align-items:flex-start;padding:var(--sp4) var(--sp5);border-radius:var(--r-l);
-  background:var(--error-container);color:var(--on-error-container);font-size:14px;line-height:1.55;
+.banner{display:flex;gap:var(--sp2);align-items:flex-start;padding:var(--sp3) var(--sp4);border-radius:var(--r-l);
+  background:var(--error-container);color:var(--on-error-container);font-size:13px;line-height:1.5;
   animation:rise var(--d4) var(--e-spring) backwards}
 /* .banner 自带 display:flex，会盖掉 hidden 属性的 display:none —— 必须显式补一条 */
 .banner[hidden]{display:none}
-.banner svg{width:22px;height:22px;flex:none;margin-top:1px}
+.banner svg{width:18px;height:18px;flex:none;margin-top:1px}
 .banner b{display:block;margin-bottom:2px}
-.dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp5);background:var(--scrim)}
+.dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp4);background:var(--scrim)}
 .dialog[hidden]{display:none}
-.sheet{width:100%;max-width:420px;background:var(--surface-high);border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-l);
-  padding:var(--sp6);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
+.sheet{width:100%;max-width:400px;background:var(--surface-high);border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-l);
+  padding:var(--sp4);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
 @keyframes pop{from{opacity:0;transform:scale(.9) translateY(16px)}}
-.sheet h3{font-size:21px;font-weight:700;letter-spacing:-.3px;margin-bottom:var(--sp3)}
-.sheet p{font-size:14.5px;color:var(--on-variant);line-height:1.6}
-.sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp6)}
-.snackbar{position:fixed;left:50%;bottom:calc(var(--sp6) + env(safe-area-inset-bottom));z-index:70;
-  transform:translate(-50%,140%);max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp3);
-  padding:var(--sp3) var(--sp5);border-radius:var(--r-s) var(--r-l) var(--r-s) var(--r-l);
-  background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:14px;
+.sheet h3{font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
+.sheet p{font-size:13.5px;color:var(--on-variant);line-height:1.55}
+.sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
+.snackbar{position:fixed;left:50%;bottom:calc(var(--sp4) + env(safe-area-inset-bottom));z-index:70;
+  transform:translate(-50%,140%);max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
+  padding:var(--sp2) var(--sp4);border-radius:var(--r-s) var(--r-l) var(--r-s) var(--r-l);
+  background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:13px;
   transition:transform var(--d4) var(--e-spring);pointer-events:none}
 .snackbar[data-show=1]{transform:translate(-50%,0)}
 .snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
-.snackbar[data-tone=ok]{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+.snackbar[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 
 /* ================= 加载/空态 ================= */
-.spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);
-  animation:spin .8s linear infinite;display:inline-block;vertical-align:-3px}
+.spin{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);
+  animation:spin .8s linear infinite;display:inline-block;vertical-align:-2px}
 @keyframes spin{to{transform:rotate(360deg)}}
-.skeleton{height:14px;border-radius:var(--r-s);background:linear-gradient(90deg,var(--surface-mid),var(--surface-high),var(--surface-mid));
+.skeleton{height:12px;border-radius:var(--r-s);background:linear-gradient(90deg,var(--surface-mid),var(--surface-high),var(--surface-mid));
   background-size:220% 100%;animation:shimmer 1.3s infinite}
 @keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
-.empty{padding:var(--sp7) var(--sp5);text-align:center;color:var(--on-variant);font-size:14px}
-.empty b{display:block;font-size:16px;color:var(--on-surface);margin-bottom:var(--sp2)}
+.empty{padding:var(--sp6) var(--sp4);text-align:center;color:var(--on-variant);font-size:13px}
+.empty b{display:block;font-size:14px;color:var(--on-surface);margin-bottom:var(--sp1)}
 .busy{position:fixed;inset:0;z-index:65;display:grid;place-items:center;background:var(--scrim);gap:var(--sp3)}
 .busy[hidden]{display:none}
-.busy div{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp4) var(--sp6);border-radius:var(--r-full);
-  background:var(--surface-high);box-shadow:var(--shadow);font-size:14px;font-weight:600}
+.busy div{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp3) var(--sp5);border-radius:var(--r-full);
+  background:var(--surface-high);box-shadow:var(--shadow);font-size:13.5px;font-weight:600}
 [data-stub]{opacity:.55}
 
 @media (prefers-reduced-motion:reduce){
   *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
 }
 @media (max-width:390px){
-  .count-num{font-size:50px}
-  .appbar h1{font-size:22px}
+  .count-num{font-size:30px}
+  .appbar h1{font-size:18px}
 }
 </style>
 </head>
@@ -501,18 +503,97 @@ var MODDIR = QUERY.get('mod') || '/data/adb/modules/ts-auto-add';
 var SH = 'sh ' + MODDIR + '/webui.sh';
 var DEMO = QUERY.get('demo') === '1';
 
+/* 桥接探测：管理器注入的对象名与形状各家不同。
+   这里不只"找一个能用的"，还把看到的全部记下来 —— 连不上时界面要能自证
+   到底扫了哪些名字、各自有哪些方法，否则排查只能靠猜。 */
+var BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
+
+function ownKeys(o){
+  var a = [];
+  try { a = Object.getOwnPropertyNames(o) || []; } catch (e){}
+  return a;
+}
+function methodsOf(o){
+  return ownKeys(o).filter(function (k){
+    try { return typeof o[k] === 'function'; } catch (e){ return false; }
+  }).slice(0, 10);
+}
+
+/* 连不上时最有用的信息是「这个 WebView 的 window 上多了什么」：
+   拿一个同引擎的空白 iframe 当基线，多出来的对象就是宿主注入的 —— 下次再换一家
+   管理器，不用反编译也能当场看见该认谁。 */
+function injectedGlobals(){
+  var base = {};
+  try {
+    var f = document.createElement('iframe');
+    f.style.cssText = 'position:absolute;left:-9999px;width:1px;height:1px';
+    document.body.appendChild(f);
+    ownKeys(f.contentWindow).forEach(function (k){ base[k] = 1; });
+    document.body.removeChild(f);
+  } catch (e){ return []; }
+  return ownKeys(window).filter(function (k){
+    if (base[k] || k.length > 24) return false;
+    try { var t = typeof window[k]; return t === 'object' || t === 'function'; } catch (e){ return false; }
+  }).slice(0, 24);
+}
+
+function scanBridge(){
+  var found = [], seen = {}, i, k, o;
+  for (i = 0; i < BRIDGE_CANDIDATES.length; i++) {
+    k = BRIDGE_CANDIDATES[i]; o = window[k];
+    if (!o || (typeof o !== 'object' && typeof o !== 'function')) continue;
+    found.push({ name: k, exec: typeof o.exec === 'function', methods: methodsOf(o) });
+    seen[k] = 1;
+  }
+  /* 再扫一遍 window 上其它带 exec 的注入对象（有的实现名字不在常见清单里） */
+  try {
+    ownKeys(window).forEach(function (key){
+      if (seen[key] || key.length > 24) return;
+      var v;
+      try { v = window[key]; } catch (e){ return; }
+      if (!v || (typeof v !== 'object' && typeof v !== 'function')) return;
+      if (typeof v.exec === 'function') found.push({ name: key + '（扫出）', exec: true, methods: methodsOf(v) });
+    });
+  } catch (e){}
+  return found;
+}
+
+/* 各家注入的对象名与调用形状都不一样，逐个认：
+   - KernelSU 主线：window.ksu.exec(cmd, optionsJson, 回调函数名) —— 异步！
+     Java 侧算完再回调 window[回调名](errno, stdout, stderr)。
+     （官方 kernelsu npm 库就是这么包的；这里不引那个库，直接照协议自己写，
+       保持单文件、离线可用。）
+   - bridge / kernelsu / apatch / Magisk：exec(cmd) 同步返回 {errno, stdout}，
+     个别实现是 exec(cmd, callback) 回调式。 */
 function pickBridge(){
-  var cands = [window.bridge, window.kernelsu, window.apatch, window.Magisk];
-  for (var i = 0; i < cands.length; i++) {
-    var b = cands[i];
-    if (b && typeof b.exec === 'function') return b;
+  var k = window.ksu;
+  if (k && typeof k.exec === 'function') return { obj: k, kind: 'ksu', label: 'ksu' };
+  var named = [['bridge', window.bridge], ['kernelsu', window.kernelsu],
+               ['apatch', window.apatch], ['Magisk', window.Magisk]];
+  for (var i = 0; i < named.length; i++) {
+    var o = named[i][1];
+    if (o && typeof o.exec === 'function') return { obj: o, kind: 'sync', label: named[i][0] };
   }
   return null;
 }
-var BRIDGE = DEMO ? { name: 'demo' } : pickBridge();
-var BRIDGE_NAME = DEMO ? 'demo'
-  : (BRIDGE === window.bridge ? 'bridge' : BRIDGE === window.kernelsu ? 'kernelsu'
-  : BRIDGE === window.apatch ? 'apatch' : BRIDGE === window.Magisk ? 'Magisk' : (BRIDGE ? 'unknown' : 'none'));
+
+var HIT = DEMO ? null : pickBridge();
+var BRIDGE = DEMO ? {} : (HIT ? HIT.obj : null);
+var BRIDGE_KIND = DEMO ? 'demo' : (HIT ? HIT.kind : 'none');
+var BRIDGE_LABEL = DEMO ? 'demo' : (HIT ? HIT.label : 'none');
+var BRIDGE_SCAN = [];
+
+/* 模块目录优先问管理器要（模块 id 改了也不用动界面） */
+function moduleDirFromBridge(){
+  try {
+    if (BRIDGE_KIND === 'ksu' && typeof BRIDGE.moduleInfo === 'function') {
+      var info = JSON.parse(BRIDGE.moduleInfo());
+      var id = info && (info.id || info.moduleId);
+      if (id && /^[A-Za-z0-9._-]+$/.test(id)) return '/data/adb/modules/' + id;
+    }
+  } catch (e){ /* 拿不到就用默认路径 */ }
+  return null;
+}
 
 function normResult(v){
   if (v === undefined || v === null) return { errno: 0, stdout: '' };
@@ -526,13 +607,39 @@ function normResult(v){
   return { errno: Number(code) || 0, stdout: String(out) };
 }
 
+var cbSeq = 0;
+
 function callExec(cmd){
   return new Promise(function (resolve){
-    var done = false, sync;
-    function finish(v){ if (done) return; done = true; resolve(normResult(v)); }
+    var done = false, timer = null, sync;
+    function finish(v){
+      if (done) return;
+      done = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      resolve(normResult(v));
+    }
+    /* 异步桥接万一没回调回来，给个上限：不然是界面永久转圈，且看不出卡在哪 */
+    timer = setTimeout(function (){ finish({ errno: 124, stdout: '命令超时（60 秒未返回）' }); }, 60000);
+
+    if (BRIDGE_KIND === 'ksu') {
+      var name = 'tsaa_cb_' + (cbSeq++) + '_' + Date.now();
+      window[name] = function (errno, stdout, stderr){
+        delete window[name];
+        var out = String(stdout == null ? '' : stdout);
+        if (stderr) out += String(stderr);          // 命令侧已 2>&1，这里兜一手
+        finish({ errno: Number(errno) || 0, stdout: out });
+      };
+      try {
+        BRIDGE.exec(cmd, '{}', name);               // 第三个参数是"回调函数名"，不是函数
+      } catch (e) {
+        delete window[name];
+        finish({ errno: 1, stdout: String((e && e.message) || e) });
+      }
+      return;
+    }
+
     try {
-      // 同步式（KernelSU/APatch/bridge）直接返回结果；回调式（部分 Magisk 实现）会把结果交给 finish
-      sync = BRIDGE.exec(cmd, finish);
+      sync = BRIDGE.exec(cmd, finish);              // 同步式直接返回；回调式把结果交给 finish
     } catch (e) { finish({ errno: 1, stdout: String((e && e.message) || e) }); return; }
     if (sync !== undefined) finish(sync);
   });
@@ -665,7 +772,7 @@ applyScheme();
    ========================================================= */
 var S = {
   status: {}, env: {}, tab: 'over',
-  rules: '', rulesBase: '',
+  rules: '', rulesBase: '', rulesEdited: false,
   targets: [], apps: [], targetSet: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   log: [], logSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
@@ -828,7 +935,7 @@ function renderOver(){
   // 「关于」卡：把界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对
   var about = document.getElementById('aboutBody');
   about.textContent = '';
-  about.appendChild(tile('桥接接口', BRIDGE_NAME, BRIDGE ? 'ok' : 'bad'));
+  about.appendChild(tile('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'));
   about.appendChild(tile('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
     env.root_user === '0' ? 'ok' : 'na'));
   about.appendChild(tile('模块目录', MODDIR));
@@ -862,8 +969,9 @@ function rulesStats(text){
 }
 function renderRules(){
   rulesPath.textContent = S.status.rules_file || 'rules.txt';
-  /* 有未保存草稿时不覆盖编辑器：整份刷新会把磁盘上的内容再取一遍（基线由 loadLists 维护） */
-  if (rulesBox.value === S.rulesBase) rulesBox.value = S.rules;
+  /* 只有用户真的动过编辑器才保留草稿；首次进入时编辑器是空的，
+     拿「内容等于基线」当判据会让它永远填不进去（实测过：显示 0 条且标成未保存）。 */
+  if (!S.rulesEdited || rulesBox.value === S.rulesBase) rulesBox.value = S.rules;
   updateRulesStat();
 }
 function updateRulesStat(){
@@ -936,10 +1044,14 @@ function renderApps(){
   if (list.length > shown) box.appendChild(el('p', 'hint', '仅显示前 ' + shown + ' 条，用搜索缩小范围。'));
 }
 function addRule(pkg){
-  var cur = rulesBox.value.replace(/\s+$/, '');
+  /* 编辑器可能还没渲染过（从「应用」页直接点 +）：那时必须以磁盘内容为准，
+     否则草稿只有这一行，保存就会把整个常驻列表清掉。 */
+  var base = S.rulesEdited ? rulesBox.value : S.rules;
+  var cur = base.replace(/\s+$/, '');
   var has = cur.split('\n').some(function (l){ return l.replace(/^\s+|\s+$/g, '') === pkg; });
   if (has) { snackbar(pkg + ' 已在常驻列表里'); return; }
   rulesBox.value = (cur ? cur + '\n' : '') + pkg + '\n';
+  S.rulesEdited = true;
   updateRulesStat();
   goTab('rules');
   snackbar('已加入常驻列表，记得点「保存并同步」', 'ok');
@@ -1103,7 +1215,9 @@ function runChain(withBase){
   var chain;
   if (withBase) {
     S.loaded = {};                                  // 整份刷新：列表缓存一并作废
-    chain = Promise.all([loadStatus(), loadEnv()]);
+    /* 列表随基础信息一起取：英雄卡的三个数字在任何一页都要显示，
+       以前只按当前页懒加载，进「日志」页时英雄卡就是一片 —，看着像坏了。 */
+    chain = Promise.all([loadStatus(), loadEnv(), ensure(S.tab === 'log' || S.tab === 'props' ? 'lists' : S.tab)]);
   } else {
     chain = Promise.resolve();
   }
@@ -1177,8 +1291,7 @@ function saveRules(){
   }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
     .then(function (){
       /* 编辑器对齐到磁盘上那份：shell 会清 CR/BOM 并补末行换行，显示归一后的结果才算诚实 */
-      if (note.tone === 'ok') rulesBox.value = S.rules;
-      S.rulesBase = S.rules;
+      if (note.tone === 'ok') { rulesBox.value = S.rules; S.rulesEdited = false; }
       finishWrite(note);
       updateRulesStat();
     });
@@ -1290,14 +1403,15 @@ function wire(){
   btnSync.addEventListener('click', doSync);
   btnReload.addEventListener('click', refresh);
   btnSaveRules.addEventListener('click', saveRules);
-  btnRevertRules.addEventListener('click', function (){ rulesBox.value = S.rulesBase; updateRulesStat(); });
+  btnRevertRules.addEventListener('click', function (){ rulesBox.value = S.rulesBase; S.rulesEdited = false; updateRulesStat(); });
   btnRulesHead.addEventListener('click', function (){
     var head = '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\n';
     if (rulesBox.value.indexOf('# TS-AUTO-ADD') === 0) return;
     rulesBox.value = head + rulesBox.value;
+    S.rulesEdited = true;
     updateRulesStat();
   });
-  rulesBox.addEventListener('input', updateRulesStat);
+  rulesBox.addEventListener('input', function (){ S.rulesEdited = true; updateRulesStat(); });
 
   tabsEl.addEventListener('click', function (e){
     var t = e.target.closest ? e.target.closest('.tab') : null;
@@ -1392,27 +1506,64 @@ function wire(){
 /* =========================================================
    7. 启动
    ========================================================= */
+function showNoBridge(){
+  banner.hidden = false;
+  bannerIcon.innerHTML = svg('warn');
+  bannerTitle.textContent = '当前管理器没有提供可用的 exec 桥接';
+  bannerText.textContent = '模块本身仍在正常工作。命令行等价物：sh ' + MODDIR + '/webui.sh status；' +
+    '界面每次刷新发的就是这个命令，参数换成 help 可以看全部子命令。';
+  stateText.textContent = '无法连接';
+  stateBadge.setAttribute('data-tone', 'bad');
+  kicker.textContent = 'WebUI 桥接不可用';
+
+  /* 把扫到的东西列出来：连不上时最需要的不是道歉，是"到底看见了什么" */
+  var box = document.getElementById('overBody');
+  box.textContent = '';
+  box.appendChild(el('p', 'hint', '带 exec 的对象 ' + BRIDGE_SCAN.length + ' 个：'));
+  if (!BRIDGE_SCAN.length) box.appendChild(el('div', 'empty', '没有带 exec 的注入对象'));
+  BRIDGE_SCAN.forEach(function (b){
+    box.appendChild(tile(b.name, 'exec=' + (b.exec ? '有' : '无'), b.exec ? 'ok' : 'warn',
+      b.methods.length ? b.methods.join(' / ') : '没有可见方法'));
+  });
+  var extra = injectedGlobals();
+  box.appendChild(el('p', 'hint', '相对空白页多出的全局对象 ' + extra.length + ' 个（宿主注入的候选）：'));
+  extra.forEach(function (k){
+    var o = null, ms = [];
+    try { o = window[k]; ms = methodsOf(o); } catch (e){}
+    box.appendChild(tile(k, typeof o, 'na', ms.length ? ms.join(' / ') : '无可见方法'));
+  });
+  busyCount = 0; document.getElementById('busy').hidden = true;
+}
+
+/* 标题栏：有 hideTitle 就交还给界面自己画；fullScreen 一类不动——
+   把系统栏藏了会让人不好退出，不值得为观感冒这个险。 */
+function adoptBridge(hit){
+  BRIDGE = hit.obj; BRIDGE_KIND = hit.kind; BRIDGE_LABEL = hit.label;
+  var dir = moduleDirFromBridge();
+  if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
+  try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
+  refresh();
+}
+
 function boot(){
   wire();
-  try { if (BRIDGE && typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 有的实现没这方法 */ }
 
   // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
   var want = QUERY.get('tab');
   if (want && ['over', 'rules', 'apps', 'log', 'props'].indexOf(want) >= 0) showTab(want);
 
-  if (!BRIDGE) {
-    banner.hidden = false;
-    bannerIcon.innerHTML = svg('warn');
-    bannerTitle.textContent = '当前管理器不支持 WebUI';
-    bannerText.textContent = '没找到 exec 桥接接口（KernelSU / APatch / 支持 WebUI 的 Magisk 管理器会提供）。' +
-      '模块本身仍在正常工作；也可以在终端里执行 sh ' + MODDIR + '/webui.sh status 查看状态。';
-    stateText.textContent = '无法连接';
-    stateBadge.setAttribute('data-tone', 'bad');
-    kicker.textContent = 'WebUI 桥接不可用';
-    busyCount = 0; document.getElementById('busy').hidden = true;
-    return;
-  }
-  refresh();
+  if (DEMO) { refresh(); return; }
+
+  /* 注入时机各家不同：有的在建好桥接对象之前就已经 DOMContentLoaded，
+     所以先轮询几秒再判失败，别一上来就报"不支持"。 */
+  var tries = 0;
+  (function waitBridge(){
+    var hit = BRIDGE ? { obj: BRIDGE, kind: BRIDGE_KIND, label: BRIDGE_LABEL } : pickBridge();
+    if (hit) { adoptBridge(hit); return; }
+    if (++tries < 20) { setTimeout(waitBridge, 200); return; }
+    BRIDGE_SCAN = scanBridge();
+    showNoBridge();
+  })();
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
