@@ -187,7 +187,8 @@ sh /data/adb/modules/ts-auto-add/action.sh
   com.google.android.gms
   com.google.android.gsf
   ```
-- 修改此文件后，守护进程会自动触发同步（无需重启）；同步前会自动补齐末行换行并清除 UTF-8 BOM。
+- 修改此文件后，守护进程会自动触发同步（无需重启）。**就地改写**（`echo >>`、编辑器直接保存）与**改名替换**（`vim`、`sed -i`、WebUI 的原子保存）都会触发：监听挂在**目录**上而不是文件上——inotify 的监视点绑的是 inode，改名替换会让旧监视失效，只盯文件的话就会出现"改了常驻列表却不再自动同步、只有重启才恢复"。
+- 同步前会自动补齐末行换行并清除 UTF-8 BOM（避免用 `echo 包名 >> rules.txt` 追加时与上一行粘成一行，也避免 BOM 给首个包名带上不可见前缀）。
 
 ---
 
