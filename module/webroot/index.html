@@ -17,8 +17,9 @@
 <style>
 /* ================= 设计令牌 ================= */
 :root{
-  --hue: 275;            /* 主色相，界面里可调 */
+  --hue: 275;            /* 主色相：跟随系统强调色，取不到时用这个默认值 */
   --hue3: 45;            /* 第三色相（= hue + 130，由 JS 同步） */
+  --sat: 1;              /* 彩度倍率：系统强调色偏灰就整体降下来 */
   --e-spring: cubic-bezier(.06,.71,.1,1);
   --e-emph: cubic-bezier(.3,0,.08,1);
   --e-spatial: cubic-bezier(.2,0,0,1);
@@ -31,48 +32,49 @@
 }
 
 :root,[data-scheme=light]{
-  --primary:oklch(49% .19 var(--hue));            --on-primary:oklch(100% 0 0);
-  --primary-container:oklch(92% .06 var(--hue));  --on-primary-container:oklch(28% .13 var(--hue));
-  --secondary:oklch(53% .11 var(--hue));          --on-secondary:oklch(100% 0 0);
-  --secondary-container:oklch(92% .05 var(--hue));--on-secondary-container:oklch(32% .08 var(--hue));
-  --tertiary:oklch(52% .16 var(--hue3));          --on-tertiary:oklch(100% 0 0);
-  --tertiary-container:oklch(90% .08 var(--hue3));--on-tertiary-container:oklch(28% .12 var(--hue3));
+  --primary:oklch(49% calc(.19*var(--sat)) var(--hue));            --on-primary:oklch(100% 0 0);
+  --primary-container:oklch(92% calc(.06*var(--sat)) var(--hue));  --on-primary-container:oklch(28% calc(.13*var(--sat)) var(--hue));
+  --secondary:oklch(53% calc(.11*var(--sat)) var(--hue));          --on-secondary:oklch(100% 0 0);
+  --secondary-container:oklch(92% calc(.05*var(--sat)) var(--hue));--on-secondary-container:oklch(32% calc(.08*var(--sat)) var(--hue));
+  --tertiary:oklch(52% calc(.16*var(--sat)) var(--hue3));          --on-tertiary:oklch(100% 0 0);
+  --tertiary-container:oklch(90% calc(.08*var(--sat)) var(--hue3));--on-tertiary-container:oklch(28% calc(.12*var(--sat)) var(--hue3));
   --error:oklch(50% .21 27);                      --on-error:oklch(100% 0 0);
   --error-container:oklch(94% .07 27);            --on-error-container:oklch(30% .14 27);
   /* 正常态不能借用 tertiary：色相可调，tertiary 可能正好落在橙红上，
      「一切正常」就会显示成警告色。这里给成功态一套固定绿。 */
   --success:oklch(45% .14 155);                   --on-success:oklch(100% 0 0);
   --success-container:oklch(92% .07 155);         --on-success-container:oklch(26% .10 155);
-  --surface:oklch(98.5% .008 var(--hue));         --on-surface:oklch(22% .03 var(--hue));
-  --surface-lowest:oklch(100% 0 0);               --surface-low:oklch(96.5% .012 var(--hue));
-  --surface-mid:oklch(95% .015 var(--hue));       --surface-high:oklch(92% .018 var(--hue));
-  --surface-highest:oklch(89% .02 var(--hue));    --surface-bright:oklch(99% .01 var(--hue));
-  --on-variant:oklch(45% .025 var(--hue));        --outline:oklch(66% .02 var(--hue));
-  --outline-variant:oklch(85% .015 var(--hue));   --scrim:oklch(35% 0 0 / 45%);
+  --surface:oklch(98.5% calc(.008*var(--sat)) var(--hue));        --on-surface:oklch(22% calc(.03*var(--sat)) var(--hue));
+  --surface-lowest:oklch(100% 0 0);               --surface-low:oklch(96.5% calc(.012*var(--sat)) var(--hue));
+  --surface-mid:oklch(95% calc(.015*var(--sat)) var(--hue));      --surface-high:oklch(92% calc(.018*var(--sat)) var(--hue));
+  --surface-highest:oklch(89% calc(.02*var(--sat)) var(--hue));   --surface-bright:oklch(99% calc(.01*var(--sat)) var(--hue));
+  --on-variant:oklch(45% calc(.025*var(--sat)) var(--hue));       --outline:oklch(66% calc(.02*var(--sat)) var(--hue));
+  --outline-variant:oklch(85% calc(.015*var(--sat)) var(--hue));  --scrim:oklch(35% 0 0 / 45%);
   --shadow:0 2px 6px oklch(30% .03 var(--hue) / 12%),0 12px 28px oklch(30% .03 var(--hue) / 12%);
 }
 [data-scheme=dark]{
-  --primary:oklch(80% .13 var(--hue));            --on-primary:oklch(30% .14 var(--hue));
-  --primary-container:oklch(42% .16 var(--hue));  --on-primary-container:oklch(90% .07 var(--hue));
-  --secondary:oklch(80% .09 var(--hue));          --on-secondary:oklch(30% .06 var(--hue));
-  --secondary-container:oklch(40% .10 var(--hue));--on-secondary-container:oklch(90% .05 var(--hue));
-  --tertiary:oklch(78% .14 var(--hue3));          --on-tertiary:oklch(28% .12 var(--hue3));
-  --tertiary-container:oklch(42% .14 var(--hue3));--on-tertiary-container:oklch(91% .08 var(--hue3));
+  --primary:oklch(80% calc(.13*var(--sat)) var(--hue));            --on-primary:oklch(30% calc(.14*var(--sat)) var(--hue));
+  --primary-container:oklch(42% calc(.16*var(--sat)) var(--hue));  --on-primary-container:oklch(90% calc(.07*var(--sat)) var(--hue));
+  --secondary:oklch(80% calc(.09*var(--sat)) var(--hue));          --on-secondary:oklch(30% calc(.06*var(--sat)) var(--hue));
+  --secondary-container:oklch(40% calc(.10*var(--sat)) var(--hue));--on-secondary-container:oklch(90% calc(.05*var(--sat)) var(--hue));
+  --tertiary:oklch(78% calc(.14*var(--sat)) var(--hue3));          --on-tertiary:oklch(28% calc(.12*var(--sat)) var(--hue3));
+  --tertiary-container:oklch(42% calc(.14*var(--sat)) var(--hue3));--on-tertiary-container:oklch(91% calc(.08*var(--sat)) var(--hue3));
   --error:oklch(84% .14 27);                      --on-error:oklch(30% .12 27);
   --error-container:oklch(44% .18 27);            --on-error-container:oklch(93% .06 27);
   --success:oklch(80% .14 155);                   --on-success:oklch(24% .09 155);
   --success-container:oklch(32% .10 155);         --on-success-container:oklch(91% .07 155);
-  --surface:oklch(19% .015 var(--hue));           --on-surface:oklch(92% .012 var(--hue));
-  --surface-lowest:oklch(14% .01 var(--hue));     --surface-low:oklch(22% .016 var(--hue));
-  --surface-mid:oklch(24% .018 var(--hue));       --surface-high:oklch(27% .02 var(--hue));
-  --surface-highest:oklch(31% .022 var(--hue));   --surface-bright:oklch(33% .022 var(--hue));
-  --on-variant:oklch(74% .02 var(--hue));         --outline:oklch(60% .02 var(--hue));
-  --outline-variant:oklch(42% .02 var(--hue));    --scrim:oklch(0% 0 0 / 55%);
+  --surface:oklch(19% calc(.015*var(--sat)) var(--hue));           --on-surface:oklch(92% calc(.012*var(--sat)) var(--hue));
+  --surface-lowest:oklch(14% calc(.01*var(--sat)) var(--hue));     --surface-low:oklch(22% calc(.016*var(--sat)) var(--hue));
+  --surface-mid:oklch(24% calc(.018*var(--sat)) var(--hue));       --surface-high:oklch(27% calc(.02*var(--sat)) var(--hue));
+  --surface-highest:oklch(31% calc(.022*var(--sat)) var(--hue));   --surface-bright:oklch(33% calc(.022*var(--sat)) var(--hue));
+  --on-variant:oklch(74% calc(.02*var(--sat)) var(--hue));         --outline:oklch(60% calc(.02*var(--sat)) var(--hue));
+  --outline-variant:oklch(42% calc(.02*var(--sat)) var(--hue));    --scrim:oklch(0% 0 0 / 55%);
   --shadow:0 2px 6px oklch(0% 0 0 / 30%),0 12px 28px oklch(0% 0 0 / 32%);
 }
 
-/* 没有 oklch 的旧 WebView 退回固定靛紫配色，只保证可读，不保证 expressive */
-@supports not (color: oklch(50% .1 200)){
+/* 守卫条件连同 calc() 一起测：只支持裸 oklch 而不支持 oklch 内 calc 的引擎，
+   会整条颜色失效，所以这种情况直接退回固定十六进制配色 */
+@supports not (color: oklch(50% calc(.1*1) 200)){
   :root,[data-scheme=light]{
     --primary:#5b48c8;--on-primary:#fff;--primary-container:#e5defd;--on-primary-container:#22146b;
     --secondary:#5d5a72;--on-secondary:#fff;--secondary-container:#e3dff6;--on-secondary-container:#1a172b;
@@ -125,11 +127,13 @@ button,input,textarea,select{font:inherit;color:inherit}
 .icon-btn:hover{background:var(--surface-high)}
 .icon-btn:active{transform:scale(.86)}
 .icon-btn svg{width:22px;height:22px}
-.huebar{display:flex;align-items:center;gap:var(--sp3);margin:var(--sp3) 0 0;padding:var(--sp3) var(--sp4);
+.huebar{display:grid;grid-template-columns:auto 1fr auto auto;align-items:center;
+  gap:var(--sp2) var(--sp3);margin:var(--sp3) 0 0;padding:var(--sp3) var(--sp4);
   background:var(--surface-low);border-radius:var(--r-l) var(--r-l) var(--r-s) var(--r-s)}
-/* 同上：自带 display:flex 的元素必须自己处理 hidden */
+/* 同上：自带 display 的元素必须自己处理 hidden */
 .huebar[hidden]{display:none}
 .huebar span{font-size:12px;color:var(--on-variant);white-space:nowrap}
+.hue-src{grid-column:1 / -1;margin:0;font-size:11.5px;color:var(--on-variant);line-height:1.4}
 input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:12px;border-radius:var(--r-full);
   background:linear-gradient(90deg,#f43f5e,#f59e0b,#84cc16,#06b6d4,#6366f1,#d946ef,#f43f5e);cursor:pointer}
 input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
@@ -188,7 +192,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
 .btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
 .btn-text{background:transparent;color:var(--primary);padding:0 var(--sp4)}
 .btn-sm{min-height:36px;padding:0 var(--sp4);font-size:13px}
-.fab{background:var(--tertiary-container);color:var(--on-tertiary-container);border-radius:var(--r-l) var(--r-s) var(--r-l) var(--r-s)}
+/* 主行动按钮用 primary 而不是 tertiary：tertiary 是 hue+130 的对比色，
+   跟随系统取色时它可能正好是红色，把「立即同步」画得像危险操作。
+   表现力靠形状与按压形变保留。 */
+.fab{background:var(--primary);color:var(--on-primary);border-radius:var(--r-l) var(--r-s) var(--r-l) var(--r-s)}
 .fab:active{border-radius:50%;transform:scale(.9)}
 
 /* ================= 分段标签 ================= */
@@ -334,6 +341,8 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;heigh
     <span>主色相</span>
     <input type="range" id="hue" min="0" max="360" step="2" value="275" aria-label="主色相">
     <span class="mono" id="hueVal">275°</span>
+    <button class="btn btn-text btn-sm" id="btnHueFollow">跟随系统</button>
+    <p class="hue-src" id="hueSrc">读取中</p>
   </div>
 </header>
 
@@ -555,17 +564,77 @@ var store = {
   set: function (k, v){ try { localStorage.setItem('tsaa.' + k, v); } catch (e){ /* 忽略 */ } }
 };
 
-function applyHue(h){
-  var n = parseInt(h, 10);
-  if (isNaN(n)) n = 275;
-  document.documentElement.style.setProperty('--hue', n);
-  document.documentElement.style.setProperty('--hue3', (n + 130) % 360);
-  hue.value = n; hueVal.textContent = n + '°';
-  store.set('hue', String(n));
-  var meta = document.querySelector('meta[name=theme-color]');
-  if (meta) meta.setAttribute('content', '#00000000');
+/* ---------- 取色：跟随系统强调色 ---------- */
+var HUE_DEFAULT = 275;
+var hueMode = store.get('hueMode', 'system');            /* system | manual */
+var hueManual = parseInt(store.get('hue', String(HUE_DEFAULT)), 10);
+var THEME = { seedRaw: '', seedSrc: 'none', dark: '', darkSrc: '', applied: '', note: '' };
+
+function hex2(v){ return (v < 16 ? '0' : '') + v.toString(16); }
+
+/* sRGB → OKLCH：系统给的是 ARGB 整数，要换成色相与彩度才能驱动这套令牌 */
+function srgbToOklch(r, g, b){
+  var f = function (v){ v /= 255; return v <= 0.04045 ? v/12.92 : Math.pow((v + 0.055)/1.055, 2.4); };
+  var R = f(r), G = f(g), B = f(b);
+  var l = Math.cbrt(0.4122214708*R + 0.5363325363*G + 0.0514459929*B);
+  var m = Math.cbrt(0.2119034982*R + 0.6806995451*G + 0.1073969566*B);
+  var s = Math.cbrt(0.0883024619*R + 0.2817188376*G + 0.6299787005*B);
+  var a1 = 1.9779984951*l - 2.4285922050*m + 0.4505937099*s;
+  var b1 = 0.0259040371*l + 0.7827717662*m - 0.8086757660*s;
+  return { C: Math.sqrt(a1*a1 + b1*b1), H: (Math.atan2(b1, a1)*180/Math.PI + 360) % 360 };
 }
 
+/* 种子色的存法各系统不统一：#RRGGBB / #AARRGGBB / 0x… / 裸十六进制 / 十进制 ARGB。
+   纯数字到底哪一种要分开：6 位及以内的按十六进制颜色看（"808080" 是灰色），
+   超过 6 位的按十进制整数看（"16711680" 是 0xFF0000 红色）——反过来就会把灰色
+   读成 0x0C5490 这种莫名其妙的深蓝。 */
+function parseSeed(raw){
+  var s = String(raw == null ? '' : raw).trim();
+  if (!s || s === 'null' || s === 'none') return null;
+  if (s.charAt(0) === '#') s = s.slice(1);
+  var v = NaN, digits = s.replace(/^-/, '');
+  if (/^0[xX][0-9a-fA-F]+$/.test(s)) v = parseInt(s.slice(2), 16);
+  else if (/^-?\d+$/.test(s) && digits.length > 6) v = parseInt(s, 10) >>> 0;
+  else if (/^[0-9a-fA-F]{8}$/.test(s)) v = parseInt(s.slice(2), 16);
+  else if (/^[0-9a-fA-F]{6}$/.test(s)) v = parseInt(s, 16);
+  else if (/^[0-9a-fA-F]{3}$/.test(s)) v = parseInt(s.replace(/./g, function (c){ return c + c; }), 16);
+  else if (/^-?\d+$/.test(s)) v = parseInt(s, 10) >>> 0;
+  if (isNaN(v)) return null;
+  v = v >>> 0;
+  return { r: (v >> 16) & 255, g: (v >> 8) & 255, b: v & 255 };
+}
+
+/* 系统色偏灰时整套颜色跟着收，否则「壁纸是灰的、界面却满屏高彩度」 */
+function satFromChroma(C){ return 0.35 + Math.min(C / 0.13, 1.15) * 0.65; }
+
+function setPalette(h, sat, note){
+  var n = parseInt(h, 10); if (isNaN(n)) n = HUE_DEFAULT;
+  n = ((n % 360) + 360) % 360;
+  var sv = parseFloat(sat); if (isNaN(sv)) sv = 1;
+  sv = Math.max(0.35, Math.min(1.1, sv));
+  var st = document.documentElement.style;
+  st.setProperty('--hue', n);
+  st.setProperty('--hue3', (n + 130) % 360);
+  st.setProperty('--sat', sv);
+  THEME.applied = n + '° / 彩度 ×' + sv.toFixed(2);
+  THEME.note = note;
+  if (window.hue) hue.value = n;
+  if (window.hueVal) hueVal.textContent = n + '°';
+  if (window.hueSrc) hueSrc.textContent = note;
+}
+
+function applyPalette(){
+  if (hueMode === 'manual') { setPalette(hueManual, 1, '手动色相（点「跟随系统」还原）'); return; }
+  var seed = parseSeed(THEME.seedRaw);
+  if (!seed) { setPalette(HUE_DEFAULT, 1, '系统未提供强调色，用默认色相'); return; }
+  var ok = srgbToOklch(seed.r, seed.g, seed.b);
+  var rgbHex = '#' + hex2(seed.r) + hex2(seed.g) + hex2(seed.b);
+  /* 近中性时色相没有意义（atan2 会乱转），只跟彩度、色相留默认 */
+  if (ok.C < 0.02) { setPalette(HUE_DEFAULT, satFromChroma(ok.C), '系统强调色 ' + rgbHex + ' 近中性，只跟彩度'); return; }
+  setPalette(Math.round(ok.H), satFromChroma(ok.C), '跟随系统强调色 ' + rgbHex + '（' + THEME.seedSrc + '）');
+}
+
+/* ---------- 深浅 ---------- */
 var SCHEMES = ['auto', 'light', 'dark'];
 var SCHEME_LABEL = { auto: '跟随系统', light: '浅色', dark: '深色' };
 var schemeIdx = Math.max(0, SCHEMES.indexOf(store.get('scheme', 'auto')));
@@ -574,17 +643,22 @@ var FORCE_SCHEME = QUERY.get('scheme');
 
 function resolveScheme(){
   if (FORCE_SCHEME === 'light' || FORCE_SCHEME === 'dark') return FORCE_SCHEME;
-  if (SCHEMES[schemeIdx] === 'auto') {
-    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
-  }
-  return SCHEMES[schemeIdx];
+  if (SCHEMES[schemeIdx] !== 'auto') return SCHEMES[schemeIdx];
+  /* 系统的计算结果优先：管理器的 WebView 有时被钉在浅色，媒体查询会跟系统不一致 */
+  if (THEME.dark === '1') return 'dark';
+  if (THEME.dark === '0') return 'light';
+  return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
 }
 function applyScheme(){
   document.documentElement.setAttribute('data-scheme', resolveScheme());
-  btnTheme.innerHTML = svg(SCHEMES[schemeIdx] === 'auto' ? 'auto' : (resolveScheme() === 'dark' ? 'moon' : 'sun'));
-  btnTheme.title = '主题：' + SCHEME_LABEL[SCHEMES[schemeIdx]];
-  store.set('scheme', SCHEMES[schemeIdx]);
+  if (window.btnTheme) {
+    btnTheme.innerHTML = svg(SCHEMES[schemeIdx] === 'auto' ? 'auto' : (resolveScheme() === 'dark' ? 'moon' : 'sun'));
+    btnTheme.title = '主题：' + SCHEME_LABEL[SCHEMES[schemeIdx]];
+    store.set('scheme', SCHEMES[schemeIdx]);
+  }
 }
+/* 脚本在 body 末尾，这里同步先定一次：否则深色系统上会先闪一帧浅色再切深色 */
+applyScheme();
 
 /* =========================================================
    3. 状态与渲染
@@ -592,9 +666,15 @@ function applyScheme(){
 var S = {
   status: {}, env: {}, tab: 'over',
   rules: '', rulesBase: '',
-  targets: [], apps: [], appsSrc: 'targets', onlyMissing: false, search: '',
-  log: [], tail: 60, autoTimer: null, props: [], loaded: {}
+  targets: [], apps: [], targetSet: null,
+  appsSrc: 'targets', onlyMissing: false, search: '',
+  log: [], logSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
 };
+
+/* 数字都从列表直接数出来（见 webui.sh 里 status 不算数的原因）；
+   常驻数取"已保存的那份"，编辑器里的草稿不算。调用方负责在列表没回来时显示占位。 */
+function countRules(){ return rulesStats(S.rulesBase).valid; }
+function orDash(v){ return v === null || v === undefined || v === '' ? '—' : v; }
 
 function el(tag, cls, text){
   var e = document.createElement(tag);
@@ -652,17 +732,28 @@ function renderHero(){
   verChip.textContent = st.mod_version || '—';
   backendChip.textContent = st.backend_name || '—';
 
-  var total = n(st.target_count);
-  countNum.textContent = total === null ? '—' : String(total);
-  countNum.classList.add('bump');
-  setTimeout(function (){ countNum.classList.remove('bump'); }, 220);
+  /* 生效数直接数 targets 列表（status 里不再重复跑 awk）；列表没回来前显示占位而不是 0 */
+  var have = !!S.loaded.lists;
+  var next = have ? String(S.targets.length) : '—';
+  var prev = countNum.textContent;
+  countNum.textContent = next;
+  if (prev !== next) {                                  // 数字真变了才弹一下
+    countNum.classList.add('bump');
+    setTimeout(function (){ countNum.classList.remove('bump'); }, 220);
+  }
 
   var sub = [];
-  sub.push('常驻 ' + (st.rules_count || 0));
-  sub.push('第三方 ' + (st.apps_count || 0));
+  sub.push('常驻 ' + orDash(have ? countRules() : null));
+  sub.push('第三方 ' + orDash(have ? S.apps.length : null));
   if (n(st.daemon_alive)) sub.push('守护进程 ' + st.daemon_alive + ' 个');
   else if (st.daemon_alive === '0') sub.push('守护进程未运行');
   countSub.textContent = sub.join(' · ');
+
+  /* 标签上的角标也在这里统一挂：列表是共用的一份，不该等某页画过才亮；
+     日志行数 status 里就有，同样不必先进日志页 */
+  tabRulesN.textContent = have ? String(countRules()) : '';
+  tabAppsN.textContent = have ? String(S.targets.length) : '';
+  tabLogN.textContent = st.log_lines || '';
 
   heroMeta.textContent = '';
   [['目标', st.target_file], ['更新时间', timeLabel(st.target_mtime)], ['设备', env.device]]
@@ -712,9 +803,11 @@ function renderOver(){
     : env.inotify_mode === 'none' ? '未找到 inotify 工具'
     : env.inotify_mode + (env.inotify_cmd ? '（' + env.inotify_cmd + '）' : '');
 
+  var have = !!S.loaded.lists;
   box.appendChild(tile('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok', st.data_dir));
-  box.appendChild(tile('常驻 rules.txt', (st.rules_count || 0) + ' 条', st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file));
-  box.appendChild(tile('已安装第三方', (st.apps_count || 0) + ' 个'));
+  box.appendChild(tile('常驻 rules.txt', orDash(have ? countRules() : null) + ' 条', st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file));
+  box.appendChild(tile('生效应用', orDash(have ? S.targets.length : null) + ' 个'));
+  box.appendChild(tile('已安装第三方', orDash(have ? S.apps.length : null) + ' 个'));
   box.appendChild(tile('目标文件', st.target_exists === '1' ? '存在' : '不存在',
     st.target_exists === '1' ? 'ok' : 'bad', st.target_file));
   box.appendChild(tile('可写', st.target_writable === '1' ? '是' : '否', st.target_writable === '1' ? 'ok' : 'bad'));
@@ -748,6 +841,12 @@ function renderOver(){
     'Tricky Store ' + (st.tricky_enabled === '1' ? '已启用' : '未启用')
   ].join(' · '), st.conflict === '1' ? 'bad' : 'ok'));
   about.appendChild(tile('设备', [env.brand, env.device, 'Android ' + env.android + '（SDK ' + env.sdk + '）'].filter(Boolean).join(' · ')));
+  about.appendChild(tile('取色', THEME.note || '—',
+    hueMode === 'manual' ? 'warn' : (THEME.seedSrc === 'none' ? 'na' : 'ok'),
+    '生效参数 ' + (THEME.applied || '—')));
+  about.appendChild(tile('深浅', (SCHEMES[schemeIdx] === 'auto' ? '跟随系统' : SCHEME_LABEL[SCHEMES[schemeIdx]]) +
+    ' → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
+    THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc));
 }
 
 /* ---------- 常驻列表 ---------- */
@@ -762,12 +861,10 @@ function rulesStats(text){
   return { valid: valid, comment: comment, blank: blank, total: lines.length };
 }
 function renderRules(){
-  var s = rulesStats(S.rules);
-  rulesBox.value = S.rules;
-  S.rulesBase = S.rules;
   rulesPath.textContent = S.status.rules_file || 'rules.txt';
+  /* 有未保存草稿时不覆盖编辑器：整份刷新会把磁盘上的内容再取一遍（基线由 loadLists 维护） */
+  if (rulesBox.value === S.rulesBase) rulesBox.value = S.rules;
   updateRulesStat();
-  tabRulesN.textContent = s.valid;
 }
 function updateRulesStat(){
   var s = rulesStats(rulesBox.value);
@@ -779,15 +876,21 @@ function updateRulesStat(){
   rulesStat.style.color = dirty ? 'var(--primary)' : 'var(--on-variant)';
   btnSaveRules.disabled = !dirty || busyCount > 0;
   btnRevertRules.disabled = !dirty;
-  tabRulesN.textContent = s.valid;
 }
 
 /* ---------- 应用列表 ---------- */
+/* 生效集合建一次用到底：以前每次搜索、每敲一个字符都要重建一遍两百多项的表 */
+function targetSetOf(){
+  if (!S.targetSet) {
+    S.targetSet = {};
+    S.targets.forEach(function (p){ S.targetSet[p] = 1; });
+  }
+  return S.targetSet;
+}
 function renderApps(){
   var srcList = S.appsSrc === 'targets' ? S.targets : S.apps;
-  var inTarget = {};
-  S.targets.forEach(function (p){ inTarget[p] = 1; });
-  var list = srcList.slice();
+  var inTarget = targetSetOf();
+  var list = srcList;
   if (S.onlyMissing && S.appsSrc === 'apps') list = list.filter(function (p){ return !inTarget[p]; });
   if (S.search) {
     var q = S.search.toLowerCase();
@@ -796,7 +899,6 @@ function renderApps(){
   var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
   appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
     ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '');
-  tabAppsN.textContent = S.targets.length || '';
 
   var box = document.getElementById('appsBody');
   box.textContent = '';
@@ -852,20 +954,26 @@ function logLevel(line){
 }
 function renderLog(){
   var box = document.getElementById('logBody');
-  box.textContent = '';
-  var frag = document.createDocumentFragment();
-  S.log.forEach(function (line){
-    var d = el('div', 'log-line', line);
-    var lv = logLevel(line);
-    if (lv) d.setAttribute('data-lvl', lv);
-    frag.appendChild(d);
-  });
-  box.appendChild(frag);
+  /* 内容没变就不重建这两三百个节点（自动刷新多数时候确实没新日志） */
+  var sig = S.log.length + '\n' + (S.log[0] || '') + '\n' + (S.log[S.log.length - 1] || '');
+  if (sig !== S.logSig) {
+    var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;   // 用户翻上去看历史时别拽回底部
+    box.textContent = '';
+    var frag = document.createDocumentFragment();
+    S.log.forEach(function (line){
+      var d = el('div', 'log-line', line);
+      var lv = logLevel(line);
+      if (lv) d.setAttribute('data-lvl', lv);
+      frag.appendChild(d);
+    });
+    box.appendChild(frag);
+    S.logSig = sig;
+    if (atBottom) box.scrollTop = box.scrollHeight;
+  }
   logStat.textContent = '显示末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes) +
     ' · 上限 64KB，超出后只保留末尾 200 行' + (S.status.log_lines && n(S.status.log_lines) > S.log.length
     ? '（共 ' + S.status.log_lines + ' 行）' : '');
   tabLogN.textContent = S.status.log_lines || '';
-  box.scrollTop = box.scrollHeight;
 }
 
 /* ---------- 属性 ---------- */
@@ -908,44 +1016,46 @@ function renderProps(){
 /* =========================================================
    4. 数据加载
    ========================================================= */
+/* 取数与渲染分开：loadX 只写状态，renderAll 统一画一次。
+   以前 status 与 env 各自 renderHero + renderOver，一次刷新要把三十来行列表重画两遍。 */
 function loadStatus(){
   return call('status').then(function (r){
     if (!r.ok && !Object.keys(S.status).length) throw new Error(failText(r));
     S.status = parseKV(r.text);
-    renderHero();
-    if (S.tab === 'over') renderOver();
     return r;
   });
 }
 function loadEnv(){
   return call('env').then(function (r){
-    if (r.ok) {
-      S.env = parseKV(r.text);
-      renderHero();                       // 英雄卡与 kicker 用到 env.device
-      if (S.tab === 'over') renderOver();
-    }
+    if (!r.ok) return r;
+    S.env = parseKV(r.text);
+    THEME.seedRaw = S.env.sys_seed_raw || '';
+    THEME.seedSrc = S.env.sys_seed_src || 'none';
+    THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
+    THEME.darkSrc = S.env.sys_dark_src || 'none';
+    applyPalette();                 // 系统强调色到手，重推一遍色板
+    applyScheme();                  // 系统深浅与 WebView 不一致时以系统为准
     return r;
   });
 }
-function loadRules(){
-  return call('rules').then(function (r){
-    S.rules = r.ok ? r.text : '';
-    if (!r.ok) snackbar(failText(r), 'bad');
-    renderRules();
-  });
-}
-function loadApps(){
-  return Promise.all([call('targets'), call('apps')]).then(function (rs){
+/* 三份列表一起取：概览的三个数字、常驻编辑器、应用页的对照全靠它们，取一次三页共用 */
+function loadLists(){
+  return Promise.all([call('targets'), call('apps'), call('rules')]).then(function (rs){
     S.targets = rs[0].ok ? split(rs[0].text) : [];
     S.apps = rs[1].ok ? split(rs[1].text) : [];
+    S.targetSet = null;                                   // 生效集合要重算
+    /* 基线由取数这一层负责：以前它只在渲染常驻页时顺手赋值，
+       结果概览页的「常驻 N」在没进过常驻页时数的是空串 */
+    if (rs[2].ok) { S.rules = rs[2].text; S.rulesBase = rs[2].text; }
+    else if (rs[2].code !== 1) snackbar(failText(rs[2]), 'bad');
     if (!rs[0].ok && rs[0].code !== 1) snackbar(failText(rs[0]), 'bad');
-    renderApps();
+    return rs;
   });
 }
 function loadLog(){
   return call('log', String(S.tail)).then(function (r){
     S.log = r.ok ? split(r.text) : [];
-    renderLog();
+    return r;
   });
 }
 function loadProps(){
@@ -954,38 +1064,62 @@ function loadProps(){
       var c = line.split('\t');
       return [c[0] || '', c[1] || '', c[2] || '', c[3] || ''];
     }) : [];
-    renderProps();
+    return r;
   });
 }
 function split(text){
   return String(text == null ? '' : text).split('\n').filter(function (l){ return l.length > 0; });
 }
 
-var LOADERS = { over: function (){ return Promise.resolve(); }, rules: loadRules, apps: loadApps, log: loadLog, props: loadProps };
+/* 某一页还缺什么：lists 三页共用，log/props 各自独立。
+   两条链并发时（连点两次「重新读取」）要共用同一个在途请求，
+   并且只在成功后才记「已加载」——否则第二条链会以为数据到手、把空列表画出来。 */
+var inflight = {};
+function ensure(tab){
+  var need = (tab === 'rules' || tab === 'apps' || tab === 'over') ? 'lists' : tab;
+  if (S.loaded[need]) return Promise.resolve();
+  if (inflight[need]) return inflight[need];
 
-function refresh(currentOnly){
-  busy(true, '读取中');
-  var chain = [loadStatus(), loadEnv()];
-  if (!currentOnly) Object.keys(LOADERS).forEach(function (k){ if (LOADERS[k] !== LOADERS.over) S.loaded[k] = false; });
-  Promise.all(chain).then(function (){
-    return LOADERS[S.tab] ? (S.loaded[S.tab] = true, LOADERS[S.tab]()) : null;
-  }).catch(function (e){
-    snackbar(String((e && e.message) || e), 'bad');
-  }).then(function (){
-    busy(false);
-    // root_user 来自 env（status 里没有）：非 0 时后面所有写操作都会失败，先说清楚
-    if (S.env.root_user && S.env.root_user !== '0') snackbar('exec 不是 root（uid ' + S.env.root_user + '）', 'bad');
-  });
+  var p = need === 'lists' ? loadLists() : (need === 'log' ? loadLog() : loadProps());
+  inflight[need] = p.then(function (r){ S.loaded[need] = true; inflight[need] = null; return r; },
+                         function (e){ inflight[need] = null; throw e; });
+  return inflight[need];
 }
-/* 懒加载：只在第一次进入该页时取数据 */
-function loadTab(tab){
-  if (tab === 'over' || S.loaded[tab]) return;
-  busy(true, '读取中');
-  Promise.resolve()
-    .then(function (){ S.loaded[tab] = true; return LOADERS[tab](); })
-    .catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
+
+function renderAll(){
+  renderHero();
+  if (S.tab === 'over') renderOver();
+  else if (S.tab === 'rules') renderRules();
+  else if (S.tab === 'apps') renderApps();
+  else if (S.tab === 'log') renderLog();
+  else if (S.tab === 'props') renderProps();
 }
+
+/* S.seq：连点两次「重新读取」时，先回来的那次不能把后回来的覆盖掉 */
+function runChain(withBase){
+  var seq = ++S.seq;
+  busy(true, '读取中');
+
+  var chain;
+  if (withBase) {
+    S.loaded = {};                                  // 整份刷新：列表缓存一并作废
+    chain = Promise.all([loadStatus(), loadEnv()]);
+  } else {
+    chain = Promise.resolve();
+  }
+
+  chain.then(function (){ return ensure(S.tab); })
+    .catch(function (e){ if (seq === S.seq) snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){
+      busy(false);                                  // 迟到也要配平，否则遮罩永远关不掉
+      if (seq !== S.seq || busyCount > 0) return;   // 有更新的请求在跑，让它来画
+      renderAll();
+      if (S.env.root_user && S.env.root_user !== '0') snackbar('exec 不是 root（uid ' + S.env.root_user + '）', 'bad');
+    });
+}
+
+function refresh(){ runChain(true); }
+function loadTab(){ runChain(false); }
 
 /* =========================================================
    5. 写操作
@@ -998,18 +1132,30 @@ function b64(str){
   return btoa(bin);
 }
 
+/* 写操作之后统一收口：缓存全部作废、重取、重画 */
+function reloadAll(){
+  S.loaded = {};
+  return Promise.all([loadStatus(), loadEnv()]).then(function (){ return ensure(S.tab); });
+}
+
+function finishWrite(note){
+  busy(false);
+  renderAll();
+  if (note.text) snackbar(note.text, note.tone);
+}
+
 function doSync(){
   busy(true, '同步中');
+  var note = { text: '', tone: 'info' };
   call('sync').then(function (r){
-    S.loaded.apps = false; S.loaded.log = false;
-    return loadStatus().then(function (){
-      if (r.ok) {
-        var kv = parseKV(r.text), rc = kv.rc;
-        snackbar(rc === '1' ? '内容一致，无需写入（' + kv.count + ' 个应用）' : '已写入 ' + kv.count + ' 个应用', rc === '2' ? 'bad' : 'ok');
-      } else snackbar(failText(r), 'bad');
-    });
-  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.rc === '1' ? '内容一致，无需写入（' + kv.count + ' 个应用）' : '已写入 ' + kv.count + ' 个应用';
+      note.tone = kv.rc === '2' ? 'bad' : 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
 }
 
 function saveRules(){
@@ -1018,55 +1164,62 @@ function saveRules(){
   var payload;
   try { payload = b64(text); } catch (e){ snackbar('内容编码失败', 'bad'); return; }
   if (!/^[A-Za-z0-9+/=]*$/.test(payload)) { snackbar('内容编码异常', 'bad'); return; }
+
   busy(true, '保存中');
+  var note = { text: '', tone: 'info' };
   call('save-rules', payload).then(function (r){
-    S.loaded.apps = false; S.loaded.log = false;
-    return loadStatus().then(function (){
-      if (r.ok) {
-        var kv = parseKV(r.text);
-        S.rulesBase = text;
-        updateRulesStat();
-        snackbar(kv.rc === '1' ? '已保存（生效列表内容未变化）' : '已保存并写入：' + kv.count + ' 个应用', 'ok');
-      } else snackbar(failText(r), 'bad');
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.rc === '1' ? '已保存（生效列表内容未变化）' : '已保存并写入：' + kv.count + ' 个应用';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){
+      /* 编辑器对齐到磁盘上那份：shell 会清 CR/BOM 并补末行换行，显示归一后的结果才算诚实 */
+      if (note.tone === 'ok') rulesBox.value = S.rules;
+      S.rulesBase = S.rules;
+      finishWrite(note);
+      updateRulesStat();
     });
-  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
 }
 
 function setPropsMasking(want){
   busy(true, '写入开关');
+  var note = { text: '', tone: 'info' };
   call(want === 'off' ? 'props-off' : 'props-on').then(function (r){
     if (r.ok) {
-      S.status.props_masking = want;
-      renderHero(); renderProps(); if (S.tab === 'over') renderOver();
-      snackbar(want === 'off' ? '已关闭开机属性伪装（本次开机内已写入的值不变）' : '已恢复开机属性伪装', 'ok');
-    } else snackbar(failText(r), 'bad');
-  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
+      note.text = want === 'off' ? '已关闭开机属性伪装（本次开机内已写入的值不变）' : '已恢复开机属性伪装';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
 }
 
 function applyPropsNow(){
   busy(true, '写入属性');
+  var note = { text: '', tone: 'info' };
   call('props-apply').then(function (r){
     if (r.ok) {
       var kv = parseKV(r.text);
-      return loadProps().then(function (){
-        snackbar(kv.mismatch === '0' ? '已全部写入期望值' : '仍有 ' + kv.mismatch + ' 项不符（静态字段要重启才刷新）',
-          kv.mismatch === '0' ? 'ok' : 'warn');
-      });
-    }
-    snackbar(failText(r), 'bad');
-  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
+      note.text = kv.mismatch === '0' ? '已全部写入期望值' : '仍有 ' + kv.mismatch + ' 项不符（静态字段要重启才刷新）';
+      note.tone = kv.mismatch === '0' ? 'ok' : 'warn';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
 }
 
 function clearLog(){
   busy(true, '清空');
+  var note = { text: '', tone: 'info' };
   call('clear-log').then(function (r){
-    if (r.ok) { S.loaded.log = false; return loadLog().then(function (){ snackbar('日志缓冲已清空', 'ok'); }); }
-    snackbar(failText(r), 'bad');
-  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){ busy(false); });
+    if (r.ok) { note.text = '日志缓冲已清空'; note.tone = 'ok'; S.logSig = ''; }
+    else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
 }
 
 /* 确认对话框 */
@@ -1098,7 +1251,7 @@ function confirm(title, text, okLabel){
    6. 交互装配
    ========================================================= */
 var tabsEl = document.getElementById('tabs');
-function goTab(name){
+function showTab(name){
   S.tab = name;
   Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
     var on = t.dataset.tab === name;
@@ -1109,8 +1262,8 @@ function goTab(name){
     document.getElementById('p-' + k).hidden = k !== name;
   });
   document.getElementById('p-about').hidden = name !== 'over';
-  loadTab(name);
 }
+function goTab(name){ showTab(name); loadTab(); }
 
 function setAuto(on){
   S.auto = on;
@@ -1118,8 +1271,8 @@ function setAuto(on){
   if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
   if (on) S.autoTimer = setInterval(function (){
     if (document.hidden || S.tab !== 'log') return;
-    S.loaded.log = false;
-    loadLog();
+    /* 自动刷新走静默路径：不能每次都盖一层「读取中」遮罩 */
+    loadLog().then(renderLog).catch(function (){ /* 失败就等下一次 tick，不打断 */ });
   }, 5000);
 }
 
@@ -1131,11 +1284,11 @@ function wire(){
   btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
   btnLogClear.innerHTML = svg('trash') + '<span>清空</span>';
   btnPropsApply.innerHTML = svg('check') + '<span>立即应用一次</span>';
+  applyPalette();                         // env 回来前先用保存过的偏好/默认值
   applyScheme();
-  applyHue(store.get('hue', '275'));
 
   btnSync.addEventListener('click', doSync);
-  btnReload.addEventListener('click', function (){ refresh(false); });
+  btnReload.addEventListener('click', refresh);
   btnSaveRules.addEventListener('click', saveRules);
   btnRevertRules.addEventListener('click', function (){ rulesBox.value = S.rulesBase; updateRulesStat(); });
   btnRulesHead.addEventListener('click', function (){
@@ -1166,16 +1319,26 @@ function wire(){
     if (S.onlyMissing) S.appsSrc = 'apps';
     renderApps();
   });
-  appsSearch.addEventListener('input', function (){ S.search = appsSearch.value.replace(/^\s+|\s+$/g, ''); renderApps(); });
+  /* 搜索防抖：两百多行列表每敲一个字符重建一次没有必要 */
+  var searchTimer = null;
+  appsSearch.addEventListener('input', function (){
+    var v = appsSearch.value.replace(/^\s+|\s+$/g, '');
+    if (searchTimer) clearTimeout(searchTimer);
+    searchTimer = setTimeout(function (){ S.search = v; renderApps(); }, 140);
+  });
 
   Array.prototype.forEach.call(document.querySelectorAll('#logSeg button'), function (b){
     b.addEventListener('click', function (){
       S.tail = parseInt(b.dataset.n, 10) || 60;
+      S.logSig = '';                                   // 行数变了，必须重画
       document.querySelectorAll('#logSeg button').forEach(function (x){ x.classList.toggle('is-active', x === b); });
-      loadLog();
+      S.loaded.log = false;
+      loadLog().then(renderLog).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); });
     });
   });
-  btnLogRefresh.addEventListener('click', loadLog);
+  btnLogRefresh.addEventListener('click', function (){
+    loadLog().then(renderLog).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); });
+  });
   btnLogClear.addEventListener('click', function (){
     confirm('清空日志缓冲？', '将删除 ' + (S.status.log_file || '/data/adb/ts_auto.log') +
       ' 的全部内容（约 ' + bytesLabel(S.status.log_bytes) + '）。模块后续写日志时会重建该文件，不影响同步逻辑。', '清空')
@@ -1196,17 +1359,34 @@ function wire(){
       '已经被 Zygote 读进 Java 静态字段的值（如 Build.TYPE）不会因此刷新，要彻底生效仍需重启。', '写入')
       .then(function (yes){ if (yes) applyPropsNow(); });
   });
-  btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab('props'); });
+  btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab(); });
 
   btnTheme.addEventListener('click', function (){
     schemeIdx = (schemeIdx + 1) % SCHEMES.length;
     applyScheme();
+    if (S.tab === 'over') renderOver();               // 「关于」里的深浅来源要跟着更新
   });
   btnHue.addEventListener('click', function (){ huebar.hidden = !huebar.hidden; });
-  hue.addEventListener('input', function (){ applyHue(hue.value); });
 
-  matchMedia('(prefers-color-scheme: dark)').addEventListener
-    && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (){ if (SCHEMES[schemeIdx] === 'auto') applyScheme(); });
+  /* 拖动滑杆 = 转手动；点「跟随系统」= 交还给系统强调色 */
+  hue.addEventListener('input', function (){
+    hueMode = 'manual';
+    hueManual = parseInt(hue.value, 10);
+    applyPalette();
+  });
+  hue.addEventListener('change', function (){ store.set('hue', String(hueManual)); store.set('hueMode', 'manual'); });
+  btnHueFollow.addEventListener('click', function (){
+    hueMode = 'system';
+    store.set('hueMode', 'system');
+    applyPalette();
+    if (S.tab === 'over') renderOver();
+    snackbar(THEME.note, 'ok');
+  });
+
+  var mq = matchMedia('(prefers-color-scheme: dark)');
+  if (mq.addEventListener) mq.addEventListener('change', function (){
+    if (SCHEMES[schemeIdx] === 'auto' && THEME.dark === '') { applyScheme(); if (S.tab === 'over') renderOver(); }
+  });
 }
 
 /* =========================================================
@@ -1216,9 +1396,9 @@ function boot(){
   wire();
   try { if (BRIDGE && typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 有的实现没这方法 */ }
 
-  // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）
+  // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
   var want = QUERY.get('tab');
-  if (want && ['over', 'rules', 'apps', 'log', 'props'].indexOf(want) >= 0) goTab(want);
+  if (want && ['over', 'rules', 'apps', 'log', 'props'].indexOf(want) >= 0) showTab(want);
 
   if (!BRIDGE) {
     banner.hidden = false;
@@ -1232,10 +1412,11 @@ function boot(){
     busyCount = 0; document.getElementById('busy').hidden = true;
     return;
   }
-  refresh(true);
+  refresh();
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
+var DEMO_STATE = { masking: 'on' };   /* 让演示里的开关状态能留住，否则 status 每次都把 fixture 原样吐回来 */
 function demoResult(cmd, arg){
   var T = {
     status: [
@@ -1243,14 +1424,19 @@ function demoResult(cmd, arg){
       'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator', 'conflict=0',
       'teesim_enabled=1', 'tricky_enabled=0', 'data_dir=/data/adb/teesim',
       'rules_file=/data/adb/teesim/rules.txt', 'target_file=/data/adb/teesim/config.json',
-      'target_exists=1', 'target_writable=1', 'target_count=125', 'target_mtime=1793001033',
-      'rules_count=3', 'rules_exists=1', 'apps_count=122', 'props_masking=on',
+      'target_exists=1', 'target_writable=1', 'target_mtime=1793001033',
+      'rules_exists=1', 'props_masking=on',
       'props_off_file=/data/adb/ts_auto.props_off', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
       'log_lines=1109', 'log_bytes=64061'
     ].join('\n'),
+    /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
-      'vbstate=green'].join('\n'),
+      'vbstate=green',
+      'sys_dark=' + (QUERY.get('dark') || ''),
+      'sys_dark_src=' + (QUERY.get('dark') ? 'demo' : 'none'),
+      'sys_seed_raw=' + (QUERY.get('seed') || ''),
+      'sys_seed_src=' + (QUERY.get('seed') ? 'demo' : 'none')].join('\n'),
     rules: '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n' +
       '# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\ncom.android.vending\n' +
       'com.google.android.gms\ncom.google.android.gsf\n',
@@ -1276,9 +1462,11 @@ function demoResult(cmd, arg){
   };
   var key = cmd === 'log' ? 'log' : cmd;
   if (T[key] === undefined) return { errno: 1, stdout: 'demo: 未知命令 ' + cmd };
-  if (cmd === 'props-off') S.status.props_masking = 'off';
-  if (cmd === 'props-on') S.status.props_masking = 'on';
-  return { errno: 0, stdout: T[key] };
+  if (cmd === 'props-off') DEMO_STATE.masking = 'off';
+  if (cmd === 'props-on') DEMO_STATE.masking = 'on';
+  var text = T[key];
+  if (key === 'status') text = text.replace('props_masking=on', 'props_masking=' + DEMO_STATE.masking);
+  return { errno: 0, stdout: text };
 }
 
 document.addEventListener('DOMContentLoaded', boot);
