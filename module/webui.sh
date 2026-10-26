@@ -8,6 +8,7 @@
 #   status / env / sync / save-rules / props-apply / props-on / props-off / clear-log
 #          key=value，每行一项
 #   props  「属性名<TAB>当前值<TAB>期望值<TAB>状态」，状态为 ok|diff|missing
+#   icons  「包名<TAB>显示名<TAB>相对路径」，同时把 PNG 写进 webroot/icons/
 #   rules / targets / apps / log
 #          原文逐行，不加装饰性文字（管理器按钮用的 action.sh 才带图标提示）
 #
@@ -34,6 +35,9 @@ export PATH="/system/bin:/system/xbin:/odm/bin:/vendor/bin:/product/bin:/data/ad
 
 CMD="${1:-help}"
 ARG="${2:-}"
+
+# 图标缓存落在 webroot 下的这个子目录里（界面按相对路径引用）
+ICONS_SUBDIR="icons"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -502,6 +506,87 @@ cmd_sync() {
     return 0
 }
 
+# ---------- 应用图标与显示名 ----------
+# 数据源是桌面自己的图标缓存（Launcher3 系的 app_icons.db）：里面存的就是真 PNG
+# 与显示名。设备上既没有 aapt 也没有 ImageMagick，从 APK 里抠资源这条路走不通，
+# 而缓存是现成的、且正是屏幕上那张图。
+#
+# 为什么落文件而不是 base64 回传：实测平均一张 25KB、最大 98KB，
+# base64 后约 35KB/张，几十张就是几 MB 要从 root shell 里穿过一次 exec。
+# PNG 写进 webroot/icons/ 由界面按相对路径引用，同一个 handler 既发 index.html
+# 也发兄弟文件，浏览器还会自己缓存。
+#
+# 为什么一次 sqlite3 调用处理整批：实测单次查询约 44ms（主要是 fork），
+# 120 个包逐个查要 5 秒以上；一条 GROUP BY 一次跑完约 0.3 秒。
+#
+# 用法：sh webui.sh icons <pkg>,<pkg>,...
+# 输出：「包名<TAB>显示名<TAB>icons/<包名>.png」逐行；缓存不可用时输出空并回 0
+cmd_icons() {
+    local db dir sql chain p out
+
+    [ -n "$ARG" ] || return 0
+
+    db=""
+    for p in /data/data/com.android.launcher3/databases/app_icons.db \
+             /data/data/com.google.android.apps.nexuslauncher/databases/app_icons.db; do
+        [ -f "$p" ] && { db="$p"; break; }
+    done
+    if [ -z "$db" ]; then
+        db=$(ls -d /data/data/*/databases/app_icons.db 2>/dev/null | head -n 1)
+    fi
+    [ -f "$db" ] || { echo "未找到桌面图标缓存 app_icons.db" >&2; return 0; }
+    command -v sqlite3 >/dev/null 2>&1 || { echo "未找到 sqlite3，无法读图标缓存" >&2; return 0; }
+
+    dir="$MODDIR/webroot/$ICONS_SUBDIR"
+    mkdir -p "$dir" 2>/dev/null || { echo "无法创建 $dir" >&2; return 1; }
+
+    # 包名逐个校验后才允许进 SQL：只留 Android 包名字符集，并挡掉 "." 与 ".."
+    # （它们会变成文件名，"../x" 就能写到目录外面去）
+    chain=""
+    out="$ARG"
+    while [ -n "$out" ]; do
+        p="${out%%,*}"
+        [ "$p" = "$out" ] && out="" || out="${out#*,}"
+        case "$p" in
+            [A-Za-z]*) ;;
+            *) continue ;;
+        esac
+        case "$p" in
+            *[!A-Za-z0-9._-]*|*..*|*/*) continue ;;
+        esac
+        chain="${chain:+$chain or }componentName like '$p/%'"
+    done
+    [ -n "$chain" ] || return 0
+
+    # 一个包在缓存里往往有多行：应用自己的启动 activity、每个快捷方式、每个微件都各存一张。
+    # 只按"组件名最短"挑会选中快捷方式（实测 com.termux 会拿到 New session 而不是 Termux，
+    # com.MobileTicket 会拿到 本人车票 而不是 铁路12306）。排序键改成三级：
+    #   类名以包名开头（真 activity）→ 类名带点（也是真 activity）→ 都不是（快捷方式/微件）
+    # 同级再按组件名长度。快捷方式的类名是 new_session、1、VIEW_MY_DOWNLOADS 这种没有点的。
+    # 整行由 SQL 拼成单一列输出，避免 list 模式的分隔符与转义问题；
+    # 显示名里的 TAB / 换行就地换成空格，不然会撑坏逐行解析。
+    # 内层不能先 group by —— 那样 rank 还没参与选择就被折叠成任意一行（踩过一次）。
+    sql="select p || char(9) || l || char(9) || 'icons/' || p || '.png' from ("
+    sql="$sql select p, min(rank) r, l, writefile('$dir/' || p || '.png', ic) w from ("
+    sql="$sql select substr(componentName, 1, instr(componentName, '/') - 1) p,"
+    sql="$sql (case when instr(substr(componentName, instr(componentName, '/') + 1), '.') = 0 then 900000"
+    sql="$sql when substr(componentName, instr(componentName, '/') + 1) like"
+    sql="$sql substr(componentName, 1, instr(componentName, '/') - 1) || '.%' then 0 else 100000 end)"
+    sql="$sql + length(componentName) rank,"
+    sql="$sql replace(replace(label, char(9), ' '), char(10), ' ') l, icon ic"
+    sql="$sql from icons where componentName not like '%#%' and ($chain)"
+    sql="$sql ) group by p ) where w > 0;"
+
+    sqlite3 "$db" "$sql" 2>/dev/null
+
+    # 界面经 WebView 读这些文件：writefile 建的默认是 666，收成 644 并把上下文
+    # 对齐模块内其它文件
+    chmod 644 "$dir"/*.png >/dev/null 2>&1
+    chmod 755 "$dir" >/dev/null 2>&1
+    chcon -R u:object_r:system_file:s0 "$dir" >/dev/null 2>&1
+    return 0
+}
+
 cmd_help() {
     cat <<EOF
 用法：sh webui.sh <命令> [参数]
@@ -510,6 +595,7 @@ cmd_help() {
   rules                  常驻列表原文
   targets                当前生效的应用列表
   apps                   已安装的第三方应用
+  icons <包名,...>       从桌面图标缓存导出 PNG 与显示名（包名<TAB>显示名<TAB>相对路径）
   log <行数>             日志缓冲末尾内容
   clear-log              清空日志缓冲
   props                  属性名/当前值/期望值/状态（TAB 分隔）
@@ -526,6 +612,7 @@ case "$CMD" in
     rules)       cmd_rules ;;
     targets)     cmd_targets ;;
     apps)        cmd_apps ;;
+    icons)       cmd_icons ;;
     log)         cmd_log ;;
     clear-log)   cmd_clear_log ;;
     props)       cmd_props ;;

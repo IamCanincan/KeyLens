@@ -7,14 +7,21 @@
 #### 新增
 
 * **WebUI 控制台（Material 3 Expressive）**：模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点「打开界面」即可使用。分五页——概览（后端 / 目标文件 / 可写性 / 上次写入 / 监听方式 / 守护进程 / 日志缓冲 / 伪装状态 + 界面自身的桥接信息）、常驻列表（在线编辑 `rules.txt`，实时统计有效包名与注释）、应用（生效列表与已安装第三方对照、搜索、只看未纳入、一键加入常驻）、日志（末尾 30~300 行按级别着色、清空缓冲、可选 5 秒自动刷新）、属性（当前值 / 期望值 / 是否一致）。界面为**单文件、不联网、不引外部库或字体**；配色支持跟随系统 / 浅色 / 深色，并可拖动色相滑杆实时改整套颜色。
-* **WebUI 命令层 `webui.sh`**：`status` / `env` / `rules` / `targets` / `apps` / `log` / `clear-log` / `props` / `props-apply` / `props-on` / `props-off` / `save-rules` / `sync`，输出机器可读文本（`key=value` 或 TAB 分隔），复用 `lib/` 的探测与同步逻辑，界面不自行判定任何状态。文本内容一律以 base64 传入并先校验字符集，命令名与参数只参与比较、不拼进 shell。
+* **WebUI 命令层 `webui.sh`**：`status` / `env` / `rules` / `targets` / `apps` / `icons` / `log` / `clear-log` / `props` / `props-apply` / `props-on` / `props-off` / `save-rules` / `sync`，输出机器可读文本（`key=value` 或 TAB 分隔），复用 `lib/` 的探测与同步逻辑，界面不自行判定任何状态。文本内容一律以 base64 传入并先校验字符集，命令名与参数只参与比较、不拼进 shell。
 * **开机属性伪装开关**：`/data/adb/ts_auto.props_off` 存在即表示关闭，`post-fs-data.sh` 据此跳过 `apply_resetprop`；只影响下一次开机，应用列表维护不受影响。覆盖安装模块不丢失，卸载时随其它文件一并清理。
 * **只读提取脚本 `backends/teesim_list.awk`**：从 `config.json` 中取出 `profiles.default.apps` 供界面展示，定位方式与 `teesim.awk` 一致（逐级定位失败即不输出）。
 * `lib/tools.sh` 新增 `find_base64()`：与 `find_awk` 同样以「实际执行一次解码」来判定可用性，避免只有 busybox 本体、没编译 applet 时被误判为可用。
 
 * **取色跟随系统（Material You 种子色）**：界面色相与彩度由系统强调色推导。种子按 `settings get secure theme_custom_color` → 壁纸提取色（`dumpsys wallpaper` 的 `colorValue0`）→ 内置默认三级回退，取到哪一级在概览页「关于 → 取色」里照实写出（含换算后的 `#RRGGBB`、生效色相与彩度倍率）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，退回 `mCurUiMode` 的夜间位，最后才是 WebView 媒体查询）。种子写法兼容 `#RRGGBB` / `#AARRGGBB` / `0x…` / 裸十六进制 / 十进制 ARGB——纯数字串按位数区分十六进制颜色与十进制整数，否则 `808080` 会被读成 `0x0C5490` 那种深蓝。近中性的种子只跟彩度、不跟色相（色相在此时没有意义）。**跟的是色相与彩度，各角色明度仍用界面内置档位**——模块侧拿不到系统算好的 12 组色调表，只能拿到种子色。
 
-* **色相滑杆与「跟随系统」并存**：拖动即转手动，点「跟随系统」交还；偏好存 `localStorage`，取不到时退化为内存值。
+* **色相滑杆与「跟随系统」并存**：拖动即转手动，点「跟随系统」交还；偏好存 `localStorage`，取不到时退化为内存值。手动那一档只转色相，彩度沿用它上一次算出的值——不然一开拖就从「平台默认那支灰蓝」跳到满彩度，像两套颜色在打架。
+
+* **应用图标与显示名**：`webui.sh icons <包名,...>` 从桌面自己的图标缓存（Launcher3 系的 `app_icons.db`，实测本机 775 行 / 130 个包 / 平均 25KB）导出 PNG 与显示名，界面在「应用」页显示**图标 + 应用名 + 包名**而不是光一串包名。设备上既没有 aapt 也没有 ImageMagick，从 APK 里抠资源这条路走不通，而这份缓存存的正是屏幕上那张图。取不到（快捷方式、系统组件、非 Launcher3 系桌面）时退成首字块，行仍然完整可读。
+  * 一个包在缓存里往往有多行（每个 activity、每个快捷方式、每个微件各一张）。**只按组件名最短挑会选中快捷方式**——实测 `com.termux` 拿到的是 New session、`com.MobileTicket` 拿到的是本人车票。排序键改成三级：类名以包名开头 → 类名带点（也是真 activity）→ 都不是（快捷方式/微件，如 `new_session`、`VIEW_MY_DOWNLOADS`、`/1`），同级再按长度。改完实测拿到 Termux / 铁路12306 / Google Play 商店。
+  * 内层子查询**不能先 `group by`**：那样 rank 还没参与选择就被折叠成任意一行，第一次改完仍是 New session，去掉才对上。
+  * 走文件不走 base64：平均一张 25KB、base64 后 35KB，几十张就是几 MB 要从 root shell 里穿过一次 `exec`。PNG 落 `webroot/icons/` 由界面按相对路径引用，实测 10 个包 219ms、6 个 209ms（一次 sqlite3 调用整批处理；逐个查实测 44ms/次，120 个包要 5 秒以上）。
+  * 包名逐个校验（只留 Android 包名字符集，并挡掉 `.`、`..`、`/`）后才进 SQL——它们同时也会被拼进 `writefile` 的路径参数。实测传 `bogus/../etc` 不会在模块目录下建出任何东西。
+  * 先画行、后补图标：图标这一步慢或失败不该让整页应用列表等着。搜索同时匹配应用名与包名（列表上显示的是应用名，只搜包名会让人搜不到眼前看到的东西）。
 
 #### 优化
 
@@ -36,8 +43,10 @@
   * 正常状态不再上绿底：`运行中` 徽章改中性底 + 绿点，与概览里「只有 warn / bad / na 着色」的规矩统一。整页剩下的饱和色只有主按钮与「不符」红标。
   * 格子的表面从 `surface-mid` 提到 `surface-high`，卡片与格子的层级差拉开；原先两者只差 1.5% 明度，结构看起来是糊的。
   * 顺手撤掉 `.count-cap` 的 `opacity`：用透明度压层次会让对比度审计量到叠色**之前**的值，报出来的数是好听的但不是画出来的。
-  * 复扫：对比度浅色最差 **5.18 → 5.26**、深色 **4.58 → 5.71**，5 页各 57~104 个文本节点，0 项不达标；溢出扫描 5 页 × {320 / 360 / 412 / 626} × 浅/深仍为 0 项。
+  * 这一轮改完的对比度与溢出复扫结果见下面「兜底色改成平台默认强调色」那条的末尾（浅色最差 5.26、深色 5.71，0 项不达标）。
 * **状态栏那一条不再和页面两种颜色**：先确认责任在谁 —— 从装好的 KernelSU 里把 `base.apk` 拉出来查，`Theme.KernelSU.WebUI` 只在浅色档设了 `windowLightStatusBar` + `windowLightNavigationBar`（夜间档 0 条覆盖），且整个 dex 里 **`theme-color` 出现 0 次**，也就是说宿主根本不读页面那个 `<meta name="theme-color">`，写什么都是白写。真正的原因是宿主默认给 WebView 加了等于系统栏高度的 padding，页面被顶到状态栏**下面**，那一条从头到尾是宿主窗口画的，所以永远接不上。改法是用官方桥的 `enableEdgeToEdge(true)` 把那个 padding 归零，由界面自己按安全区让位：`--inset-top` / `--inset-bottom` 两个令牌统一接管原先散在四处的 `env(safe-area-inset-*)`，并在 `html[data-e2e="1"]` 下兜一个常见高度（30 / 24px），万一某家 WebView 读不到 env() 也不至于让标题钻到时钟底下、提示钻到导航条底下。**只改绘制范围，不藏任何系统栏**——藏了会让人不好退出。代价与边界：这条只在宿主提供 `enableEdgeToEdge` 时生效（其它管理器没有这个方法就照旧，界面不会崩）；离线只能验证「属性设上之后留位量真的变了」（`--inset-top` → `max(0px, 30px)`，appbar 上内边距 6px → 36px、吸顶标签 top 6px → 34px），**真机上接缝是否消失要他开一次界面看**，因为量测时设备是锁着的，screencap 全黑不算读数。
+* **兜底色不再是「我挑的紫」，改成平台默认强调色（实测换算）**：界面上报的取色来源一直是 `sys_seed_src=none` —— 本机 `settings get secure theme_custom_color` 与 `global` 都是 `null`、`dumpsys wallpaper` 是 `isColorExtracted=false`（壁纸是 SystemUI 自带的渐变，没有可提取的调色板）、`cmd overlay list` 里也没有任何色彩类 overlay。也就是说**前两级种子在这台机器上根本不存在**，第三级兜底用什么颜色就等于"这个界面看起来是什么颜色"。原先的兜底是 `hue 275 + sat 1`，即 `--primary = oklch(49% .19 275)`。把 `framework-res.apk` 拉下来实测 `color/system_accent1_600_light = #4b5d8b = oklch(48.4% .078 267.2)`：**色相只差 8°，彩度却是我用了 2.4 倍** —— 所以「没有用系统强调色」的真实成因不是色相挑错，是同一支色被拉得太艳，跟系统其它地方不像一套东西。改成 `hue 267 + sat .41`（.41 = .078/.19，两边明度几乎同档，所以这个比值是推出来的不是拍的），CSS 里 `:root` 的初始 `--hue/--sat` 一并对齐，免得 JS 生效前闪一下旧颜色。深色档也核对过：`--primary` 深色基值 `.13×sat` 得 C .053，AOSP `system_accent1_200_dark = #b8c6ee` 是 C .058。
+  * 复扫对比度：浅色最差 **5.26 → 4.99**、深色 **5.71** 不变，5 页各 57~104 个文本节点仍 0 项不达标。降的那一点来自新增的首字块与包名行用了次级文字色，4.99 仍高于 AA 的 4.5。溢出扫描 5 页 × {320 / 360 / 412 / 626} × 浅/深（含强制 `data-e2e` 一轮）仍为 0 项。
 * `.gitattributes` 为 `*.html` / `*.css` / `*.js` 固定 LF。
 
 #### 修复
