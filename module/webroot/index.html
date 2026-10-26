@@ -28,6 +28,11 @@
   --r-xs: 6px; --r-s: 8px; --r-m: 11px; --r-l: 14px;
   --r-xl: 18px; --r-2xl: 22px; --r-full: 999px;
   --sp1: 3px; --sp2: 6px; --sp3: 9px; --sp4: 12px; --sp5: 15px; --sp6: 18px; --sp7: 22px;
+  /* 内容列宽上限：真机 WebView 是 626 CSS px 宽（1644px @420dpi）。
+     上限只负责别拉成横屏条，真正的空洞靠下面的自适应网格切掉——
+     所以这里留 600，让卡片里放得下两到三格。 */
+  --measure: 600px;
+  --hair: 1px solid var(--outline-variant);
   --font: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
   --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
 }
@@ -51,7 +56,9 @@
   --surface-highest:oklch(89% calc(.02*var(--sat)) var(--hue));   --surface-bright:oklch(99% calc(.01*var(--sat)) var(--hue));
   --on-variant:oklch(45% calc(.025*var(--sat)) var(--hue));       --outline:oklch(66% calc(.02*var(--sat)) var(--hue));
   --outline-variant:oklch(85% calc(.015*var(--sat)) var(--hue));  --scrim:oklch(35% 0 0 / 45%);
-  --shadow:0 2px 6px oklch(30% .03 var(--hue) / 12%),0 12px 28px oklch(30% .03 var(--hue) / 12%);
+  /* 阴影只留一层极轻的接触影，卡片之间的分隔交给 hairline：
+     宽画布上大投影会把"浮起来的果冻"叠成一片糊 */
+  --shadow:0 1px 2px oklch(30% .04 var(--hue) / 10%);
 }
 [data-scheme=dark]{
   --primary:oklch(80% calc(.13*var(--sat)) var(--hue));            --on-primary:oklch(30% calc(.14*var(--sat)) var(--hue));
@@ -70,7 +77,7 @@
   --surface-highest:oklch(31% calc(.022*var(--sat)) var(--hue));   --surface-bright:oklch(33% calc(.022*var(--sat)) var(--hue));
   --on-variant:oklch(74% calc(.02*var(--sat)) var(--hue));         --outline:oklch(60% calc(.02*var(--sat)) var(--hue));
   --outline-variant:oklch(42% calc(.02*var(--sat)) var(--hue));    --scrim:oklch(0% 0 0 / 55%);
-  --shadow:0 2px 6px oklch(0% 0 0 / 30%),0 12px 28px oklch(0% 0 0 / 32%);
+  --shadow:0 1px 2px oklch(0% 0 0 / 35%);
 }
 
 /* 守卫条件连同 calc() 一起测：只支持裸 oklch 而不支持 oklch 内 calc 的引擎，
@@ -104,9 +111,6 @@ html,body{margin:0;padding:0}
 body{
   background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
   min-height:100%;padding-bottom:calc(var(--sp7) + env(safe-area-inset-bottom));
-  background-image:radial-gradient(120% 60% at 100% 0%,var(--primary-container),transparent 62%),
-                   radial-gradient(90% 50% at 0% 100%,var(--tertiary-container),transparent 60%);
-  background-attachment:fixed;
 }
 h1,h2,h3,p{margin:0}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -117,7 +121,8 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* ================= 顶栏 ================= */
 /* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
    两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
-.appbar{padding:calc(env(safe-area-inset-top) + var(--sp2)) var(--sp4) var(--sp1)}
+.appbar{padding:calc(env(safe-area-inset-top) + var(--sp2)) var(--sp4) var(--sp1);
+  max-width:var(--measure);margin:0 auto;width:100%}
 .appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
 .kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
@@ -142,8 +147,10 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   background:var(--surface-lowest);border:2.5px solid var(--primary);box-shadow:var(--shadow)}
 
 /* ================= 卡片 ================= */
-.wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);max-width:760px;margin:0 auto;width:100%}
-.card{background:var(--surface-low);border-radius:var(--r-xl);padding:var(--sp4);box-shadow:var(--shadow);
+.wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);
+  max-width:var(--measure);margin:0 auto;width:100%}
+.card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp4);
+  box-shadow:var(--shadow);
   animation:fade var(--d2) var(--e-emph)}
 /* 标签页切换会让面板从 display:none 变回来、动画随之重播：
    面板只留一个 220ms 淡入，带延迟的入场动画只给首屏的英雄卡用。 */
@@ -155,14 +162,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-m);padding:var(--sp4) var(--sp4) var(--sp3);
   box-shadow:var(--shadow);animation:rise var(--d4) var(--e-spring) backwards}
 .hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
-.hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2)}
+.hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2);flex-wrap:wrap}
 .count-num{font-size:34px;font-weight:800;line-height:1.05;letter-spacing:-1px;color:var(--primary);
   font-variant-numeric:tabular-nums;transition:transform var(--d3) var(--e-spring)}
 .count-num.bump{transform:scale(1.06)}
-.count-cap{padding-bottom:2px;font-size:12.5px;font-weight:600;color:var(--on-primary-container);opacity:.9}
+.count-cap{padding-bottom:2px;font-size:12.5px;font-weight:600;
+  color:var(--on-primary-container);opacity:.9}
 .count-cap small{display:block;font-weight:500;opacity:.85;font-size:11.5px;margin-top:1px}
-.hero-meta{display:flex;flex-wrap:wrap;gap:var(--sp2);margin-bottom:var(--sp3)}
-.hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap}
+.hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-left:auto}
 
 /* ================= 徽章 / chip ================= */
 .badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:3px 10px;font-size:12px;font-weight:700;
@@ -205,25 +212,60 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   padding:var(--sp2) var(--sp4);background:var(--surface);overflow-x:auto;scrollbar-width:none;
   border-radius:0 0 var(--r-l) var(--r-l)}
 .tabs::-webkit-scrollbar{display:none}
-.tab{position:relative;flex:none;min-height:38px;padding:0 var(--sp4);border:1.5px solid var(--outline-variant);
+.tab{position:relative;flex:1 0 auto;min-height:38px;padding:0 var(--sp4);border:1.5px solid var(--outline-variant);
   background:transparent;color:var(--on-variant);border-radius:var(--r-full);font-size:13px;font-weight:600;cursor:pointer;
+  display:flex;align-items:center;justify-content:center;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .tab:active{transform:scale(.94)}
 .tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
 .tab .n{display:inline-block;margin-left:4px;font-variant-numeric:tabular-nums;opacity:.75;font-size:11.5px}
 
-/* ================= 列表行 ================= */
-.tile{display:flex;align-items:center;gap:var(--sp2);padding:7px 0;border-bottom:1px solid var(--outline-variant)}
-.tile:last-child{border-bottom:0}
-.tile-k{font-size:12.5px;color:var(--on-variant);flex:none;min-width:72px}
-.tile-v{flex:1;min-width:0;text-align:right;font-size:13.5px;font-weight:600;word-break:break-all}
-.tile-v small{display:block;font-weight:400;color:var(--on-variant);font-size:11.5px;margin-top:1px}
-.pill{display:inline-flex;align-items:center;padding:2px 8px;border-radius:var(--r-full);font-size:11.5px;font-weight:700}
-.pill[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
-.pill[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
-.pill[data-tone=na]{background:var(--surface-high);color:var(--on-variant)}
+/* ================= 概览分组 ================= */
+/* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
+   几百 px 的空洞，整页像一张被拉宽的收据。改成自适应网格：每格自己限宽，
+   窄屏自动降列，不需要断点，也不会有行横跨整个画布。 */
+.grp+.grp{margin-top:var(--sp4)}
+.grp-t{font-size:11px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--on-variant);
+  margin-bottom:var(--sp2)}
+.grid{display:grid;gap:var(--sp2);grid-template-columns:repeat(auto-fit,minmax(var(--cell,260px),1fr))}
+.blk{background:var(--surface-mid);border-radius:var(--r-l);padding:var(--sp3);min-width:0}
+.blk-k{display:block;font-size:11.5px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
+.blk-v{display:flex;align-items:center;gap:6px;font-size:15px;font-weight:600;line-height:1.3;min-width:0}
+.blk-v>span{min-width:0}
+.blk-v .pill{font-weight:inherit}
+.blk small{display:block;font-size:11px;font-weight:400;color:var(--on-variant);margin-top:3px;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.blk-num{font-size:22px;font-weight:800;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.blk-v .blk-num{font-size:22px;font-weight:800}
+/* 路径是脚注不是数据：单独一组小字，别塞进网格里当第 N 行收据 */
+.paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:2px}
+.path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.5}
+.path-k{flex:none;font-size:11px;color:var(--on-variant)}
+.path-v{min-width:0;word-break:break-all;font-size:11px;color:var(--on-variant)}
+/* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
+.card-quiet .blk{background:transparent;padding:0}
+.card-quiet .grid{gap:var(--sp3)}
+.card-quiet .blk-v{font-size:13.5px;font-weight:600}
+.card-quiet .blk-k{margin-bottom:1px}
+/* 状态只在「需要关注」时才着色：正常值就是普通文字，不给绿点。
+   一排绿点等于什么都没说，还会把概览变成红绿灯阵列；
+   只有 warn/bad/na 才画点或胶囊，眼睛第一眼落在的就是它们。 */
+.pill{display:inline-flex;align-items:center;gap:5px;padding:0;border-radius:var(--r-full);min-width:0;
+  font-size:12.5px;font-weight:600;background:transparent;color:var(--on-surface)}
+.pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--outline);flex:none}
+.pill[data-tone=ok]::before{display:none}
+.pill[data-tone=na]::before{background:var(--outline)}
+.pill[data-tone=warn]{padding:2px 9px 2px 8px;background:var(--secondary-container);
+  color:var(--on-secondary-container);font-weight:700}
+.pill[data-tone=warn]::before{background:var(--secondary)}
+.pill[data-tone=bad]{padding:2px 9px 2px 8px;background:var(--error-container);color:var(--on-error-container);font-weight:700}
+.pill[data-tone=bad]::before{background:var(--error)}
+/* 应用清单在 626px 画布上排单列，每行右边会空出一大截；
+   自动分列后包名自己限宽，超长的用省略号收尾（title 给全名）。 */
+#appsBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:1px}
+#appsBody .empty,#appsBody .hint{grid-column:1 / -1}
 .app-row{display:flex;align-items:center;gap:var(--sp2);padding:4px var(--sp2);border-radius:var(--r-s);
-  transition:background var(--d1) var(--e-emph)}
+  min-width:0;transition:background var(--d1) var(--e-emph)}
 .app-row:hover{background:var(--surface-mid)}
 .app-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:12.5px}
 .app-tag{flex:none;font-size:10.5px;font-weight:700;padding:1px 6px;border-radius:var(--r-full);
@@ -234,6 +276,15 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
 .icon-add:active{transform:scale(.86)}
 .icon-add svg{width:16px;height:16px}
+/* 属性表：名字 + 状态一行，值单独一行横跨整格。
+   以前三样挤在一行里，键和值中间没有间隔，读出来是「device_statelocked一致」。 */
+.prop-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp3);row-gap:1px;
+  align-items:center;padding:5px var(--sp2);border-bottom:var(--hair)}
+.prop-row:last-child{border-bottom:0}
+.prop-k{font-family:var(--mono);font-size:12px;color:var(--on-surface);word-break:break-all;min-width:0}
+.prop-v{grid-column:1 / -1;font-family:var(--mono);font-size:11.5px;color:var(--on-variant);
+  word-break:break-all;min-width:0}
+.prop-row .pill[data-tone=ok]{font-size:11.5px;font-weight:500;color:var(--on-variant)}
 
 /* ================= 表单 ================= */
 /* 表单：标签一律放在控件上方。浮动标签要和文本域首行算位置，textarea 一定压字 */
@@ -354,16 +405,14 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
     <div class="hero-top">
       <span class="badge" id="stateBadge" data-tone="na"><i class="dot"></i><span id="stateText">连接中…</span></span>
       <span class="chip mono" id="verChip">—</span>
-      <span class="chip mono" id="backendChip">—</span>
     </div>
     <div class="hero-count">
       <div class="count-num" id="countNum">—</div>
       <div class="count-cap">生效应用数<small id="countSub">正在读取</small></div>
-    </div>
-    <div class="hero-meta" id="heroMeta"></div>
-    <div class="hero-actions">
-      <button class="btn fab" id="btnSync"></button>
-      <button class="btn btn-tonal" id="btnReload"></button>
+      <div class="hero-actions">
+        <button class="btn fab" id="btnSync"></button>
+        <button class="btn btn-tonal" id="btnReload"></button>
+      </div>
     </div>
   </section>
 
@@ -450,7 +499,7 @@ input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:16px;heigh
       <div id="propsBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card" id="p-about" hidden>
+    <section class="card card-quiet" id="p-about" hidden>
       <h2 class="card-title">关于</h2>
       <div id="aboutBody"></div>
     </section>
@@ -837,7 +886,6 @@ function renderHero(){
   stateBadge.setAttribute('data-tone', tone[0]);
   stateText.textContent = tone[1];
   verChip.textContent = st.mod_version || '—';
-  backendChip.textContent = st.backend_name || '—';
 
   /* 生效数直接数 targets 列表（status 里不再重复跑 awk）；列表没回来前显示占位而不是 0 */
   var have = !!S.loaded.lists;
@@ -862,17 +910,6 @@ function renderHero(){
   tabAppsN.textContent = have ? String(S.targets.length) : '';
   tabLogN.textContent = st.log_lines || '';
 
-  heroMeta.textContent = '';
-  [['目标', st.target_file], ['更新时间', timeLabel(st.target_mtime)], ['设备', env.device]]
-    .forEach(function (pair){
-      if (!pair[1]) return;
-      var c = el('span', 'chip');
-      c.appendChild(el('b', null, pair[0]));
-      c.appendChild(document.createTextNode(' ' + pair[1]));
-      c.title = String(pair[1]);
-      heroMeta.appendChild(c);
-    });
-
   // 设备行：env 还没回来时不能拼出「Android undefined」，逐项判空
   var dev = [];
   if (env.brand) dev.push(env.brand);
@@ -893,40 +930,64 @@ function renderHero(){
 }
 
 /* ---------- 概览 ---------- */
-function tile(key, value, tone, note){
-  var row = el('div', 'tile');
-  row.appendChild(el('span', 'tile-k', key));
-  var v = el('span', 'tile-v');
-  if (tone) { var p = el('span', 'pill', value); p.setAttribute('data-tone', tone); v.appendChild(p); }
-  else v.textContent = value;
-  if (note) v.appendChild(el('small', null, note));
-  row.appendChild(v);
-  return row;
+/* 一格 = 标签在上、值在下。数字走大号（blk-num）、文字走正文，
+   层级靠字号而不是靠给每个值涂色。 */
+function blk(key, value, tone, note, vcls){
+  var b = el('div', 'blk');
+  b.appendChild(el('span', 'blk-k', key));
+  var v = el('div', 'blk-v');
+  if (tone) {
+    var p = el('span', 'pill' + (vcls ? ' ' + vcls : ''), value);
+    p.setAttribute('data-tone', tone);
+    v.appendChild(p);
+  } else {
+    v.appendChild(el('span', vcls, value));
+  }
+  b.appendChild(v);
+  if (note) {
+    var s = el('small', null, note);
+    s.title = String(note);
+    b.appendChild(s);
+  }
+  return b;
+}
+function grp(title, blocks){
+  var g = el('div', 'grp');
+  g.appendChild(el('h3', 'grp-t', title));
+  var grid = el('div', 'grid');
+  blocks.forEach(function (b){ grid.appendChild(b); });
+  g.appendChild(grid);
+  return g;
 }
 function renderOver(){
   var st = S.status, env = S.env, box = document.getElementById('overBody');
   box.textContent = '';
   var ino = !env.inotify_mode ? '读取中'
-    : env.inotify_mode === 'none' ? '未找到 inotify 工具'
-    : env.inotify_mode + (env.inotify_cmd ? '（' + env.inotify_cmd + '）' : '');
-
+    : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
+  var inoNote = env.inotify_cmd && env.inotify_cmd !== env.inotify_mode
+    ? '命令 ' + env.inotify_cmd : '';
   var have = !!S.loaded.lists;
-  box.appendChild(tile('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok', st.data_dir));
-  box.appendChild(tile('常驻 rules.txt', orDash(have ? countRules() : null) + ' 条', st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file));
-  box.appendChild(tile('生效应用', orDash(have ? S.targets.length : null) + ' 个'));
-  box.appendChild(tile('已安装第三方', orDash(have ? S.apps.length : null) + ' 个'));
-  box.appendChild(tile('目标文件', st.target_exists === '1' ? '存在' : '不存在',
-    st.target_exists === '1' ? 'ok' : 'bad', st.target_file));
-  box.appendChild(tile('可写', st.target_writable === '1' ? '是' : '否', st.target_writable === '1' ? 'ok' : 'bad'));
-  box.appendChild(tile('上次写入', timeLabel(st.target_mtime)));
-  box.appendChild(tile('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')));
-  box.appendChild(tile('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个进程',
-    st.daemon_alive === '0' ? 'warn' : 'ok'));
-  box.appendChild(tile('日志缓冲', bytesLabel(st.log_bytes), null,
-    (st.log_lines || 0) + ' 行 · ' + (st.log_file || '')));
-  box.appendChild(tile('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
-    st.props_masking === 'off' ? 'na' : 'ok', env.resetprop === '1' ? 'resetprop 可用' : '未找到 resetprop'));
-  box.appendChild(tile('模块描述', st.description || '—'));
+
+  box.appendChild(grp('同步链路', [
+    blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok', st.data_dir),
+    blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok'), inoNote),
+    blk('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个',
+      st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num'),
+    blk('日志缓冲', bytesLabel(st.log_bytes), null,
+      (st.log_lines || 0) + ' 行 · ' + (st.log_file || ''), 'blk-num')
+  ]));
+
+  box.appendChild(grp('配置与写入', [
+    blk('常驻 rules.txt', orDash(have ? countRules() : null) + ' 条',
+      st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file, 'blk-num'),
+    blk('目标文件', (st.target_exists === '1' ? '存在' : '不存在') +
+      (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
+      st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', st.target_file),
+    blk('上次写入', timeLabel(st.target_mtime)),
+    blk('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
+      st.props_masking === 'off' ? 'na' : 'ok',
+      env.resetprop === '1' ? 'resetprop 可用' : '未找到 resetprop')
+  ]));
 
   var note = el('p', 'hint');
   note.textContent = '模块只在开机与文件变化时同步，界面不会后台轮询；上面的数字每次点「重新读取」才更新。';
@@ -935,25 +996,43 @@ function renderOver(){
   // 「关于」卡：把界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对
   var about = document.getElementById('aboutBody');
   about.textContent = '';
-  about.appendChild(tile('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'));
-  about.appendChild(tile('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
-    env.root_user === '0' ? 'ok' : 'na'));
-  about.appendChild(tile('模块目录', MODDIR));
-  about.appendChild(tile('命令层', (env.webui_sh || (MODDIR + '/webui.sh'))));
-  about.appendChild(tile('工具可用性', [
-    env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64', env.resetprop ? 'resetprop' : '无 resetprop'
-  ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'));
-  about.appendChild(tile('后端模块', [
-    'TEE Simulator ' + (st.teesim_enabled === '1' ? '已启用' : '未启用'),
-    'Tricky Store ' + (st.tricky_enabled === '1' ? '已启用' : '未启用')
-  ].join(' · '), st.conflict === '1' ? 'bad' : 'ok'));
-  about.appendChild(tile('设备', [env.brand, env.device, 'Android ' + env.android + '（SDK ' + env.sdk + '）'].filter(Boolean).join(' · ')));
-  about.appendChild(tile('取色', THEME.note || '—',
-    hueMode === 'manual' ? 'warn' : (THEME.seedSrc === 'none' ? 'na' : 'ok'),
-    '生效参数 ' + (THEME.applied || '—')));
-  about.appendChild(tile('深浅', (SCHEMES[schemeIdx] === 'auto' ? '跟随系统' : SCHEME_LABEL[SCHEMES[schemeIdx]]) +
-    ' → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
-    THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc));
+  about.appendChild(grp('界面自检', [
+    blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
+    blk('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
+      env.root_user === '0' ? 'ok' : 'na'),
+    blk('工具可用性', [
+      env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
+      env.resetprop ? 'resetprop' : '无 resetprop'
+    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
+    blk('后端模块', st.conflict === '1' ? '两个同时启用'
+        : st.teesim_enabled === '1' ? 'TEE Simulator'
+        : st.tricky_enabled === '1' ? 'Tricky Store' : '无已启用后端',
+      st.conflict === '1' ? 'bad'
+        : (st.teesim_enabled === '1' || st.tricky_enabled === '1' ? 'ok' : 'bad'),
+      'TEE Simulator ' + (st.teesim_enabled === '1' ? '启用' : '未启用') +
+      ' / Tricky Store ' + (st.tricky_enabled === '1' ? '启用' : '未启用'))
+  ]));
+  about.appendChild(grp('外观', [
+    blk('取色', hueMode === 'manual' ? '手动调整'
+        : (THEME.seedSrc === 'none' ? '默认色相' : '系统强调色'),
+      hueMode === 'manual' ? 'warn' : (THEME.seedSrc === 'none' ? 'na' : 'ok'),
+      THEME.note || '—'),
+    blk('深浅', (SCHEMES[schemeIdx] === 'auto' ? '跟随系统' : SCHEME_LABEL[SCHEMES[schemeIdx]]) +
+      ' → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
+      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc)
+  ]));
+
+  var paths = el('div', 'paths');
+  [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
+   ['日志文件', st.log_file || '—']].forEach(function (pair){
+    var row = el('div', 'path-row');
+    row.appendChild(el('span', 'path-k', pair[0]));
+    var v = el('span', 'path-v mono', pair[1]);
+    v.title = String(pair[1]);
+    row.appendChild(v);
+    paths.appendChild(row);
+  });
+  about.appendChild(paths);
 }
 
 /* ---------- 常驻列表 ---------- */
@@ -1022,7 +1101,9 @@ function renderApps(){
   for (var i = 0; i < shown; i++) {
     var pkg = list[i];
     var row = el('div', 'app-row');
-    row.appendChild(el('span', 'app-name', pkg));
+    var nm = el('span', 'app-name', pkg);
+    nm.title = pkg;
+    row.appendChild(nm);
     if (S.appsSrc === 'apps' && !inTarget[pkg]) {
       var tg = el('span', 'app-tag', '未纳入');
       tg.setAttribute('data-tone', 'miss');
@@ -1097,20 +1178,16 @@ function renderProps(){
   var bad = 0;
   S.props.forEach(function (row){
     if (row[3] !== 'ok') bad++;
-    var line = el('div', 'tile');
-    var k = el('span', 'tile-k');
-    k.style.minWidth = '0';
-    k.style.flex = '0 0 auto';
-    k.style.maxWidth = '46%';
-    k.style.wordBreak = 'break-all';
-    k.textContent = row[0];
-    var v = el('span', 'tile-v', row[1] || '(空)');
-    v.style.fontFamily = 'var(--mono)';
-    v.style.fontWeight = '400';
-    v.title = '期望：' + row[2];
+    var line = el('div', 'prop-row');
+    line.appendChild(el('span', 'prop-k', row[0]));
     var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
     p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
-    line.appendChild(k); line.appendChild(v); line.appendChild(p);
+    line.appendChild(p);
+    var actual = row[1] ? row[1] : '(空)';
+    var v = el('span', 'prop-v', row[3] === 'diff'
+      ? '实际 ' + actual + ' · 期望 ' + (row[2] ? row[2] : '(空)')
+      : actual);
+    line.appendChild(v);
     box.appendChild(line);
   });
   if (!S.props.length) box.appendChild(el('div', 'empty', '没有属性数据'));
@@ -1519,19 +1596,18 @@ function showNoBridge(){
   /* 把扫到的东西列出来：连不上时最需要的不是道歉，是"到底看见了什么" */
   var box = document.getElementById('overBody');
   box.textContent = '';
-  box.appendChild(el('p', 'hint', '带 exec 的对象 ' + BRIDGE_SCAN.length + ' 个：'));
-  if (!BRIDGE_SCAN.length) box.appendChild(el('div', 'empty', '没有带 exec 的注入对象'));
-  BRIDGE_SCAN.forEach(function (b){
-    box.appendChild(tile(b.name, 'exec=' + (b.exec ? '有' : '无'), b.exec ? 'ok' : 'warn',
-      b.methods.length ? b.methods.join(' / ') : '没有可见方法'));
+  var scan = BRIDGE_SCAN.map(function (b){
+    return blk(b.name, 'exec=' + (b.exec ? '有' : '无'), b.exec ? 'ok' : 'warn',
+      b.methods.length ? b.methods.join(' / ') : '没有可见方法');
   });
-  var extra = injectedGlobals();
-  box.appendChild(el('p', 'hint', '相对空白页多出的全局对象 ' + extra.length + ' 个（宿主注入的候选）：'));
-  extra.forEach(function (k){
+  box.appendChild(grp('带 exec 的注入对象 · ' + BRIDGE_SCAN.length, scan));
+  if (!scan.length) box.appendChild(el('div', 'empty', '没有带 exec 的注入对象'));
+  var extra = injectedGlobals().map(function (k){
     var o = null, ms = [];
     try { o = window[k]; ms = methodsOf(o); } catch (e){}
-    box.appendChild(tile(k, typeof o, 'na', ms.length ? ms.join(' / ') : '无可见方法'));
+    return blk(k, typeof o, 'na', ms.length ? ms.join(' / ') : '无可见方法');
   });
+  box.appendChild(grp('相对空白页多出的全局对象 · ' + extra.length + '（宿主注入的候选）', extra));
   busyCount = 0; document.getElementById('busy').hidden = true;
 }
 

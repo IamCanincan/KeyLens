@@ -129,6 +129,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 几点需要知道：
 
+- 布局按**自适应网格**排，不假设手机就是 412px 宽：本机 WebView 实测 626 CSS px（1644px @420dpi），概览与「关于」的格子用 `auto-fit` + `minmax` 自己分列，宽屏 2 列、窄屏降 1 列，没有断点。改布局后用 CDP 在顶层文档扫溢出（5 页 × 320/360/412/626 × 浅/深），别只信 `--headless --screenshot`——它给出过与真实渲染不一致的读数。
 - 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
 - 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
@@ -136,7 +137,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
   需要说清楚的是：这里跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套（不是把系统 Material You 的 12 组色调表整个搬过来）——因为模块侧拿不到系统算好的调色板，只能拿到种子色。
 - 配色偏好（色相、深浅、是否跟随系统）存在 `localStorage`；若管理器禁用了 DOM storage 则只对当次生效。
 - 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
-- 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页。
+- 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
 
 > 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；不要把它拆成多个 css/js 文件——部分管理器用 `file://` 加载且不解析子资源路径。
 
