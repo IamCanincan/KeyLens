@@ -27,6 +27,29 @@ find_awk() {
     return 1
 }
 
+# ---------- base64 定位 ----------
+# 说明：WebUI 保存常驻列表时用 base64 传内容（避免包名/注释被 shell 解析），
+#       因此需要一个能解码的 base64。与 find_awk 同理：必须实际执行一次解码
+#       来验证，只判断命令是否存在会把「applet 未编译进去」的 busybox 当成可用。
+# 用法：find_base64
+# 返回：0=成功（可用命令写入标准输出，可能形如 "busybox base64"）1=未找到
+find_base64() {
+    local b
+
+    if command -v base64 >/dev/null 2>&1 && printf 'aGk=' | base64 -d 2>/dev/null | grep -q hi; then
+        echo "base64"
+        return 0
+    fi
+
+    for b in /data/adb/magisk/busybox /data/adb/ksu/bin/busybox /data/adb/ap/bin/busybox; do
+        if [ -x "$b" ] && printf 'aGk=' | "$b" base64 -d 2>/dev/null | grep -q hi; then
+            echo "$b base64"
+            return 0
+        fi
+    done
+    return 1
+}
+
 # ---------- inotify 定位 ----------
 # 说明：按 inotifywait → inotifyd 的顺序探测（前者事件信息更完整，优先使用）。
 #       探测时必须实际执行「<基命令> <applet> --help」：busybox 本体不带 applet 帮助，
