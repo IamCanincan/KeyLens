@@ -11,6 +11,10 @@
 *.json  text eol=lf
 *.md    text eol=lf
 *.yml   text eol=lf
+# WebUI 资源：CRLF 会让 WebView 里的行内脚本/样式行为异常，也污染 base64 前的文本内容
+*.html  text eol=lf
+*.css   text eol=lf
+*.js    text eol=lf
 .gitignore  text eol=lf
 LICENSE     text eol=lf
 module/META-INF/com/google/android/update-binary  text eol=lf

@@ -1,0 +1,1287 @@
+<!DOCTYPE html>
+<html lang="zh-CN" data-scheme="light">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="theme-color" content="#00000000">
+<title>TS-AUTO-ADD</title>
+<!--
+  MD3E（Material 3 Expressive）单文件界面。
+
+  为什么是一个文件：管理器用 file:// 加载 webroot/index.html，部分实现不解析子资源路径，
+  拆成 css/js 反而容易白屏；离线可用也要求不引 CDN。
+
+  数据全部来自 sh <模块目录>/webui.sh <命令>（root shell），界面自身不猜任何状态。
+  设备数据一律用 textContent 写入，不走 innerHTML。
+-->
+<style>
+/* ================= 设计令牌 ================= */
+:root{
+  --hue: 275;            /* 主色相，界面里可调 */
+  --hue3: 45;            /* 第三色相（= hue + 130，由 JS 同步） */
+  --e-spring: cubic-bezier(.06,.71,.1,1);
+  --e-emph: cubic-bezier(.3,0,.08,1);
+  --e-spatial: cubic-bezier(.2,0,0,1);
+  --d1: 120ms; --d2: 220ms; --d3: 340ms; --d4: 500ms;
+  --r-xs: 8px; --r-s: 12px; --r-m: 16px; --r-l: 24px;
+  --r-xl: 28px; --r-2xl: 36px; --r-full: 999px;
+  --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 24px; --sp7: 32px;
+  --font: system-ui,-apple-system,"Segoe UI",Roboto,"Noto Sans CJK SC","Microsoft YaHei",sans-serif;
+  --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
+}
+
+:root,[data-scheme=light]{
+  --primary:oklch(49% .19 var(--hue));            --on-primary:oklch(100% 0 0);
+  --primary-container:oklch(92% .06 var(--hue));  --on-primary-container:oklch(28% .13 var(--hue));
+  --secondary:oklch(53% .11 var(--hue));          --on-secondary:oklch(100% 0 0);
+  --secondary-container:oklch(92% .05 var(--hue));--on-secondary-container:oklch(32% .08 var(--hue));
+  --tertiary:oklch(52% .16 var(--hue3));          --on-tertiary:oklch(100% 0 0);
+  --tertiary-container:oklch(90% .08 var(--hue3));--on-tertiary-container:oklch(28% .12 var(--hue3));
+  --error:oklch(50% .21 27);                      --on-error:oklch(100% 0 0);
+  --error-container:oklch(94% .07 27);            --on-error-container:oklch(30% .14 27);
+  /* 正常态不能借用 tertiary：色相可调，tertiary 可能正好落在橙红上，
+     「一切正常」就会显示成警告色。这里给成功态一套固定绿。 */
+  --success:oklch(45% .14 155);                   --on-success:oklch(100% 0 0);
+  --success-container:oklch(92% .07 155);         --on-success-container:oklch(26% .10 155);
+  --surface:oklch(98.5% .008 var(--hue));         --on-surface:oklch(22% .03 var(--hue));
+  --surface-lowest:oklch(100% 0 0);               --surface-low:oklch(96.5% .012 var(--hue));
+  --surface-mid:oklch(95% .015 var(--hue));       --surface-high:oklch(92% .018 var(--hue));
+  --surface-highest:oklch(89% .02 var(--hue));    --surface-bright:oklch(99% .01 var(--hue));
+  --on-variant:oklch(45% .025 var(--hue));        --outline:oklch(66% .02 var(--hue));
+  --outline-variant:oklch(85% .015 var(--hue));   --scrim:oklch(35% 0 0 / 45%);
+  --shadow:0 2px 6px oklch(30% .03 var(--hue) / 12%),0 12px 28px oklch(30% .03 var(--hue) / 12%);
+}
+[data-scheme=dark]{
+  --primary:oklch(80% .13 var(--hue));            --on-primary:oklch(30% .14 var(--hue));
+  --primary-container:oklch(42% .16 var(--hue));  --on-primary-container:oklch(90% .07 var(--hue));
+  --secondary:oklch(80% .09 var(--hue));          --on-secondary:oklch(30% .06 var(--hue));
+  --secondary-container:oklch(40% .10 var(--hue));--on-secondary-container:oklch(90% .05 var(--hue));
+  --tertiary:oklch(78% .14 var(--hue3));          --on-tertiary:oklch(28% .12 var(--hue3));
+  --tertiary-container:oklch(42% .14 var(--hue3));--on-tertiary-container:oklch(91% .08 var(--hue3));
+  --error:oklch(84% .14 27);                      --on-error:oklch(30% .12 27);
+  --error-container:oklch(44% .18 27);            --on-error-container:oklch(93% .06 27);
+  --success:oklch(80% .14 155);                   --on-success:oklch(24% .09 155);
+  --success-container:oklch(32% .10 155);         --on-success-container:oklch(91% .07 155);
+  --surface:oklch(19% .015 var(--hue));           --on-surface:oklch(92% .012 var(--hue));
+  --surface-lowest:oklch(14% .01 var(--hue));     --surface-low:oklch(22% .016 var(--hue));
+  --surface-mid:oklch(24% .018 var(--hue));       --surface-high:oklch(27% .02 var(--hue));
+  --surface-highest:oklch(31% .022 var(--hue));   --surface-bright:oklch(33% .022 var(--hue));
+  --on-variant:oklch(74% .02 var(--hue));         --outline:oklch(60% .02 var(--hue));
+  --outline-variant:oklch(42% .02 var(--hue));    --scrim:oklch(0% 0 0 / 55%);
+  --shadow:0 2px 6px oklch(0% 0 0 / 30%),0 12px 28px oklch(0% 0 0 / 32%);
+}
+
+/* 没有 oklch 的旧 WebView 退回固定靛紫配色，只保证可读，不保证 expressive */
+@supports not (color: oklch(50% .1 200)){
+  :root,[data-scheme=light]{
+    --primary:#5b48c8;--on-primary:#fff;--primary-container:#e5defd;--on-primary-container:#22146b;
+    --secondary:#5d5a72;--on-secondary:#fff;--secondary-container:#e3dff6;--on-secondary-container:#1a172b;
+    --tertiary:#116a46;--on-tertiary:#fff;--tertiary-container:#c5edda;--on-tertiary-container:#00331e;
+    --error:#b3261e;--on-error:#fff;--error-container:#f9dedc;--on-error-container:#410e0b;
+    --success:#116a46;--on-success:#fff;--success-container:#c5edda;--on-success-container:#00331e;
+    --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
+    --surface-high:#e9e5ee;--surface-highest:#e3dfe8;--surface-bright:#fff;
+    --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
+  }
+  [data-scheme=dark]{
+    --primary:#c9bffd;--on-primary:#37279a;--primary-container:#4435b0;--on-primary-container:#e5defd;
+    --secondary:#c7c2dc;--on-secondary:#2f2d3f;--secondary-container:#49475b;--on-secondary-container:#e3dff6;
+    --tertiary:#8ad4b0;--on-tertiary:#00392a;--tertiary-container:#005240;--on-tertiary-container:#c5edda;
+    --error:#ffb4ab;--on-error:#691e16;--error-container:#93000e;--on-error-container:#ffdad6;
+    --success:#8ad4b0;--on-success:#00392a;--success-container:#005240;--on-success-container:#c5edda;
+    --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
+    --surface-high:#2c2c33;--surface-highest:#33333a;--surface-bright:#3a3a42;
+    --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
+  }
+}
+
+/* ================= 基础 ================= */
+*{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+html,body{margin:0;padding:0}
+body{
+  background:var(--surface);color:var(--on-surface);font:400 15px/1.5 var(--font);
+  min-height:100%;padding-bottom:calc(var(--sp7) + env(safe-area-inset-bottom));
+  background-image:radial-gradient(120% 60% at 100% 0%,var(--primary-container),transparent 62%),
+                   radial-gradient(90% 50% at 0% 100%,var(--tertiary-container),transparent 60%);
+  background-attachment:fixed;
+}
+h1,h2,h3,p{margin:0}
+button,input,textarea,select{font:inherit;color:inherit}
+:focus-visible{outline:3px solid var(--primary);outline-offset:2px;border-radius:var(--r-xs)}
+.mono{font-family:var(--mono);font-size:12.5px;letter-spacing:-.2px}
+.sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
+
+/* ================= 顶栏 ================= */
+/* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
+   两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
+.appbar{padding:calc(env(safe-area-inset-top) + var(--sp3)) var(--sp5) var(--sp2)}
+.appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
+.kicker{display:block;font-size:12px;font-weight:600;letter-spacing:.6px;text-transform:uppercase;color:var(--on-variant);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
+.appbar h1{font-size:26px;font-weight:700;letter-spacing:-.7px;line-height:1.2;color:var(--on-surface)}
+.appbar-actions{margin-left:auto;display:flex;gap:var(--sp1)}
+.icon-btn{width:44px;height:44px;border:0;border-radius:var(--r-m);background:transparent;color:var(--on-variant);
+  display:grid;place-items:center;cursor:pointer;transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
+.icon-btn:hover{background:var(--surface-high)}
+.icon-btn:active{transform:scale(.86)}
+.icon-btn svg{width:22px;height:22px}
+.huebar{display:flex;align-items:center;gap:var(--sp3);margin:var(--sp3) 0 0;padding:var(--sp3) var(--sp4);
+  background:var(--surface-low);border-radius:var(--r-l) var(--r-l) var(--r-s) var(--r-s)}
+/* 同上：自带 display:flex 的元素必须自己处理 hidden */
+.huebar[hidden]{display:none}
+.huebar span{font-size:12px;color:var(--on-variant);white-space:nowrap}
+input[type=range]{flex:1;appearance:none;-webkit-appearance:none;height:12px;border-radius:var(--r-full);
+  background:linear-gradient(90deg,#f43f5e,#f59e0b,#84cc16,#06b6d4,#6366f1,#d946ef,#f43f5e);cursor:pointer}
+input[type=range]::-webkit-slider-thumb{-webkit-appearance:none;width:22px;height:22px;border-radius:50%;
+  background:var(--surface-lowest);border:3px solid var(--primary);box-shadow:var(--shadow)}
+
+/* ================= 卡片 ================= */
+.wrap{padding:0 var(--sp5);display:flex;flex-direction:column;gap:var(--sp4);max-width:760px;margin:0 auto;width:100%}
+.card{background:var(--surface-low);border-radius:var(--r-xl);padding:var(--sp5);box-shadow:var(--shadow);
+  animation:fade var(--d2) var(--e-emph)}
+/* 标签页切换会让面板从 display:none 变回来、动画随之重播：
+   面板只留一个 220ms 淡入，带延迟的入场动画只给首屏的英雄卡用。 */
+@keyframes fade{from{opacity:0}}
+@keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
+.card-title{font-size:13px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
+  margin:0 0 var(--sp4)}
+.hero{background:var(--primary-container);color:var(--on-primary-container);
+  border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-m);padding:var(--sp5) var(--sp5) var(--sp4);
+  box-shadow:var(--shadow);animation:rise var(--d4) var(--e-spring) backwards}
+.hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
+.hero-count{display:flex;align-items:flex-end;gap:var(--sp4);margin:var(--sp4) 0 var(--sp3)}
+.count-num{font-size:60px;font-weight:800;line-height:.92;letter-spacing:-3px;color:var(--primary);
+  font-variant-numeric:tabular-nums;transition:transform var(--d3) var(--e-spring)}
+.count-num.bump{transform:scale(1.07)}
+.count-cap{padding-bottom:var(--sp2);font-size:13px;font-weight:600;color:var(--on-primary-container);opacity:.9}
+.count-cap small{display:block;font-weight:500;opacity:.85;font-size:12px;margin-top:2px}
+.hero-meta{display:flex;flex-wrap:wrap;gap:var(--sp2);margin-bottom:var(--sp4)}
+.hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap}
+
+/* ================= 徽章 / chip ================= */
+.badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:6px 14px;font-size:13px;font-weight:700;
+  border-radius:var(--r-full) var(--r-s) var(--r-full) var(--r-s);background:var(--surface-lowest);color:var(--on-surface);
+  transition:background var(--d2) var(--e-emph)}
+.badge .dot{width:9px;height:9px;border-radius:50%;background:var(--outline);flex:none}
+.badge[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
+.badge[data-tone=ok] .dot{background:var(--success)}
+.badge[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
+.badge[data-tone=warn] .dot{background:var(--secondary)}
+.badge[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
+.badge[data-tone=bad] .dot{background:var(--error);animation:pulse 1.6s infinite}
+@keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
+.chip{display:inline-flex;align-items:center;gap:6px;padding:6px 12px;border-radius:var(--r-full);
+  background:var(--surface-lowest);color:var(--on-variant);border:1px solid var(--outline-variant);font-size:12px;
+  min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.chip b{color:var(--on-surface);font-weight:600}
+
+/* ================= 按钮 ================= */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp2);min-height:46px;padding:0 var(--sp5);
+  border:0;border-radius:var(--r-full);font-size:14.5px;font-weight:600;cursor:pointer;letter-spacing:.1px;
+  transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph),box-shadow var(--d2) var(--e-emph)}
+.btn svg{width:19px;height:19px;flex:none}
+.btn:active{transform:scale(.94)}
+.btn[disabled]{opacity:.42;pointer-events:none}
+.btn-filled{background:var(--primary);color:var(--on-primary)}
+.btn-filled:hover{box-shadow:0 2px 10px var(--primary);filter:brightness(1.06)}
+.btn-tonal{background:var(--secondary-container);color:var(--on-secondary-container)}
+.btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
+.btn-text{background:transparent;color:var(--primary);padding:0 var(--sp4)}
+.btn-sm{min-height:36px;padding:0 var(--sp4);font-size:13px}
+.fab{background:var(--tertiary-container);color:var(--on-tertiary-container);border-radius:var(--r-l) var(--r-s) var(--r-l) var(--r-s)}
+.fab:active{border-radius:50%;transform:scale(.9)}
+
+/* ================= 分段标签 ================= */
+.tabs{position:sticky;top:calc(env(safe-area-inset-top) + 6px);z-index:15;display:flex;gap:var(--sp1);
+  padding:var(--sp3) var(--sp5);background:var(--surface);overflow-x:auto;scrollbar-width:none;
+  border-radius:0 0 var(--r-l) var(--r-l)}
+.tabs::-webkit-scrollbar{display:none}
+.tab{position:relative;flex:none;min-height:44px;padding:0 var(--sp5);border:1.5px solid var(--outline-variant);
+  background:transparent;color:var(--on-variant);border-radius:var(--r-full);font-size:14px;font-weight:600;cursor:pointer;
+  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
+.tab:active{transform:scale(.94)}
+.tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container);border-color:transparent}
+.tab .n{display:inline-block;margin-left:6px;font-variant-numeric:tabular-nums;opacity:.75;font-size:12.5px}
+
+/* ================= 列表行 ================= */
+.tile{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) 0;border-bottom:1px solid var(--outline-variant)}
+.tile:last-child{border-bottom:0}
+.tile-k{font-size:13px;color:var(--on-variant);flex:none;min-width:82px}
+.tile-v{flex:1;min-width:0;text-align:right;font-size:14px;font-weight:600;word-break:break-all}
+.tile-v small{display:block;font-weight:400;color:var(--on-variant);font-size:12px;margin-top:2px}
+.pill{display:inline-flex;align-items:center;padding:3px 10px;border-radius:var(--r-full);font-size:12px;font-weight:700}
+.pill[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
+.pill[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
+.pill[data-tone=na]{background:var(--surface-high);color:var(--on-variant)}
+.app-row{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp2) var(--sp3);border-radius:var(--r-s);
+  transition:background var(--d1) var(--e-emph)}
+.app-row:hover{background:var(--surface-mid)}
+.app-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;font-family:var(--mono);font-size:13px}
+.app-tag{flex:none;font-size:11px;font-weight:700;padding:2px 8px;border-radius:var(--r-full);
+  background:var(--surface-high);color:var(--on-variant)}
+.app-tag[data-tone=miss]{background:var(--error-container);color:var(--on-error-container)}
+.icon-add{flex:none;width:38px;height:38px;border:0;border-radius:var(--r-s);background:var(--surface-lowest);
+  color:var(--primary);cursor:pointer;display:grid;place-items:center;border:1px solid var(--outline-variant);
+  transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
+.icon-add:active{transform:scale(.86)}
+.icon-add svg{width:18px;height:18px}
+
+/* ================= 表单 ================= */
+/* 表单：标签一律放在控件上方。浮动标签要和文本域首行算位置，textarea 一定压字 */
+.field{display:block}
+.field textarea,.field input[type=text]{width:100%;padding:var(--sp4);border-radius:var(--r-m);
+  background:var(--surface-lowest);border:1.5px solid var(--outline-variant);color:var(--on-surface);
+  transition:border-color var(--d2) var(--e-emph),background var(--d2) var(--e-emph)}
+.field textarea{min-height:270px;font-family:var(--mono);font-size:13px;line-height:1.7;resize:vertical;tab-size:2}
+.field input[type=text]{min-height:52px}
+.field:focus-within textarea,.field:focus-within input{border-color:var(--primary);border-width:2.5px}
+.field label{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;
+  color:var(--on-variant);margin:0 0 var(--sp2) var(--sp1)}
+.field:focus-within label{color:var(--primary)}
+.hint{font-size:12.5px;color:var(--on-variant);margin-top:var(--sp2)}
+.toolbar{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp4)}
+.switch-row{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp3) 0}
+.switch-row .txt{flex:1;min-width:0}
+.switch-row .txt b{display:block;font-size:14.5px;font-weight:600}
+.switch-row .txt span{font-size:12.5px;color:var(--on-variant)}
+.switch{flex:none;width:54px;height:34px;border-radius:var(--r-full);border:2.5px solid var(--outline);
+  background:var(--surface-highest);position:relative;cursor:pointer;
+  transition:background var(--d3) var(--e-spring),border-color var(--d3) var(--e-spring)}
+.switch::after{content:"";position:absolute;top:50%;left:4px;width:22px;height:22px;border-radius:50%;background:var(--outline);
+  transform:translateY(-50%);transition:transform var(--d4) var(--e-spring),width var(--d3) var(--e-spring),
+  height var(--d3) var(--e-spring),background var(--d3) var(--e-emph)}
+.switch[aria-checked=true]{background:var(--primary);border-color:var(--primary)}
+.switch[aria-checked=true]::after{left:calc(100% - 26px);width:26px;height:26px;background:var(--on-primary)}
+
+/* ================= 日志 ================= */
+.console{background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-m);
+  padding:var(--sp3);max-height:58vh;overflow:auto;font-family:var(--mono);font-size:12px;line-height:1.75;-webkit-overflow-scrolling:touch}
+.log-line{white-space:pre-wrap;word-break:break-all;padding:1px 0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
+.log-line:last-child{border-bottom:0}
+.log-line[data-lvl=err]{background:var(--error-container);color:var(--on-error-container)}
+.log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
+.log-line[data-lvl=ok]{color:var(--success)}
+.seg{display:inline-flex;padding:4px;gap:4px;background:var(--surface-mid);border-radius:var(--r-full)}
+.seg button{border:0;background:transparent;color:var(--on-variant);min-height:34px;padding:0 var(--sp4);
+  border-radius:var(--r-full);font-size:13px;font-weight:600;cursor:pointer;
+  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
+.seg button:active{transform:scale(.93)}
+.seg button.is-active{background:var(--surface-lowest);color:var(--on-surface);box-shadow:0 1px 4px var(--scrim)}
+
+/* ================= 提示条 / 对话框 / snackbar ================= */
+.banner{display:flex;gap:var(--sp3);align-items:flex-start;padding:var(--sp4) var(--sp5);border-radius:var(--r-l);
+  background:var(--error-container);color:var(--on-error-container);font-size:14px;line-height:1.55;
+  animation:rise var(--d4) var(--e-spring) backwards}
+/* .banner 自带 display:flex，会盖掉 hidden 属性的 display:none —— 必须显式补一条 */
+.banner[hidden]{display:none}
+.banner svg{width:22px;height:22px;flex:none;margin-top:1px}
+.banner b{display:block;margin-bottom:2px}
+.dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp5);background:var(--scrim)}
+.dialog[hidden]{display:none}
+.sheet{width:100%;max-width:420px;background:var(--surface-high);border-radius:var(--r-2xl) var(--r-2xl) var(--r-2xl) var(--r-l);
+  padding:var(--sp6);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
+@keyframes pop{from{opacity:0;transform:scale(.9) translateY(16px)}}
+.sheet h3{font-size:21px;font-weight:700;letter-spacing:-.3px;margin-bottom:var(--sp3)}
+.sheet p{font-size:14.5px;color:var(--on-variant);line-height:1.6}
+.sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp6)}
+.snackbar{position:fixed;left:50%;bottom:calc(var(--sp6) + env(safe-area-inset-bottom));z-index:70;
+  transform:translate(-50%,140%);max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp3);
+  padding:var(--sp3) var(--sp5);border-radius:var(--r-s) var(--r-l) var(--r-s) var(--r-l);
+  background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:14px;
+  transition:transform var(--d4) var(--e-spring);pointer-events:none}
+.snackbar[data-show=1]{transform:translate(-50%,0)}
+.snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
+.snackbar[data-tone=ok]{background:var(--tertiary-container);color:var(--on-tertiary-container)}
+
+/* ================= 加载/空态 ================= */
+.spin{width:18px;height:18px;border-radius:50%;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);
+  animation:spin .8s linear infinite;display:inline-block;vertical-align:-3px}
+@keyframes spin{to{transform:rotate(360deg)}}
+.skeleton{height:14px;border-radius:var(--r-s);background:linear-gradient(90deg,var(--surface-mid),var(--surface-high),var(--surface-mid));
+  background-size:220% 100%;animation:shimmer 1.3s infinite}
+@keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
+.empty{padding:var(--sp7) var(--sp5);text-align:center;color:var(--on-variant);font-size:14px}
+.empty b{display:block;font-size:16px;color:var(--on-surface);margin-bottom:var(--sp2)}
+.busy{position:fixed;inset:0;z-index:65;display:grid;place-items:center;background:var(--scrim);gap:var(--sp3)}
+.busy[hidden]{display:none}
+.busy div{display:flex;align-items:center;gap:var(--sp3);padding:var(--sp4) var(--sp6);border-radius:var(--r-full);
+  background:var(--surface-high);box-shadow:var(--shadow);font-size:14px;font-weight:600}
+[data-stub]{opacity:.55}
+
+@media (prefers-reduced-motion:reduce){
+  *,*::before,*::after{animation-duration:.01ms!important;animation-iteration-count:1!important;transition-duration:.01ms!important}
+}
+@media (max-width:390px){
+  .count-num{font-size:50px}
+  .appbar h1{font-size:22px}
+}
+</style>
+</head>
+<body>
+
+<header class="appbar">
+  <div class="appbar-row">
+    <div style="min-width:0">
+      <span class="kicker" id="kicker">正在读取模块状态</span>
+      <h1>TS-AUTO-ADD</h1>
+    </div>
+    <div class="appbar-actions">
+      <button class="icon-btn" id="btnHue" aria-label="调整配色" title="调整配色"></button>
+      <button class="icon-btn" id="btnTheme" aria-label="切换深浅色" title="切换深浅色"></button>
+    </div>
+  </div>
+  <div class="huebar" id="huebar" hidden>
+    <span>主色相</span>
+    <input type="range" id="hue" min="0" max="360" step="2" value="275" aria-label="主色相">
+    <span class="mono" id="hueVal">275°</span>
+  </div>
+</header>
+
+<div class="wrap">
+
+  <section class="hero" id="hero">
+    <div class="hero-top">
+      <span class="badge" id="stateBadge" data-tone="na"><i class="dot"></i><span id="stateText">连接中…</span></span>
+      <span class="chip mono" id="verChip">—</span>
+      <span class="chip mono" id="backendChip">—</span>
+    </div>
+    <div class="hero-count">
+      <div class="count-num" id="countNum">—</div>
+      <div class="count-cap">生效应用数<small id="countSub">正在读取</small></div>
+    </div>
+    <div class="hero-meta" id="heroMeta"></div>
+    <div class="hero-actions">
+      <button class="btn fab" id="btnSync"></button>
+      <button class="btn btn-tonal" id="btnReload"></button>
+    </div>
+  </section>
+
+  <div class="banner" id="banner" hidden>
+    <span id="bannerIcon"></span>
+    <div><b id="bannerTitle"></b><span id="bannerText"></span></div>
+  </div>
+
+  <nav class="tabs" role="tablist" id="tabs">
+    <button class="tab is-active" role="tab" data-tab="over">概览</button>
+    <button class="tab" role="tab" data-tab="rules">常驻列表<span class="n" id="tabRulesN"></span></button>
+    <button class="tab" role="tab" data-tab="apps">应用<span class="n" id="tabAppsN"></span></button>
+    <button class="tab" role="tab" data-tab="log">日志<span class="n" id="tabLogN"></span></button>
+    <button class="tab" role="tab" data-tab="props">属性<span class="n" id="tabPropsN"></span></button>
+  </nav>
+
+  <main class="wrap" style="padding:0">
+    <section class="card" id="p-over">
+      <h2 class="card-title">运行状态</h2>
+      <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
+    </section>
+
+    <section class="card" id="p-rules" hidden>
+      <h2 class="card-title">常驻应用列表 rules.txt</h2>
+      <div class="field">
+        <label id="rulesLabel">每行一个包名 · # 开头为注释</label>
+        <textarea id="rulesBox" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" aria-labelledby="rulesLabel"></textarea>
+      </div>
+      <p class="hint" id="rulesStat">—</p>
+      <div class="toolbar">
+        <button class="btn btn-filled btn-sm" id="btnSaveRules"></button>
+        <button class="btn btn-text btn-sm" id="btnRevertRules">放弃修改</button>
+        <button class="btn btn-outline btn-sm" id="btnRulesHead">补默认注释头</button>
+      </div>
+      <p class="hint">保存 = 覆盖整个 <span class="mono" id="rulesPath">rules.txt</span>，并立即同步一次；行尾 <span class="mono">CR</span> 与 <span class="mono">BOM</span> 会被自动清掉。</p>
+    </section>
+
+    <section class="card" id="p-apps" hidden>
+      <h2 class="card-title">应用列表</h2>
+      <div class="toolbar" style="margin-top:0">
+        <div class="seg" id="appsSeg">
+          <button data-src="targets" class="is-active">生效列表</button>
+          <button data-src="apps">已安装第三方</button>
+        </div>
+        <button class="btn btn-outline btn-sm" id="btnOnlyMissing" aria-pressed="false">只看未纳入</button>
+      </div>
+      <div class="field" style="margin-top:var(--sp4)">
+        <label>搜索包名</label>
+        <input type="text" id="appsSearch" placeholder="例如 sgame" autocomplete="off">
+      </div>
+      <p class="hint" id="appsStat">—</p>
+      <div id="appsBody" style="margin-top:var(--sp3)"></div>
+    </section>
+
+    <section class="card" id="p-log" hidden>
+      <h2 class="card-title">运行日志</h2>
+      <div class="toolbar" style="margin-top:0">
+        <div class="seg" id="logSeg">
+          <button data-n="30">30</button><button data-n="60" class="is-active">60</button>
+          <button data-n="120">120</button><button data-n="300">300</button>
+        </div>
+        <button class="btn btn-outline btn-sm" id="btnLogRefresh"></button>
+        <button class="btn btn-text btn-sm" id="btnLogClear">清空缓冲</button>
+        <label class="switch-row" style="margin-left:auto;padding:0">
+          <span class="txt" style="font-size:13px">自动刷新</span>
+          <span class="switch" id="logAuto" role="switch" aria-checked="false" tabindex="0"></span>
+        </label>
+      </div>
+      <p class="hint" id="logStat">—</p>
+      <div class="console" id="logBody" style="margin-top:var(--sp3)"></div>
+    </section>
+
+    <section class="card" id="p-props" hidden>
+      <h2 class="card-title">系统属性伪装</h2>
+      <div class="switch-row">
+        <span class="txt"><b>开机时重置属性</b><span id="propsSwitchHint">关闭后下次开机起不再写入期望值</span></span>
+        <span class="switch" id="propsSwitch" role="switch" aria-checked="true" tabindex="0"></span>
+      </div>
+      <div class="toolbar" style="margin-top:0">
+        <button class="btn btn-filled btn-sm" id="btnPropsApply"></button>
+        <button class="btn btn-text btn-sm" id="btnPropsRefresh">重新读取</button>
+      </div>
+      <p class="hint" id="propsStat">—</p>
+      <div id="propsBody" style="margin-top:var(--sp3)"></div>
+    </section>
+
+    <section class="card" id="p-about" hidden>
+      <h2 class="card-title">关于</h2>
+      <div id="aboutBody"></div>
+    </section>
+  </main>
+</div>
+
+<div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
+<div class="dialog" id="dialog" hidden role="dialog" aria-modal="true">
+  <div class="sheet">
+    <h3 id="dlgTitle"></h3>
+    <p id="dlgText"></p>
+    <div class="sheet-actions">
+      <button class="btn btn-text" id="dlgCancel">取消</button>
+      <button class="btn btn-filled" id="dlgOk">确定</button>
+    </div>
+  </div>
+</div>
+<div class="busy" id="busy" hidden><div><span class="spin"></span><span id="busyText">处理中</span></div></div>
+
+<script>
+"use strict";
+
+/* =========================================================
+   0. 图标（内联 SVG，避免外部请求）
+   ========================================================= */
+var ICON = {
+  sync: '<path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 0 0 8-8Z"/>',
+  reload: '<path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4Z"/>',
+  save: '<path d="M5 3h9l5 5v13H5Zm3 0v5h6V3Zm4 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>',
+  palette: '<path d="M12 3a9 9 0 0 0 0 18c1.7 0 2.5-1.3 2.5-2.4 0-1.6-1.4-1.9-1.4-3.2 0-.9.7-1.4 1.6-1.4H17A4 4 0 0 0 21 10c0-3.9-4-7-9-7Zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/>',
+  sun: '<path d="M12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0 3.5 1.4-2.1h-2.8Zm0-17.9L10.6 4.7h2.8ZM3.5 12l2.1-1.4v2.8Zm17.9 0-2.1 1.4v-2.8ZM5.4 5.4 7.7 5l-1.7 1.7Zm13.2 13.2-2.3.4 1.7-1.7ZM5.4 18.6l1.7 1.7 .3-2.3ZM18.6 5.4l-1.7-1.7-.3 2.3Z"/>',
+  moon: '<path d="M12.8 3.1a9 9 0 1 0 8.1 12.4 7 7 0 0 1-8.1-8.3c0-1.5.4-2.9 1-4.1A9 9 0 0 0 12.8 3.1Z"/>',
+  auto: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2v14a7 7 0 0 1 0-14Z"/>',
+  add: '<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6Z"/>',
+  warn: '<path d="M12 2 1 21h22Zm0 6 1 7h-2Zm0 11a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/>',
+  check: '<path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L21.1 7.4 19.7 6Z"/>',
+  trash: '<path d="M8 4V2h8v2h5v2H3V4Zm1 16a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V8H9Z"/>',
+  info: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2Zm0-8h-2V7h2Z"/>'
+};
+function svg(name, size){
+  return '<svg viewBox="0 0 24 24" fill="currentColor" width="' + (size || 24) + '" height="' + (size || 24) +
+         '" aria-hidden="true">' + ICON[name] + '</svg>';
+}
+
+/* =========================================================
+   1. 桥接层：Magisk / KernelSU / APatch 的 exec 接口形状不同，统一成一个
+   ========================================================= */
+var QUERY = new URLSearchParams(location.search);
+var MODDIR = QUERY.get('mod') || '/data/adb/modules/ts-auto-add';
+var SH = 'sh ' + MODDIR + '/webui.sh';
+var DEMO = QUERY.get('demo') === '1';
+
+function pickBridge(){
+  var cands = [window.bridge, window.kernelsu, window.apatch, window.Magisk];
+  for (var i = 0; i < cands.length; i++) {
+    var b = cands[i];
+    if (b && typeof b.exec === 'function') return b;
+  }
+  return null;
+}
+var BRIDGE = DEMO ? { name: 'demo' } : pickBridge();
+var BRIDGE_NAME = DEMO ? 'demo'
+  : (BRIDGE === window.bridge ? 'bridge' : BRIDGE === window.kernelsu ? 'kernelsu'
+  : BRIDGE === window.apatch ? 'apatch' : BRIDGE === window.Magisk ? 'Magisk' : (BRIDGE ? 'unknown' : 'none'));
+
+function normResult(v){
+  if (v === undefined || v === null) return { errno: 0, stdout: '' };
+  if (typeof v === 'string') return { errno: 0, stdout: v };
+  var code = v.errno;
+  if (code === undefined) code = v.code;
+  if (code === undefined) code = 0;
+  var out = v.stdout;
+  if (out === undefined) out = v.result;
+  if (out === undefined) out = '';
+  return { errno: Number(code) || 0, stdout: String(out) };
+}
+
+function callExec(cmd){
+  return new Promise(function (resolve){
+    var done = false, sync;
+    function finish(v){ if (done) return; done = true; resolve(normResult(v)); }
+    try {
+      // 同步式（KernelSU/APatch/bridge）直接返回结果；回调式（部分 Magisk 实现）会把结果交给 finish
+      sync = BRIDGE.exec(cmd, finish);
+    } catch (e) { finish({ errno: 1, stdout: String((e && e.message) || e) }); return; }
+    if (sync !== undefined) finish(sync);
+  });
+}
+
+/* 命令名固定、参数受校验，输出用 2>&1 合并好把错误文本显示出来 */
+function run(cmd, arg){
+  var full = SH + ' ' + cmd + (arg === undefined || arg === null || arg === '' ? '' : ' ' + arg) + ' 2>&1';
+  if (DEMO) return Promise.resolve(demoResult(cmd, arg));
+  if (!BRIDGE) return Promise.resolve({ errno: 127, stdout: '当前管理器没有提供 root shell 执行接口' });
+  return callExec(full);
+}
+
+/* key=value 文本 → 对象（只按第一个 = 切分，值里可以再有 =） */
+function parseKV(text){
+  var out = {};
+  String(text || '').split('\n').forEach(function (line){
+    var i = line.indexOf('=');
+    if (i > 0) out[line.slice(0, i)] = line.slice(i + 1);
+  });
+  return out;
+}
+
+/* =========================================================
+   2. 偏好（localStorage 在部分 file:// 环境不可用，失败就只用内存值）
+   ========================================================= */
+var store = {
+  get: function (k, d){ try { var v = localStorage.getItem('tsaa.' + k); return v === null ? d : v; } catch (e){ return d; } },
+  set: function (k, v){ try { localStorage.setItem('tsaa.' + k, v); } catch (e){ /* 忽略 */ } }
+};
+
+function applyHue(h){
+  var n = parseInt(h, 10);
+  if (isNaN(n)) n = 275;
+  document.documentElement.style.setProperty('--hue', n);
+  document.documentElement.style.setProperty('--hue3', (n + 130) % 360);
+  hue.value = n; hueVal.textContent = n + '°';
+  store.set('hue', String(n));
+  var meta = document.querySelector('meta[name=theme-color]');
+  if (meta) meta.setAttribute('content', '#00000000');
+}
+
+var SCHEMES = ['auto', 'light', 'dark'];
+var SCHEME_LABEL = { auto: '跟随系统', light: '浅色', dark: '深色' };
+var schemeIdx = Math.max(0, SCHEMES.indexOf(store.get('scheme', 'auto')));
+/* ?scheme=light|dark 强制配色，便于深浅两版对照（界面上的按钮仍是三态循环） */
+var FORCE_SCHEME = QUERY.get('scheme');
+
+function resolveScheme(){
+  if (FORCE_SCHEME === 'light' || FORCE_SCHEME === 'dark') return FORCE_SCHEME;
+  if (SCHEMES[schemeIdx] === 'auto') {
+    return matchMedia('(prefers-color-scheme: dark)').matches ? 'dark' : 'light';
+  }
+  return SCHEMES[schemeIdx];
+}
+function applyScheme(){
+  document.documentElement.setAttribute('data-scheme', resolveScheme());
+  btnTheme.innerHTML = svg(SCHEMES[schemeIdx] === 'auto' ? 'auto' : (resolveScheme() === 'dark' ? 'moon' : 'sun'));
+  btnTheme.title = '主题：' + SCHEME_LABEL[SCHEMES[schemeIdx]];
+  store.set('scheme', SCHEMES[schemeIdx]);
+}
+
+/* =========================================================
+   3. 状态与渲染
+   ========================================================= */
+var S = {
+  status: {}, env: {}, tab: 'over',
+  rules: '', rulesBase: '',
+  targets: [], apps: [], appsSrc: 'targets', onlyMissing: false, search: '',
+  log: [], tail: 60, autoTimer: null, props: [], loaded: {}
+};
+
+function el(tag, cls, text){
+  var e = document.createElement(tag);
+  if (cls) e.className = cls;
+  if (text !== undefined && text !== null) e.textContent = String(text);
+  return e;
+}
+function n(v){ var x = parseInt(v, 10); return isNaN(x) ? null : x; }
+function bytesLabel(v){
+  var x = n(v); if (x === null) return '—';
+  return x < 1024 ? x + ' B' : (x / 1024).toFixed(1) + ' KB';
+}
+function timeLabel(epoch){
+  var x = n(epoch); if (!x) return '未写入';
+  var d = new Date(x * 1000);
+  function p(m){ return (m < 10 ? '0' : '') + m; }
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+var STATE_TONE = { ok: ['ok', '运行中'], stopped: ['bad', '已停止'], failed: ['bad', '写入失败'], unknown: ['warn', '未同步'] };
+
+function snackbar(text, tone){
+  var s = document.getElementById('snackbar');
+  s.textContent = text;
+  s.setAttribute('data-tone', tone || 'info');
+  s.setAttribute('data-show', '1');
+  clearTimeout(snackbar._t);
+  snackbar._t = setTimeout(function (){ s.removeAttribute('data-show'); }, tone === 'bad' ? 5200 : 3000);
+}
+
+var busyCount = 0;
+function busy(on, text){
+  if (on) { busyCount++; if (text) document.getElementById('busyText').textContent = text; }
+  else busyCount = Math.max(0, busyCount - 1);
+  document.getElementById('busy').hidden = busyCount === 0;
+  btnSync.disabled = btnReload.disabled = busyCount > 0;
+}
+
+/* 一次 root shell 调用的包装：返回 {ok, text, code} */
+function call(cmd, arg){
+  return run(cmd, arg).then(function (r){
+    return { ok: r.errno === 0, code: r.errno, text: r.stdout };
+  });
+}
+function failText(r){
+  var t = String(r.text || '').trim().split('\n').filter(Boolean).slice(-2).join(' ');
+  return t || ('命令失败（退出码 ' + r.code + '）');
+}
+
+/* ---------- 顶栏 + 英雄卡 ---------- */
+function renderHero(){
+  var st = S.status, env = S.env;
+  var tone = STATE_TONE[st.state] || STATE_TONE.unknown;
+  stateBadge.setAttribute('data-tone', tone[0]);
+  stateText.textContent = tone[1];
+  verChip.textContent = st.mod_version || '—';
+  backendChip.textContent = st.backend_name || '—';
+
+  var total = n(st.target_count);
+  countNum.textContent = total === null ? '—' : String(total);
+  countNum.classList.add('bump');
+  setTimeout(function (){ countNum.classList.remove('bump'); }, 220);
+
+  var sub = [];
+  sub.push('常驻 ' + (st.rules_count || 0));
+  sub.push('第三方 ' + (st.apps_count || 0));
+  if (n(st.daemon_alive)) sub.push('守护进程 ' + st.daemon_alive + ' 个');
+  else if (st.daemon_alive === '0') sub.push('守护进程未运行');
+  countSub.textContent = sub.join(' · ');
+
+  heroMeta.textContent = '';
+  [['目标', st.target_file], ['更新时间', timeLabel(st.target_mtime)], ['设备', env.device]]
+    .forEach(function (pair){
+      if (!pair[1]) return;
+      var c = el('span', 'chip');
+      c.appendChild(el('b', null, pair[0]));
+      c.appendChild(document.createTextNode(' ' + pair[1]));
+      c.title = String(pair[1]);
+      heroMeta.appendChild(c);
+    });
+
+  // 设备行：env 还没回来时不能拼出「Android undefined」，逐项判空
+  var dev = [];
+  if (env.brand) dev.push(env.brand);
+  if (env.device) dev.push(env.device);
+  if (env.android) dev.push('Android ' + env.android);
+  kicker.textContent = dev.join(' · ') || 'TS-AUTO-ADD';
+
+  var bad = st.state === 'stopped' || st.state === 'failed' || st.conflict === '1' ||
+            (st.target_exists === '0' && st.state !== 'unknown') || st.target_writable === '0';
+  if (bad) {
+    banner.hidden = false;
+    bannerIcon.innerHTML = svg('warn');
+    var title = st.conflict === '1' ? '两个后端同时启用，模块已停止'
+      : st.state === 'failed' ? '写入失败' : st.target_writable === '0' ? '目标文件不可写' : '需要处理';
+    bannerTitle.textContent = title;
+    bannerText.textContent = st.description || '详见日志页';
+  } else banner.hidden = true;
+}
+
+/* ---------- 概览 ---------- */
+function tile(key, value, tone, note){
+  var row = el('div', 'tile');
+  row.appendChild(el('span', 'tile-k', key));
+  var v = el('span', 'tile-v');
+  if (tone) { var p = el('span', 'pill', value); p.setAttribute('data-tone', tone); v.appendChild(p); }
+  else v.textContent = value;
+  if (note) v.appendChild(el('small', null, note));
+  row.appendChild(v);
+  return row;
+}
+function renderOver(){
+  var st = S.status, env = S.env, box = document.getElementById('overBody');
+  box.textContent = '';
+  var ino = !env.inotify_mode ? '读取中'
+    : env.inotify_mode === 'none' ? '未找到 inotify 工具'
+    : env.inotify_mode + (env.inotify_cmd ? '（' + env.inotify_cmd + '）' : '');
+
+  box.appendChild(tile('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok', st.data_dir));
+  box.appendChild(tile('常驻 rules.txt', (st.rules_count || 0) + ' 条', st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file));
+  box.appendChild(tile('已安装第三方', (st.apps_count || 0) + ' 个'));
+  box.appendChild(tile('目标文件', st.target_exists === '1' ? '存在' : '不存在',
+    st.target_exists === '1' ? 'ok' : 'bad', st.target_file));
+  box.appendChild(tile('可写', st.target_writable === '1' ? '是' : '否', st.target_writable === '1' ? 'ok' : 'bad'));
+  box.appendChild(tile('上次写入', timeLabel(st.target_mtime)));
+  box.appendChild(tile('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')));
+  box.appendChild(tile('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个进程',
+    st.daemon_alive === '0' ? 'warn' : 'ok'));
+  box.appendChild(tile('日志缓冲', bytesLabel(st.log_bytes), null,
+    (st.log_lines || 0) + ' 行 · ' + (st.log_file || '')));
+  box.appendChild(tile('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
+    st.props_masking === 'off' ? 'na' : 'ok', env.resetprop === '1' ? 'resetprop 可用' : '未找到 resetprop'));
+  box.appendChild(tile('模块描述', st.description || '—'));
+
+  var note = el('p', 'hint');
+  note.textContent = '模块只在开机与文件变化时同步，界面不会后台轮询；上面的数字每次点「重新读取」才更新。';
+  box.appendChild(note);
+
+  // 「关于」卡：把界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对
+  var about = document.getElementById('aboutBody');
+  about.textContent = '';
+  about.appendChild(tile('桥接接口', BRIDGE_NAME, BRIDGE ? 'ok' : 'bad'));
+  about.appendChild(tile('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
+    env.root_user === '0' ? 'ok' : 'na'));
+  about.appendChild(tile('模块目录', MODDIR));
+  about.appendChild(tile('命令层', (env.webui_sh || (MODDIR + '/webui.sh'))));
+  about.appendChild(tile('工具可用性', [
+    env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64', env.resetprop ? 'resetprop' : '无 resetprop'
+  ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'));
+  about.appendChild(tile('后端模块', [
+    'TEE Simulator ' + (st.teesim_enabled === '1' ? '已启用' : '未启用'),
+    'Tricky Store ' + (st.tricky_enabled === '1' ? '已启用' : '未启用')
+  ].join(' · '), st.conflict === '1' ? 'bad' : 'ok'));
+  about.appendChild(tile('设备', [env.brand, env.device, 'Android ' + env.android + '（SDK ' + env.sdk + '）'].filter(Boolean).join(' · ')));
+}
+
+/* ---------- 常驻列表 ---------- */
+function rulesStats(text){
+  var lines = String(text).split('\n'), valid = 0, comment = 0, blank = 0;
+  lines.forEach(function (raw){
+    var l = raw.replace(/^\s+|\s+$/g, '');
+    if (!l) blank++;
+    else if (l.charAt(0) === '#') comment++;
+    else valid++;
+  });
+  return { valid: valid, comment: comment, blank: blank, total: lines.length };
+}
+function renderRules(){
+  var s = rulesStats(S.rules);
+  rulesBox.value = S.rules;
+  S.rulesBase = S.rules;
+  rulesPath.textContent = S.status.rules_file || 'rules.txt';
+  updateRulesStat();
+  tabRulesN.textContent = s.valid;
+}
+function updateRulesStat(){
+  var s = rulesStats(rulesBox.value);
+  var dirty = rulesBox.value !== S.rulesBase;
+  var parts = ['有效包名 ' + s.valid, '注释 ' + s.comment, '空行 ' + s.blank];
+  if (/\r/.test(rulesBox.value)) parts.push('含 CR（保存时会清掉）');
+  if (dirty) parts.push('未保存');
+  rulesStat.textContent = parts.join(' · ');
+  rulesStat.style.color = dirty ? 'var(--primary)' : 'var(--on-variant)';
+  btnSaveRules.disabled = !dirty || busyCount > 0;
+  btnRevertRules.disabled = !dirty;
+  tabRulesN.textContent = s.valid;
+}
+
+/* ---------- 应用列表 ---------- */
+function renderApps(){
+  var srcList = S.appsSrc === 'targets' ? S.targets : S.apps;
+  var inTarget = {};
+  S.targets.forEach(function (p){ inTarget[p] = 1; });
+  var list = srcList.slice();
+  if (S.onlyMissing && S.appsSrc === 'apps') list = list.filter(function (p){ return !inTarget[p]; });
+  if (S.search) {
+    var q = S.search.toLowerCase();
+    list = list.filter(function (p){ return p.toLowerCase().indexOf(q) >= 0; });
+  }
+  var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
+  appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
+    ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '');
+  tabAppsN.textContent = S.targets.length || '';
+
+  var box = document.getElementById('appsBody');
+  box.textContent = '';
+  if (!list.length) {
+    var e = el('div', 'empty');
+    e.appendChild(el('b', null, '没有条目'));
+    e.appendChild(document.createTextNode(S.appsSrc === 'targets' ? '目标文件还是空的，点上方「立即同步」生成一次。' : '没有匹配的应用。'));
+    box.appendChild(e);
+    return;
+  }
+  var frag = document.createDocumentFragment();
+  var shown = Math.min(list.length, 800);
+  for (var i = 0; i < shown; i++) {
+    var pkg = list[i];
+    var row = el('div', 'app-row');
+    row.appendChild(el('span', 'app-name', pkg));
+    if (S.appsSrc === 'apps' && !inTarget[pkg]) {
+      var tg = el('span', 'app-tag', '未纳入');
+      tg.setAttribute('data-tone', 'miss');
+      row.appendChild(tg);
+    }
+    if (S.appsSrc === 'apps') {
+      var add = el('button', 'icon-add');
+      add.innerHTML = svg('add');
+      add.title = '加入常驻列表';
+      add.setAttribute('aria-label', '把 ' + pkg + ' 加入常驻列表');
+      add.addEventListener('click', (function (p){
+        return function (){ addRule(p); };
+      })(pkg));
+      row.appendChild(add);
+    }
+    frag.appendChild(row);
+  }
+  box.appendChild(frag);
+  if (list.length > shown) box.appendChild(el('p', 'hint', '仅显示前 ' + shown + ' 条，用搜索缩小范围。'));
+}
+function addRule(pkg){
+  var cur = rulesBox.value.replace(/\s+$/, '');
+  var has = cur.split('\n').some(function (l){ return l.replace(/^\s+|\s+$/g, '') === pkg; });
+  if (has) { snackbar(pkg + ' 已在常驻列表里'); return; }
+  rulesBox.value = (cur ? cur + '\n' : '') + pkg + '\n';
+  updateRulesStat();
+  goTab('rules');
+  snackbar('已加入常驻列表，记得点「保存并同步」', 'ok');
+}
+
+/* ---------- 日志 ---------- */
+function logLevel(line){
+  if (/[❌⛔]|失败|超时|错误/.test(line)) return 'err';
+  if (/[⚠️]|警告|未能|不存在|未找到/.test(line)) return 'warn';
+  if (/✅|完成|就绪/.test(line)) return 'ok';
+  return '';
+}
+function renderLog(){
+  var box = document.getElementById('logBody');
+  box.textContent = '';
+  var frag = document.createDocumentFragment();
+  S.log.forEach(function (line){
+    var d = el('div', 'log-line', line);
+    var lv = logLevel(line);
+    if (lv) d.setAttribute('data-lvl', lv);
+    frag.appendChild(d);
+  });
+  box.appendChild(frag);
+  logStat.textContent = '显示末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes) +
+    ' · 上限 64KB，超出后只保留末尾 200 行' + (S.status.log_lines && n(S.status.log_lines) > S.log.length
+    ? '（共 ' + S.status.log_lines + ' 行）' : '');
+  tabLogN.textContent = S.status.log_lines || '';
+  box.scrollTop = box.scrollHeight;
+}
+
+/* ---------- 属性 ---------- */
+var PROPS_TONE = { ok: 'ok', diff: 'bad', missing: 'na' };
+var PROPS_LABEL = { ok: '一致', diff: '不符', missing: '未定义' };
+function renderProps(){
+  var box = document.getElementById('propsBody');
+  box.textContent = '';
+  var bad = 0;
+  S.props.forEach(function (row){
+    if (row[3] !== 'ok') bad++;
+    var line = el('div', 'tile');
+    var k = el('span', 'tile-k');
+    k.style.minWidth = '0';
+    k.style.flex = '0 0 auto';
+    k.style.maxWidth = '46%';
+    k.style.wordBreak = 'break-all';
+    k.textContent = row[0];
+    var v = el('span', 'tile-v', row[1] || '(空)');
+    v.style.fontFamily = 'var(--mono)';
+    v.style.fontWeight = '400';
+    v.title = '期望：' + row[2];
+    var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
+    p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
+    line.appendChild(k); line.appendChild(v); line.appendChild(p);
+    box.appendChild(line);
+  });
+  if (!S.props.length) box.appendChild(el('div', 'empty', '没有属性数据'));
+  propsStat.textContent = '共 ' + S.props.length + ' 项 · 不符 ' + bad +
+    (S.env.resetprop === '1' ? '' : ' · 未找到 resetprop，无法写入') +
+    (S.status.props_masking === 'off' ? ' · 开机伪装已关闭' : '');
+  tabPropsN.textContent = bad ? ('!' + bad) : S.props.length;
+  var on = S.status.props_masking !== 'off';
+  propsSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
+  propsSwitchHint.textContent = on
+    ? '开机（Zygote 前）把上表写入；关闭后下次开机起不再写入'
+    : '已关闭：下次开机不会重置这些属性（应用列表维护不受影响）';
+}
+
+/* =========================================================
+   4. 数据加载
+   ========================================================= */
+function loadStatus(){
+  return call('status').then(function (r){
+    if (!r.ok && !Object.keys(S.status).length) throw new Error(failText(r));
+    S.status = parseKV(r.text);
+    renderHero();
+    if (S.tab === 'over') renderOver();
+    return r;
+  });
+}
+function loadEnv(){
+  return call('env').then(function (r){
+    if (r.ok) {
+      S.env = parseKV(r.text);
+      renderHero();                       // 英雄卡与 kicker 用到 env.device
+      if (S.tab === 'over') renderOver();
+    }
+    return r;
+  });
+}
+function loadRules(){
+  return call('rules').then(function (r){
+    S.rules = r.ok ? r.text : '';
+    if (!r.ok) snackbar(failText(r), 'bad');
+    renderRules();
+  });
+}
+function loadApps(){
+  return Promise.all([call('targets'), call('apps')]).then(function (rs){
+    S.targets = rs[0].ok ? split(rs[0].text) : [];
+    S.apps = rs[1].ok ? split(rs[1].text) : [];
+    if (!rs[0].ok && rs[0].code !== 1) snackbar(failText(rs[0]), 'bad');
+    renderApps();
+  });
+}
+function loadLog(){
+  return call('log', String(S.tail)).then(function (r){
+    S.log = r.ok ? split(r.text) : [];
+    renderLog();
+  });
+}
+function loadProps(){
+  return call('props').then(function (r){
+    S.props = r.ok ? split(r.text).map(function (line){
+      var c = line.split('\t');
+      return [c[0] || '', c[1] || '', c[2] || '', c[3] || ''];
+    }) : [];
+    renderProps();
+  });
+}
+function split(text){
+  return String(text == null ? '' : text).split('\n').filter(function (l){ return l.length > 0; });
+}
+
+var LOADERS = { over: function (){ return Promise.resolve(); }, rules: loadRules, apps: loadApps, log: loadLog, props: loadProps };
+
+function refresh(currentOnly){
+  busy(true, '读取中');
+  var chain = [loadStatus(), loadEnv()];
+  if (!currentOnly) Object.keys(LOADERS).forEach(function (k){ if (LOADERS[k] !== LOADERS.over) S.loaded[k] = false; });
+  Promise.all(chain).then(function (){
+    return LOADERS[S.tab] ? (S.loaded[S.tab] = true, LOADERS[S.tab]()) : null;
+  }).catch(function (e){
+    snackbar(String((e && e.message) || e), 'bad');
+  }).then(function (){
+    busy(false);
+    // root_user 来自 env（status 里没有）：非 0 时后面所有写操作都会失败，先说清楚
+    if (S.env.root_user && S.env.root_user !== '0') snackbar('exec 不是 root（uid ' + S.env.root_user + '）', 'bad');
+  });
+}
+/* 懒加载：只在第一次进入该页时取数据 */
+function loadTab(tab){
+  if (tab === 'over' || S.loaded[tab]) return;
+  busy(true, '读取中');
+  Promise.resolve()
+    .then(function (){ S.loaded[tab] = true; return LOADERS[tab](); })
+    .catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+/* =========================================================
+   5. 写操作
+   ========================================================= */
+function b64(str){
+  var bytes = new TextEncoder().encode(str), bin = '', chunk = 8192;
+  for (var i = 0; i < bytes.length; i += chunk) {
+    bin += String.fromCharCode.apply(null, bytes.subarray(i, i + chunk));
+  }
+  return btoa(bin);
+}
+
+function doSync(){
+  busy(true, '同步中');
+  call('sync').then(function (r){
+    S.loaded.apps = false; S.loaded.log = false;
+    return loadStatus().then(function (){
+      if (r.ok) {
+        var kv = parseKV(r.text), rc = kv.rc;
+        snackbar(rc === '1' ? '内容一致，无需写入（' + kv.count + ' 个应用）' : '已写入 ' + kv.count + ' 个应用', rc === '2' ? 'bad' : 'ok');
+      } else snackbar(failText(r), 'bad');
+    });
+  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+function saveRules(){
+  var text = rulesBox.value;
+  if (text.length > 65536) { snackbar('常驻列表超过 64KB，请先精简', 'bad'); return; }
+  var payload;
+  try { payload = b64(text); } catch (e){ snackbar('内容编码失败', 'bad'); return; }
+  if (!/^[A-Za-z0-9+/=]*$/.test(payload)) { snackbar('内容编码异常', 'bad'); return; }
+  busy(true, '保存中');
+  call('save-rules', payload).then(function (r){
+    S.loaded.apps = false; S.loaded.log = false;
+    return loadStatus().then(function (){
+      if (r.ok) {
+        var kv = parseKV(r.text);
+        S.rulesBase = text;
+        updateRulesStat();
+        snackbar(kv.rc === '1' ? '已保存（生效列表内容未变化）' : '已保存并写入：' + kv.count + ' 个应用', 'ok');
+      } else snackbar(failText(r), 'bad');
+    });
+  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+function setPropsMasking(want){
+  busy(true, '写入开关');
+  call(want === 'off' ? 'props-off' : 'props-on').then(function (r){
+    if (r.ok) {
+      S.status.props_masking = want;
+      renderHero(); renderProps(); if (S.tab === 'over') renderOver();
+      snackbar(want === 'off' ? '已关闭开机属性伪装（本次开机内已写入的值不变）' : '已恢复开机属性伪装', 'ok');
+    } else snackbar(failText(r), 'bad');
+  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+function applyPropsNow(){
+  busy(true, '写入属性');
+  call('props-apply').then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      return loadProps().then(function (){
+        snackbar(kv.mismatch === '0' ? '已全部写入期望值' : '仍有 ' + kv.mismatch + ' 项不符（静态字段要重启才刷新）',
+          kv.mismatch === '0' ? 'ok' : 'warn');
+      });
+    }
+    snackbar(failText(r), 'bad');
+  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+function clearLog(){
+  busy(true, '清空');
+  call('clear-log').then(function (r){
+    if (r.ok) { S.loaded.log = false; return loadLog().then(function (){ snackbar('日志缓冲已清空', 'ok'); }); }
+    snackbar(failText(r), 'bad');
+  }).catch(function (e){ snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (){ busy(false); });
+}
+
+/* 确认对话框 */
+function confirm(title, text, okLabel){
+  return new Promise(function (resolve){
+    var d = document.getElementById('dialog');
+    dlgTitle.textContent = title;
+    dlgText.textContent = text;
+    dlgOk.textContent = okLabel || '确定';
+    d.hidden = false;
+    function close(v){
+      d.hidden = true;
+      dlgOk.removeEventListener('click', yes);
+      dlgCancel.removeEventListener('click', no);
+      d.removeEventListener('click', backdrop);
+      resolve(v);
+    }
+    function yes(){ close(true); }
+    function no(){ close(false); }
+    function backdrop(e){ if (e.target === d) close(false); }
+    dlgOk.addEventListener('click', yes);
+    dlgCancel.addEventListener('click', no);
+    d.addEventListener('click', backdrop);
+    dlgOk.focus();
+  });
+}
+
+/* =========================================================
+   6. 交互装配
+   ========================================================= */
+var tabsEl = document.getElementById('tabs');
+function goTab(name){
+  S.tab = name;
+  Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
+    var on = t.dataset.tab === name;
+    t.classList.toggle('is-active', on);
+    t.setAttribute('aria-selected', on ? 'true' : 'false');
+  });
+  ['over', 'rules', 'apps', 'log', 'props'].forEach(function (k){
+    document.getElementById('p-' + k).hidden = k !== name;
+  });
+  document.getElementById('p-about').hidden = name !== 'over';
+  loadTab(name);
+}
+
+function setAuto(on){
+  S.auto = on;
+  logAuto.setAttribute('aria-checked', on ? 'true' : 'false');
+  if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
+  if (on) S.autoTimer = setInterval(function (){
+    if (document.hidden || S.tab !== 'log') return;
+    S.loaded.log = false;
+    loadLog();
+  }, 5000);
+}
+
+function wire(){
+  btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
+  btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
+  btnSaveRules.innerHTML = svg('save') + '<span>保存并同步</span>';
+  btnHue.innerHTML = svg('palette');
+  btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
+  btnLogClear.innerHTML = svg('trash') + '<span>清空</span>';
+  btnPropsApply.innerHTML = svg('check') + '<span>立即应用一次</span>';
+  applyScheme();
+  applyHue(store.get('hue', '275'));
+
+  btnSync.addEventListener('click', doSync);
+  btnReload.addEventListener('click', function (){ refresh(false); });
+  btnSaveRules.addEventListener('click', saveRules);
+  btnRevertRules.addEventListener('click', function (){ rulesBox.value = S.rulesBase; updateRulesStat(); });
+  btnRulesHead.addEventListener('click', function (){
+    var head = '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\n';
+    if (rulesBox.value.indexOf('# TS-AUTO-ADD') === 0) return;
+    rulesBox.value = head + rulesBox.value;
+    updateRulesStat();
+  });
+  rulesBox.addEventListener('input', updateRulesStat);
+
+  tabsEl.addEventListener('click', function (e){
+    var t = e.target.closest ? e.target.closest('.tab') : null;
+    if (t) goTab(t.dataset.tab);
+  });
+
+  Array.prototype.forEach.call(document.querySelectorAll('#appsSeg button'), function (b){
+    b.addEventListener('click', function (){
+      S.appsSrc = b.dataset.src;
+      document.querySelectorAll('#appsSeg button').forEach(function (x){ x.classList.toggle('is-active', x === b); });
+      renderApps();
+    });
+  });
+  btnOnlyMissing.addEventListener('click', function (){
+    S.onlyMissing = !S.onlyMissing;
+    btnOnlyMissing.setAttribute('aria-pressed', S.onlyMissing ? 'true' : 'false');
+    btnOnlyMissing.classList.toggle('btn-filled', S.onlyMissing);
+    btnOnlyMissing.classList.toggle('btn-outline', !S.onlyMissing);
+    if (S.onlyMissing) S.appsSrc = 'apps';
+    renderApps();
+  });
+  appsSearch.addEventListener('input', function (){ S.search = appsSearch.value.replace(/^\s+|\s+$/g, ''); renderApps(); });
+
+  Array.prototype.forEach.call(document.querySelectorAll('#logSeg button'), function (b){
+    b.addEventListener('click', function (){
+      S.tail = parseInt(b.dataset.n, 10) || 60;
+      document.querySelectorAll('#logSeg button').forEach(function (x){ x.classList.toggle('is-active', x === b); });
+      loadLog();
+    });
+  });
+  btnLogRefresh.addEventListener('click', loadLog);
+  btnLogClear.addEventListener('click', function (){
+    confirm('清空日志缓冲？', '将删除 ' + (S.status.log_file || '/data/adb/ts_auto.log') +
+      ' 的全部内容（约 ' + bytesLabel(S.status.log_bytes) + '）。模块后续写日志时会重建该文件，不影响同步逻辑。', '清空')
+      .then(function (yes){ if (yes) clearLog(); });
+  });
+  logAuto.addEventListener('click', function (){ setAuto(!S.auto); });
+  logAuto.addEventListener('keydown', function (e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); setAuto(!S.auto); } });
+
+  propsSwitch.addEventListener('click', function (){
+    var want = propsSwitch.getAttribute('aria-checked') === 'true' ? 'off' : 'on';
+    if (want === 'on') { setPropsMasking('on'); return; }
+    confirm('关闭开机属性伪装？', '关闭只影响下一次开机：下次开机起不再重置 ro.build.type 等属性，' +
+      '应用列表维护照旧。本次开机内已经写入的值不会被改回去。', '关闭').then(function (yes){ if (yes) setPropsMasking('off'); });
+  });
+  propsSwitch.addEventListener('keydown', function (e){ if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); propsSwitch.click(); } });
+  btnPropsApply.addEventListener('click', function (){
+    confirm('立即写一次属性？', '等价于把开机阶段的重置现在就跑一遍。' +
+      '已经被 Zygote 读进 Java 静态字段的值（如 Build.TYPE）不会因此刷新，要彻底生效仍需重启。', '写入')
+      .then(function (yes){ if (yes) applyPropsNow(); });
+  });
+  btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab('props'); });
+
+  btnTheme.addEventListener('click', function (){
+    schemeIdx = (schemeIdx + 1) % SCHEMES.length;
+    applyScheme();
+  });
+  btnHue.addEventListener('click', function (){ huebar.hidden = !huebar.hidden; });
+  hue.addEventListener('input', function (){ applyHue(hue.value); });
+
+  matchMedia('(prefers-color-scheme: dark)').addEventListener
+    && matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function (){ if (SCHEMES[schemeIdx] === 'auto') applyScheme(); });
+}
+
+/* =========================================================
+   7. 启动
+   ========================================================= */
+function boot(){
+  wire();
+  try { if (BRIDGE && typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 有的实现没这方法 */ }
+
+  // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）
+  var want = QUERY.get('tab');
+  if (want && ['over', 'rules', 'apps', 'log', 'props'].indexOf(want) >= 0) goTab(want);
+
+  if (!BRIDGE) {
+    banner.hidden = false;
+    bannerIcon.innerHTML = svg('warn');
+    bannerTitle.textContent = '当前管理器不支持 WebUI';
+    bannerText.textContent = '没找到 exec 桥接接口（KernelSU / APatch / 支持 WebUI 的 Magisk 管理器会提供）。' +
+      '模块本身仍在正常工作；也可以在终端里执行 sh ' + MODDIR + '/webui.sh status 查看状态。';
+    stateText.textContent = '无法连接';
+    stateBadge.setAttribute('data-tone', 'bad');
+    kicker.textContent = 'WebUI 桥接不可用';
+    busyCount = 0; document.getElementById('busy').hidden = true;
+    return;
+  }
+  refresh(true);
+}
+
+/* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
+function demoResult(cmd, arg){
+  var T = {
+    status: [
+      'state=ok', 'description=✅ [TEE Simulator | 应用: 125 | 更新: 17:50]', 'mod_id=ts-auto-add',
+      'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator', 'conflict=0',
+      'teesim_enabled=1', 'tricky_enabled=0', 'data_dir=/data/adb/teesim',
+      'rules_file=/data/adb/teesim/rules.txt', 'target_file=/data/adb/teesim/config.json',
+      'target_exists=1', 'target_writable=1', 'target_count=125', 'target_mtime=1793001033',
+      'rules_count=3', 'rules_exists=1', 'apps_count=122', 'props_masking=on',
+      'props_off_file=/data/adb/ts_auto.props_off', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
+      'log_lines=1109', 'log_bytes=64061'
+    ].join('\n'),
+    env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
+      'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
+      'vbstate=green'].join('\n'),
+    rules: '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n' +
+      '# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\ncom.android.vending\n' +
+      'com.google.android.gms\ncom.google.android.gsf\n',
+    targets: ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
+      'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'].join('\n'),
+    apps: ['ai.x.grok', 'app.mihon', 'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria',
+      'com.netflix.mediaclient', 'com.example.notyet', 'com.example.also'].join('\n'),
+    log: ['10-26 15:33:01 🔄 开始应用列表同步', '10-26 15:33:04 ✅ 同步完成，应用总数：124',
+      '10-26 15:36:18 🔍 后端：TEE Simulator（目录：/data/adb/teesim）', '10-26 15:36:18 👀 监听方式：inotifyd（inotifyd）',
+      '10-26 15:36:30 🚀 开机完成，执行首次同步', '10-26 15:36:30 ✅ 守护进程就绪（日志：/data/adb/ts_auto.log）',
+      '10-26 17:38:02 ⚠️ 未找到 awk，暂时无法维护 TEE Simulator 配置', '10-26 17:50:11 ✅ 同步完成，应用总数：125',
+      '10-26 17:55:20 ❌ 写入失败：/data/adb/teesim/config.json 不可替换'].join('\n'),
+    props: ['ro.boot.vbmeta.device_state\tlocked\tlocked\tok', 'ro.boot.verifiedbootstate\tgreen\tgreen\tok',
+      'ro.boot.flash.locked\t1\t1\tok', 'ro.boot.veritymode\tenforcing\tenforcing\tok',
+      'ro.build.type\tuserdebug\tuser\tdiff', 'ro.build.tags\trelease-keys\trelease-keys\tok',
+      'ro.debuggable\t0\t0\tok', 'ro.secure\t1\t1\tok', 'ro.adb.secure\t1\t1\tok',
+      'ro.warranty_bit\t\t0\tmissing', 'ro.bootloader\tunknown\t不含 engineering（则改写为 release）\tok',
+      'ro.build.description\tXQ-DQ72-user 15 67.2.A.3.178 release-keys\t不含 test-keys（则改写为 release-keys）\tok'].join('\n'),
+    sync: 'rc=0\ncount=125\ndescription=✅ [TEE Simulator | 应用: 125 | 更新: 18:02]',
+    'save-rules': 'saved=1\nrc=0\ncount=126\ndescription=✅ [TEE Simulator | 应用: 126 | 更新: 18:02]',
+    'props-apply': 'applied=1\nmismatch=1',
+    'props-off': 'props_masking=off', 'props-on': 'props_masking=on', 'clear-log': 'cleared=1'
+  };
+  var key = cmd === 'log' ? 'log' : cmd;
+  if (T[key] === undefined) return { errno: 1, stdout: 'demo: 未知命令 ' + cmd };
+  if (cmd === 'props-off') S.status.props_masking = 'off';
+  if (cmd === 'props-on') S.status.props_masking = 'on';
+  return { errno: 0, stdout: T[key] };
+}
+
+document.addEventListener('DOMContentLoaded', boot);
+</script>
+</body>
+</html>

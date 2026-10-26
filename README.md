@@ -38,6 +38,9 @@ TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段
 - **运行日志（logcat + 本地缓冲）**  
   日志同时写入系统日志（`logcat`，tag 为 `TS-AUTO`）与本地缓冲文件 `/data/adb/ts_auto.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
 
+- **WebUI 控制台（Material 3 Expressive）**  
+  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、在线编辑常驻列表、比对生效应用、翻日志、手动同步，以及一键开关开机属性伪装。界面是单文件、不联网、不依赖任何外部库或字体。
+
 - **兼容性广泛**  
   支持 Magisk、KernelSU、APatch，并自动适配 `inotifywait` / `inotifyd` 两种监控模式（含各框架自带的 busybox）。
 
@@ -52,23 +55,28 @@ module/
 ├─ post-fs-data.sh        # 开机早期入口：Zygote 前属性伪装
 ├─ service.sh             # 后台守护入口
 ├─ action.sh              # 手动同步入口（管理器“操作”按钮）
+├─ webui.sh               # WebUI 命令层（界面经 root shell 调用，输出机器可读文本）
 ├─ uninstall.sh           # 卸载入口
 ├─ lib/
 │  ├─ common.sh           # 函数库加载入口
 │  ├─ core.sh             # 路径常量、运行期状态、日志（logcat + 本地缓冲）
 │  ├─ lock.sh             # 并发锁
-│  ├─ tools.sh            # 外部工具定位（awk / inotify）
+│  ├─ tools.sh            # 外部工具定位（awk / base64 / inotify）
 │  ├─ applist.sh          # 常驻列表与应用列表生成
 │  ├─ backend.sh          # 后端探测、后端写入、模块描述、同步入口
-│  └─ props.sh            # 系统属性伪装
+│  └─ props.sh            # 系统属性伪装（期望值表 + 伪装开关）
 ├─ backends/
 │  ├─ tricky.sh           # Tricky Store 后端实现：写 target.txt
-│  └─ teesim.awk          # TEE Simulator 后端实现：定点替换 default.apps
+│  ├─ teesim.awk          # TEE Simulator 后端实现：定点替换 default.apps
+│  └─ teesim_list.awk     # TEE Simulator 只读提取：取出 default.apps 供界面展示
+├─ webroot/
+│  └─ index.html          # WebUI 界面（单文件，内联样式与脚本）
 └─ META-INF/              # 刷机包脚本
 ```
 
 - **入口脚本必须留在根目录**：Magisk / KernelSU / APatch 按固定路径调用 `customize.sh` / `post-fs-data.sh` / `service.sh` / `uninstall.sh`，管理器“操作”按钮调用 `action.sh`。
 - `lib/` 放共享库，`backends/` 放后端实现（每个后端一个文件）；入口脚本与 `lib/common.sh` 中都不含后端专属逻辑。
+- `webroot/` 是各管理器约定的 WebUI 目录（入口必须是 `index.html`）；界面不直接读文件，一律经 `webui.sh` 取数，这样状态判定与命令行排查看到的是同一份逻辑。
 
 ---
 
@@ -104,6 +112,31 @@ module/
 ```bash
 sh /data/adb/modules/ts-auto-add/action.sh
 ```
+
+### 🖥 WebUI 控制台
+
+在管理器的模块详情页点 **「打开界面」/「Open with WebUI」** 即可（KernelSU Next、SukiSU、SmartPack、APatch，以及支持 WebUI 的 Magisk 管理器都有这个入口；**原版 Magisk 管理器没有**，此时仍可用下面的命令行方式）。
+
+界面分五页：
+
+| 页签 | 内容 | 能改什么 |
+|------|------|----------|
+| **概览** | 后端、目标文件、可写性、上次写入时间、监听方式、守护进程、日志缓冲、属性伪装状态，以及界面自身的桥接信息 | 只读 |
+| **常驻列表** | 直接编辑 `rules.txt`，实时统计有效包名 / 注释 / 空行 | 保存 = 覆盖整个文件并**立即同步一次** |
+| **应用** | 生效列表与已安装第三方应用对照，可搜索、可「只看未纳入」、可一键把某个应用加入常驻列表 | 只读 + 追加到常驻列表草稿 |
+| **日志** | `ts_auto.log` 末尾 30/60/120/300 行，按级别着色，可清空缓冲、可开 5 秒自动刷新（默认关） | 清空日志 |
+| **属性** | 17 项属性的「当前值 / 期望值 / 是否一致」 | 开关开机伪装、立即应用一次 |
+
+几点需要知道：
+
+- 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
+- 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
+- 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.9 秒、`props` 约 0.7 秒、`targets` 约 0.35 秒，其余命令 0.1~0.2 秒。
+- 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
+- 配色支持跟随系统 / 浅色 / 深色，并可拖动色相滑杆实时改整套颜色（偏好存在 `localStorage`，若管理器禁用了 DOM storage 则只对当次生效）。
+- 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）。
+
+> 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；不要把它拆成多个 css/js 文件——部分管理器用 `file://` 加载且不解析子资源路径。
 
 ### 查看运行状态
 - **模块描述**：在模块详情页，`description` 字段动态显示：
@@ -170,6 +203,8 @@ sh /data/adb/modules/ts-auto-add/action.sh
 | `.ts_lock` / `.ts_debounce` / `.ts_tmp` | 运行时锁与临时文件 |
 
 > 日志缓冲不放在后端目录，而是固定在 `/data/adb/ts_auto.log`（权限 `600`，仅 root 可读；超过 64KB 自动只保留末尾 200 行；卸载时自动删除）。
+>
+> 属性伪装开关同样不放在后端目录，而是 `/data/adb/ts_auto.props_off`：**文件存在 = 已关闭**，由 WebUI 的「属性」页写入/删除，覆盖安装模块不会丢失，卸载时一并清理。
 
 ---
 
@@ -197,7 +232,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 | `ro.bootloader`（若含 `engineering`） | `release` | 隐藏工程版 Bootloader |
 | `ro.build.description`（若含 `test-keys`） | `release-keys` | 隐藏测试密钥 |
 
-> **提示**：若您不需要属性重置，可在 `post-fs-data.sh` 中删除或注释 `apply_resetprop` 调用后重启。
+> **提示**：不需要属性重置时，直接在模块 WebUI 的「属性」页关掉开关即可（写入 `/data/adb/ts_auto.props_off`，下次开机生效，覆盖安装模块不会丢失）；没有 WebUI 入口的话，也可以在 `post-fs-data.sh` 中删除或注释 `apply_resetprop` 调用后重启。
 
 ---
 
@@ -220,6 +255,9 @@ sh /data/adb/modules/ts-auto-add/action.sh
 ---
 
 ## ❓ 常见问题
+
+**Q：点「打开界面」没有反应，或界面提示“当前管理器不支持 WebUI”？**  
+A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧或禁用了 JavaScript，重新覆盖安装模块可确认 `webroot/` 是否完整。
 
 **Q：怎么看模块日志？为什么 logcat 里一会儿就没了？**  
 A：日志同时写 `logcat`（tag `TS-AUTO`）与本地缓冲 `/data/adb/ts_auto.log`。`logcat` 的缓冲默认只有几百 KB 且由全系统共用，系统繁忙时旧记录很快被挤掉、重启即清空 —— 这正是“一会儿就没了”的原因；缓冲文件跨重启保留，排查请优先看它（超过 64KB 会自动只保留末尾 200 行）。设备上读这两处**都需要 root**（`/data/adb` 为 `0700`，终端里先 `su`，或用 `su -c '...'`）；电脑上 `adb logcat -s TS-AUTO` 不需要 root，读缓冲文件需要 `adb shell su -c '...'`。最省事的方式是在管理器里点模块的“操作”按钮 —— `action.sh` 会附带打印最近 15 条日志。完整命令与排查步骤见上方「🛠 使用方法 → 查看运行状态」。另外模块只在**开机**与**文件变化**时写日志，没有事件时没有输出属正常现象。

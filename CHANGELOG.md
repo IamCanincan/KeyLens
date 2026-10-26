@@ -2,6 +2,30 @@
 
 ---
 
+### 未发布（开发中）
+
+#### 新增
+
+* **WebUI 控制台（Material 3 Expressive）**：模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点「打开界面」即可使用。分五页——概览（后端 / 目标文件 / 可写性 / 上次写入 / 监听方式 / 守护进程 / 日志缓冲 / 伪装状态 + 界面自身的桥接信息）、常驻列表（在线编辑 `rules.txt`，实时统计有效包名与注释）、应用（生效列表与已安装第三方对照、搜索、只看未纳入、一键加入常驻）、日志（末尾 30~300 行按级别着色、清空缓冲、可选 5 秒自动刷新）、属性（当前值 / 期望值 / 是否一致）。界面为**单文件、不联网、不引外部库或字体**；配色支持跟随系统 / 浅色 / 深色，并可拖动色相滑杆实时改整套颜色。
+* **WebUI 命令层 `webui.sh`**：`status` / `env` / `rules` / `targets` / `apps` / `log` / `clear-log` / `props` / `props-apply` / `props-on` / `props-off` / `save-rules` / `sync`，输出机器可读文本（`key=value` 或 TAB 分隔），复用 `lib/` 的探测与同步逻辑，界面不自行判定任何状态。文本内容一律以 base64 传入并先校验字符集，命令名与参数只参与比较、不拼进 shell。
+* **开机属性伪装开关**：`/data/adb/ts_auto.props_off` 存在即表示关闭，`post-fs-data.sh` 据此跳过 `apply_resetprop`；只影响下一次开机，应用列表维护不受影响。覆盖安装模块不丢失，卸载时随其它文件一并清理。
+* **只读提取脚本 `backends/teesim_list.awk`**：从 `config.json` 中取出 `profiles.default.apps` 供界面展示，定位方式与 `teesim.awk` 一致（逐级定位失败即不输出）。
+* `lib/tools.sh` 新增 `find_base64()`：与 `find_awk` 同样以「实际执行一次解码」来判定可用性，避免只有 busybox 本体、没编译 applet 时被误判为可用。
+
+#### 优化
+
+* **属性期望值表单点维护**：从 `apply_resetprop` 的内联字符串抽成 `props_expect_pairs()` / `props_expect_rules()`，写入端与界面展示端共用同一份，不会再各写一遍后走偏。
+* **界面取值方式按实测选定**：本机（XQ-DQ72，每次 fork 约 20~90ms）实测三种读法——逐个 `getprop` 17 项 277ms、一次全量 + `grep -F -f` 过滤 1692ms、一次全量 + 参数展开查表 228487ms；故采用逐个 `getprop`。`status` 与 `env` 拆成两条命令（后者含 busybox / inotify 探测，只在打开界面时问一次），`status` 由 2452ms 降到约 950ms。
+* **WebUI 写操作的等锁时间**：界面侧等锁只等 6 秒（守护进程仍为 15 秒），超时提示「守护进程正在写入」——WebView 里的 `exec` 是同步的，等满 15 秒看起来就是界面卡死。
+* `.gitattributes` 为 `*.html` / `*.css` / `*.js` 固定 LF。
+
+#### 兼容范围
+
+* 界面依赖管理器提供的 root shell 桥接（`window.kernelsu` / `window.apatch` / `window.Magisk` / `window.bridge` 任一）；无桥接时界面显示明确提示并给出等价的 `webui.sh` 命令，模块自身行为完全不变。
+* 界面不做后台轮询：数据只在进入页面、点「重新读取」或执行写操作后各取一次。
+
+---
+
 ### v2.2.19.5-yuzu - 2026-09-14
 
 #### 新增
