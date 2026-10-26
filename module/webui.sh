@@ -134,7 +134,8 @@ webui_lock() {
 # ---------- 状态 ----------
 # 说明：一次返回界面所需的全部状态；只读，不创建文件、不触发同步。
 cmd_status() {
-    local desc state masking ino count n p alive lines bytes
+    local desc state masking ino p alive lines bytes mtime bname conflict
+    local rules_exists
     local teesim_en tricky_en target_exists target_writable
 
     detect_backend "$MODDIR"
@@ -161,23 +162,30 @@ cmd_status() {
         target_writable=1
     fi
 
-    # 当前生效条目数：tricky 直接数文件行，teesim 需从 config.json 里取
-    count=""
-    if [ "$TAA_BACKEND" = "teesim" ] && [ -n "$AWK_CMD" ] && [ -f "$TARGET_FILE" ]; then
-        n=$($AWK_CMD -f "$MODDIR/backends/teesim_list.awk" "$TARGET_FILE" 2>/dev/null | wc -l | tr -dc '0-9')
-        [ -n "$n" ] && count="$n"
-    elif [ -f "$TARGET_FILE" ]; then
-        n=$(sed '/^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null | wc -l | tr -dc '0-9')
-        [ -n "$n" ] && count="$n"
-    fi
+    # 生效条目数、第三方应用数、常驻有效数都不在这里算：
+    # 它们各自要跑 awk(约 330ms) / pm list(约 200ms) / grep(约 60ms)，而界面本来就要
+    # 取 targets / apps / rules 三条完整列表，数量由那些列表直接数出来即可。
+    # 在这里再算一遍只会让每次刷新多等一倍时间，且两份数字可能互相对不上。
+    mtime=""
+    [ -f "$TARGET_FILE" ] && mtime=$(stat -c %Y "$TARGET_FILE" 2>/dev/null)
+
+    rules_exists=0
+    [ -f "$RULES_FILE" ] && rules_exists=1
+
+    conflict=0
+    [ "$teesim_en" = 1 ] && [ "$tricky_en" = 1 ] && conflict=1
+    case "$TAA_BACKEND" in
+        teesim) bname="TEE Simulator" ;;
+        *)      bname="Tricky Store" ;;
+    esac
 
     kv state "$state"
     kv description "$desc"
     mod_prop id;    kv mod_id "$MOD_PROP_VALUE"
     mod_prop version; kv mod_version "$MOD_PROP_VALUE"
     kv backend "$TAA_BACKEND"
-    kv backend_name "$(backend_name)"
-    kv conflict "$( [ "$teesim_en" = 1 ] && [ "$tricky_en" = 1 ] && echo 1 || echo 0 )"
+    kv backend_name "$bname"
+    kv conflict "$conflict"
     kv teesim_enabled "$teesim_en"
     kv tricky_enabled "$tricky_en"
     kv data_dir "$TAA_DIR"
@@ -185,18 +193,8 @@ cmd_status() {
     kv target_file "$TARGET_FILE"
     kv target_exists "$target_exists"
     kv target_writable "$target_writable"
-    kv target_count "${count:-}"
-    kv target_mtime "$([ -f "$TARGET_FILE" ] && stat -c %Y "$TARGET_FILE" 2>/dev/null)"
-
-    # 常驻列表：有效包名行数（注释与空行不计）
-    n=$(read_rules | wc -l | tr -dc '0-9')
-    kv rules_count "${n:-0}"
-    kv rules_exists "$([ -f "$RULES_FILE" ] && echo 1 || echo 0)"
-
-    # 已安装第三方应用数
-    n=$( (cmd package list packages -3 -u --user all 2>/dev/null || pm list packages -3 2>/dev/null) \
-         | sed -n 's/^package://p' | sort -u | wc -l | tr -dc '0-9')
-    kv apps_count "${n:-0}"
+    kv target_mtime "$mtime"
+    kv rules_exists "$rules_exists"
 
     if props_disabled; then masking=off; else masking=on; fi
     kv props_masking "$masking"
@@ -228,7 +226,7 @@ cmd_status() {
 #       安装模块/换工具/换设备时才变，所以与 status 分开 —— 界面每次打开只问一次，
 #       省下 status 里约 400ms。
 cmd_env() {
-    local ino
+    local ino uimode hex seed wc
 
     kv resetprop "$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)"
     kv awk "$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -251,6 +249,47 @@ cmd_env() {
     prop_now ro.build.version.sdk;         kv sdk "$PROP_NOW"
     prop_now ro.build.type;                kv build_type "$PROP_NOW"
     prop_now ro.boot.verifiedbootstate;    kv vbstate "$PROP_NOW"
+
+    # ---------- 系统取色 ----------
+    # 深浅：以系统算出来的结果为准。管理器的 WebView 有时被钉在浅色，
+    #       只看 CSS 的 prefers-color-scheme 会跟系统不一致。
+    uimode=$(dumpsys uimode 2>/dev/null | grep -m2 -o -e 'mComputedNightMode=[a-z]*' -e 'mCurUiMode=0x[0-9a-f]*')
+    case "$uimode" in
+        *mComputedNightMode=true*)  kv sys_dark 1; kv sys_dark_src mComputedNightMode ;;
+        *mComputedNightMode=false*) kv sys_dark 0; kv sys_dark_src mComputedNightMode ;;
+        *)
+            # 没有该字段时退回 uiMode 的 0x20 位（UI_MODE_NIGHT_YES）
+            hex="${uimode#*mCurUiMode=0x}"
+            hex="${hex%%[!0-9a-fA-F]*}"
+            if [ -n "$hex" ]; then
+                if [ $(( 0x$hex & 32 )) -ne 0 ]; then kv sys_dark 1; else kv sys_dark 0; fi
+                kv sys_dark_src mCurUiMode
+            else
+                kv sys_dark ""
+                kv sys_dark_src none
+            fi
+            ;;
+    esac
+
+    # 强调色：系统并不总是存了种子色（壁纸派生是各应用自己算的，没有全局值），
+    #         取不到就如实报 none，由界面退回默认色相。
+    seed=$(settings get secure theme_custom_color 2>/dev/null)
+    case "$seed" in
+        ''|null|null*) seed="" ;;
+    esac
+    if [ -n "$seed" ]; then
+        kv sys_seed_raw "$seed"
+        kv sys_seed_src theme_custom_color
+    else
+        wc=$(dumpsys wallpaper 2>/dev/null | grep -m1 -o 'colorValue0=[0-9-]*' | cut -d= -f2)
+        if [ -n "$wc" ]; then
+            kv sys_seed_raw "$wc"
+            kv sys_seed_src wallpaper_color0
+        else
+            kv sys_seed_raw ""
+            kv sys_seed_src none
+        fi
+    fi
     return 0
 }
 
