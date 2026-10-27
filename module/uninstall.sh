@@ -21,9 +21,16 @@ for f in "$TS/.ts_daemon_pids.list" "$SIM/.ts_daemon_pids.list"; do
     rm -f "$f" 2>/dev/null
 done
 
-# ---------- 结束残留的 inotify 进程（命令行含 rules.txt） ----------
-pkill -f "inotifyd.*rules.txt" 2>/dev/null
-pkill -f "inotifywait.*rules.txt" 2>/dev/null
+# ---------- 结束残留的 inotify 进程 ----------
+# 说明：匹配串必须带**我们自己的绝对路径**，不能用通名 "rules.txt"。
+#       以前那两条是 inotifyd.*rules.txt —— 任何模块只要监听一个叫 rules.txt
+#       的文件就会被一起杀掉（本模块的常驻列表与 Tricky Addon 之类正是同名）。
+#       卸载是本模块的事，不该顺手停别人的监听。两个后端目录都列出来，
+#       因为常驻列表跟着后端走。
+pkill -f "inotifyd.*/data/adb/teesim/rules.txt" 2>/dev/null
+pkill -f "inotifywait.*/data/adb/teesim/rules.txt" 2>/dev/null
+pkill -f "inotifyd.*/data/adb/tricky_store/rules.txt" 2>/dev/null
+pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 
 # ---------- 删除本模块运行文件与常驻列表 ----------
 rm -rf "$TS/.ts_lock" "$TS/.ts_debounce" "$TS/.ts_tmp" \

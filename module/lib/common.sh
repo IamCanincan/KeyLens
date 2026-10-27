@@ -12,11 +12,12 @@
 #   applist.sh  常驻列表 rules.txt 与应用列表生成
 #   backend.sh  后端探测、后端写入、模块描述、同步入口
 #   props.sh    系统属性伪装
+#   watch.sh    监听重启退避（纯函数，可被测试单独 source）
 #=============================================================================
 
 _taa_lib="${MODDIR:-$MODPATH}/lib"
 
-for _taa_part in core lock tools applist backend props; do
+for _taa_part in core lock tools applist backend props watch; do
     . "$_taa_lib/$_taa_part.sh" || return 1
 done
 

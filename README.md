@@ -64,7 +64,8 @@ module/
 │  ├─ tools.sh            # 外部工具定位（awk / base64 / inotify）
 │  ├─ applist.sh          # 常驻列表与应用列表生成
 │  ├─ backend.sh          # 后端探测、后端写入、模块描述、同步入口
-│  └─ props.sh            # 系统属性伪装（期望值表 + 伪装开关）
+│  ├─ props.sh            # 系统属性伪装（期望值表 + 伪装开关）
+│  └─ watch.sh            # 监听重启退避（纯函数，被 tests/ 直接 source）
 ├─ backends/
 │  ├─ tricky.sh           # Tricky Store 后端实现：写 target.txt
 │  ├─ teesim.awk          # TEE Simulator 后端实现：定点替换 default.apps

@@ -39,6 +39,11 @@ jobs:
           done
           exit $fail
 
+      - name: Watcher Backoff Self-Test
+        # 监听退避的自检：source 的就是守护进程用的那份 lib/watch.sh，
+        # 并断言 service.sh 里没有第二份内联公式。不需要设备。
+        run: sh tests/watch-backoff.sh
+
       - name: Dynamic Properties Injection
         id: version_info
         run: |

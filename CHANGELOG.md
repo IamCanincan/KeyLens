@@ -83,6 +83,11 @@
   * 顺带：当前页名仍在顶栏大标题里（`概览 / 常驻列表 / 应用列表 / 运行日志 / 系统属性伪装`），小字是 `TS-AUTO-ADD · 设备 · Android 版本`。
 #### 优化
 
+* **监听挂了要能自己说（重启留痕 + 指数退避）**：`service.sh` 的监听循环以前是无声的 `sleep 3` 死循环 —— 监视起不来（watch 数超限、目录被卸载、参数不被接受）时日志里一个字都不会多，表现就是"装了应用但列表不动"，而排查的人只看到最后一行"守护进程就绪"。现在记连续退出次数，第 2 次起 `log_warn` 一条写明"这段时间的安装/卸载不会自动进列表"，退避 **3→6→12→24→48→60 秒封顶**；活过 `WATCH_ALIVE`（10 秒）算正常一轮、计数清零。
+  * 公式抽成 `lib/watch.sh` 里的纯函数 `next_backoff`，`tests/watch-backoff.sh` 直接 source 这一份逐档断言，并加了两条 grep 断言防止有人把公式内联回 `service.sh`（"一处来源 + 一条比对判据"）；CI 新增一步 `Watcher Backoff Self-Test`。
+  * **第一版公式写错，是被这条自检当场抓出的**：`3 << (fails-2)` 配一条 `>=5 直接 60` 的特例，实测序列是 `3 3 6 12 60` —— 注释里写的 24/48 两档根本不存在。改完再跑才对上 `3 6 12 24 48 60`。
+  * 自检本身也验过会红：把 `<<` 的位数改一档 → 退出码 1；把公式内联回 `service.sh` → 退出码 1；还原 → 0。（中途差点被自己骗了：`sh tests/... | tail` 之后取 `$?` 拿到的是 `tail` 的退码，显示 0 —— 去掉管道才是真的 1。）
+
 * **安全区优先取宿主给的数**：KernelSU 把安全区做成一张 CSS 让页面去取（`/internal/insets.css`，实测本机管理器 v3.3.1 的 dex 里有这个路径，内容是 `--safe-area-inset-top/bottom/left/right` 与派生的 `--window-inset-*`）。界面在认出桥是 ksu 时请求它，`--inset-top` / `--inset-bottom` 改成 `var(--window-inset-top, env(safe-area-inset-top))` —— 宿主给了就用宿主的，没给（别的宿主、或该文件取不到）退 `env()`。「关于与自检」新增一格「安全区留白」，写出当前上下留白像素与**来源**（宿主 insets.css / env()）。正控制：注入 `--window-inset-top:24px` 后 `--inset-top` 解析为 24px，撤掉后回落到 env()。
 
 * **「关于」从浮层并成第五个二级页**：入口卡里五行看着一样、点下去不一样 —— 四行走 `goTab` + hash + 返回箭头，「关于」开的是 `.dialog` 浮层（没有返回箭头、不进 hash、Escape 是"关掉"而不是"返回"，而且它已经改了 `location.hash` 那套导航，浮层是那一套之外的例外）。现在 `#/about` 就是第五个二级页：`PAGES` / `TAB_LABEL`（标题「关于与自检」）/ hash 正则 / `renderAll` 各加一格，入口行从 `data-open` 改回 `data-go`，`openAbout` 与浮层那三条接线（关闭按钮 / 点遮罩 / Escape）整块删掉，残留计数 `aboutDlg`/`openAbout`/`aboutClose`/`aboutTitle`/`data-open` 全部 0。
@@ -204,6 +209,9 @@
 * `.gitattributes` 为 `*.html` / `*.css` / `*.js` 固定 LF。
 
 #### 修复
+
+* **收尸的 `pkill` 匹配太宽，会杀掉别的模块的监听**：`uninstall.sh` 原来写的是 `pkill -f "inotifyd.*rules.txt"` —— 任何模块只要监听一个**叫 `rules.txt`** 的文件就会被连带停掉，而本模块的常驻列表与 Tricky Addon 之类的文件正是同名的。匹配串改成带绝对路径（`/data/adb/teesim/rules.txt` 与 `/data/adb/tricky_store/rules.txt` 两个后端目录都列）：卸载是本模块的事，不该顺手停别人的监听。
+  * 顺带补一处：`service.sh` 的清理只按 `.ts_daemon_pids.list` 里的 PID 收，而记下的那个 PID 是管道**右边**的 while 子壳，左边的 `inotifyd` 不在名单上 —— 只按 PID 收会留下一个还在往管道里写的孤儿监视。现在清理阶段再按"我们自己的 rules.txt 绝对路径"精确收一次（放在启动新监视**之前**，不会误杀本轮刚起的）。
 
 * **开机首次同步前那个 `until` 是死等的**：`service.sh` 里 `until [ "$(getprop sys.boot_completed)" = "1" ]; do sleep 2; done` 没有上限 —— `boot_completed` 万一不翻，脚本就永远挂在那里，不记日志、不报错，看上去像"模块没反应"。改成有界（60 次 × 2 秒 = 120 秒），到点**照实记一条**再照原样同步：带着已知风险继续比挂着有用，因为文件变化仍会再触发同步，而这一趟结果可不可信日志里写得清楚。成功路径也记等待秒数。同仓库 `lib/lock.sh:15` 本来就是有界写法，这条只是把它自己定的规矩补齐。
 

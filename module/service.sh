@@ -133,13 +133,20 @@ dispatch_sync() {
 }
 
 # ---------- 状态清理 ----------
-# 结束上次遗留的守护进程，并清理运行文件
+# 结束上次遗留的守护进程，并清理运行文件。
+# 记在名单里的是那个 while 子壳；管道左边的 inotifyd / inotifywait 不在名单里，
+# 只按 PID 收会留下一个还在往管道里写的孤儿监视。所以再按**我们自己的监视规格**
+# 收一次：匹配串里带上 RULES_FILE 的绝对路径，只可能命中本模块起的那一条
+# （uninstall.sh 里以前用的是通名 "inotifyd.*rules.txt"，那会连带杀掉别的模块
+# 监听它自己 rules.txt 的监视 —— 已一并收窄，见该文件说明）。
 if [ -f "$PIDS_FILE" ]; then
     while read -r pid; do
         [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
     done < "$PIDS_FILE"
     rm -f "$PIDS_FILE" 2>/dev/null
 fi
+pkill -f "inotifyd.*$RULES_FILE" 2>/dev/null
+pkill -f "inotifywait.*$RULES_FILE" 2>/dev/null
 rm -rf "$TMP" "$LOCK_DIR" "$DEBOUNCE_LOCK" 2>/dev/null
 
 # ---------- 启动 ----------
@@ -163,11 +170,21 @@ dispatch_sync
 # 说明：单进程同时监听两个目录与常驻列表文件本身；进程异常退出后自动重启。
 #       packages.list 也是被 PackageManager 以「临时文件 + 改名」方式重写的，
 #       所以 /data/system 同样要按目录掩码监听，光看文件会漏掉改名。
+#
+#       重启要**留痕并退避**。以前这里是无声的 3 秒一轮：监视起不来（watch 数
+#       超限、目录被卸载、参数不被接受）时日志里一个字都不会多，表现就是
+#       "装了应用但列表不动"，而排查的人只看到最后一行"守护进程就绪"。
+#       活过 WATCH_ALIVE 秒算正常一轮、计数清零；连续失败按 lib/watch.sh 的
+#       next_backoff 退避（3→6→12→24→48→60 秒封顶），第 2 次起记一条 warn。
+#       公式放在 lib/watch.sh 里而不是这里：那是个纯函数，tests/watch-backoff.sh
+#       直接 source 它逐档断言，线上跑的就是被测的那一份。
+watch_fails=0
 (
     while true; do
         [ -d "$WATCH_DIR" ] || { sleep 5; continue; }
         mkdir -p "$RULES_DIR" 2>/dev/null
         ensure_rules_file "$RULES_FILE"
+        watch_started=$(date +%s 2>/dev/null)
 
         # 事件按名字过滤：目录里其它文件（config.json / target.txt / .ts_tmp /
         # 各框架自己的 usage.json 等）的写入会落到 case 的默认分支被丢掉，
@@ -199,7 +216,19 @@ dispatch_sync
                     packages.list|rules.txt|*/packages.list|*/rules.txt) dispatch_sync ;;
                 esac
             done
-        sleep 3
+
+        # 走到这里说明监听进程退出了（正常情况下它永不返回）
+        now=$(date +%s 2>/dev/null)
+        if [ -n "$watch_started" ] && [ -n "$now" ] && [ $((now - watch_started)) -ge $WATCH_ALIVE ]; then
+            watch_fails=0                       # 活够久了：算正常一轮，清零
+        else
+            watch_fails=$((watch_fails + 1))
+        fi
+        backoff=$(next_backoff "$watch_fails")     # 一次取值，日志与 sleep 用同一个数
+        if [ "$watch_fails" -ge 2 ]; then
+            log_warn "⚠️ 监听进程第 $watch_fails 次退出，$backoff 秒后重启：这段时间的安装/卸载不会自动进列表"
+        fi
+        sleep $backoff
     done
 ) &
 echo $! >> "$PIDS_FILE"
