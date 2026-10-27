@@ -120,16 +120,14 @@
   }
 }
 
-/* ================= 按压反馈 ================= */
-/* Compose 里几乎每块可点的 Surface 都自带 ripple，所以点哪儿都有回应 —— 网页这边
-   一直没有，点下去是"死"的。用状态层近似：按下瞬间出现（0 延迟）、松开淡出，
-   颜色取 currentColor，自动跟着所在容器走。开关的 ::after 是滑块本身，排除。 */
+/* ================= 按压反馈（真 ripple） ================= */
+/* Compose 的 Surface 自带 ripple：从**手指落点**向外长成一个圆，扩到覆盖整块再淡出。
+   先前那版"整块变亮"只是近似，没有起点，一眼能看出不是原生的。
+   圆由 JS 在 pointerdown 时插入（见 wire 里的 rippleAt），这里只管形状与动画。 */
 .btn,.tab,.seg button,.icon-add{position:relative;overflow:hidden}
-.btn::after,.tab::after,.seg button::after,.icon-add::after{
-  content:"";position:absolute;inset:0;background:currentColor;opacity:0;pointer-events:none;
-  border-radius:inherit;transition:opacity var(--d2) var(--e-emph)}
-.btn:active::after,.tab:active::after,.seg button:active::after,.icon-add:active::after{
-  opacity:.10;transition-duration:0s}
+.ripple{position:absolute;border-radius:50%;pointer-events:none;background:currentColor;
+  opacity:.16;transform:scale(0);animation:ripple var(--d3) var(--e-emph) forwards}
+@keyframes ripple{to{transform:scale(1);opacity:0}}
 
 /* ================= 基础 ================= */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -1981,6 +1979,26 @@ function wire(){
   document.addEventListener("keydown", function (e){
     if (e.key === "Escape") document.getElementById("aboutDlg").hidden = true;
   });
+
+  /* 真 ripple：按下时在**落点**插一个圆，直径取到最远角的两倍，扩满整块后淡出。
+     pointerdown 同时覆盖触摸与鼠标；元素被删/页面切走时圆会随元素一起走。 */
+  var RIPPLE_HOST = '.btn,.tab,.seg button,.icon-add';
+  function rippleAt(el, x, y){
+    var r = el.getBoundingClientRect();
+    var d = Math.max(x - r.left, r.right - x, y - r.top, r.bottom - y) * 2;
+    var s = document.createElement('span');
+    s.className = 'ripple';
+    s.style.width = s.style.height = d + 'px';
+    s.style.left = (x - r.left - d / 2) + 'px';
+    s.style.top = (y - r.top - d / 2) + 'px';
+    el.appendChild(s);
+    s.addEventListener('animationend', function (){ s.remove(); });
+  }
+  document.addEventListener('pointerdown', function (e){
+    var el = e.target && e.target.closest ? e.target.closest(RIPPLE_HOST) : null;
+    if (!el || el.disabled) return;
+    rippleAt(el, e.clientX, e.clientY);
+  }, { passive: true });
 
   /* 切页交给**原生横向滚动**（.pager 上 scroll-snap-type:x mandatory）：
      跟手、惯性、吸附都由浏览器负责，主线程一帧都不用干活 —— JS 逐帧写 transform
