@@ -33,9 +33,10 @@
      所以这里留 600，让卡片里放得下两到三格。 */
   --measure: 600px;
   --hair: 1px solid var(--outline-variant);
-  /* 系统栏让位量。宿主默认把 WebView 用 padding 顶到状态栏下面，那时 env() 恒为 0
-     且不需要额外留白；开了 edge-to-edge（data-e2e=1）才由界面自己让位，
-     万一 env() 仍读不到就兜一个常见高度，别让标题钻到时钟底下、snackbar 钻到导航条底下。 */
+  /* 系统栏让位量。界面**不请求** edge-to-edge（原因见 adoptBridge 里的注释），
+     宿主会把 WebView 用 padding 顶到状态栏下面，这时 env() 恒为 0、不需要额外留白。
+     但模板里仍只读这两个令牌、不把 env() 散在四处：哪天宿主自己改成 edge-to-edge，
+     改这两行就够，不用去动 appbar / 吸顶标签 / body / snackbar。 */
   --inset-top: env(safe-area-inset-top);
   --inset-bottom: env(safe-area-inset-bottom);
   /* 不写死 Roboto / Segoe UI / 微软雅黑：那几个名字会**抢在系统字体之前**匹配上。
@@ -47,10 +48,6 @@
      ui-monospace 与 monospace 才是系统自带的那一支等宽字 */
   --mono: ui-monospace, monospace;
 }
-/* 属性选择器的值不带引号时必须是合法标识符，`1` 不是 —— 写成 [data-e2e=1]
-   整条规则会被解析器直接丢掉（不报错、不生效）。数值型属性一律加引号。 */
-html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
-  --inset-bottom:max(env(safe-area-inset-bottom), 24px)}
 
 :root,[data-scheme=light]{
   --primary:oklch(49% calc(.19*var(--sat)) var(--hue));            --on-primary:oklch(100% 0 0);
@@ -1846,17 +1843,10 @@ function adoptBridge(hit){
   var dir = moduleDirFromBridge();
   if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
   try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
-  /* 状态栏那一条是**宿主窗口**画的，不是页面画的：宿主默认给 WebView 加了等于
-     系统栏高度的 padding，页面背景接不到那条，怎么看都是两块颜色。
-     enableEdgeToEdge 把那个 padding 归零，改由界面自己按安全区让位
-     （--inset-top / --inset-bottom 本来就是为此留的），接缝随之消失。
-     只改绘制范围，不藏任何系统栏——藏了会让人不好退出。 */
-  try {
-    if (typeof BRIDGE.enableEdgeToEdge === 'function') {
-      BRIDGE.enableEdgeToEdge(true);
-      document.documentElement.setAttribute('data-e2e', '1');
-    }
-  } catch (e){ /* 没有就算了 */ }
+  /* 这里**故意不调** enableEdgeToEdge。它会把握手用的系统栏 padding 归零，页面画到最底边：
+     好处是状态栏那条接上颜色，代价是系统的返回手势条从"宿主底栏上"变成"浮在页面背景里"，
+     看着像凭空多出来一根药丸。两者只能选一个，选了让状态栏那条缝回来。
+     （改 `<meta name="theme-color">` 没用：主线 KernelSU 的 dex 里这个字符串出现 0 次。） */
   refresh();
 }
 
