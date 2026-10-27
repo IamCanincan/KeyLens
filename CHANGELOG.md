@@ -75,6 +75,10 @@
 
 #### 修复
 
+* **字体仍然不是系统字体：族名这条路走不通，改成直接把字体文件加载进来**。「写族名」实测**不生效** —— Chromium 在 Android 上有自己的字体映射表，不读 ROM 的 `config_bodyFontFamily` / `fonts_customization.xml`，所以 `--font: "google-sans-flex", system-ui` 里的第一个名字匹配不上，静默退到 `system-ui`（也就是 Roboto）。现在改走文件：`webui.sh env` 从字体注册表里找出该族对应的 ttf（本机 `/product/fonts/GoogleSansFlex-Regular.ttf`，3,997,148 B），拷进 `webroot/fonts/sys.ttf`，界面用 `@font-face` 加载并把它排在字体栈第一位。拷贝按大小判重，只在第一次或字体更新时搬那 4MB。
+  * 验证：`--font` 变成 `"ts-sys", system-ui, sans-serif`、`@font-face` 规则注入了、`document.fonts.check("16px ts-sys")` 为 true、同一串文字的 canvas 宽度从 497.4 变 506.1（glyph 真的换了）；把文件参数去掉则退回族名那条，说明负对照也成立。可变字体所以声明 `font-weight:100 900`，并加 `font-display:swap` 避免 4MB 加载期间文字不可见。
+  * 概览「关于 → 字体」现在显示走的是哪条路：`系统字体文件`（ok）/ `族名 xxx`（warn，实测多半不生效）/ `WebView 默认`（na）。
+
 * **每切一次页整屏闪一下**：真正的原因是 **「读取中」那层全屏遮罩**，不是面板动画。`goTab` 一律走 `runChain`，而它开头就 `busy(true)` —— `.busy{position:fixed;inset:0;background:var(--scrim)}` 是一层 45% 的黑，压上去再收掉，整页自然闪一下。数据其实早就缓存好了，这一趟什么也不取。现在切页一律静默（`runChain(false, true)`），首次进某页真要取数时把「读取中…」写在该页自己的状态行里。实测：连续切五页（含首次进日志/属性），`#busy` 的 `hidden` 属性**一次都没翻过**（改前有 2 次），日志 9 行、属性 12 行照常填上。
   * 顺带删掉 `.card` 的 `animation:fade`（切页时同样会重播，是第二层闪）—— 这一层单独看也是 220ms 从全透明淡回来。
 

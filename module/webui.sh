@@ -286,6 +286,36 @@ cmd_env() {
             fi
         fi
     fi
+    # 族名写进 CSS 未必生效：Chromium 有自己的字体映射表，实测把族名写进去界面仍是 Roboto。
+    # 所以补一条不依赖名字的路 —— 按字体注册表找到那个 ttf，拷进 webroot，
+    # 由界面用 @font-face 直接加载。拷一次就够：大小一致就跳过，别每次开界面都搬 4MB。
+    sys_font_file=""
+    if [ -n "$sys_font" ]; then
+        ff=$(awk -v fam="name=\"$sys_font\"" '
+            index($0, fam) { hit = 1; next }
+            hit && match($0, /[A-Za-z0-9_.-]+\.(ttf|otf)/) { print substr($0, RSTART, RLENGTH); exit }
+        ' /product/etc/fonts_customization.xml 2>/dev/null)
+        [ -n "$ff" ] || ff=$(awk -v fam="name=\"$sys_font\"" '
+            index($0, fam) { hit = 1; next }
+            hit && match($0, /[A-Za-z0-9_.-]+\.(ttf|otf)/) { print substr($0, RSTART, RLENGTH); exit }
+        ' /system/etc/fonts.xml 2>/dev/null)
+        src=""
+        for d in /product/fonts /system/fonts; do
+            if [ -n "$ff" ] && [ -f "$d/$ff" ]; then src="$d/$ff"; break; fi
+        done
+        if [ -n "$src" ]; then
+            dst="$MODDIR/webroot/fonts/sys.ttf"
+            mkdir -p "$MODDIR/webroot/fonts" 2>/dev/null
+            if [ ! -f "$dst" ] || [ "$(wc -c < "$src")" != "$(wc -c < "$dst")" ]; then
+                cp -f "$src" "$dst" 2>/dev/null \
+                    && chmod 644 "$dst" 2>/dev/null \
+                    && chcon u:object_r:system_file:s0 "$dst" 2>/dev/null
+            fi
+            [ -s "$dst" ] && sys_font_file="fonts/sys.ttf"
+        fi
+    fi
+    kv sys_font_file "$sys_font_file"
+
     # 这个值会进 CSS：上面是「注册表原样取出的名字」，字符集已被
     # grep -o 'name="[a-z0-9][a-z0-9-]*"' 限死，引号与分号进不来。
     kv sys_font "$sys_font"

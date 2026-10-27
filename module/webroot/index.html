@@ -772,7 +772,7 @@ function parseKV(text){
 var HUE_DEFAULT = 267;
 var SAT_DEFAULT = 0.41;
 var THEME = { seedRaw: '', seedSrc: 'none', frro: '', frroSrc: '', frroParsed: null, frroOk: false,
-              font: '', fontSrc: '', dark: '', darkSrc: '', applied: '', note: '' };
+              font: '', fontSrc: '', fontFile: '', dark: '', darkSrc: '', applied: '', note: '' };
 
 function hex2(v){ return (v < 16 ? '0' : '') + v.toString(16); }
 
@@ -889,14 +889,34 @@ function frroSeed(fr){
   return null;
 }
 
-/* 系统字体名由设备上读出来（webui.sh env 的 sys_font）。
-   写死 Roboto 那一类名字会抢在系统字体之前匹配上，正是"界面不像系统的一部分"的原因。 */
-function applyFont(name, pkg){
-  THEME.font = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name || '') ? name : '';
-  THEME.fontSrc = THEME.font ? (pkg || '') : '';
-  document.documentElement.style.setProperty('--font',
-    THEME.font ? '"' + THEME.font + '", system-ui, sans-serif' : 'system-ui, sans-serif');
-  return THEME.font;
+/* 系统字体。两条路，优先第二条：
+   ① 把族名写进 font-family —— 实测**不生效**（Chromium 有自己的字体映射表，
+      不读 ROM 的 config_bodyFontFamily / fonts_customization.xml）；
+   ② webui.sh 把系统那个 ttf 拷进 webroot/fonts/，这里用 @font-face 直接加载。
+      这条路跟名字无关，文件在就一定生效。font-weight 声明 100 900 是因为它是可变字体。 */
+function applyFont(name, pkg, file){
+  var fam = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name || '') ? name : '';
+  var url = /^fonts\/[a-z0-9]+\.ttf$/.test(file || '') ? file : '';
+  var st = document.documentElement.style;
+  THEME.font = fam;
+  THEME.fontSrc = fam ? (pkg || '') : '';
+  THEME.fontFile = url;
+  var use = '';
+  if (url) {
+    var tag = document.getElementById('sysfont');
+    if (!tag) {
+      tag = document.createElement('style');
+      tag.id = 'sysfont';
+      document.head.appendChild(tag);
+    }
+    tag.textContent = '@font-face{font-family:"ts-sys";src:url("' + url +
+      '");font-display:swap;font-weight:100 900}';
+    use = '"ts-sys"';
+  } else if (fam) {
+    use = '"' + fam + '"';
+  }
+  st.setProperty('--font', (use ? use + ', ' : '') + 'system-ui, sans-serif');
+  return use;
 }
 
 function applyPalette(){
@@ -1129,8 +1149,12 @@ function renderOver(){
         : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
       (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
       THEME.note || '—'),
-    blk('字体', THEME.font || 'WebView 默认', THEME.font ? 'ok' : 'na',
-      THEME.font ? '来自 ' + THEME.fontSrc : 'WebView 不读框架的字体配置，读不到名字时只能用它自己的默认'),
+    blk('字体', THEME.fontFile ? '系统字体文件'
+        : (THEME.font ? '族名 ' + THEME.font : 'WebView 默认'),
+      THEME.fontFile ? 'ok' : (THEME.font ? 'warn' : 'na'),
+      THEME.fontFile ? '由 webroot/' + THEME.fontFile + ' 用 @font-face 加载'
+        : (THEME.font ? '只写了族名 —— 实测 Chromium 不认，可能仍是 Roboto'
+                      : '读不到系统字体，只能用它自己的默认')),
     blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
       THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc),
     blk('生效值', THEME.applied || '—', null, '色相与彩度都取自系统，界面不提供覆盖')
@@ -1454,7 +1478,7 @@ function loadEnv(){
     THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
     THEME.darkSrc = S.env.sys_dark_src || 'none';
     /* 系统字体名是设备上读出来的，写死会抢在系统之前匹配上 */
-    applyFont(S.env.sys_font, S.env.sys_font_pkg);
+    applyFont(S.env.sys_font, S.env.sys_font_pkg, S.env.sys_font_file);
     applyPalette();                 // 系统强调色到手，重推一遍色板
     applyScheme();                  // 系统深浅与 WebView 不一致时以系统为准
     return r;

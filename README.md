@@ -144,7 +144,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - **强调色按四级回退，取到哪一级在概览页「关于 → 取色」里照实写出**：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`。
   界面里 `--primary` 是 `oklch(49% .19×sat hue)`，而系统 `accent1_600` 的明度就在 49% 那一档，所以 `sat = 系统实测C / .19` 即可对上——**彩度按实测比值走，不做审美放大**（放大过的版本色相差不多却完全不像一套东西）。
   需要说清楚的是：跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套——模块侧拿不到系统算好的 12 组色调表本身，只能拿到这份 overlay 文件里的 ARGB。
-- **字体也跟随系统，名字从设备上读**：Chromium / WebView 在 Android 上有自己的一套字体映射（`sans-serif` 默认就是 Roboto），**不读框架的 `config_bodyFontFamily`**，所以 CSS 里写死 `Roboto` / `Segoe UI` 这类具体名字，在换了系统字体的 ROM 上就会和系统其它地方不一致。`webui.sh env` 找出启用的字体 overlay、从它的 `resources.arsc` 里取族名、再用字体注册表校验，界面把这个名字插到字体栈最前面；读不到就退回 `system-ui, sans-serif`。本机实测得到 `google-sans-flex`。
+- **字体也跟随系统，走的是「把系统字体文件加载进来」而不是写族名**：Chromium 在 Android 上有自己的字体映射表，**不读** ROM 的 `config_bodyFontFamily` / `fonts_customization.xml`，所以 CSS 里写 `google-sans-flex` 这个名字不会生效、会静默退回 Roboto。现在 `webui.sh env` 从字体注册表里找到该族的 ttf（本机 `/product/fonts/GoogleSansFlex-Regular.ttf`），拷进 `webroot/fonts/sys.ttf`（按大小判重，只搬一次），界面用 `@font-face` 加载并排在字体栈第一位；读不到就退回 `system-ui, sans-serif`。概览「关于 → 字体」会显示走的是哪条路。
 - 松紧只由两组令牌控制：`--r-*`（圆角）与 `--sp-*`（留白），加上少量字号档位。**要整体调密度就改这几行**，不要逐条找元素——上一轮"收一档"是逐条改的，结果改完就变成"很挤"。
 - 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
 - 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
