@@ -380,14 +380,17 @@ button,input,textarea,select{font:inherit;color:inherit}
 .sheet p{font-size:13.5px;color:var(--on-variant);line-height:1.55}
 .sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
 .snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 92px);z-index:70;
-  transform:translate(-50%,140%);max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
+  transform:translate(-50%,140%);opacity:0;max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
   padding:var(--sp2) var(--sp4);border-radius:var(--r-l);
   background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:13px;
-  transition:transform var(--d4) var(--e-spring);pointer-events:none}
+  transition:transform var(--d4) var(--e-spring),opacity var(--d2) var(--e-emph);pointer-events:none}
 /* 属性选择器的值不加引号时必须是合法标识符，`1` 不是：这条原先写成 [data-show=1]，
    整条规则被解析器静默丢掉，snackbar 永远停在 translate(-50%,140%) ——
    也就是说界面提示其实一次都没出现过。 */
-.snackbar[data-show="1"]{transform:translate(-50%,0)}
+/* 隐藏不能只靠纵向位移：没文字的时候高度只有十几 px，140% 根本挪不出屏幕 ——
+   它就这样常驻成一条"莫名其妙的白药丸"（实测量到 visibleNow=true、文本空、32×16、
+   底色 oklch(.99)、18px 圆角，就在屏幕底部正中）。用 opacity 兜底，与高度无关。 */
+.snackbar[data-show="1"]{transform:translate(-50%,0);opacity:1}
 .snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .snackbar[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 
