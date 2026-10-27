@@ -474,7 +474,8 @@ button.chip{cursor:pointer}
   <main class="pager" id="pager">
     <div class="track" id="track">
     <section class="card panel" id="p-over">
-      <h2 class="card-title">运行状态</h2>
+      <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
+           叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
       <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
     </section>
 
@@ -1880,21 +1881,24 @@ function wire(){
     if (t) goTab(t.dataset.tab);
   });
 
-  Array.prototype.forEach.call(document.querySelectorAll('#appsSeg button'), function (b){
-    b.addEventListener('click', function (){
-      S.appsSrc = b.dataset.src;
-      document.querySelectorAll('#appsSeg button').forEach(function (x){ x.classList.toggle('is-active', x === b); });
-      renderApps();
+  /* 列表来源、分段高亮、「只看未纳入」的按下态必须一起变 —— 以前点「只看未纳入」
+     会把列表切到已安装第三方，但高亮还停在「生效列表」，等于在说谎（实测过）。
+     切回「生效列表」时那个筛选本来就不生效，一并弹起。 */
+  function setAppsView(src, onlyMissing){
+    S.appsSrc = src;
+    S.onlyMissing = !!onlyMissing && src === 'apps';
+    document.querySelectorAll('#appsSeg button').forEach(function (x){
+      x.classList.toggle('is-active', x.dataset.src === src);
     });
-  });
-  btnOnlyMissing.addEventListener('click', function (){
-    S.onlyMissing = !S.onlyMissing;
     btnOnlyMissing.setAttribute('aria-pressed', S.onlyMissing ? 'true' : 'false');
     btnOnlyMissing.classList.toggle('btn-filled', S.onlyMissing);
     btnOnlyMissing.classList.toggle('btn-outline', !S.onlyMissing);
-    if (S.onlyMissing) S.appsSrc = 'apps';
     renderApps();
+  }
+  Array.prototype.forEach.call(document.querySelectorAll('#appsSeg button'), function (b){
+    b.addEventListener('click', function (){ setAppsView(b.dataset.src, b.dataset.src === 'apps' && S.onlyMissing); });
   });
+  btnOnlyMissing.addEventListener('click', function (){ setAppsView('apps', !S.onlyMissing); });
   /* 搜索防抖：两百多行列表每敲一个字符重建一次没有必要 */
   var searchTimer = null;
   appsSearch.addEventListener('input', function (){
