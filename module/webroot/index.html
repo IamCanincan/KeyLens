@@ -66,6 +66,9 @@
   --surface-highest:oklch(89% calc(.02*var(--sat)) var(--hue));   --surface-bright:oklch(99% calc(.01*var(--sat)) var(--hue));
   --on-variant:oklch(45% calc(.025*var(--sat)) var(--hue));       --outline:oklch(66% calc(.02*var(--sat)) var(--hue));
   --outline-variant:oklch(85% calc(.015*var(--sat)) var(--hue));  --scrim:oklch(35% 0 0 / 45%);
+  /* 卡片/底栏的边线比通用分隔线再重一档：浅色下 85% 对 98.5% 的页底只有约 1.35:1，
+     亮屏上几乎看不见（"边界不清晰"就是这个数）。这一档实测约 1.7:1。 */
+  --card-line:oklch(79% calc(.018*var(--sat)) var(--hue));
   /* 阴影只留一层极轻的接触影，卡片之间的分隔交给 hairline：
      宽画布上大投影会把"浮起来的果冻"叠成一片糊 */
   --shadow:0 1px 2px oklch(30% .04 var(--hue) / 10%);
@@ -85,6 +88,7 @@
   --surface-highest:oklch(31% calc(.022*var(--sat)) var(--hue));   --surface-bright:oklch(33% calc(.022*var(--sat)) var(--hue));
   --on-variant:oklch(74% calc(.02*var(--sat)) var(--hue));         --outline:oklch(60% calc(.02*var(--sat)) var(--hue));
   --outline-variant:oklch(42% calc(.02*var(--sat)) var(--hue));    --scrim:oklch(0% 0 0 / 55%);
+  --card-line:oklch(47% calc(.022*var(--sat)) var(--hue));
   --shadow:0 1px 2px oklch(0% 0 0 / 35%);
 }
 
@@ -98,7 +102,7 @@
     --success:#116a46;--on-success:#fff;--success-container:#c5edda;--on-success-container:#00331e;
     --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
     --surface-high:#e9e5ee;--surface-highest:#e3dfe8;--surface-bright:#fff;
-    --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
+    --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--card-line:#b6b2c2;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
   }
   [data-scheme=dark]{
     --primary:#c9bffd;--on-primary:#37279a;--primary-container:#4435b0;--on-primary-container:#e5defd;
@@ -107,7 +111,7 @@
     --success:#8ad4b0;--on-success:#00392a;--success-container:#005240;--on-success-container:#c5edda;
     --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
     --surface-high:#2c2c33;--surface-highest:#33333a;--surface-bright:#3a3a42;
-    --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
+    --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--card-line:#585562;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
   }
 }
 
@@ -161,7 +165,7 @@ button,input,textarea,select{font:inherit;color:inherit}
    单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
 /* contain 把布局与绘制限制在这一页里：改一页不会让其它四页跟着重排 */
 .card.panel{flex:0 0 100%;min-width:0;contain:layout paint}
-.card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
+.card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
    实测切一次页 opacity 是 0 → 0.028 → 1，看上去就是「每切一下都闪一下」。
@@ -235,7 +239,7 @@ button.chip{cursor:pointer}
 .tabs{position:fixed;left:50%;transform:translateX(-50%);z-index:40;
   bottom:calc(var(--inset-bottom) + 20px);
   display:flex;align-items:center;gap:4px;padding:6px 8px;
-  background:var(--surface-high);border:var(--hair);border-radius:28px;
+  background:var(--surface-high);border:1px solid var(--card-line);border-radius:28px;
   max-width:calc(100vw - 16px)}
 .tab{position:relative;flex:none;display:flex;align-items:center;justify-content:center;
   min-height:44px;padding:10px 12px;border:0;border-radius:var(--r-full);
