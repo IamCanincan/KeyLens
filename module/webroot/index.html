@@ -497,22 +497,22 @@ button.chip{cursor:pointer}
       <nav class="card menu" id="homeMenu" aria-label="二级页">
         <button class="menu-row" data-go="rules">
           <span class="menu-ic"><i class="ico" data-icon="list"></i></span>
-          <span class="menu-txt"><b>常驻列表</b><small id="menuRules">—</small></span>
+          <span class="menu-txt"><b>常驻列表</b><small>每行一个包名 · 保存即同步</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
         <button class="menu-row" data-go="apps">
           <span class="menu-ic"><i class="ico" data-icon="apps"></i></span>
-          <span class="menu-txt"><b>应用列表</b><small id="menuApps">—</small></span>
+          <span class="menu-txt"><b>应用列表</b><small>桌面图标与应用名 · 可加入常驻</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
         <button class="menu-row" data-go="log">
           <span class="menu-ic"><i class="ico" data-icon="logs"></i></span>
-          <span class="menu-txt"><b>运行日志</b><small id="menuLog">—</small></span>
+          <span class="menu-txt"><b>运行日志</b><small>末尾 30~300 行 · 可自动刷新</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
         <button class="menu-row" data-go="props">
           <span class="menu-ic"><i class="ico" data-icon="tune"></i></span>
-          <span class="menu-txt"><b>系统属性伪装</b><small id="menuProps">—</small></span>
+          <span class="menu-txt"><b>系统属性伪装</b><small>开机写入的期望值 · 可立即应用一次</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
       </nav>
@@ -1117,24 +1117,10 @@ function renderHero(){
     bannerTitle.textContent = title;
     bannerText.textContent = st.description || '详见日志页';
   } else banner.hidden = true;
-
-  renderMenu();
 }
 
-/* 概览的四行入口：副标题跟着数据走，没取到就显示占位而不是 0 */
-function renderMenu(){
-  var have = !!S.loaded.lists, st = S.status;
-  document.getElementById('menuRules').textContent =
-    '常驻 ' + orDash(have ? countRules() : null) + ' 条 · 在线编辑 rules.txt';
-  document.getElementById('menuApps').textContent =
-    '生效 ' + orDash(have ? S.targets.length : null) +
-    ' · 已安装第三方 ' + orDash(have ? S.apps.length : null);
-  document.getElementById('menuLog').textContent =
-    st.log_lines ? '缓冲 ' + st.log_lines + ' 行' : '末尾 30~300 行 · 可自动刷新';
-  document.getElementById('menuProps').textContent =
-    st.props_masking === 'off' ? '开机写入已关闭' :
-    st.props_masking === 'on' ? '开机写入 · 已开启' : '开机写入的 12 项属性';
-}
+/* 入口卡的副标题是**静态**的功能描述：数字归英雄卡（摘要）与状态卡（明细）。
+   以前这里也挂一份实时计数，结果「常驻 3」在一屏里出现三遍。 */
 
 /* ---------- 概览 ---------- */
 /* 一格 = 标签在上、值在下。数字走大号（blk-num）、文字走正文，
