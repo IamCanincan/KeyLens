@@ -146,26 +146,22 @@ button,input,textarea,select{font:inherit;color:inherit}
 .wrap{padding:0 var(--sp4) calc(96px + var(--inset-bottom));
   display:flex;flex-direction:column;gap:var(--sp4);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
-/* 裁切（pager）和位移（track）必须是两个元素：写成一个的话，overflow:hidden 会
-   连自己的第 2~5 页一起裁掉 —— 第 1 页看着正常，切过去就是一片空白（实测踩过）。
-   裁切边界也不能放在 .wrap 上：它有 16px 横向内边距，相邻页会从那 16px 里露出边。
-   高度由 JS 同步成"当前页的高度"：整页滚动的前提下，轨道不能取最高那页，
-   否则每页底下都会拖出一大段空白。 */
-.pager{overflow:hidden}
-/* will-change 常驻在这一层：有它，拖拽位移才走合成器；没有的话每帧都要在主线程
-   重绘整片（五个页面），手机上就是「左右切页卡」。上一轮把它撤掉是错的 ——
-   当时担心图层太大，但轨道高度等于当前页高度（约 568×800 ≈ 1.8MB），并不贵。
-   要点是常驻：在拖拽里反复申请/释放图层反而更卡。
-   高度不参与过渡 —— 每帧重排一次比高度突变更伤。 */
-.track{display:flex;align-items:flex-start;gap:16px;
-  touch-action:pan-y;overscroll-behavior-x:contain;will-change:transform;
-  transition:transform var(--d3) var(--e-emph)}
+/* 横向切页交给**原生滚动**：JS 逐帧写 transform 在手机上就是卡（will-change、
+   translate3d、rAF 合并都试过，救不回来）。原生滚动走浏览器自己的合成路径，
+   跟手 / 惯性 / 吸附全由它负责，主线程一帧都不用干活。
+   高度由 JS 同步成"当前页的高度"：整页滚动的前提下容器不能取最高那页，
+   否则每页底下都会拖出一段空白。 */
+.pager{display:flex;align-items:flex-start;gap:16px;
+  overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;
+  overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;
+  scrollbar-width:none}
+.pager::-webkit-scrollbar{display:none}
 /* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
    底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
 /* 用 .card.panel 而不是 .panel：.card 在后面用 padding 简写把四边一起重置了，
    单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
 /* contain 把布局与绘制限制在这一页里：改一页不会让其它四页跟着重排 */
-.card.panel{flex:0 0 100%;min-width:0;contain:layout paint}
+.card.panel{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;contain:layout paint}
 .card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
@@ -473,7 +469,6 @@ button.chip{cursor:pointer}
   </div>
 
   <main class="pager" id="pager">
-    <div class="track" id="track">
     <section class="card panel" id="p-over">
       <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
            叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
@@ -554,8 +549,6 @@ button.chip{cursor:pointer}
         <div id="aboutBody"></div>
         <div class="sheet-actions"><button class="btn btn-filled" id="aboutClose">关闭</button></div>
       </div>
-    </div>
-    </div>
   </main>
 
 </div>
@@ -1794,8 +1787,8 @@ var tabsEl = document.getElementById('tabs');
 var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
 var PAGE_GAP = 16;                       // 两页之间留出的间隙，横滑时能看清是两页
 function pageStep(){
-  var t = document.getElementById('track');
-  return (t.clientWidth || 1) + PAGE_GAP;
+  var e = document.getElementById('pager');
+  return (e.clientWidth || 1) + PAGE_GAP;
 }
 /* 整页滚动时轨道高度必须跟着当前页走，否则取最高那页、每页底下都拖一段空白。
    高度变化用 transition 补一下，切页时不会硬跳。 */
@@ -1806,37 +1799,43 @@ function syncTrackHeight(){
   if (heightRaf) return;
   heightRaf = requestAnimationFrame(function (){
     heightRaf = 0;
-    var t = document.getElementById('track');
+    var pg = document.getElementById('pager');
     var p = document.getElementById('p-' + S.tab);
-    if (!t || !p) return;
+    if (!pg || !p) return;
     var h = Math.max(0, Math.round(p.offsetHeight));
-    if (t._h === h) return;
-    t._h = h;
-    t.style.height = h + 'px';
+    if (pg._h === h) return;
+    pg._h = h;
+    pg.style.height = h + 'px';
   });
 }
-function showTab(name){
+var SCROLLING = false, SCROLLING_T = 0;
+/* 只切状态与底栏：用户自己滚过去时用它 —— 不再调 scrollTo，否则会把手指的滚动打断 */
+function applyTab(name){
   S.tab = name;
   Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
     var on = t.dataset.tab === name;
     t.classList.toggle('is-active', on);
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  /* 横排 pager：整条轨道左移 i 屏。不用 hidden —— 那样就没法"跟手"了；
-     非当前页用 aria-hidden 标掉，读屏不会读到隔壁页。 */
-  var i = Math.max(0, TAB_ORDER.indexOf(name));
-  /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
-     看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
-  window.scrollTo(0, 0);
-  var pager = document.getElementById('pager');
-  track.style.transition = '';
-  track.style.transform = 'translateX(' + (-i * pageStep()) + 'px)';
-  syncTrackHeight();
   TAB_ORDER.forEach(function (k){
     var el = document.getElementById('p-' + k);
     if (el) el.setAttribute('aria-hidden', k === name ? 'false' : 'true');
   });
 }
+function showTab(name){
+  applyTab(name);
+  var i = Math.max(0, TAB_ORDER.indexOf(name));
+  /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
+     看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
+  window.scrollTo(0, 0);
+  var pg = document.getElementById('pager');
+  SCROLLING = true;
+  pg.scrollTo({ left: i * pageStep(), behavior: 'smooth' });
+  clearTimeout(SCROLLING_T);
+  SCROLLING_T = setTimeout(function (){ SCROLLING = false; }, 420);
+  syncTrackHeight();
+}
+
 function goTab(name){ showTab(name); loadTab(); }
 
 function setAuto(on){
@@ -1954,70 +1953,24 @@ function wire(){
     if (e.key === "Escape") document.getElementById("aboutDlg").hidden = true;
   });
 
-  /* 跟手拖拽切页：按下先判轴，横向才接管 —— 竖向交给浏览器自己滚
-     （.pager 上 touch-action:pan-y）。拖动时整条轨道跟着手指走，松手按位移和速度
-     决定翻页还是弹回；到头了给 0.32 的阻尼，不硬顶。
-     起点在输入框 / 可横向滚动容器 / 底栏里时不接管，否则拖光标会被当成翻页。 */
-  var trackEl = document.getElementById('track');
-  var sw = { on: false, x: 0, y: 0, dx: 0, axis: '', t: 0 };
-  function noSwipe(el){
-    while (el && el !== document.body) {
-      var tag = el.tagName;
-      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return true;
-      var cl = el.className && String(el.className);
-      if (cl && /(^|\s)(tabs|console|seg|toolbar)(\s|$)/.test(cl)) return true;
-      el = el.parentElement;
-    }
-    return false;
-  }
-  /* touchmove 可能比屏幕刷新还密；每帧只写一次 transform。基准位移与步长在
-     锁定横向的那一帧算一次就够 —— 每帧读 clientWidth 会引发布局查询。 */
-  var dragRaf = 0;
-  function applyDrag(){
-    dragRaf = 0;
-    trackEl.style.transform = 'translate3d(' + (sw.base + sw.dx) + 'px,0,0)';
-  }
-  document.addEventListener('touchstart', function (e){
-    if (e.touches.length !== 1 || noSwipe(e.target)) { sw.on = false; return; }
-    sw.on = true; sw.axis = ''; sw.dx = 0; sw.base = null; sw.idx = 0;
-    sw.x = e.touches[0].clientX; sw.y = e.touches[0].clientY; sw.t = Date.now();
+  /* 切页交给**原生横向滚动**（.pager 上 scroll-snap-type:x mandatory）：
+     跟手、惯性、吸附都由浏览器负责，主线程一帧都不用干活 —— JS 逐帧写 transform
+     在手机上就是卡，will-change / translate3d / rAF 合并全试过，都救不回来。
+     这里只做一件事：用户滚到哪一页，把状态和底栏跟过去（不再回滚，否则会打断手指）。 */
+  var scrollT = 0;
+  var pagerScroller = document.getElementById('pager');
+  pagerScroller.addEventListener('scroll', function (){
+    if (SCROLLING) return;
+    clearTimeout(scrollT);
+    scrollT = setTimeout(function (){
+      var i = Math.round(pagerScroller.scrollLeft / pageStep());
+      i = Math.max(0, Math.min(TAB_ORDER.length - 1, i));
+      var name = TAB_ORDER[i];
+      if (!name || name === S.tab) return;
+      applyTab(name);
+      loadTab();
+    }, 90);
   }, { passive: true });
-  document.addEventListener('touchmove', function (e){
-    if (!sw.on) return;
-    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
-    if (!sw.axis) {
-      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
-      sw.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
-      if (sw.axis === 'x') trackEl.style.transition = 'none';
-    }
-    if (sw.axis !== 'x') return;
-    if (sw.base === null) {
-      sw.idx = Math.max(0, TAB_ORDER.indexOf(S.tab));
-      sw.base = -sw.idx * pageStep();
-    }
-    /* 到头给阻尼，不硬顶 */
-    sw.dx = ((sw.idx === 0 && dx > 0) || (sw.idx === TAB_ORDER.length - 1 && dx < 0))
-      ? dx * 0.32 : dx;
-    if (!dragRaf) dragRaf = requestAnimationFrame(applyDrag);
-  }, { passive: true });
-  function endSwipe(){
-    if (!sw.on) return;
-    sw.on = false;
-    if (sw.axis !== 'x') { sw.axis = ''; return; }
-    sw.axis = '';
-    if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
-    sw.base = null;
-    var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
-    var W = trackEl.clientWidth || 1;
-    var far = Math.abs(sw.dx) > W * 0.3;
-    var fast = Math.abs(sw.dx) > 40 && (Date.now() - sw.t) < 300;
-    var n = (far || fast) ? i + (sw.dx < 0 ? 1 : -1) : i;
-    n = Math.max(0, Math.min(TAB_ORDER.length - 1, n));
-    if (n === i) showTab(S.tab);              // 弹回原位
-    else goTab(TAB_ORDER[n]);
-  }
-  document.addEventListener('touchend', endSwipe, { passive: true });
-  document.addEventListener('touchcancel', function (){ sw.on = false; sw.axis = ''; }, { passive: true });
 
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
   /* 内容或视口变化都可能改变当前页高度，跟着同步一次 */
