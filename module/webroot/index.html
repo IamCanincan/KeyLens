@@ -1877,6 +1877,9 @@ function moveIndicator(px){
 }
 function showTab(name){
   applyTab(name);
+  /* 先把目标页画出来再滚：否则容器高度还是上一页的，滚动中途再改高度会跳一下。
+     数据没到也没关系 —— 画出来的是骨架，loadTab 回来后会再画一次。 */
+  renderAll();
   var i = Math.max(0, TAB_ORDER.indexOf(name));
   /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
      看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
@@ -1887,7 +1890,7 @@ function showTab(name){
   pg.scrollTo({ left: i * pageStep(), behavior: 'smooth' });
   clearTimeout(SCROLLING_T);
   SCROLLING_T = setTimeout(function (){ SCROLLING = false; }, 420);
-  syncTrackHeight();
+  syncTrackHeight();       // 上面已经 renderAll 过，这时量到的高度是真的
 }
 
 function goTab(name){ showTab(name); loadTab(); }
