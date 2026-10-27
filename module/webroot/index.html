@@ -118,9 +118,7 @@ body{
   background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
   /* 竖排 + .wrap 撑满：让页脚在内容短的时候也贴着视口底部，
      底下的系统手势条才有"系统区域"的样子，而不是悬在一片空白里 */
-  /* 整页不滚：滚动交给每一页自己做 —— 这样切页时既不会把滚动位置夹回去（"底栏上下跳"），
-     也才有条件做跟手拖拽（横排的 pager 需要每页高度可控）。 */
-  height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;
+  min-height:100vh;display:flex;flex-direction:column;
 }
 h1,h2,h3,p{margin:0}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -139,23 +137,25 @@ button,input,textarea,select{font:inherit;color:inherit}
 .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
 /* ================= 卡片 ================= */
-/* 顶栏与英雄卡是固定 chrome，pager 吃掉剩下的高度 */
-.wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);
-  flex:1;min-height:0;overflow:hidden;
+/* 整页滚动：底部让出药丸那一段（药丸高 56 + 距底 20 + 余量）。
+   加在这里、不加在 body 上，页面背景才一直铺到屏幕底边 */
+.wrap{padding:0 var(--sp4) calc(96px + var(--inset-bottom));
+  display:flex;flex-direction:column;gap:var(--sp4);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
 /* 裁切（pager）和位移（track）必须是两个元素：写成一个的话，overflow:hidden 会
    连自己的第 2~5 页一起裁掉 —— 第 1 页看着正常，切过去就是一片空白（实测踩过）。
-   裁切边界也不能放在 .wrap 上：它有 16px 横向内边距，相邻页会从那 16px 里露出边。 */
-.pager{flex:1;min-height:0;overflow:hidden}
-.track{display:flex;align-items:flex-start;height:100%;
+   裁切边界也不能放在 .wrap 上：它有 16px 横向内边距，相邻页会从那 16px 里露出边。
+   高度由 JS 同步成"当前页的高度"：整页滚动的前提下，轨道不能取最高那页，
+   否则每页底下都会拖出一大段空白。 */
+.pager{overflow:hidden}
+.track{display:flex;align-items:flex-start;gap:16px;
   touch-action:pan-y;overscroll-behavior-x:contain;
-  transition:transform var(--d3) var(--e-emph);will-change:transform}
+  transition:transform var(--d3) var(--e-emph),height var(--d2) var(--e-emph);will-change:transform}
 /* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
    底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
 /* 用 .card.panel 而不是 .panel：.card 在后面用 padding 简写把四边一起重置了，
    单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
-.card.panel{flex:0 0 100%;min-width:0;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;
-  overscroll-behavior-y:contain;padding-bottom:calc(96px + var(--inset-bottom))}
+.card.panel{flex:0 0 100%;min-width:0}
 .card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
@@ -1594,6 +1594,7 @@ function renderAll(){
   else if (S.tab === 'apps') renderApps();
   else if (S.tab === 'log') renderLog();
   else if (S.tab === 'props') renderProps();
+  syncTrackHeight();
 }
 
 /* S.seq：连点两次「重新读取」时，先回来的那次不能把后回来的覆盖掉 */
@@ -1768,6 +1769,18 @@ function confirm(title, text, okLabel){
    ========================================================= */
 var tabsEl = document.getElementById('tabs');
 var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
+var PAGE_GAP = 16;                       // 两页之间留出的间隙，横滑时能看清是两页
+function pageStep(){
+  var t = document.getElementById('track');
+  return (t.clientWidth || 1) + PAGE_GAP;
+}
+/* 整页滚动时轨道高度必须跟着当前页走，否则取最高那页、每页底下都拖一段空白。
+   高度变化用 transition 补一下，切页时不会硬跳。 */
+function syncTrackHeight(){
+  var t = document.getElementById('track');
+  var p = document.getElementById('p-' + S.tab);
+  if (t && p) t.style.height = Math.max(0, Math.round(p.offsetHeight)) + 'px';
+}
 function showTab(name){
   S.tab = name;
   Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
@@ -1780,7 +1793,8 @@ function showTab(name){
   var i = Math.max(0, TAB_ORDER.indexOf(name));
   var track = document.getElementById('track');
   track.style.transition = '';
-  track.style.transform = 'translateX(' + (-i * 100) + '%)';
+  track.style.transform = 'translateX(' + (-i * pageStep()) + 'px)';
+  syncTrackHeight();
   TAB_ORDER.forEach(function (k){
     var el = document.getElementById('p-' + k);
     if (el) el.setAttribute('aria-hidden', k === name ? 'false' : 'true');
@@ -1932,9 +1946,9 @@ function wire(){
     if (sw.axis !== 'x') return;
     sw.dx = dx;
     var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
-    var W = trackEl.clientWidth || 1;
-    var x = -i * W + dx;
-    if ((i === 0 && dx > 0) || (i === TAB_ORDER.length - 1 && dx < 0)) x = -i * W + dx * 0.32;
+    var step = pageStep();
+    var x = -i * step + dx;
+    if ((i === 0 && dx > 0) || (i === TAB_ORDER.length - 1 && dx < 0)) x = -i * step + dx * 0.32;
     trackEl.style.transform = 'translateX(' + x + 'px)';
   }, { passive: true });
   function endSwipe(){
@@ -1955,6 +1969,17 @@ function wire(){
   document.addEventListener('touchcancel', function (){ sw.on = false; sw.axis = ''; }, { passive: true });
 
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
+  /* 内容或视口变化都可能改变当前页高度，跟着同步一次 */
+  window.addEventListener('resize', syncTrackHeight);
+  if (window.ResizeObserver) {
+    var ro = new ResizeObserver(function (){ syncTrackHeight(); });
+    TAB_ORDER.forEach(function (k){
+      var id = 'p-' + k;
+      var el = document.getElementById(id);
+      if (el) ro.observe(el);
+    });
+  }
+
   var mq = matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function (){
     if (THEME.dark === '') { applyScheme(); if (S.tab === 'over') renderOver(); }
