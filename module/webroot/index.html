@@ -133,7 +133,16 @@
 
 /* ================= 基础 ================= */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
+/* 让网页闭嘴的三件事：
+   ① touch-action:manipulation —— 不写的话浏览器要等 ~300ms 看是不是双击缩放，
+      每个按钮点下去都"慢半拍"；
+   ② user-select:none —— 横滑时手指会把文字选中、冒出选择柄，是网页最明显的破绽；
+      输入框、编辑框和日志台例外（那里真的要能选）；
+   ③ overscroll-behavior:none —— 划到头的回弹/发光也不要。 */
+html{touch-action:manipulation;overscroll-behavior:none;-webkit-text-size-adjust:100%}
 html,body{margin:0;padding:0}
+body{-webkit-user-select:none;user-select:none;-webkit-touch-callout:none}
+textarea,input,.console{-webkit-user-select:text;user-select:text}
 body{
   background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
   /* 竖排 + .wrap 撑满：让页脚在内容短的时候也贴着视口底部，

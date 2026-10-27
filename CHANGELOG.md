@@ -69,6 +69,8 @@
   * **按压反馈**：Compose 的 `Surface` 自带 ripple，网页这边点下去一直是"死"的。现在给 `.btn` / `.tab` / `.seg button` / `.icon-add` 加状态层（`::after` + `currentColor`）：按下**瞬间**出现、松开淡出，颜色自动跟着所在容器走；开关的 `::after` 是滑块本身，排除。
   * **弹簧动效**：Compose 走 `MotionScheme` 的弹簧，CSS 贝塞尔永远差一口气（起步与收尾没有过冲）。用 `linear()` 写了一条真正的阻尼振荡曲线（26 个采样点，峰值 1.06），Chrome 113+ 才支持 —— 不支持时整条声明作废、退回默认 ease，只是没那么弹，不会坏（已确认计算值里确实拿到 `linear(...)`）。
   * **形状档位对齐它的 `Shapes`**：8 / 12 / 16 / 20 / 28（原来是 8 / 10 / 14 / 18 / 20 / 24）。
+* **抹掉最后三处「网页感」**：① `touch-action:manipulation` —— 不写的话浏览器每个点击都要等约 **300ms** 看是不是双击缩放，点哪儿都慢半拍（Compose 没这回事，这是"不如原生"最实的一刀）；② `user-select:none` —— 横滑时手指会把文字选中、冒出选择柄，是网页最明显的破绽（输入框、编辑框、日志台例外）；③ `overscroll-behavior:none` —— 划到头的回弹与发光也不要。
+  * 顺带把「原生」这条路走到底试了一次：写了 Kotlin + Compose 的伴随 App（五页 + 悬浮药丸底栏，`dynamicLight/DarkColorScheme`、`PackageManager` 取图标、`HorizontalPager`），本机构建、装机、启动都验过（`Displayed +2s563ms`，无崩溃）—— 但**模块的「打开界面」按钮只能加载 `webroot/index.html`**，原生 UI 没有挂载点，所以它只能是另一个 App。既然要求"只能是模块"，这条路已撤回（提交 `2521c23` 是 revert），手机上的包也卸了。
 #### 优化
 
 * **`status` 不再重复算数（945ms → 615ms）**：原先 `status` 内部要跑 awk 提取（约 330ms）与 `pm list`（约 200ms）来给出「生效 / 第三方 / 常驻」三个数字，而界面为了展示列表本来就要取 `targets` / `apps` / `rules` 三份完整清单——同一件事做两遍，既慢又可能出现两份对不上的数字。现在 `status` 只报文件与运行状态，数字一律由列表数出来，英雄卡的大数字随列表（约 330ms）出现，不必等 `status`。
