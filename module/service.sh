@@ -109,6 +109,7 @@ do_sync() {
     rc=$?
     case "$rc" in
         0) log_info "✅ 同步完成，应用总数：$TAA_COUNT" ;;
+        1) log_info "ℹ️ 列表内容一致，本次未落盘" ;;
         2) log_warn "⚠️ 同步失败：未能生成或写入应用列表（已记入模块描述）" ;;
     esac
 
