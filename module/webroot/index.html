@@ -152,12 +152,13 @@ button,input,textarea,select{font:inherit;color:inherit}
    高度由 JS 同步成"当前页的高度"：整页滚动的前提下，轨道不能取最高那页，
    否则每页底下都会拖出一大段空白。 */
 .pager{overflow:hidden}
-/* 不写 will-change：常驻会让浏览器把"五个全高页面"合成成一个巨大的图层，
-   手机上滚动掉帧；而在拖拽里反复申请/释放图层，比不做更卡（实测过两端都不划算）。
-   位移本身就会触发合成层提升，够用。
-   高度也不参与过渡 —— 每帧重排一次比高度突变更伤。 */
+/* will-change 常驻在这一层：有它，拖拽位移才走合成器；没有的话每帧都要在主线程
+   重绘整片（五个页面），手机上就是「左右切页卡」。上一轮把它撤掉是错的 ——
+   当时担心图层太大，但轨道高度等于当前页高度（约 568×800 ≈ 1.8MB），并不贵。
+   要点是常驻：在拖拽里反复申请/释放图层反而更卡。
+   高度不参与过渡 —— 每帧重排一次比高度突变更伤。 */
 .track{display:flex;align-items:flex-start;gap:16px;
-  touch-action:pan-y;overscroll-behavior-x:contain;
+  touch-action:pan-y;overscroll-behavior-x:contain;will-change:transform;
   transition:transform var(--d3) var(--e-emph)}
 /* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
    底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
@@ -1969,9 +1970,16 @@ function wire(){
     }
     return false;
   }
+  /* touchmove 可能比屏幕刷新还密；每帧只写一次 transform。基准位移与步长在
+     锁定横向的那一帧算一次就够 —— 每帧读 clientWidth 会引发布局查询。 */
+  var dragRaf = 0;
+  function applyDrag(){
+    dragRaf = 0;
+    trackEl.style.transform = 'translate3d(' + (sw.base + sw.dx) + 'px,0,0)';
+  }
   document.addEventListener('touchstart', function (e){
     if (e.touches.length !== 1 || noSwipe(e.target)) { sw.on = false; return; }
-    sw.on = true; sw.axis = ''; sw.dx = 0;
+    sw.on = true; sw.axis = ''; sw.dx = 0; sw.base = null; sw.idx = 0;
     sw.x = e.touches[0].clientX; sw.y = e.touches[0].clientY; sw.t = Date.now();
   }, { passive: true });
   document.addEventListener('touchmove', function (e){
@@ -1983,18 +1991,22 @@ function wire(){
       if (sw.axis === 'x') trackEl.style.transition = 'none';
     }
     if (sw.axis !== 'x') return;
-    sw.dx = dx;
-    var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
-    var step = pageStep();
-    var x = -i * step + dx;
-    if ((i === 0 && dx > 0) || (i === TAB_ORDER.length - 1 && dx < 0)) x = -i * step + dx * 0.32;
-    trackEl.style.transform = 'translateX(' + x + 'px)';
+    if (sw.base === null) {
+      sw.idx = Math.max(0, TAB_ORDER.indexOf(S.tab));
+      sw.base = -sw.idx * pageStep();
+    }
+    /* 到头给阻尼，不硬顶 */
+    sw.dx = ((sw.idx === 0 && dx > 0) || (sw.idx === TAB_ORDER.length - 1 && dx < 0))
+      ? dx * 0.32 : dx;
+    if (!dragRaf) dragRaf = requestAnimationFrame(applyDrag);
   }, { passive: true });
   function endSwipe(){
     if (!sw.on) return;
     sw.on = false;
     if (sw.axis !== 'x') { sw.axis = ''; return; }
     sw.axis = '';
+    if (dragRaf) { cancelAnimationFrame(dragRaf); dragRaf = 0; }
+    sw.base = null;
     var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
     var W = trackEl.clientWidth || 1;
     var far = Math.abs(sw.dx) > W * 0.3;
