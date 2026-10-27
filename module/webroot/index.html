@@ -77,9 +77,6 @@
   /* 阴影只留一层极轻的接触影，卡片之间的分隔交给 hairline：
      宽画布上大投影会把"浮起来的果冻"叠成一片糊 */
   --shadow:0 1px 2px oklch(30% .04 var(--hue) / 10%);
-  /* 药丸单独一层 8dp 投影（Opticon 的 shadowElevation）；卡片仍只用上面那层
-     接触影 —— 一屏全是浮起来的果冻，边界反而糊成一片。 */
-  --float-shadow:0 6px 16px oklch(25% .03 var(--hue) / 14%), 0 2px 4px oklch(25% .03 var(--hue) / 8%);
 }
 [data-scheme=dark]{
   --primary:oklch(80% calc(.13*var(--sat)) var(--hue));            --on-primary:oklch(30% calc(.14*var(--sat)) var(--hue));
@@ -98,7 +95,6 @@
   --outline-variant:oklch(42% calc(.02*var(--sat)) var(--hue));    --scrim:oklch(0% 0 0 / 55%);
   --card-line:oklch(47% calc(.022*var(--sat)) var(--hue));
   --shadow:0 1px 2px oklch(0% 0 0 / 35%);
-  --float-shadow:0 8px 22px oklch(0% 0 0 / 50%), 0 2px 6px oklch(0% 0 0 / 40%);
 }
 
 /* 守卫条件连同 calc() 一起测：只支持裸 oklch 而不支持 oklch 内 calc 的引擎，
@@ -112,7 +108,6 @@
     --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
     --surface-high:#e9e5ee;--surface-highest:#e3dfe8;--surface-bright:#fff;
     --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--card-line:#b6b2c2;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
-    --float-shadow:0 6px 16px rgba(0,0,0,.16),0 2px 4px rgba(0,0,0,.08);
   }
   [data-scheme=dark]{
     --primary:#c9bffd;--on-primary:#37279a;--primary-container:#4435b0;--on-primary-container:#e5defd;
@@ -122,7 +117,6 @@
     --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
     --surface-high:#2c2c33;--surface-highest:#33333a;--surface-bright:#3a3a42;
     --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--card-line:#585562;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
-    --float-shadow:0 8px 22px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
   }
 }
 
@@ -130,7 +124,7 @@
 /* Compose 的 Surface 自带 ripple：从**手指落点**向外长成一个圆，扩到覆盖整块再淡出。
    先前那版"整块变亮"只是近似，没有起点，一眼能看出不是原生的。
    圆由 JS 在 pointerdown 时插入（见 wire 里的 rippleAt），这里只管形状与动画。 */
-.btn,.tab,.seg button,.icon-add{position:relative;overflow:hidden}
+.btn,.menu-row,.back,.seg button,.icon-add{position:relative;overflow:hidden}
 .ripple{position:absolute;border-radius:50%;pointer-events:none;background:currentColor;
   opacity:.16;transform:scale(0);animation:ripple var(--d3) var(--e-emph) forwards}
 @keyframes ripple{to{transform:scale(1);opacity:0}}
@@ -160,41 +154,51 @@ button,input,textarea,select{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ================= 顶栏 ================= */
-/* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
-   两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
+/* 概览的顶栏随内容滚走；二级页的顶栏钉住（下面 .is-sub），因为返回箭头在它里面。 */
 .appbar{padding:calc(var(--inset-top) + var(--sp2)) var(--sp4) var(--sp1);
   max-width:var(--measure);margin:0 auto;width:100%}
-.appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
+/* 二级页的顶栏钉住：返回箭头是那一屏唯一的出口，长列表滚到一半不能让它滚走。
+   概览不钉 —— 在概览上要的是让内容滚出去，顶栏没有要够的东西。 */
+.appbar.is-sub{position:sticky;top:0;z-index:30;background:var(--surface);
+  box-shadow:0 1px 0 var(--card-line)}
+.appbar-row{display:flex;align-items:center;gap:var(--sp2)}
+/* 二级页的返回：顶栏最左，40 的圆钮。它是「返回」而不是「回概览」——
+   从「应用」点 + 跳到常驻列表后，返回应该回到应用列表。 */
+.back{flex:none;width:40px;height:40px;margin-left:-10px;border:0;border-radius:var(--r-full);
+  background:transparent;color:var(--on-surface);display:grid;place-items:center;cursor:pointer;
+  transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
+.back:active{transform:scale(.9)}
+.back svg{width:24px;height:24px;display:block;fill:currentColor}
+.back[hidden]{display:none}
 .kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
 .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
 /* ================= 卡片 ================= */
-/* 整页滚动：底部让出药丸那一段（药丸高 56 + 距底 20 + 余量）。
+/* 整页滚动：底栏已经去掉，底部不再给药丸让位，只留一段普通收尾留白。
    加在这里、不加在 body 上，页面背景才一直铺到屏幕底边 */
-.wrap{padding:0 var(--sp4) calc(96px + var(--inset-bottom));
+.wrap{padding:0 var(--sp4) calc(32px + var(--inset-bottom));
   display:flex;flex-direction:column;gap:var(--sp4);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
-/* 横向切页交给**原生滚动**：JS 逐帧写 transform 在手机上就是卡（will-change、
-   translate3d、rAF 合并都试过，救不回来）。原生滚动走浏览器自己的合成路径，
-   跟手 / 惯性 / 吸附全由它负责，主线程一帧都不用干活。
-   高度由 JS 同步成"当前页的高度"：整页滚动的前提下容器不能取最高那页，
-   否则每页底下都会拖出一段空白。 */
-/* 不做横滑：面板竖着排，靠 hidden 切换。切页是**瞬时**的 —— 没有滚动、
-   没有容器高度变化、也没有"相邻页第一次进视口才绘制"那一帧。 */
+/* 面板竖着排，靠 hidden 切换 —— 没有滚动、没有容器高度变化，
+   也没有"相邻页第一次进视口才绘制"那一帧。
+   概览自己不是卡片（里面是「入口 + 状态明细」两张卡），所以用 .panel 而不是 .card.panel。 */
 .pages{display:block}
-.card.panel[hidden]{display:none}
+.panel[hidden]{display:none}
+/* 二级页没有英雄卡，卡片离顶栏补一点气口（概览靠 .wrap 的 gap） */
+.card.panel{margin-top:var(--sp2)}
 .card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
-/* 面板不要 keyframes 入场：从 display:none 变回来时动画会整段重播，实测
-   opacity 0 → 0.028 → 1 就是「每切一下都闪一下」。切页的动效改由 WAAPI 在
-   showTab 里按方向播一次（只动 transform + 0.9→1，不碰高度、不盖遮罩）。 */
+/* 面板与英雄卡都不要 keyframes 入场：从 display:none 变回来时动画会整段重播，
+   实测 opacity 0 → 0.028 → 1 就是「每切一下都闪一下」。切页的动效改由 WAAPI
+   在 showTab 里按方向播一次（只动 transform + 0.9→1，不碰高度、不盖遮罩）。
+   英雄卡在二级页要隐藏、返回时再显示 —— 给它挂 keyframes 就会每次返回重播，
+   所以这一条只留给提示条（它不参与切页）。 */
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
 /* 英雄卡不再整块上色：最大的色块应该装最重要的信息，而它只有一个数字和两个按钮。
    主色只留在数字与主行动上，卡片的分隔交给发丝线。 */
 .hero{background:var(--surface-low);color:var(--on-surface);border:var(--hair);
-  border-radius:var(--r-2xl);padding:var(--sp4) var(--sp4) var(--sp3);
-  animation:rise var(--d4) var(--e-spring) backwards}
+  border-radius:var(--r-2xl);padding:var(--sp4) var(--sp4) var(--sp3)}
 .hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2);flex-wrap:wrap}
 .count-num{font-size:38px;font-weight:800;line-height:1.05;letter-spacing:-1px;color:var(--primary);
@@ -248,33 +252,26 @@ button.chip{cursor:pointer}
 .fab{background:var(--primary);color:var(--on-primary)}
 .fab:active{border-radius:50%;transform:scale(.9)}
 
-/* ================= 悬浮药丸底栏 ================= */
-/* 与 Opticon 的 FloatingNavBar 同构：悬浮药丸（28 圆角 + surfaceContainerHigh +
-   1dp 描边 + 8dp 投影），**选中那格展开成 图标+文字 的胶囊，其余只留图标**，
-   所以药丸宽度随当前页变化。横滑已经去掉，宽度变化只在"点一下"时发生一次。
-   描边不能省：深色下投影本来就几乎看不见，边界全靠那根线钉住。
-   内容从药丸后面滚过去（让位只加在 .wrap 的 padding-bottom 上，body 不留空白带，
-   否则药丸下面会凭空多出一条背景）。 */
-.tabs{position:fixed;left:50%;transform:translateX(-50%);z-index:40;
-  bottom:calc(var(--inset-bottom) + 20px);
-  display:flex;align-items:center;gap:4px;padding:6px 8px;
-  background:var(--surface-high);border:1px solid var(--card-line);border-radius:28px;
-  box-shadow:var(--float-shadow);
-  max-width:calc(100vw - 16px)}
-/* 内边距、格间距、图标 22、文字左边距 8、labelLarge（14/500/.1）全部照 Opticon 的
-   NavItem 取值；min-height 44 是网页自己的触控下限（M3 只要求 48 的命中区） */
-.tab{position:relative;z-index:1;flex:none;display:flex;align-items:center;justify-content:center;
-  min-height:44px;padding:10px 12px;border:0;border-radius:var(--r-full);
-  background:transparent;color:var(--on-variant);font-size:14px;font-weight:500;letter-spacing:.1px;cursor:pointer;
-  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
-.tab:active{transform:scale(.92)}
-.tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
-.tab .ico{display:flex;flex:none}
-.tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
-/* 未选中只留图标：文字宽度收到 0（用 max-width 过渡，width:auto 在 WebView 里不参与过渡） */
-.tab .lb{max-width:0;overflow:hidden;white-space:nowrap;opacity:0;
-  transition:max-width var(--d3) var(--e-spring),opacity var(--d2) var(--e-emph),margin-left var(--d3) var(--e-spring)}
-.tab.is-active .lb{max-width:140px;opacity:1;margin-left:8px}
+/* ================= 二级页入口（底栏已去掉） ================= */
+/* 一切从概览下钻：一张卡里四行，每行 图标 + 标题/副标题 + chevron。
+   二级页的返回在顶栏左侧，系统返回键走同一套（history + popstate）。 */
+.menu{padding:var(--sp2)}
+.menu-row{display:flex;align-items:center;gap:var(--sp3);width:100%;
+  padding:10px 12px;border:0;border-radius:var(--r-m);background:transparent;
+  color:var(--on-surface);text-align:left;cursor:pointer;
+  transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
+.menu-row:active{transform:scale(.985);background:var(--surface-mid)}
+.menu-ic{flex:none;width:36px;height:36px;border-radius:var(--r-m);background:var(--surface-high);
+  display:grid;place-items:center;color:var(--on-variant)}
+.menu-ic svg{width:20px;height:20px;display:block;fill:currentColor}
+.menu-txt{flex:1;min-width:0;display:block}
+.menu-txt b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
+.menu-txt small{display:block;margin-top:2px;font-size:12px;color:var(--on-variant);
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.menu .chev{flex:none;color:var(--on-variant);opacity:.64}
+.menu .chev svg{width:20px;height:20px;display:block;fill:currentColor}
+/* 概览里是两张卡：入口在上、状态明细在下 */
+.home-card{margin-top:var(--sp4)}
 
 /* ================= 概览分组 ================= */
 /* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
@@ -419,7 +416,7 @@ button.chip{cursor:pointer}
 .sheet h3{font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
 .sheet p{font-size:13.5px;color:var(--on-variant);line-height:1.55}
 .sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
-.snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 92px);z-index:70;
+.snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 16px);z-index:70;
   transform:translate(-50%,140%);opacity:0;max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
   padding:var(--sp2) var(--sp4);border-radius:var(--r-l);
   background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:13px;
@@ -456,12 +453,6 @@ button.chip{cursor:pointer}
   .count-num{font-size:30px}
   .appbar h1{font-size:18px}
 }
-/* 选中项展开文字后药丸要 328px；320 的屏只剩 304。收紧内边距与格间距
-   （图标尺寸不动），实测 320 下 276（宽松档 328）—— 只是给窄屏兜底，626 上不生效。 */
-@media (max-width:344px){
-  .tabs{gap:2px;padding:4px 6px}
-  .tab{padding:10px 8px}
-}
 </style>
 </head>
 <body>
@@ -470,6 +461,7 @@ button.chip{cursor:pointer}
   <!-- 顶栏不放配色与深浅开关：颜色一律跟随系统（见「关于 → 取色 / 深浅」）。
        原先那两个按钮会让人不小心把界面调成和系统不一样的东西。 -->
   <div class="appbar-row">
+    <button class="back" id="btnBack" aria-label="返回上一级" hidden></button>
     <div style="min-width:0">
       <span class="kicker" id="kicker">TS-AUTO-ADD</span>
       <h1 id="pageTitle">概览</h1>
@@ -500,13 +492,38 @@ button.chip{cursor:pointer}
   </div>
 
   <main class="pages" id="pages">
-    <section class="card panel" id="p-over">
-      <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
-           叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
-      <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
+    <section class="panel" id="p-over">
+      <!-- 二级页入口：底栏去掉之后，四个子页都从这里进；返回在顶栏最左 -->
+      <nav class="card menu" id="homeMenu" aria-label="二级页">
+        <button class="menu-row" data-go="rules">
+          <span class="menu-ic"><i class="ico" data-icon="list"></i></span>
+          <span class="menu-txt"><b>常驻列表</b><small id="menuRules">—</small></span>
+          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+        </button>
+        <button class="menu-row" data-go="apps">
+          <span class="menu-ic"><i class="ico" data-icon="apps"></i></span>
+          <span class="menu-txt"><b>应用列表</b><small id="menuApps">—</small></span>
+          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+        </button>
+        <button class="menu-row" data-go="log">
+          <span class="menu-ic"><i class="ico" data-icon="logs"></i></span>
+          <span class="menu-txt"><b>运行日志</b><small id="menuLog">—</small></span>
+          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+        </button>
+        <button class="menu-row" data-go="props">
+          <span class="menu-ic"><i class="ico" data-icon="tune"></i></span>
+          <span class="menu-txt"><b>系统属性伪装</b><small id="menuProps">—</small></span>
+          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+        </button>
+      </nav>
+      <section class="card home-card">
+        <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
+             叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
+        <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
+      </section>
     </section>
 
-    <section class="card panel" id="p-rules">
+    <section class="card panel" id="p-rules" hidden>
       <div class="field">
         <label id="rulesLabel">每行一个包名 · # 开头为注释</label>
         <textarea id="rulesBox" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" aria-labelledby="rulesLabel"></textarea>
@@ -522,7 +539,7 @@ button.chip{cursor:pointer}
       <div id="rulesResolved" hidden></div>
     </section>
 
-    <section class="card panel" id="p-apps">
+    <section class="card panel" id="p-apps" hidden>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="appsSeg">
           <button data-src="targets" class="is-active">生效列表</button>
@@ -538,7 +555,7 @@ button.chip{cursor:pointer}
       <div id="appsBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card panel" id="p-log">
+    <section class="card panel" id="p-log" hidden>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="logSeg">
           <button data-n="30">30</button><button data-n="60" class="is-active">60</button>
@@ -555,7 +572,7 @@ button.chip{cursor:pointer}
       <div class="console" id="logBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card panel" id="p-props">
+    <section class="card panel" id="p-props" hidden>
       <div class="switch-row">
         <span class="txt"><b>开机时重置属性</b><span id="propsSwitchHint">关闭后下次开机起不再写入期望值</span></span>
         <span class="switch" id="propsSwitch" role="switch" aria-checked="true" tabindex="0"></span>
@@ -579,17 +596,6 @@ button.chip{cursor:pointer}
   </main>
 
 </div>
-
-<!-- 悬浮药丸底栏（同 Opticon 的 FloatingNavBar）：选中那格展开成 图标+文字 的胶囊，
-     其余只留图标，所以药丸宽度随当前页变化 —— 横滑已经不做，宽度只在点按那一下变一次。
-     626 画布上实测：概览/应用/日志/属性 300，常驻列表 328。 -->
-<nav class="tabs" role="tablist" id="tabs">
-  <button class="tab is-active" role="tab" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
-  <button class="tab" role="tab" data-tab="rules" data-icon="list" aria-label="常驻列表"><i class="ico"></i><span class="lb">常驻列表</span></button>
-  <button class="tab" role="tab" data-tab="apps" data-icon="apps" aria-label="应用"><i class="ico"></i><span class="lb">应用</span></button>
-  <button class="tab" role="tab" data-tab="log" data-icon="logs" aria-label="日志"><i class="ico"></i><span class="lb">日志</span></button>
-  <button class="tab" role="tab" data-tab="props" data-icon="tune" aria-label="属性"><i class="ico"></i><span class="lb">属性</span></button>
-</nav>
 
 <div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
 <div class="dialog" id="dialog" hidden role="dialog" aria-modal="true">
@@ -626,7 +632,9 @@ var ICON = {
   list: '<path d="M4 6h2v2H4Zm4 0h12v2H8ZM4 11h2v2H4Zm4 0h12v2H8ZM4 16h2v2H4Zm4 0h12v2H8Z"/>',
   apps: '<path d="M4 4h7v7H4Zm9 0h7v7h-7ZM4 13h7v7H4Zm9 0h7v7h-7Z"/>',
   logs: '<path d="M4 4h16v16H4Zm3 4v2h10V8Zm0 4v2h10v-2Zm0 4v2h6v-2Z"/>',
-  tune: '<path d="M4 7h9v2H4Zm11 0h5v2h-5ZM4 15h4v2H4Zm6 0h10v2H10ZM9 5h2v6H9Zm6 8h2v6h-2Z"/>'
+  tune: '<path d="M4 7h9v2H4Zm11 0h5v2h-5ZM4 15h4v2H4Zm6 0h10v2H10ZM9 5h2v6H9Zm6 8h2v6h-2Z"/>',
+  back: '<path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20Z"/>',
+  chev: '<path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6Z"/>'
 };
 function svg(name, size){
   return '<svg viewBox="0 0 24 24" fill="currentColor" width="' + (size || 24) + '" height="' + (size || 24) +
@@ -1001,7 +1009,7 @@ var S = {
   rulesSet: null, rulesSetSrc: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {},
-  log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
+  log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0, homeY: 0
 };
 
 /* 数字都从列表直接数出来（见 webui.sh 里 status 不算数的原因）；
@@ -1109,6 +1117,23 @@ function renderHero(){
     bannerTitle.textContent = title;
     bannerText.textContent = st.description || '详见日志页';
   } else banner.hidden = true;
+
+  renderMenu();
+}
+
+/* 概览的四行入口：副标题跟着数据走，没取到就显示占位而不是 0 */
+function renderMenu(){
+  var have = !!S.loaded.lists, st = S.status;
+  document.getElementById('menuRules').textContent =
+    '常驻 ' + orDash(have ? countRules() : null) + ' 条 · 在线编辑 rules.txt';
+  document.getElementById('menuApps').textContent =
+    '生效 ' + orDash(have ? S.targets.length : null) +
+    ' · 已安装第三方 ' + orDash(have ? S.apps.length : null);
+  document.getElementById('menuLog').textContent =
+    st.log_lines ? '缓冲 ' + st.log_lines + ' 行' : '末尾 30~300 行 · 可自动刷新';
+  document.getElementById('menuProps').textContent =
+    st.props_masking === 'off' ? '开机写入已关闭' :
+    st.props_masking === 'on' ? '开机写入 · 已开启' : '开机写入的 12 项属性';
 }
 
 /* ---------- 概览 ---------- */
@@ -1832,30 +1857,30 @@ function confirm(title, text, okLabel){
 /* =========================================================
    6. 交互装配
    ========================================================= */
-var tabsEl = document.getElementById('tabs');
-var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
+var homeMenu = document.getElementById('homeMenu');
+var btnBack = document.getElementById('btnBack');
+var PAGES = ['over', 'rules', 'apps', 'log', 'props'];
 var TAB_LABEL = { over: '概览', rules: '常驻列表', apps: '应用列表', log: '运行日志', props: '系统属性伪装' };
-/* 只切状态与底栏 */
-function applyTab(name){
+/* 只切状态：显隐目标页、标题、返回箭头、概览的英雄卡。
+   底栏没有了，这一层不再需要维护任何选中态。 */
+function applyPage(name){
   S.tab = name;
-  Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
-    var on = t.dataset.tab === name;
-    t.classList.toggle('is-active', on);
-    t.setAttribute('aria-selected', on ? 'true' : 'false');
-  });
-  TAB_ORDER.forEach(function (k){
+  var home = name === 'over';
+  PAGES.forEach(function (k){
     var el = document.getElementById('p-' + k);
     if (el) el.hidden = k !== name;
   });
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
+  hero.hidden = !home;        // 二级页不重复英雄卡：那一屏只有标题 + 内容
+  btnBack.hidden = home;
+  document.querySelector('.appbar').classList.toggle('is-sub', !home);
 }
 /* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
-   之前那一整套（pager 滚动 + 高度同步 + 指示胶囊插值）都只为横滑服务，
-   横滑去掉之后它们只会制造问题（切页闪、底栏抽搐）。
-   入场从目标页所在的方向滑进来：位移 24px（窄屏按 5% 收，320 下 16px）、
-   透明度 0.9→1、200ms，全在合成器上 —— 不碰高度、不盖遮罩，所以不会回到「闪」。
-   整页滑过去需要把五页横排成轨道（就是刚删掉的那套），这里只做局部位移。 */
+   入场从进入的方向滑进来（下钻 +1 从右、返回 -1 从左）：位移 24px
+   （窄屏按 5% 收，320 下 16px）、透明度 0.9→1、200ms，全在合成器上 ——
+   不碰高度、不盖遮罩，所以不会回到「闪」。返回概览时英雄卡一起滑，
+   否则它会硬蹦出来。 */
 var REDUCE_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 function pageSlide(el, dir){
   if (!el || !el.animate || REDUCE_MOTION) return;
@@ -1866,15 +1891,49 @@ function pageSlide(el, dir){
     { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
   );
 }
-function showTab(name){
-  var from = TAB_ORDER.indexOf(S.tab), to = TAB_ORDER.indexOf(name);
-  applyTab(name);
+function showTab(name, back){
+  var prev = S.tab;
+  var home = name === 'over';
+  /* 概览的滚动位置：下钻前记下，回来时还原 —— 不把人丢回顶部 */
+  if (prev === 'over' && !home) S.homeY = window.scrollY;
+  var dir = back ? -1 : 1;
+  applyPage(name);
   renderAll();
-  window.scrollTo(0, 0);
-  if (from >= 0 && to >= 0 && from !== to) pageSlide(document.getElementById('p-' + name), to > from ? 1 : -1);
+  /* 回概览要还原位置时先强制按新页面布局，否则 scrollTo 拿到的还是上一页的
+     高度，会被夹成 0（实测 52 → 0）。回 0 和其它页不需要这一步。 */
+  if (home && S.homeY) void document.documentElement.scrollHeight;
+  window.scrollTo(0, home ? (S.homeY || 0) : 0);
+  if (prev === name) return;
+  pageSlide(document.getElementById('p-' + name), dir);
+  if (home) pageSlide(hero, dir);
 }
 
-function goTab(name){ showTab(name); loadTab(); }
+/* history：下钻时压一条，返回箭头与系统返回键都走 popstate。
+   KernelSU 的 WebUI 在返回时先查 webView.canGoBack()，所以系统返回键
+   会先退到上一级，退无可退才关界面。
+   滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
+   不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
+try { history.scrollRestoration = 'manual'; } catch (e) {}
+function pushPage(name){
+  try { history.pushState({ page: name }, ''); } catch (e) {}
+}
+function goTab(name){
+  if (name === S.tab) { loadTab(); return; }
+  showTab(name);
+  loadTab();
+  pushPage(name);
+}
+function goBack(){
+  var st = history.state;
+  if (st && st.page && st.page !== 'over') { history.back(); return; }
+  showTab('over', true);
+  loadTab();
+}
+window.addEventListener('popstate', function (e){
+  var st = e.state;
+  showTab((st && st.page) || 'over', true);
+  loadTab();
+});
 
 function setAuto(on){
   S.auto = on;
@@ -1891,10 +1950,11 @@ function wire(){
   btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
   btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
   btnSaveRules.innerHTML = svg('save') + '<span>保存并同步</span>';
-  /* 底栏图标：ICON 表在脚本里，标记里写不了，统一在这里填 */
-  Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
-    t.querySelector('.ico').innerHTML = svg(t.dataset.icon);
+  /* 入口行的图标：ICON 表在脚本里，标记里写不了，统一在这里填 */
+  Array.prototype.forEach.call(homeMenu.querySelectorAll('.ico[data-icon]'), function (n){
+    n.innerHTML = svg(n.dataset.icon);
   });
+  btnBack.innerHTML = svg('back');
   btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
   btnLogClear.innerHTML = svg('trash') + '<span>清空</span>';
   btnPropsApply.innerHTML = svg('check') + '<span>立即应用一次</span>';
@@ -1914,10 +1974,11 @@ function wire(){
   });
   rulesBox.addEventListener('input', function (){ S.rulesEdited = true; updateRulesStat(); });
 
-  tabsEl.addEventListener('click', function (e){
-    var t = e.target.closest ? e.target.closest('.tab') : null;
-    if (t) goTab(t.dataset.tab);
+  homeMenu.addEventListener('click', function (e){
+    var b = e.target.closest ? e.target.closest('.menu-row') : null;
+    if (b) goTab(b.dataset.go);
   });
+  btnBack.addEventListener('click', goBack);
 
   /* 列表来源、分段高亮、「只看未纳入」的按下态必须一起变 —— 以前点「只看未纳入」
      会把列表切到已安装第三方，但高亮还停在「生效列表」，等于在说谎（实测过）。
@@ -1993,7 +2054,7 @@ function wire(){
 
   /* 真 ripple：按下时在**落点**插一个圆，直径取到最远角的两倍，扩满整块后淡出。
      pointerdown 同时覆盖触摸与鼠标；元素被删/页面切走时圆会随元素一起走。 */
-  var RIPPLE_HOST = '.btn,.tab,.seg button,.icon-add';
+  var RIPPLE_HOST = '.btn,.menu-row,.back,.seg button,.icon-add';
   function rippleAt(el, x, y){
     var r = el.getBoundingClientRect();
     var d = Math.max(x - r.left, r.right - x, y - r.top, r.bottom - y) * 2;
@@ -2067,7 +2128,15 @@ function boot(){
 
   // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
   var want = QUERY.get('tab');
-  if (want && ['over', 'rules', 'apps', 'log', 'props'].indexOf(want) >= 0) showTab(want);
+  if (want && PAGES.indexOf(want) >= 0 && want !== 'over') {
+    /* 深链进来时先补一条「概览」的历史，返回箭头才有地方可回 */
+    try { history.replaceState({ page: 'over' }, ''); history.pushState({ page: want }, ''); } catch (e) {}
+    showTab(want);
+  } else {
+    /* 初始状态也要走一遍：面板在标记里是 hidden 的，但标题/英雄卡/返回箭头
+       得由这里定死，不依赖标记的默认值 */
+    applyPage('over');
+  }
 
   if (DEMO) { refresh(); return; }
 
