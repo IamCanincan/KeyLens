@@ -170,7 +170,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .back:active{transform:scale(.9)}
 .back svg{width:24px;height:24px;display:block;fill:currentColor}
 .back[hidden]{display:none}
-.kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
+/* kicker 不再全大写 + 字距：那一行是全屏最吵的东西，而它只是一行设备注脚。
+   混合大小写、常规字重，安静下来之后大标题才是唯一的重心。 */
+.kicker{display:block;font-size:11.5px;font-weight:500;letter-spacing:.1px;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
 .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
@@ -224,12 +226,10 @@ button,input,textarea,select{font:inherit;color:inherit}
 .badge[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .badge[data-tone=bad] .dot{background:var(--error);animation:pulse 1.6s infinite}
 @keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
-/* 版本号是个按钮（点开「关于」），所以补 cursor；视觉仍按 chip */
-button.chip{cursor:pointer;min-height:32px}
-.chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-full);
-  background:var(--surface-highest);color:var(--on-variant);font-size:11.5px;
+/* 版本号是**单调文字**，不再是胶囊按钮：点开「关于」的入口已经有单独一行，
+   这里再放一个 32px 的胶囊只是多一个"面"，还平白多一个容易误触的小目标。 */
+.ver{display:inline-block;color:var(--on-variant);font-size:11.5px;
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.chip b{color:var(--on-surface);font-weight:600}
 
 /* ================= 按钮 ================= */
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp2);min-height:38px;padding:0 var(--sp4);
@@ -261,9 +261,10 @@ button.chip{cursor:pointer;min-height:32px}
   color:var(--on-surface);text-align:left;cursor:pointer;
   transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
 .menu-row:active{transform:scale(.985);background:var(--surface-mid)}
-.menu-ic{flex:none;width:36px;height:36px;border-radius:var(--r-m);background:var(--surface-high);
-  display:grid;place-items:center;color:var(--on-variant)}
-.menu-ic svg{width:20px;height:20px;display:block;fill:currentColor}
+/* 图标不再垫底盘：36px 的填色方块一屏 5 个，是入口卡里最后的"面"。
+   去掉之后就是 M3 列表项的样子 —— 图标本身在 on-variant 上，靠标题拉层级。 */
+.menu-ic{flex:none;width:24px;height:24px;display:grid;place-items:center;color:var(--on-variant)}
+.menu-ic svg{width:22px;height:22px;display:block;fill:currentColor}
 .menu-txt{flex:1;min-width:0;display:block}
 .menu-txt b{display:block;font-size:14.5px;font-weight:600;line-height:1.3}
 .menu-txt small{display:block;margin-top:2px;font-size:12px;color:var(--on-variant);
@@ -495,7 +496,7 @@ button.chip{cursor:pointer;min-height:32px}
   <section class="hero" id="hero">
     <div class="hero-top">
       <span class="badge" id="stateBadge" data-tone="na"><i class="dot"></i><span id="stateText">连接中…</span></span>
-      <button class="chip mono" id="verChip" title="查看界面自检信息">—</button>
+      <span class="ver mono" id="verChip" title="模块版本">—</span>
     </div>
     <div class="hero-count">
       <div class="count-num" id="countNum">—</div>
@@ -2078,7 +2079,6 @@ function wire(){
   btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab(); });
 
   /* 关于：点版本号打开。内容在打开前重画一次，所以在哪一页点都是最新的 */
-  verChip.addEventListener("click", openAbout);
   document.getElementById("aboutClose").addEventListener("click", function (){
     document.getElementById("aboutDlg").hidden = true;
   });
