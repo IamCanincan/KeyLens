@@ -65,15 +65,15 @@
      正常态就显示成警告色。成功态单独一套固定绿。 */
   --success:oklch(45% .14 155);                   --on-success:oklch(100% 0 0);
   --success-container:oklch(92% .07 155);         --on-success-container:oklch(26% .10 155);
-  --surface:oklch(98.5% calc(.008*var(--sat)) var(--hue));        --on-surface:oklch(22% calc(.03*var(--sat)) var(--hue));
-  --surface-lowest:oklch(100% 0 0);               --surface-low:oklch(96.5% calc(.012*var(--sat)) var(--hue));
+  --surface:oklch(99.2% calc(.008*var(--sat)) var(--hue));        --on-surface:oklch(22% calc(.03*var(--sat)) var(--hue));
+  --surface-lowest:oklch(100% 0 0);               --surface-low:oklch(95.6% calc(.012*var(--sat)) var(--hue));
   --surface-mid:oklch(95% calc(.015*var(--sat)) var(--hue));      --surface-high:oklch(92% calc(.018*var(--sat)) var(--hue));
   --surface-highest:oklch(89% calc(.02*var(--sat)) var(--hue));   --surface-bright:oklch(99% calc(.01*var(--sat)) var(--hue));
   --on-variant:oklch(45% calc(.025*var(--sat)) var(--hue));       --outline:oklch(66% calc(.02*var(--sat)) var(--hue));
   --outline-variant:oklch(85% calc(.015*var(--sat)) var(--hue));  --scrim:oklch(35% 0 0 / 45%);
   /* 卡片/底栏的边线比通用分隔线再重一档：浅色下 85% 对 98.5% 的页底只有约 1.35:1，
      亮屏上几乎看不见（"边界不清晰"就是这个数）。这一档实测约 1.7:1。 */
-  --card-line:oklch(79% calc(.018*var(--sat)) var(--hue));
+  --card-line:oklch(77.5% calc(.018*var(--sat)) var(--hue));
   /* 阴影只留一层极轻的接触影，卡片之间的分隔交给 hairline：
      宽画布上大投影会把"浮起来的果冻"叠成一片糊 */
   --shadow:0 1px 2px oklch(30% .04 var(--hue) / 10%);
@@ -87,7 +87,7 @@
   --error-container:oklch(44% .18 27);            --on-error-container:oklch(93% .06 27);
   --success:oklch(80% .14 155);                   --on-success:oklch(24% .09 155);
   --success-container:oklch(32% .10 155);         --on-success-container:oklch(91% .07 155);
-  --surface:oklch(19% calc(.015*var(--sat)) var(--hue));           --on-surface:oklch(92% calc(.012*var(--sat)) var(--hue));
+  --surface:oklch(16.5% calc(.015*var(--sat)) var(--hue));           --on-surface:oklch(92% calc(.012*var(--sat)) var(--hue));
   --surface-lowest:oklch(14% calc(.01*var(--sat)) var(--hue));     --surface-low:oklch(22% calc(.016*var(--sat)) var(--hue));
   --surface-mid:oklch(24% calc(.018*var(--sat)) var(--hue));       --surface-high:oklch(27% calc(.02*var(--sat)) var(--hue));
   --surface-highest:oklch(31% calc(.022*var(--sat)) var(--hue));   --surface-bright:oklch(33% calc(.022*var(--sat)) var(--hue));
@@ -105,7 +105,7 @@
     --secondary:#5d5a72;--on-secondary:#fff;--secondary-container:#e3dff6;--on-secondary-container:#1a172b;
     --error:#b3261e;--on-error:#fff;--error-container:#f9dedc;--on-error-container:#410e0b;
     --success:#116a46;--on-success:#fff;--success-container:#c5edda;--on-success-container:#00331e;
-    --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
+    --surface:#fbfcff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#eff0f4;--surface-mid:#efecf4;
     --surface-high:#e9e5ee;--surface-highest:#e3dfe8;--surface-bright:#fff;
     --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--card-line:#b6b2c2;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
   }
@@ -114,7 +114,7 @@
     --secondary:#c7c2dc;--on-secondary:#2f2d3f;--secondary-container:#49475b;--on-secondary-container:#e3dff6;
     --error:#ffb4ab;--on-error:#691e16;--error-container:#93000e;--on-error-container:#ffdad6;
     --success:#8ad4b0;--on-success:#00392a;--success-container:#005240;--on-success-container:#c5edda;
-    --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
+    --surface:#0d0e11;--on-surface:#e5e1e9;--surface-lowest:#0a0b0d;--surface-low:#191b1e;--surface-mid:#1e1e24;
     --surface-high:#2c2c33;--surface-highest:#33333a;--surface-bright:#3a3a42;
     --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--card-line:#585562;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
   }
