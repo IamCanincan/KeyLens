@@ -1057,11 +1057,34 @@ function busy(on, text){
 /* 每条命令的耗时记在这里，「关于 → 上次命令」会读它 —— 卡在哪一段自己就能看见：
    单条几百毫秒是正常的 root fork，上秒级说明那一步本身慢。 */
 var CALL_LOG = { cmd: '—', ms: 0, at: '' };
+/* 只读命令的原始输出留一份在 sessionStorage，加载时先"重演"一遍（REPLAY）：
+   整文档导航等于每次跳转都重起界面，这一层把首帧从 ~1 秒压到一次渲染。
+   写命令不在名单里，永远不会被重演；键数封顶，免得 icons 那种带参数的攒一堆。 */
+var CACHE_KEY = 'taa.cache.v1', CACHE = null, REPLAY = false;
+var READONLY = { status: 1, env: 1, rules: 1, targets: 1, apps: 1, log: 1, props: 1, icons: 1 };
+function cacheObj(){
+  if (!CACHE) { try { CACHE = JSON.parse(sessionStorage.getItem(CACHE_KEY) || '{}'); } catch (e) { CACHE = {}; } }
+  return CACHE;
+}
+function hasCache(){ try { return !!sessionStorage.getItem(CACHE_KEY); } catch (e) { return false; } }
 function call(cmd, arg){
+  var key = cmd + '\u0001' + (arg || '');
+  if (REPLAY && READONLY[cmd]) {
+    var hit = cacheObj()[key];
+    if (hit) return Promise.resolve(hit);
+  }
   var t0 = performance.now();
   return run(cmd, arg).then(function (r){
     CALL_LOG = { cmd: cmd, ms: Math.round(performance.now() - t0), at: new Date().toTimeString().slice(0, 8) };
-    return { ok: r.errno === 0, code: r.errno, text: r.stdout };
+    var out = { ok: r.errno === 0, code: r.errno, text: r.stdout };
+    if (out.ok && READONLY[cmd]) {
+      var c = cacheObj();
+      c[key] = out;
+      var ks = Object.keys(c);
+      while (ks.length > 24) { delete c[ks.shift()]; }     // 插队淘汰最旧的键
+      try { sessionStorage.setItem(CACHE_KEY, JSON.stringify(c)); } catch (e) {}
+    }
+    return out;
   }, function (e){
     CALL_LOG = { cmd: cmd + '（失败）', ms: Math.round(performance.now() - t0), at: '' };
     throw e;
@@ -1286,6 +1309,11 @@ function updateRulesStat(){
   } else sus.hidden = true;
   btnSaveRules.disabled = !dirty || busyCount > 0;
   btnRevertRules.disabled = !dirty;
+  /* 草稿要跨文档活下来：点「+」会整文档跳到常驻页，不落盘的话未保存的内容就没了 */
+  try {
+    if (dirty) sessionStorage.setItem('taa.draft', rulesBox.value);
+    else sessionStorage.removeItem('taa.draft');
+  } catch (e) {}
 }
 
 /* ---------- 应用列表 ---------- */
@@ -1891,65 +1919,121 @@ function pageSlide(el, dir){
     { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
   );
 }
-function showTab(name, back){
-  var prev = S.tab;
-  var home = name === 'over';
-  /* 概览的滚动位置：下钻前记下，回来时还原 —— 不把人丢回顶部 */
-  if (prev === 'over' && !home) S.homeY = window.scrollY;
-  var dir = back ? -1 : 1;
-  applyPage(name);
+/* 加载时落一次页：按 URL 的 ?p= 决定是哪一页，顺带还原概览的滚动位置与
+   滑入方向。页面之间是整文档导航，所以没有"切页"这个动作了。 */
+function paintPage(){
+  applyPage(PAGE);
   renderAll();
-  /* 回概览要还原位置时先强制按新页面布局，否则 scrollTo 拿到的还是上一页的
-     高度，会被夹成 0（实测 52 → 0）。回 0 和其它页不需要这一步。 */
-  if (home && S.homeY) void document.documentElement.scrollHeight;
-  window.scrollTo(0, home ? (S.homeY || 0) : 0);
-  if (prev === name) return;
-  pageSlide(document.getElementById('p-' + name), dir);
-  if (home) pageSlide(hero, dir);
+  if (PAGE === 'over' && S.homeY) {
+    /* 先强制按新页面布局再滚：否则 scrollTo 拿到的是还没画英雄卡时的高度，
+       位置会被夹成 0（实测 52 → 0） */
+    void document.documentElement.scrollHeight;
+    window.scrollTo(0, S.homeY);
+  } else {
+    window.scrollTo(0, 0);
+  }
+  var dir = SLIDE_BACK ? -1 : 1;
+  pageSlide(document.getElementById('p-' + PAGE), dir);
+  if (PAGE === 'over') pageSlide(hero, dir);
 }
 
-/* 导航状态写在地址栏的 hash 上（#/over、#/rules…），顶栏箭头与 popstate
-   合成一条路。
-   ⚠ 这**不能**让系统的边缘返回退到上一级。实测（logcat，二级页划边缘）：
-     18:04:52.105 {m=CHANGE WebUIActivity|FLAG_BACK_GESTURE_ANIMATED}
-                 {m=TO_FRONT MainActivity|IS_OCCLUDED|FLAG_BACK_GESTURE_ANIMATED}
-     18:04:52.189 {m=CLOSE  WebUIActivity}   ← 整个界面被关掉，不是退一级
-   也就是说宿主的返回没跟着 WebView 的历史走：pushState 与 hash 都没能刷新它的
-   canGoBack 状态（宿主里那条 webView.goBack() 回调压根没为这个 Activity 打开）。
-   页内返回一律以顶栏箭头为准；hash 的价值只剩"在哪一页写在地址上，排查时能看见"。
-   滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
-   不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
+/* 页面之间是**整文档导航**（index.html?p=rules）。
+   为什么不用 hash / pushState：宿主的系统返回只看 WebView 的文档历史。
+   实测（logcat）hash 导航下、在二级页划边缘得到的是 {m=CLOSE WebUIActivity}
+   —— 整个界面被关掉，不是退一级；换成真文档条目，canGoBack 才可能成立。
+   代价是每次跳转都要重起一遍界面，所以配了 sessionStorage 那层缓存（见 call()）：
+   首帧先用上一份数据画，真数据回来再改。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
-var navDepth = 0, navSelf = false;
-function pageFromHash(){
-  var m = /^#\/(over|rules|apps|log|props)$/.exec(location.hash || '');
-  return m ? m[1] : null;
+var PAGE = PAGES.indexOf(QUERY.get('p') || QUERY.get('tab')) >= 0 ? (QUERY.get('p') || QUERY.get('tab')) : 'over';
+function pageUrl(name){
+  var q = new URLSearchParams(location.search);
+  q.delete('tab'); q.set('p', name);
+  return location.pathname + '?' + q.toString();
 }
-function navTo(name){
-  if (pageFromHash() === name) return;
-  navSelf = true;
-  navDepth++;
-  location.hash = '#/' + name;
+/* 页栈存在 sessionStorage 里（同一标签的文档跳转带着它走）：
+   箭头该退到哪、这次滑入从哪边进，都问它；加载时按 URL 校正一遍。 */
+function stackGet(){
+  try { return JSON.parse(sessionStorage.getItem('taa.stack') || 'null') || ['over']; } catch (e) { return ['over']; }
 }
-function goTab(name){
-  if (name === S.tab) { loadTab(); return; }
-  navTo(name);
+function stackSet(v){ try { sessionStorage.setItem('taa.stack', JSON.stringify(v)); } catch (e) {} }
+var SLIDE_BACK = false;
+(function syncStack(){
+  /* 是不是"往回走"：goBack 会留一个一次性标记。不能靠导航类型判 ——
+     实测 Chrome 从 bfcache 恢复时 performance 仍报 navigate。
+     （bfcache 命中的话这段脚本压根不重跑，那条路交给下面的 pageshow。） */
+  try {
+    if (sessionStorage.getItem('taa.back') === '1') { SLIDE_BACK = true; sessionStorage.removeItem('taa.back'); }
+  } catch (e) {}
+  var st = stackGet(), i = st.lastIndexOf(PAGE);
+  /* 两个信号取其一：箭头自己留的标记（它已经把栈弹掉了），
+     以及系统返回那种"URL 变浅但栈还深"的情况 */
+  if (i < 0) { st = (PAGE === 'over' ? [] : ['over']).concat([PAGE]); }
+  else { SLIDE_BACK = SLIDE_BACK || i < st.length - 1; st = st.slice(0, i + 1); }
+  stackSet(st.length ? st : ['over']);
+})();
+function gotoPage(name){
+  if (name === PAGE) return;
+  try { sessionStorage.removeItem('taa.back'); } catch (e) {}
+  if (PAGE === 'over') { try { sessionStorage.setItem('taa.homeY', String(Math.round(window.scrollY))); } catch (e) {} }
+  var st = stackGet();
+  if (st[st.length - 1] !== name) { st.push(name); stackSet(st); }
+  location.assign(pageUrl(name));
 }
-function goBack(){
-  if (navDepth > 0) { history.back(); return; }
-  showTab('over', true);
-  loadTab();
-}
-window.addEventListener('popstate', function (){
-  var back = !navSelf;
-  navSelf = false;
-  if (back && navDepth > 0) navDepth--;
-  var name = pageFromHash() || 'over';
-  if (name === 'over') back = true;
-  if (name === S.tab) return;
-  showTab(name, back);
-  loadTab();
+/* bfcache 命中时整个文档是原样恢复的：不重新加载、不重跑脚本，
+   滚动位置浏览器自己还原。所以要在这里补一次滑入（方向必是往回）
+   和一次静默重取，否则看到的是离开时那份旧数据。 */
+window.addEventListener('pageshow', function (e){
+  if (!e.persisted) return;
+  applyPage(PAGE);
+  renderAll();
+  pageSlide(document.getElementById('p-' + PAGE), -1);
+  if (PAGE === 'over') pageSlide(hero, -1);
+  runChain(false, true);
 });
+function goTab(name){ gotoPage(name); }
+function goBack(){
+  var st = stackGet();
+  if (st.length <= 1) return;
+  var prev = st[st.length - 2];
+  st.pop(); stackSet(st);
+  try { sessionStorage.setItem('taa.back', '1'); } catch (e) {}
+  try { history.back(); } catch (e) {}
+  /* back() 万一没吃到真条目，400ms 后自己走一次；成功的话这个文档已经被换掉，
+     定时器跟着一起没了 —— 所以这条只在失败时响 */
+  setTimeout(function (){ location.replace(pageUrl(prev)); }, 400);
+}
+
+/* ---------- 跨文档要活下来的三样：概览滚动位、页内筛选态、未保存的草稿 ---------- */
+try { S.homeY = Number(sessionStorage.getItem('taa.homeY') || 0) || 0; } catch (e) {}
+function saveUI(){
+  try {
+    sessionStorage.setItem('taa.ui', JSON.stringify({
+      appsSrc: S.appsSrc, onlyMissing: S.onlyMissing, tail: S.tail
+    }));
+  } catch (e) {}
+}
+function restoreUI(){
+  try {
+    var ui = JSON.parse(sessionStorage.getItem('taa.ui') || 'null');
+    if (ui) {
+      if (ui.appsSrc === 'apps' || ui.appsSrc === 'targets') S.appsSrc = ui.appsSrc;
+      S.onlyMissing = !!ui.onlyMissing;
+      if (ui.tail) S.tail = ui.tail;
+    }
+    var d = sessionStorage.getItem('taa.draft');
+    if (d !== null) { rulesBox.value = d; S.rulesEdited = true; }
+  } catch (e) {}
+  /* 分段高亮要跟着恢复后的状态走，否则恢复的是「已安装第三方」、亮的还是「生效列表」 */
+  document.querySelectorAll('#appsSeg button').forEach(function (x){
+    x.classList.toggle('is-active', x.dataset.src === S.appsSrc);
+  });
+  btnOnlyMissing.setAttribute('aria-pressed', S.onlyMissing ? 'true' : 'false');
+  btnOnlyMissing.classList.toggle('btn-filled', S.onlyMissing);
+  btnOnlyMissing.classList.toggle('btn-outline', !S.onlyMissing);
+  document.querySelectorAll('#logSeg button').forEach(function (x){
+    x.classList.toggle('is-active', (parseInt(x.dataset.n, 10) || 60) === S.tail);
+  });
+}
 
 function setAuto(on){
   S.auto = on;
@@ -2002,6 +2086,7 @@ function wire(){
   function setAppsView(src, onlyMissing){
     S.appsSrc = src;
     S.onlyMissing = !!onlyMissing && src === 'apps';
+    saveUI();
     document.querySelectorAll('#appsSeg button').forEach(function (x){
       x.classList.toggle('is-active', x.dataset.src === src);
     });
@@ -2025,6 +2110,7 @@ function wire(){
   Array.prototype.forEach.call(document.querySelectorAll('#logSeg button'), function (b){
     b.addEventListener('click', function (){
       S.tail = parseInt(b.dataset.n, 10) || 60;
+      saveUI();
       S.logSig = '';                                   // 行数变了，必须重画
       document.querySelectorAll('#logSeg button').forEach(function (x){ x.classList.toggle('is-active', x === b); });
       S.loaded.log = false;
@@ -2136,21 +2222,31 @@ function adoptBridge(hit){
   /* 曾试过 fullScreen(true)：状态栏确实藏掉了，但底部那根白色药丸**还在** ——
      说明它不是导航栏背景，而是别的东西（手势提示条，或宿主自己的悬浮底栏）。
      为了它把时钟电量一起藏掉不划算，已撤回。网页这一层没有别的办法让它消失。 */
-  refresh();
+  /* 已经用上一份数据演过首帧的话，这一趟只负责把数据换成新的：
+     再盖一层「读取中」遮罩，就等于把刚画出来的内容又抹黑一次 */
+  if (S.primed) runChain(true, true); else refresh();
 }
 
 function boot(){
   wire();
+  restoreUI();
+  paintPage();            // 先按 URL 落页（此时还没数据，画的是骨架）
 
-  // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
-  /* 先把当前条目定在 #/over（replace 不产生历史、也不惊动宿主），
-     之后所有导航都是干净的 hash 条目 */
-  try { history.replaceState(history.state, '', '#/over'); } catch (e) {}
-  var want = QUERY.get('tab');
-  if (want && PAGES.indexOf(want) >= 0 && want !== 'over') {
-    navTo(want);          // 深链（预览与排查用）：走同一条 popstate 路
-  } else {
-    applyPage('over');    // 初始状态也要定死标题 / 英雄卡 / 返回箭头，不依赖标记默认值
+  /* 有上一份数据就先演一帧，不等桥 —— 桥的探测本身要几百毫秒。
+     演示模式也走这条路，这样这条缓存路径在桌面浏览器里同样能被量到。 */
+  if (hasCache()) {
+    REPLAY = true;
+    S.loaded = {};
+    S.primed = true;
+    Promise.all([loadStatus(), loadEnv(), loadLists()])
+      .then(function (){ return ensure(PAGE); })
+      .then(function (){
+        REPLAY = false;
+        renderAll();
+        /* paintPage 那次滚动时页面还是骨架，高度不够会被夹小；
+           数据画上来了，位置要再补一次 */
+        if (PAGE === 'over' && S.homeY) window.scrollTo(0, S.homeY);
+      }, function (){ REPLAY = false; });
   }
 
   if (DEMO) { refresh(); return; }
