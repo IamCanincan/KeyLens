@@ -186,7 +186,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 整页滚动：底栏已经去掉，底部不再给药丸让位，只留一段普通收尾留白。
    加在这里、不加在 body 上，页面背景才一直铺到屏幕底边 */
 .wrap{padding:0 var(--sp4) calc(32px + var(--inset-bottom));
-  display:flex;flex-direction:column;gap:var(--sp4);flex:1;
+  display:flex;flex-direction:column;gap:var(--sp6);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
 /* 面板竖着排，靠 hidden 切换 —— 没有滚动、没有容器高度变化，
    也没有"相邻页第一次进视口才绘制"那一帧。
@@ -283,7 +283,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .menu .chev{flex:none;color:var(--on-variant);opacity:.64}
 .menu .chev svg{width:20px;height:20px;display:block;fill:currentColor}
 /* 概览里是两张卡：入口在上、状态明细在下 */
-.home-card{margin-top:var(--sp4)}
+/* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
+   它们自己的内容还亲，版面立刻显得局促。 */
+.home-card{margin-top:var(--sp6)}
 
 /* ================= 概览分组 ================= */
 /* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
