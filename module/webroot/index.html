@@ -1888,6 +1888,53 @@ function wire(){
     if (e.key === "Escape") document.getElementById("aboutDlg").hidden = true;
   });
 
+  /* 左右滑动切页。三条判据缺一不可：
+     ① 起点不在输入框 / 可横滚容器 / 底栏里（否则拖光标、拖列表会被当成切页）；
+     ② 横向位移远大于纵向（否则竖向滚动时手指一歪就翻页）；
+     ③ 位移够长、时间够短（慢慢挪过去不算）。
+     切页走同一个 goTab，所以底栏选中态、面板显隐都由现成逻辑管。 */
+  var swipe = { on: false, x: 0, y: 0, t: 0 };
+  var ORDER = ['over', 'rules', 'apps', 'log', 'props'];
+  function noSwipe(el){
+    while (el && el !== document.body) {
+      var tag = el.tagName;
+      if (tag === 'TEXTAREA' || tag === 'INPUT' || tag === 'SELECT') return true;
+      var cl = el.className && String(el.className);
+      if (cl && /(^|\s)(tabs|console|seg|toolbar)(\s|$)/.test(cl)) return true;
+      el = el.parentElement;
+    }
+    return false;
+  }
+  document.addEventListener('touchstart', function (e){
+    if (e.touches.length !== 1 || noSwipe(e.target)) { swipe.on = false; return; }
+    swipe.on = true;
+    swipe.x = e.touches[0].clientX;
+    swipe.y = e.touches[0].clientY;
+    swipe.t = Date.now();
+  }, { passive: true });
+  document.addEventListener('touchend', function (e){
+    if (!swipe.on) return;
+    swipe.on = false;
+    var dx = e.changedTouches[0].clientX - swipe.x;
+    var dy = e.changedTouches[0].clientY - swipe.y;
+    if (Date.now() - swipe.t > 800) return;
+    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
+    var i = ORDER.indexOf(S.tab);
+    var n = dx < 0 ? i + 1 : i - 1;                  // 往左划 = 下一页
+    if (i < 0 || n < 0 || n >= ORDER.length) return;
+    goTab(ORDER[n]);
+    /* 位移一下表示"跟着手势走过了"：只动位置、不动透明度 —— 淡入会闪 */
+    var panel = document.getElementById('p-' + S.tab);
+    if (panel) {
+      panel.style.animation = 'none';
+      panel.style.transform = 'translateX(' + (dx < 0 ? 18 : -18) + 'px)';
+      panel.offsetHeight;                            // 强制回流，让下一帧的过渡有起点
+      panel.style.transition = 'transform 160ms cubic-bezier(.2,0,0,1)';
+      panel.style.transform = '';
+      setTimeout(function (){ panel.style.transition = ''; }, 200);
+    }
+  }, { passive: true });
+
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
   var mq = matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function (){
