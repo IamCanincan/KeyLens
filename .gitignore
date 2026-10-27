@@ -29,3 +29,14 @@ desktop.ini
 # ---------------------- 本地日志副本 ----------------------
 # 模块实际把日志写到 /data/adb/ts_auto.log，这里只防误提交到仓库
 *.log
+
+# ---------------------- Android App（伴随应用）----------------------
+# 模块的「打开界面」按钮只能加载 webroot/index.html，所以原生化是一条独立的路：
+# 同仓库里放一个 Compose App，数据仍走 module/webui.sh。
+.gradle/
+build/
+local.properties
+keystore.properties
+*.jks
+*.keystore
+captures/

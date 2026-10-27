@@ -152,6 +152,17 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 > 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；**样式与脚本不要拆成多个 css/js 文件**——部分管理器用 `file://` 加载且不解析子资源路径。唯一的例外是 `webroot/icons/*.png`：那是运行时导出的图片，读不到时界面会退成首字块，所以缺了也不影响任何功能与可读性。
 
+### 原生界面（伴随 App）
+
+模块的「打开界面」按钮**只能加载 `webroot/index.html`** —— 这是 KernelSU 的 `WebUIActivity` 写死的，没有原生 UI 的挂载点。所以想要真正的安卓原生观感，只能另做一个 App：
+
+- 代码在本仓库 `app/`，Kotlin + Jetpack Compose + **Material 3 Expressive**，包名 `com.iamcanincan.tsautoadd`。
+- **数据一行没重写**：仍然 `su -c "sh <模块目录>/webui.sh <命令>"`。状态判定只有 shell 里那一份，三处（命令行 / WebUI / App）看到的是同一套结论。
+- 相比 WebUI 多出来的原生部分：配色直接用 `dynamicLight/DarkColorScheme`（系统算好的调色板，不用再去解 frro）、应用图标与显示名直接问 `PackageManager`（不用抠桌面图标缓存）、翻页是 `HorizontalPager` 的物理滑动。
+- 构建：`./gradlew :app:assembleDebug`（需要 JDK 17+ 与 Android SDK；`local.properties` 里的 `sdk.dir` 指向本机 SDK）。首次启动要在 KernelSU 里**授予 root**，否则读不到模块目录。
+
+> WebUI 仍然保留：没有装这个 App、或者管理器不支持 WebUI 之外的入口时，那条路照旧可用。
+
 ### 查看运行状态
 - **模块描述**：在模块详情页，`description` 字段动态显示：
   ```
