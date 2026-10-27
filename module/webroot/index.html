@@ -336,8 +336,11 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 应用清单在 626px 画布上排单列，每行右边会空出一大截；
    自动分列后包名自己限宽，超长的用省略号收尾（title 给全名）。 */
 #rulesResolved{margin-top:var(--sp4)}
-#appsBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(258px,100%),1fr));gap:1px}
-#appsBody .empty,#appsBody .hint{grid-column:1 / -1}
+/* 应用列表固定一列：行里要放 图标 + 应用名 + 包名 + 角标，两列时每列只有
+   258px，包名全被截断。这条以前靠 258 这个魔法数刚好只排一列 —— 卡片内边距
+   从 26 收到 24 之后内容宽度 514 → 518，越过 2×258+1 的阈值，列表自己翻成了
+   两列。现在显式写死。 */
+#appsBody{display:block}
 .app-row{display:flex;align-items:center;gap:var(--sp3);padding:5px var(--sp2);border-radius:var(--r-m);
   min-width:0;transition:background var(--d1) var(--e-emph)}
 .app-row:hover{background:var(--surface-mid)}
