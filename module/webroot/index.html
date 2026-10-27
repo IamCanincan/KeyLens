@@ -18,7 +18,6 @@
 /* ================= 设计令牌 ================= */
 :root{
   --hue: 267;            /* 主色相：兜底值取平台默认强调色，见 JS 里 HUE_DEFAULT 的出处 */
-  --hue3: 45;            /* 第三色相（= hue + 130，由 JS 同步） */
   --sat: .41;            /* 彩度倍率：系统强调色偏灰就整体降下来 */
   --e-spring: cubic-bezier(.06,.71,.1,1);
   --e-emph: cubic-bezier(.3,0,.08,1);
@@ -44,7 +43,9 @@
      根本不读框架的 config_bodyFontFamily，所以 ROM 换了系统字体时界面会退回 Roboto。
      真名字由 env 的 sys_font 从设备上读出来再注入（见 webui.sh 的「系统字体」段）。 */
   --font: system-ui, sans-serif;
-  --mono: ui-monospace,"Roboto Mono",SFMono-Regular,Menlo,Consolas,monospace;
+  /* 同样不写死具体名字：Menlo / Consolas 在这台机器上永远匹配不到，
+     ui-monospace 与 monospace 才是系统自带的那一支等宽字 */
+  --mono: ui-monospace, monospace;
 }
 /* 属性选择器的值不带引号时必须是合法标识符，`1` 不是 —— 写成 [data-e2e=1]
    整条规则会被解析器直接丢掉（不报错、不生效）。数值型属性一律加引号。 */
@@ -56,12 +57,10 @@ html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
   --primary-container:oklch(92% calc(.06*var(--sat)) var(--hue));  --on-primary-container:oklch(28% calc(.13*var(--sat)) var(--hue));
   --secondary:oklch(53% calc(.11*var(--sat)) var(--hue));          --on-secondary:oklch(100% 0 0);
   --secondary-container:oklch(92% calc(.05*var(--sat)) var(--hue));--on-secondary-container:oklch(32% calc(.08*var(--sat)) var(--hue));
-  --tertiary:oklch(52% calc(.16*var(--sat)) var(--hue3));          --on-tertiary:oklch(100% 0 0);
-  --tertiary-container:oklch(90% calc(.08*var(--sat)) var(--hue3));--on-tertiary-container:oklch(28% calc(.12*var(--sat)) var(--hue3));
   --error:oklch(50% .21 27);                      --on-error:oklch(100% 0 0);
   --error-container:oklch(94% .07 27);            --on-error-container:oklch(30% .14 27);
-  /* 正常态不能借用 tertiary：色相可调，tertiary 可能正好落在橙红上，
-     「一切正常」就会显示成警告色。这里给成功态一套固定绿。 */
+  /* 「一切正常」不能借用任何随系统色相变化的角色：色相一调它可能正好落到橙红上，
+     正常态就显示成警告色。成功态单独一套固定绿。 */
   --success:oklch(45% .14 155);                   --on-success:oklch(100% 0 0);
   --success-container:oklch(92% .07 155);         --on-success-container:oklch(26% .10 155);
   --surface:oklch(98.5% calc(.008*var(--sat)) var(--hue));        --on-surface:oklch(22% calc(.03*var(--sat)) var(--hue));
@@ -79,8 +78,6 @@ html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
   --primary-container:oklch(42% calc(.16*var(--sat)) var(--hue));  --on-primary-container:oklch(90% calc(.07*var(--sat)) var(--hue));
   --secondary:oklch(80% calc(.09*var(--sat)) var(--hue));          --on-secondary:oklch(30% calc(.06*var(--sat)) var(--hue));
   --secondary-container:oklch(40% calc(.10*var(--sat)) var(--hue));--on-secondary-container:oklch(90% calc(.05*var(--sat)) var(--hue));
-  --tertiary:oklch(78% calc(.14*var(--sat)) var(--hue3));          --on-tertiary:oklch(28% calc(.12*var(--sat)) var(--hue3));
-  --tertiary-container:oklch(42% calc(.14*var(--sat)) var(--hue3));--on-tertiary-container:oklch(91% calc(.08*var(--sat)) var(--hue3));
   --error:oklch(84% .14 27);                      --on-error:oklch(30% .12 27);
   --error-container:oklch(44% .18 27);            --on-error-container:oklch(93% .06 27);
   --success:oklch(80% .14 155);                   --on-success:oklch(24% .09 155);
@@ -100,7 +97,6 @@ html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
   :root,[data-scheme=light]{
     --primary:#5b48c8;--on-primary:#fff;--primary-container:#e5defd;--on-primary-container:#22146b;
     --secondary:#5d5a72;--on-secondary:#fff;--secondary-container:#e3dff6;--on-secondary-container:#1a172b;
-    --tertiary:#116a46;--on-tertiary:#fff;--tertiary-container:#c5edda;--on-tertiary-container:#00331e;
     --error:#b3261e;--on-error:#fff;--error-container:#f9dedc;--on-error-container:#410e0b;
     --success:#116a46;--on-success:#fff;--success-container:#c5edda;--on-success-container:#00331e;
     --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
@@ -110,7 +106,6 @@ html[data-e2e="1"]{--inset-top:max(env(safe-area-inset-top), 30px);
   [data-scheme=dark]{
     --primary:#c9bffd;--on-primary:#37279a;--primary-container:#4435b0;--on-primary-container:#e5defd;
     --secondary:#c7c2dc;--on-secondary:#2f2d3f;--secondary-container:#49475b;--on-secondary-container:#e3dff6;
-    --tertiary:#8ad4b0;--on-tertiary:#00392a;--tertiary-container:#005240;--on-tertiary-container:#c5edda;
     --error:#ffb4ab;--on-error:#691e16;--error-container:#93000e;--on-error-container:#ffdad6;
     --success:#8ad4b0;--on-success:#00392a;--success-container:#005240;--on-success-container:#c5edda;
     --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
@@ -204,9 +199,8 @@ button,input,textarea,select{font:inherit;color:inherit}
 .btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
 .btn-text{background:transparent;color:var(--primary);padding:0 var(--sp3)}
 .btn-sm{min-height:30px;padding:0 var(--sp3);font-size:12.5px}
-/* 主行动按钮用 primary 而不是 tertiary：tertiary 是 hue+130 的对比色，
-   跟随系统取色时它可能正好是红色，把「立即同步」画得像危险操作。
-   静止形状跟其它按钮一样是胶囊——表现力留给按下那一刻的形状形变，
+/* 主行动用 primary：它是唯一"跟着系统色相走"的实心色，别的角色要么太淡要么
+   带警告含义。静止形状与其它按钮一样是胶囊 —— 表现力留给按下那一刻的形状形变，
    一屏里两种按钮形状并排只会读成「这俩不是一类东西」。 */
 .fab{background:var(--primary);color:var(--on-primary)}
 .fab:active{border-radius:50%;transform:scale(.9)}
@@ -231,7 +225,10 @@ button,input,textarea,select{font:inherit;color:inherit}
 .grp+.grp{margin-top:var(--sp4)}
 .grp-t{font-size:11.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--on-variant);
   margin-bottom:var(--sp2)}
-.grid{display:grid;gap:var(--sp2);grid-template-columns:repeat(auto-fit,minmax(var(--cell,260px),1fr))}
+/* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
+   容器比 260px 还窄（320px 视口下卡片内容只有 254px）轨道不会退让，
+   格子就会捅出网格右边界。实测过这一处。 */
+.grid{display:grid;gap:var(--sp2);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,260px),100%),1fr))}
 .blk{background:var(--surface-high);border-radius:var(--r-l);padding:var(--sp3);min-width:0}
 .blk-k{display:block;font-size:12px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
 .blk-v{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;line-height:1.3;min-width:0}
@@ -266,7 +263,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .pill[data-tone=bad]::before{background:var(--error)}
 /* 应用清单在 626px 画布上排单列，每行右边会空出一大截；
    自动分列后包名自己限宽，超长的用省略号收尾（title 给全名）。 */
-#appsBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(258px,1fr));gap:1px}
+#appsBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(258px,100%),1fr));gap:1px}
 #appsBody .empty,#appsBody .hint{grid-column:1 / -1}
 .app-row{display:flex;align-items:center;gap:var(--sp3);padding:5px var(--sp2);border-radius:var(--r-m);
   min-width:0;transition:background var(--d1) var(--e-emph)}
@@ -538,7 +535,6 @@ var ICON = {
   sync: '<path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 0 0 8-8Z"/>',
   reload: '<path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4Z"/>',
   save: '<path d="M5 3h9l5 5v13H5Zm3 0v5h6V3Zm4 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>',
-  palette: '<path d="M12 3a9 9 0 0 0 0 18c1.7 0 2.5-1.3 2.5-2.4 0-1.6-1.4-1.9-1.4-3.2 0-.9.7-1.4 1.6-1.4H17A4 4 0 0 0 21 10c0-3.9-4-7-9-7Zm-5.5 9a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm3-4a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Zm5 0a1.5 1.5 0 1 1 0-3 1.5 1.5 0 0 1 0 3Z"/>',
   sun: '<path d="M12 17a5 5 0 1 1 0-10 5 5 0 0 1 0 10Zm0 3.5 1.4-2.1h-2.8Zm0-17.9L10.6 4.7h2.8ZM3.5 12l2.1-1.4v2.8Zm17.9 0-2.1 1.4v-2.8ZM5.4 5.4 7.7 5l-1.7 1.7Zm13.2 13.2-2.3.4 1.7-1.7ZM5.4 18.6l1.7 1.7 .3-2.3ZM18.6 5.4l-1.7-1.7-.3 2.3Z"/>',
   moon: '<path d="M12.8 3.1a9 9 0 1 0 8.1 12.4 7 7 0 0 1-8.1-8.3c0-1.5.4-2.9 1-4.1A9 9 0 0 0 12.8 3.1Z"/>',
   auto: '<path d="M12 3a9 9 0 1 0 0 18 9 9 0 0 0 0-18Zm0 2v14a7 7 0 0 1 0-14Z"/>',
@@ -783,7 +779,6 @@ function setPalette(h, sat, note){
   sv = Math.max(0.2, Math.min(1.1, sv));
   var st = document.documentElement.style;
   st.setProperty('--hue', n);
-  st.setProperty('--hue3', (n + 130) % 360);
   st.setProperty('--sat', sv);
   THEME.applied = n + '° / 彩度 ×' + sv.toFixed(2);
   THEME.note = note;
@@ -899,6 +894,7 @@ var S = {
   status: {}, env: {}, tab: 'over',
   rules: '', rulesBase: '', rulesEdited: false,
   targets: [], apps: [], targetSet: null,
+  rulesSet: null, rulesSetSrc: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {},
   log: [], logSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
@@ -1153,6 +1149,20 @@ function targetSetOf(){
   }
   return S.targetSet;
 }
+/* 常驻集合：分清某个包是「因为写在 rules.txt 才生效」还是「因为装着才生效」。
+   这两种在生效列表里原先混在一起看不出来，而它正是这个模块的核心语义。
+   以磁盘上的基线为准，不用编辑器里的草稿 —— 草稿没保存就不算数。 */
+function rulesSetOf(){
+  if (S.rulesSetSrc !== S.rulesBase) {
+    S.rulesSetSrc = S.rulesBase;
+    S.rulesSet = {};
+    String(S.rulesBase || '').split('\n').forEach(function (l){
+      l = l.replace(/^\s+|\s+$/g, '');
+      if (l && l.charAt(0) !== '#') S.rulesSet[l] = 1;
+    });
+  }
+  return S.rulesSet;
+}
 function monogram(s){
   var t = String(s || '');
   /* 包名取最后一段的首字母：com.google.android.gsf 与 com.termux 都以 com 开头，
@@ -1224,6 +1234,10 @@ function renderApps(){
       var tg = el('span', 'app-tag', '未纳入');
       tg.setAttribute('data-tone', 'miss');
       row.appendChild(tg);
+    } else if (S.appsSrc === 'targets' && rulesSetOf()[pkg]) {
+      var pt = el('span', 'app-tag', '常驻');
+      pt.title = '写在 rules.txt 里：不管装没装都会进目标列表';
+      row.appendChild(pt);
     }
     if (S.appsSrc === 'apps') {
       var add = el('button', 'icon-add');
