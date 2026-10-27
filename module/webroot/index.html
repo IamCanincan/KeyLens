@@ -1908,9 +1908,11 @@ function showTab(name, back){
   if (home) pageSlide(hero, dir);
 }
 
-/* history：下钻时压一条，返回箭头与系统返回键都走 popstate。
-   KernelSU 的 WebUI 在返回时先查 webView.canGoBack()，所以系统返回键
-   会先退到上一级，退无可退才关界面。
+/* history：下钻时压一条，顶栏箭头与 popstate 走同一条路。
+   系统返回键能不能先退一级要看宿主有没有把 WebView 的历史接到返回回调上 ——
+   从装好的 KernelSU 里看不到这条路径（dex 中 WebView.canGoBack 只出现在
+   WebViewClient.doUpdateVisitedHistory 里，goBack 只在一个混淆 lambda 里），
+   所以这里不承诺；页面内的返回一律以顶栏箭头为准。
    滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
    不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
