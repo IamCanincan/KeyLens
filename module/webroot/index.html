@@ -225,7 +225,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .badge[data-tone=bad] .dot{background:var(--error);animation:pulse 1.6s infinite}
 @keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
 /* 版本号是个按钮（点开「关于」），所以补 cursor；视觉仍按 chip */
-button.chip{cursor:pointer}
+button.chip{cursor:pointer;min-height:32px}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-full);
   background:var(--surface-highest);color:var(--on-variant);font-size:11.5px;
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -245,7 +245,7 @@ button.chip{cursor:pointer}
 .btn-tonal{background:var(--surface-high);color:var(--on-surface)}
 .btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
 .btn-text{background:transparent;color:var(--primary);padding:0 var(--sp3)}
-.btn-sm{min-height:30px;padding:0 var(--sp3);font-size:12.5px}
+.btn-sm{min-height:36px;padding:0 var(--sp3);font-size:12.5px}
 /* 主行动用 primary：它是唯一"跟着系统色相走"的实心色，别的角色要么太淡要么
    带警告含义。静止形状与其它按钮一样是胶囊 —— 表现力留给按下那一刻的形状形变，
    一屏里两种按钮形状并排只会读成「这俩不是一类东西」。 */
@@ -394,7 +394,7 @@ button.chip{cursor:pointer}
 .log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
 .log-line[data-lvl=ok]{color:var(--success)}
 .seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-mid);border-radius:var(--r-full)}
-.seg button{border:0;background:transparent;color:var(--on-variant);min-height:28px;padding:0 var(--sp3);
+.seg button{border:0;background:transparent;color:var(--on-variant);min-height:32px;padding:0 var(--sp3);
   border-radius:var(--r-full);font-size:12px;font-weight:600;cursor:pointer;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .seg button:active{transform:scale(.93)}
