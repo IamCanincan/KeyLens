@@ -143,11 +143,10 @@ button,input,textarea,select{font:inherit;color:inherit}
   display:flex;flex-direction:column;gap:var(--sp4);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
 .card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp5);
-  box-shadow:var(--shadow);
-  animation:fade var(--d2) var(--e-emph)}
-/* 标签页切换会让面板从 display:none 变回来、动画随之重播：
-   面板只留一个 220ms 淡入，带延迟的入场动画只给首屏的英雄卡用。 */
-@keyframes fade{from{opacity:0}}
+  box-shadow:var(--shadow)}
+/* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
+   实测切一次页 opacity 是 0 → 0.028 → 1，看上去就是「每切一下都闪一下」。
+   入场效果只留给英雄卡（rise）：它从不被隐藏，所以只播一次。 */
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
 .card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
   margin:0 0 var(--sp3)}

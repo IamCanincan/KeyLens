@@ -75,6 +75,8 @@
 
 #### 修复
 
+* **每切一次页都会闪一下**：`.card` 上挂着 `animation:fade 220ms`（从 `opacity:0` 起），而切页是把面板从 `display:none` 切回来 —— 动画每次都会整段重播。实测切一次页 opacity 序列是 **0 → 0.028 → 1**，看上去就是闪一下。删掉面板的入场动画（连同 `@keyframes fade`）；入场效果只留给英雄卡的 `rise`，它从不被隐藏，所以只播一次。改后再量：连续切两次页，四次采样的 opacity 全是 **1**，`animationName` 为 `none`。
+
 * **修掉一根「莫名其妙的白色药丸」—— 它是本界面自己的 snackbar**：隐藏状态只靠 `transform:translate(-50%,140%)` 挪走，而没文字时元素高度只有 16px，140% 只有 22px，**根本没挪出屏幕**。于是它在底部正中常驻成一条 32×16、18px 圆角、底色 `oklch(.99)` 的空白胶囊。实测量到的证据：`visibleNow=true`、`textContent=""`、`w=32 h=16`、`background=oklch(0.99 …)`、`data-show` 为 null —— 一条就够定案。现在用 `opacity:0` 兜底，与高度无关；`[data-show="1"]` 时恢复 `opacity:1`。正对照：调用后 opacity 1、在视口内、文字出现；移除属性后回到 0。
 
 * **界面提示（snackbar）一次都没有出现过**：CSS 里写的是 `.snackbar[data-show=1]{transform:translate(-50%,0)}`，而**属性选择器的值不加引号时必须是合法标识符，`1` 不是** —— Chrome 不报错，直接把整条规则丢掉，于是 snackbar 永远停在初始的 `translate(-50%,140%)`，也就是始终在屏幕外。「保存成功」「同步完成」「命令失败」这些提示其实一条都没被看见过。改成 `[data-show="1"]`。实测：改前 `data-show="1"` 时计算出的 transform 仍是移出视口，改后落在视口内（626×1400 下 top 1357 / bottom 1388）。
