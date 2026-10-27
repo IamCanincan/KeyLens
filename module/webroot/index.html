@@ -118,7 +118,9 @@ body{
   background:var(--surface);color:var(--on-surface);font:400 14px/1.5 var(--font);
   /* 竖排 + .wrap 撑满：让页脚在内容短的时候也贴着视口底部，
      底下的系统手势条才有"系统区域"的样子，而不是悬在一片空白里 */
-  min-height:100vh;display:flex;flex-direction:column;
+  /* 整页不滚：滚动交给每一页自己做 —— 这样切页时既不会把滚动位置夹回去（"底栏上下跳"），
+     也才有条件做跟手拖拽（横排的 pager 需要每页高度可控）。 */
+  height:100vh;height:100dvh;overflow:hidden;display:flex;flex-direction:column;
 }
 h1,h2,h3,p{margin:0}
 button,input,textarea,select{font:inherit;color:inherit}
@@ -137,11 +139,21 @@ button,input,textarea,select{font:inherit;color:inherit}
 .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
 /* ================= 卡片 ================= */
-/* 底部让出药丸那一段（药丸高约 56 + 距底 20 + 余量）。加在这里、不加在 body 上：
-   这样页面背景一直铺到屏幕底边，内容是从药丸"后面"过去的 */
-.wrap{padding:0 var(--sp4) calc(96px + var(--inset-bottom));
-  display:flex;flex-direction:column;gap:var(--sp4);flex:1;
+/* 顶栏与英雄卡是固定 chrome，pager 吃掉剩下的高度 */
+.wrap{padding:0 var(--sp4);display:flex;flex-direction:column;gap:var(--sp3);
+  flex:1;min-height:0;overflow:hidden;
   max-width:var(--measure);margin:0 auto;width:100%}
+/* 裁切（pager）和位移（track）必须是两个元素：写成一个的话，overflow:hidden 会
+   连自己的第 2~5 页一起裁掉 —— 第 1 页看着正常，切过去就是一片空白（实测踩过）。
+   裁切边界也不能放在 .wrap 上：它有 16px 横向内边距，相邻页会从那 16px 里露出边。 */
+.pager{flex:1;min-height:0;overflow:hidden}
+.track{display:flex;align-items:flex-start;height:100%;
+  touch-action:pan-y;overscroll-behavior-x:contain;
+  transition:transform var(--d3) var(--e-emph);will-change:transform}
+/* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
+   底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
+.panel{flex:0 0 100%;min-width:0;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;
+  overscroll-behavior-y:contain;padding-bottom:calc(96px + var(--inset-bottom))}
 .card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
@@ -257,11 +269,6 @@ button.chip{cursor:pointer}
 .path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.5}
 .path-k{flex:none;font-size:11.5px;color:var(--on-variant)}
 .path-v{min-width:0;word-break:break-all;font-size:11.5px;color:var(--on-variant)}
-/* 页脚：只为了给页面底部那块空白一个归属，让系统手势条落在"内容结束之后" */
-.foot{display:flex;flex-wrap:wrap;justify-content:center;gap:var(--sp2);
-  margin:auto 0 var(--sp3);padding-top:var(--sp4);border-top:var(--hair);
-  font-size:11.5px;color:var(--on-variant);text-align:center}
-.foot span+span::before{content:"·";margin-right:var(--sp2);opacity:.55}
 /* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
 .card-quiet .blk{background:transparent;padding:0}
 .card-quiet .grid{gap:var(--sp3)}
@@ -454,13 +461,14 @@ button.chip{cursor:pointer}
     <div><b id="bannerTitle"></b><span id="bannerText"></span></div>
   </div>
 
-  <main class="wrap" style="padding:0">
-    <section class="card" id="p-over">
+  <main class="pager" id="pager">
+    <div class="track" id="track">
+    <section class="card panel" id="p-over">
       <h2 class="card-title">运行状态</h2>
       <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
     </section>
 
-    <section class="card" id="p-rules" hidden>
+    <section class="card panel" id="p-rules">
       <h2 class="card-title">常驻应用列表 rules.txt</h2>
       <div class="field">
         <label id="rulesLabel">每行一个包名 · # 开头为注释</label>
@@ -477,7 +485,7 @@ button.chip{cursor:pointer}
       <div id="rulesResolved" hidden></div>
     </section>
 
-    <section class="card" id="p-apps" hidden>
+    <section class="card panel" id="p-apps">
       <h2 class="card-title">应用列表</h2>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="appsSeg">
@@ -494,7 +502,7 @@ button.chip{cursor:pointer}
       <div id="appsBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card" id="p-log" hidden>
+    <section class="card panel" id="p-log">
       <h2 class="card-title">运行日志</h2>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="logSeg">
@@ -512,7 +520,7 @@ button.chip{cursor:pointer}
       <div class="console" id="logBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card" id="p-props" hidden>
+    <section class="card panel" id="p-props">
       <h2 class="card-title">系统属性伪装</h2>
       <div class="switch-row">
         <span class="txt"><b>开机时重置属性</b><span id="propsSwitchHint">关闭后下次开机起不再写入期望值</span></span>
@@ -535,15 +543,9 @@ button.chip{cursor:pointer}
         <div class="sheet-actions"><button class="btn btn-filled" id="aboutClose">关闭</button></div>
       </div>
     </div>
+    </div>
   </main>
 
-  <!-- 页脚：页面短的时候下面是一大片空背景，系统的返回手势条会像"凭空一根药丸"。
-       给这块空间一个明确的内容归属，手势条就落在页脚之下，读起来是系统的东西。 -->
-  <footer class="foot">
-    <span>TS-AUTO-ADD</span>
-    <span>只在开机与文件变化时同步</span>
-    <span>界面不联网</span>
-  </footer>
 </div>
 
 <!-- 悬浮药丸底栏：选中那格展开文字、其余只留图标，所以药丸宽度随当前页变化。
@@ -1763,6 +1765,7 @@ function confirm(title, text, okLabel){
    6. 交互装配
    ========================================================= */
 var tabsEl = document.getElementById('tabs');
+var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
 function showTab(name){
   S.tab = name;
   Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
@@ -1770,8 +1773,15 @@ function showTab(name){
     t.classList.toggle('is-active', on);
     t.setAttribute('aria-selected', on ? 'true' : 'false');
   });
-  ['over', 'rules', 'apps', 'log', 'props'].forEach(function (k){
-    document.getElementById('p-' + k).hidden = k !== name;
+  /* 横排 pager：整条轨道左移 i 屏。不用 hidden —— 那样就没法"跟手"了；
+     非当前页用 aria-hidden 标掉，读屏不会读到隔壁页。 */
+  var i = Math.max(0, TAB_ORDER.indexOf(name));
+  var track = document.getElementById('track');
+  track.style.transition = '';
+  track.style.transform = 'translateX(' + (-i * 100) + '%)';
+  TAB_ORDER.forEach(function (k){
+    var el = document.getElementById('p-' + k);
+    if (el) el.setAttribute('aria-hidden', k === name ? 'false' : 'true');
   });
 }
 function goTab(name){ showTab(name); loadTab(); }
@@ -1888,13 +1898,12 @@ function wire(){
     if (e.key === "Escape") document.getElementById("aboutDlg").hidden = true;
   });
 
-  /* 左右滑动切页。三条判据缺一不可：
-     ① 起点不在输入框 / 可横滚容器 / 底栏里（否则拖光标、拖列表会被当成切页）；
-     ② 横向位移远大于纵向（否则竖向滚动时手指一歪就翻页）；
-     ③ 位移够长、时间够短（慢慢挪过去不算）。
-     切页走同一个 goTab，所以底栏选中态、面板显隐都由现成逻辑管。 */
-  var swipe = { on: false, x: 0, y: 0, t: 0 };
-  var ORDER = ['over', 'rules', 'apps', 'log', 'props'];
+  /* 跟手拖拽切页：按下先判轴，横向才接管 —— 竖向交给浏览器自己滚
+     （.pager 上 touch-action:pan-y）。拖动时整条轨道跟着手指走，松手按位移和速度
+     决定翻页还是弹回；到头了给 0.32 的阻尼，不硬顶。
+     起点在输入框 / 可横向滚动容器 / 底栏里时不接管，否则拖光标会被当成翻页。 */
+  var trackEl = document.getElementById('track');
+  var sw = { on: false, x: 0, y: 0, dx: 0, axis: '', t: 0 };
   function noSwipe(el){
     while (el && el !== document.body) {
       var tag = el.tagName;
@@ -1906,34 +1915,42 @@ function wire(){
     return false;
   }
   document.addEventListener('touchstart', function (e){
-    if (e.touches.length !== 1 || noSwipe(e.target)) { swipe.on = false; return; }
-    swipe.on = true;
-    swipe.x = e.touches[0].clientX;
-    swipe.y = e.touches[0].clientY;
-    swipe.t = Date.now();
+    if (e.touches.length !== 1 || noSwipe(e.target)) { sw.on = false; return; }
+    sw.on = true; sw.axis = ''; sw.dx = 0;
+    sw.x = e.touches[0].clientX; sw.y = e.touches[0].clientY; sw.t = Date.now();
   }, { passive: true });
-  document.addEventListener('touchend', function (e){
-    if (!swipe.on) return;
-    swipe.on = false;
-    var dx = e.changedTouches[0].clientX - swipe.x;
-    var dy = e.changedTouches[0].clientY - swipe.y;
-    if (Date.now() - swipe.t > 800) return;
-    if (Math.abs(dx) < 56 || Math.abs(dx) < Math.abs(dy) * 1.4) return;
-    var i = ORDER.indexOf(S.tab);
-    var n = dx < 0 ? i + 1 : i - 1;                  // 往左划 = 下一页
-    if (i < 0 || n < 0 || n >= ORDER.length) return;
-    goTab(ORDER[n]);
-    /* 位移一下表示"跟着手势走过了"：只动位置、不动透明度 —— 淡入会闪 */
-    var panel = document.getElementById('p-' + S.tab);
-    if (panel) {
-      panel.style.animation = 'none';
-      panel.style.transform = 'translateX(' + (dx < 0 ? 18 : -18) + 'px)';
-      panel.offsetHeight;                            // 强制回流，让下一帧的过渡有起点
-      panel.style.transition = 'transform 160ms cubic-bezier(.2,0,0,1)';
-      panel.style.transform = '';
-      setTimeout(function (){ panel.style.transition = ''; }, 200);
+  document.addEventListener('touchmove', function (e){
+    if (!sw.on) return;
+    var dx = e.touches[0].clientX - sw.x, dy = e.touches[0].clientY - sw.y;
+    if (!sw.axis) {
+      if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
+      sw.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
+      if (sw.axis === 'x') trackEl.style.transition = 'none';
     }
+    if (sw.axis !== 'x') return;
+    sw.dx = dx;
+    var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
+    var W = trackEl.clientWidth || 1;
+    var x = -i * W + dx;
+    if ((i === 0 && dx > 0) || (i === TAB_ORDER.length - 1 && dx < 0)) x = -i * W + dx * 0.32;
+    trackEl.style.transform = 'translateX(' + x + 'px)';
   }, { passive: true });
+  function endSwipe(){
+    if (!sw.on) return;
+    sw.on = false;
+    if (sw.axis !== 'x') { sw.axis = ''; return; }
+    sw.axis = '';
+    var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
+    var W = trackEl.clientWidth || 1;
+    var far = Math.abs(sw.dx) > W * 0.3;
+    var fast = Math.abs(sw.dx) > 40 && (Date.now() - sw.t) < 300;
+    var n = (far || fast) ? i + (sw.dx < 0 ? 1 : -1) : i;
+    n = Math.max(0, Math.min(TAB_ORDER.length - 1, n));
+    if (n === i) showTab(S.tab);              // 弹回原位
+    else goTab(TAB_ORDER[n]);
+  }
+  document.addEventListener('touchend', endSwipe, { passive: true });
+  document.addEventListener('touchcancel', function (){ sw.on = false; sw.axis = ''; }, { passive: true });
 
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
   var mq = matchMedia('(prefers-color-scheme: dark)');
