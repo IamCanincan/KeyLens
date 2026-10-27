@@ -152,7 +152,9 @@ button,input,textarea,select{font:inherit;color:inherit}
   transition:transform var(--d3) var(--e-emph);will-change:transform}
 /* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
    底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
-.panel{flex:0 0 100%;min-width:0;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;
+/* 用 .card.panel 而不是 .panel：.card 在后面用 padding 简写把四边一起重置了，
+   单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
+.card.panel{flex:0 0 100%;min-width:0;max-height:100%;overflow-y:auto;-webkit-overflow-scrolling:touch;
   overscroll-behavior-y:contain;padding-bottom:calc(96px + var(--inset-bottom))}
 .card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}

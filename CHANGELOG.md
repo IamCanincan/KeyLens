@@ -85,6 +85,8 @@
 
 #### 修复
 
+* **底部内容被悬浮底栏挡住**：给面板写的 `padding-bottom: calc(96px + 安全区)` 被 `.card` 的 `padding: var(--sp6)` 简写按**源码顺序**盖掉了 —— `.panel` 在 155 行、`.card` 在 157 行，同权重下后者赢，实际只剩 **26px**，而底栏要占 78px，正好压住最后一个条目。改成 `.card.panel`（权重更高、与顺序无关）。实测 620px 高视口下五页各自滚到底：最后一项与底栏顶边分别留 19 / 20 / 19 / 50 / 19px。
+
 * **字体仍然不是系统字体：族名这条路走不通，改成直接把字体文件加载进来**。「写族名」实测**不生效** —— Chromium 在 Android 上有自己的字体映射表，不读 ROM 的 `config_bodyFontFamily` / `fonts_customization.xml`，所以 `--font: "google-sans-flex", system-ui` 里的第一个名字匹配不上，静默退到 `system-ui`（也就是 Roboto）。现在改走文件：`webui.sh env` 从字体注册表里找出该族对应的 ttf（本机 `/product/fonts/GoogleSansFlex-Regular.ttf`，3,997,148 B），拷进 `webroot/fonts/sys.ttf`，界面用 `@font-face` 加载并把它排在字体栈第一位。拷贝按大小判重，只在第一次或字体更新时搬那 4MB。
   * 验证：`--font` 变成 `"ts-sys", system-ui, sans-serif`、`@font-face` 规则注入了、`document.fonts.check("16px ts-sys")` 为 true、同一串文字的 canvas 宽度从 497.4 变 506.1（glyph 真的换了）；把文件参数去掉则退回族名那条，说明负对照也成立。可变字体所以声明 `font-weight:100 900`，并加 `font-display:swap` 避免 4MB 加载期间文字不可见。
   * 概览「关于 → 字体」现在显示走的是哪条路：`系统字体文件`（ok）/ `族名 xxx`（warn，实测多半不生效）/ `WebView 默认`（na）。
