@@ -129,7 +129,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* ================= 顶栏 ================= */
 /* 顶栏随页面滚走、标签栏吸顶 —— 即 Material 的 large top app bar + tabs 组合；
    两层都吸顶的话标签会被顶栏盖住，所以这里只让 tabs sticky。 */
-.appbar{padding:calc(var(--inset-top) + var(--sp2)) var(--sp4) var(--sp1);
+.appbar{padding:calc(var(--inset-top) + var(--sp4)) var(--sp4) var(--sp1);
   max-width:var(--measure);margin:0 auto;width:100%}
 .appbar-row{display:flex;align-items:flex-start;gap:var(--sp3)}
 .kicker{display:block;font-size:11.5px;font-weight:600;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
@@ -1862,10 +1862,13 @@ function adoptBridge(hit){
   var dir = moduleDirFromBridge();
   if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
   try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
-  /* 这里**故意不调** enableEdgeToEdge。它会把握手用的系统栏 padding 归零，页面画到最底边：
-     好处是状态栏那条接上颜色，代价是系统的返回手势条从"宿主底栏上"变成"浮在页面背景里"，
-     看着像凭空多出来一根药丸。两者只能选一个，选了让状态栏那条缝回来。
-     （改 `<meta name="theme-color">` 没用：主线 KernelSU 的 dex 里这个字符串出现 0 次。） */
+  /* 全屏沉浸：把状态栏与系统导航栏一起藏起来。唯一目的是**让底部那根白色手势手柄消失**
+     —— 它是 SystemUI 画的，网页没有别的办法让它不出现。
+     代价：本界面里看不到时钟与电量，系统栏要从屏幕边缘划一下才临时露出来；退出界面后一切照旧。
+     要撤就删掉下面这一句调用。
+     仍然不调 enableEdgeToEdge：那个开关会把握手用的系统栏 padding 归零、把页面画到最底边，
+     反而让手势条浮在页面背景上；全屏已经把它整个藏掉了，不需要它。 */
+  try { if (typeof BRIDGE.fullScreen === 'function') BRIDGE.fullScreen(true); } catch (e){ /* 没有就算了 */ }
   refresh();
 }
 
