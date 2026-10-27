@@ -172,6 +172,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .back[hidden]{display:none}
 /* kicker 不再全大写 + 字距：那一行是全屏最吵的东西，而它只是一行设备注脚。
    混合大小写、常规字重，安静下来之后大标题才是唯一的重心。 */
+/* 二级页只留大标题：设备行是概览的身份注脚，进到某一页之后不需要再重复一遍。
+   .kicker 自带 display:block，会盖掉 hidden 属性 —— 必须补一条显式规则。 */
+.kicker[hidden]{display:none}
 .kicker{display:block;font-size:11.5px;font-weight:500;letter-spacing:.1px;color:var(--on-variant);
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
 .appbar h1{font-size:22px;font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
@@ -1211,10 +1214,6 @@ function renderOver(){
       env.resetprop === '1' ? 'resetprop 可用' : '未找到 resetprop')
   ]));
 
-  var note = el('p', 'hint');
-  note.textContent = '模块只在开机与文件变化时同步，界面不会后台轮询；上面的数字每次点「重新读取」才更新。';
-  box.appendChild(note);
-
   renderAbout();
 }
 
@@ -1604,6 +1603,8 @@ function renderAbout(){
     paths.appendChild(row);
   });
   about.appendChild(paths);
+  /* 概览底部那句说明搬到这里：它是解释，不是数据，留在概览只会把卡片收尾拖着两条小字 */
+  about.appendChild(el('p', 'hint', '模块只在开机与文件变化时同步，界面不会后台轮询；概览上的数字每次点「重新读取」才更新。'));
 
   var dlg = document.getElementById('aboutDlg');
   if (dlg && !dlg.hidden) { /* 打开状态下重画即可，不用动显隐 */ }
@@ -1891,6 +1892,7 @@ function applyPage(name){
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
   hero.hidden = !home;        // 二级页不重复英雄卡：那一屏只有标题 + 内容
+  kicker.hidden = !home;      // 设备行也只属于概览
   btnBack.hidden = home;
   document.querySelector('.appbar').classList.toggle('is-sub', !home);
 }
