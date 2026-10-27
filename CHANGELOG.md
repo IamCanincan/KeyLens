@@ -6,10 +6,6 @@
 
 #### 新增
 
-* **原生界面（伴随 App `com.iamcanincan.tsautoadd`）**：模块的「打开界面」按钮只能加载 `webroot/index.html`（KernelSU 的 WebUIActivity 写死），所以原生观感只能另做一个 App。Kotlin + Compose + Material 3 Expressive，五个页面与悬浮药丸底栏照搬 WebUI 的信息组织，但**数据层一行没重写** —— 仍然走 `sh webui.sh <命令>`，状态判定只有 shell 里那一份。
-  * 原生带来的实打实收益：配色直接用 `dynamicLight/DarkColorScheme`（系统算好的调色板，不用从 frro 里反解）；应用图标与显示名直接问 `PackageManager`（不用抠桌面图标缓存、也不用处理快捷方式误判）；翻页是 `HorizontalPager`；按压反馈是 Compose `Surface` 自带的 ripple。
-  * 构建踩到两个坑，记在 `app/build.gradle.kts` 里：① 不能用 `jvmToolchain(17)` —— 本机只有 JDK 21，声明 toolchain 会让 Gradle 去找一个不存在的 JDK 17；② 别把 `/*` 写进 KDoc —— Kotlin 的块注释允许嵌套，`resource-cache/*.frro` 会开一个永不闭合的内层注释，报成"文件末尾 Unclosed comment"。
-
 * **左右滑动切页**：在内容区横划一格就翻到上一页/下一页（往左划 = 下一页），到底/到头不循环。三条判据缺一不可，否则会和页面里已有的手势打架：① 起点不在输入框、可横向滚动的容器（日志台、分段控件、工具条）或底栏里；② 横向位移要大于纵向的 1.4 倍（竖向滚动时手指一歪不能翻页）；③ 位移 ≥56px 且手势在 800ms 内完成。切页复用同一个 `goTab`，所以底栏选中态与面板显隐走的是现成逻辑；翻页瞬间给面板 18px 的位移动画（只动位置、**不动透明度** —— 淡入就是之前那个"闪"）。实测：左划 over→rules、右划 rules→over、竖划不动、30px 短划不动、起点在 rules.txt 文本框里不动。
 
 * **WebUI 控制台（Material 3 Expressive）**：模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点「打开界面」即可使用。分五页——概览（后端 / 目标文件 / 可写性 / 上次写入 / 监听方式 / 守护进程 / 日志缓冲 / 伪装状态 + 界面自身的桥接信息）、常驻列表（在线编辑 `rules.txt`，实时统计有效包名与注释）、应用（生效列表与已安装第三方对照、搜索、只看未纳入、一键加入常驻）、日志（末尾 30~300 行按级别着色、清空缓冲、可选 5 秒自动刷新）、属性（当前值 / 期望值 / 是否一致）。界面为**单文件、不联网、不引外部库或字体**；配色支持跟随系统 / 浅色 / 深色，并可拖动色相滑杆实时改整套颜色。
