@@ -243,6 +243,10 @@ button.chip{cursor:pointer}
   background:transparent;color:var(--on-variant);font-size:13px;font-weight:600;cursor:pointer;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .tab:active{transform:scale(.92)}
+/* 用户自己拖着页面滚时，底栏要跟页面同时变 —— 那会儿把过渡关掉，
+   否则「页面已经到了、底栏还在 220ms 的路上」就是肉眼可见的时差。
+   点底栏切换不经过这里，动画照旧。 */
+#tabs.is-tracking .tab, #tabs.is-tracking .tab .lb{transition:none}
 .tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
 .tab .ico{display:flex;flex:none}
 .tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
@@ -1959,16 +1963,25 @@ function wire(){
      这里只做一件事：用户滚到哪一页，把状态和底栏跟过去（不再回滚，否则会打断手指）。 */
   var scrollT = 0;
   var pagerScroller = document.getElementById('pager');
+  function nearestTab(){
+    var i = Math.round(pagerScroller.scrollLeft / pageStep());
+    return TAB_ORDER[Math.max(0, Math.min(TAB_ORDER.length - 1, i))];
+  }
   pagerScroller.addEventListener('scroll', function (){
     if (SCROLLING) return;
+    /* 跨过中点就把底栏切过去 —— 不等防抖。底栏跟页面同时变，才没有"时差"。
+       取数与高度同步仍然等滚动停下（中途改容器高度会让纵向位置抖）。 */
+    var name = nearestTab();
+    if (name && name !== S.tab) {
+      tabsEl.classList.add('is-tracking');
+      applyTab(name);
+    }
     clearTimeout(scrollT);
     scrollT = setTimeout(function (){
-      var i = Math.round(pagerScroller.scrollLeft / pageStep());
-      i = Math.max(0, Math.min(TAB_ORDER.length - 1, i));
-      var name = TAB_ORDER[i];
-      if (!name || name === S.tab) return;
-      applyTab(name);
+      tabsEl.classList.remove('is-tracking');
+      if (name && name !== S.tab) applyTab(name);
       loadTab();
+      syncTrackHeight();
     }, 90);
   }, { passive: true });
 
