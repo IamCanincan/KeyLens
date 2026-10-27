@@ -148,8 +148,9 @@ button,input,textarea,select{font:inherit;color:inherit}
    高度由 JS 同步成"当前页的高度"：整页滚动的前提下，轨道不能取最高那页，
    否则每页底下都会拖出一大段空白。 */
 .pager{overflow:hidden}
-/* will-change 只在拖拽期间临时加（见 JS）：常驻的话浏览器会把"五个全高页面"
-   合成成一个巨大的图层，手机上滚动就掉帧。
+/* 不写 will-change：常驻会让浏览器把"五个全高页面"合成成一个巨大的图层，
+   手机上滚动掉帧；而在拖拽里反复申请/释放图层，比不做更卡（实测过两端都不划算）。
+   位移本身就会触发合成层提升，够用。
    高度也不参与过渡 —— 每帧重排一次比高度突变更伤。 */
 .track{display:flex;align-items:flex-start;gap:16px;
   touch-action:pan-y;overscroll-behavior-x:contain;
@@ -235,7 +236,6 @@ button.chip{cursor:pointer}
   bottom:calc(var(--inset-bottom) + 20px);
   display:flex;align-items:center;gap:4px;padding:6px 8px;
   background:var(--surface-high);border:var(--hair);border-radius:28px;
-  box-shadow:0 8px 24px oklch(0% 0 0 / 22%);
   max-width:calc(100vw - 16px)}
 .tab{position:relative;flex:none;display:flex;align-items:center;justify-content:center;
   min-height:44px;padding:10px 12px;border:0;border-radius:var(--r-full);
@@ -1341,9 +1341,12 @@ function renderApps(){
   }
   box.appendChild(frag);
   if (list.length > shown) box.appendChild(el('p', 'hint', '仅显示前 ' + shown + ' 条，用搜索缩小范围。'));
-  /* 图标后补：上面已经画出一整页可读的行，这里回来之后只重画一次。
-     第二轮所有包都已在 iconAsked 里，取不到新东西，不会再触发重画。 */
-  ensureIcons(list.slice(0, 120));
+  /* 图标后补：先让这一页画出来，再在空闲时跑。图标那一步是一次 root 调用
+     （sqlite 查询 + 写若干 PNG），手机上一两百毫秒起，抢在首帧里就是"卡一下"。 */
+  var pkgs = list.slice(0, 40);
+  var kick = function (){ ensureIcons(pkgs); };
+  if (window.requestIdleCallback) requestIdleCallback(kick, { timeout: 800 });
+  else setTimeout(kick, 60);
 }
 function addRule(pkg){
   /* 编辑器可能还没渲染过（从「应用」页直接点 +）：那时必须以磁盘内容为准，
@@ -1959,7 +1962,7 @@ function wire(){
     if (!sw.axis) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
       sw.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
-      if (sw.axis === 'x') { trackEl.style.transition = 'none'; trackEl.style.willChange = 'transform'; }
+      if (sw.axis === 'x') trackEl.style.transition = 'none';
     }
     if (sw.axis !== 'x') return;
     sw.dx = dx;
@@ -1974,7 +1977,6 @@ function wire(){
     sw.on = false;
     if (sw.axis !== 'x') { sw.axis = ''; return; }
     sw.axis = '';
-    trackEl.style.willChange = '';
     var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
     var W = trackEl.clientWidth || 1;
     var far = Math.abs(sw.dx) > W * 0.3;
