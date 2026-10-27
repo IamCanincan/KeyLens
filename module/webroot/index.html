@@ -1023,9 +1023,17 @@ function busy(on, text){
 }
 
 /* 一次 root shell 调用的包装：返回 {ok, text, code} */
+/* 每条命令的耗时记在这里，「关于 → 上次命令」会读它 —— 卡在哪一段自己就能看见：
+   单条几百毫秒是正常的 root fork，上秒级说明那一步本身慢。 */
+var CALL_LOG = { cmd: '—', ms: 0, at: '' };
 function call(cmd, arg){
+  var t0 = performance.now();
   return run(cmd, arg).then(function (r){
+    CALL_LOG = { cmd: cmd, ms: Math.round(performance.now() - t0), at: new Date().toTimeString().slice(0, 8) };
     return { ok: r.errno === 0, code: r.errno, text: r.stdout };
+  }, function (e){
+    CALL_LOG = { cmd: cmd + '（失败）', ms: Math.round(performance.now() - t0), at: '' };
+    throw e;
   });
 }
 function failText(r){
@@ -1503,7 +1511,9 @@ function renderAbout(){
 
   var paths = el('div', 'paths');
   [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
-   ['日志文件', st.log_file || '—']].forEach(function (pair){
+   ['日志文件', st.log_file || '—'],
+   ['上次命令', CALL_LOG.cmd + ' · ' + CALL_LOG.ms + 'ms' + (CALL_LOG.at ? ' · ' + CALL_LOG.at : '')]]
+   .forEach(function (pair){
     var row = el('div', 'path-row');
     row.appendChild(el('span', 'path-k', pair[0]));
     var v = el('span', 'path-v mono', pair[1]);
