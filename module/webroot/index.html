@@ -283,8 +283,11 @@ button.chip{cursor:pointer;min-height:32px}
 /* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
    容器比 260px 还窄（320px 视口下卡片内容只有 254px）轨道不会退让，
    格子就会捅出网格右边界。实测过这一处。 */
-.grid{display:grid;gap:var(--sp4);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
-.blk{background:var(--surface-high);border-radius:var(--r-l);padding:var(--sp4);min-width:0}
+/* 格子不再填色：一屏 8 个灰块等于 8 个"面"，卡片里再套盒子就显得碎。
+   也不画分隔线：两列的格子高度天然不同（日志缓冲多一行小字），线会参差 ——
+   分层交给组标题与行距。列保持两列（整行 label/value 会在中间拉出几百 px 空洞）。 */
+.grid{display:grid;gap:var(--sp3) var(--sp5);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
+.blk{background:transparent;border-radius:0;padding:0;min-width:0}
 .blk-k{display:block;font-size:12px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
 .blk-v{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;line-height:1.3;min-width:0}
 .blk-v>span{min-width:0}
@@ -299,7 +302,7 @@ button.chip{cursor:pointer;min-height:32px}
 .path-k{flex:none;font-size:11.5px;color:var(--on-variant)}
 .path-v{min-width:0;word-break:break-all;font-size:11.5px;color:var(--on-variant)}
 /* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
-.card-quiet .blk{background:transparent;padding:0}
+.card-quiet .blk{background:transparent;border-bottom:0;padding:0}
 .card-quiet .grid{gap:var(--sp3)}
 .card-quiet .blk-v{font-size:13.5px;font-weight:600}
 .card-quiet .blk-k{margin-bottom:1px}
