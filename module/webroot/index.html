@@ -1908,32 +1908,46 @@ function showTab(name, back){
   if (home) pageSlide(hero, dir);
 }
 
-/* history：下钻时压一条，顶栏箭头与 popstate 走同一条路。
-   系统返回键能不能先退一级要看宿主有没有把 WebView 的历史接到返回回调上 ——
-   从装好的 KernelSU 里看不到这条路径（dex 中 WebView.canGoBack 只出现在
-   WebViewClient.doUpdateVisitedHistory 里，goBack 只在一个混淆 lambda 里），
-   所以这里不承诺；页面内的返回一律以顶栏箭头为准。
+/* 导航状态就写在地址栏的 hash 上（#/over、#/rules…），页面切换只由
+   popstate 驱动 —— 顶栏箭头、系统返回键、点入口三条路合成一条。
+   为什么不用 pushState：宿主（KernelSU v3.3.1 的 WebUIActivity）是这样决定
+   返回的 —— WebViewClient.doUpdateVisitedHistory 里读 webView.canGoBack()
+   并写进一个 MutableState，返回回调里就是 webView.goBack()（dex 实测：
+   ym4.doUpdateVisitedHistory → tm4.h.setValue(...)，回调 pm4.a() → WebView.goBack）。
+   而 pushState **不会**触发 doUpdateVisitedHistory，宿主的 canGoBack 就一直是
+   false，系统返回键自然什么都不做（实测反馈正是「无」）。hash 导航是真的
+   历史条目，会走那条回调。
    滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
    不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
-function pushPage(name){
-  try { history.pushState({ page: name }, ''); } catch (e) {}
+var navDepth = 0, navSelf = false;
+function pageFromHash(){
+  var m = /^#\/(over|rules|apps|log|props)$/.exec(location.hash || '');
+  return m ? m[1] : null;
+}
+function navTo(name){
+  if (pageFromHash() === name) return;
+  navSelf = true;
+  navDepth++;
+  location.hash = '#/' + name;
 }
 function goTab(name){
   if (name === S.tab) { loadTab(); return; }
-  showTab(name);
-  loadTab();
-  pushPage(name);
+  navTo(name);
 }
 function goBack(){
-  var st = history.state;
-  if (st && st.page && st.page !== 'over') { history.back(); return; }
+  if (navDepth > 0) { history.back(); return; }
   showTab('over', true);
   loadTab();
 }
-window.addEventListener('popstate', function (e){
-  var st = e.state;
-  showTab((st && st.page) || 'over', true);
+window.addEventListener('popstate', function (){
+  var back = !navSelf;
+  navSelf = false;
+  if (back && navDepth > 0) navDepth--;
+  var name = pageFromHash() || 'over';
+  if (name === 'over') back = true;
+  if (name === S.tab) return;
+  showTab(name, back);
   loadTab();
 });
 
@@ -2129,15 +2143,14 @@ function boot(){
   wire();
 
   // ?tab=over|rules|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
+  /* 先把当前条目定在 #/over（replace 不产生历史、也不惊动宿主），
+     之后所有导航都是干净的 hash 条目 */
+  try { history.replaceState(history.state, '', '#/over'); } catch (e) {}
   var want = QUERY.get('tab');
   if (want && PAGES.indexOf(want) >= 0 && want !== 'over') {
-    /* 深链进来时先补一条「概览」的历史，返回箭头才有地方可回 */
-    try { history.replaceState({ page: 'over' }, ''); history.pushState({ page: want }, ''); } catch (e) {}
-    showTab(want);
+    navTo(want);          // 深链（预览与排查用）：走同一条 popstate 路
   } else {
-    /* 初始状态也要走一遍：面板在标记里是 hidden 的，但标题/英雄卡/返回箭头
-       得由这里定死，不依赖标记的默认值 */
-    applyPage('over');
+    applyPage('over');    // 初始状态也要定死标题 / 英雄卡 / 返回箭头，不依赖标记默认值
   }
 
   if (DEMO) { refresh(); return; }

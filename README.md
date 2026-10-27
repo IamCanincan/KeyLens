@@ -136,7 +136,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - 底部有页脚收尾（`TS-AUTO-ADD · 只在开机与文件变化时同步 · 界面不联网`），`body` 竖排 + `.wrap` 撑满 + 页脚 `margin-top:auto`：内容短时页脚贴视口底部，内容长时跟在内容后面；页面内容结束时有个明确收口。
 - **没有底栏，导航就是概览页上的四行入口**：每行是图标 + 标题 + 实时副标题（常驻 N 条 / 生效 N · 第三方 M / 缓冲 N 行 / 开机写入开或关）+ 右侧箭头。底栏那条横滑轨道（`scroll-snap` + 指示胶囊插值 + 容器高度同步）正是「抽搐」和「切页闪」的来源，连同它一起删掉了。
 - **二级页的顶栏钉住**（`position:sticky`）：返回箭头是那一屏唯一的出口，长列表滚到一半不能让它滚走；概览不钉，让内容照常滚。二级页隐藏英雄卡，一屏只有标题 + 内容。下钻与返回都只滑当前面板（24px / 200ms，WAAPI 在合成器上跑，不碰高度、不盖遮罩）；返回时英雄卡跟着一起滑，否则它会硬蹦出来。
-- **返回走 `history`**：下钻压一条状态，顶栏箭头与 `popstate` 是同一条路。**系统返回键能不能先退一级要看宿主** —— 从装好的 KernelSU dex 里看不到把 WebView 历史接到返回回调上的路径（`canGoBack` 只出现在 `WebViewClient.doUpdateVisitedHistory`，`goBack` 只在一个混淆 lambda 里），所以不保证；页面内的返回以顶栏箭头为准。滚动位置自己管（`history.scrollRestoration = 'manual'`），回概览时还原 —— 否则浏览器会把下钻前已归零的位置再恢复一次，把还原抹掉（实测 52 → 0）。
+- **导航状态写在地址栏的 hash 上**（`#/over`、`#/rules`…），顶栏箭头、系统返回键、点入口三条路合成一条 `popstate`。**为什么不是 `pushState`**：宿主（KernelSU v3.3.1）决定返回的方式是「`WebViewClient.doUpdateVisitedHistory` 里读 `webView.canGoBack()` 写进一个状态，返回回调里执行 `webView.goBack()`」（dex 实测：`ym4.doUpdateVisitedHistory → tm4.h.setValue(...)`、回调 `pm4.a() → WebView.goBack`），而 `pushState` 不触发那条回调，宿主的 `canGoBack` 会一直停在 false —— 表现就是**在二级页划返回键什么都不发生**。hash 导航是真的历史条目。滚动位置自己管（`history.scrollRestoration = 'manual'`），回概览时还原 —— 否则浏览器会把下钻前已归零的位置再恢复一次，把还原抹掉（实测 52 → 0）。
 - 视觉只有一套语言：**静止形状全部对称**（按钮一律胶囊、卡片与格子一律单一圆角，切角与「叶子形」已收掉），**主色只出现在两处**——生效数字与主行动按钮；正常状态不上色（一个点即可），只有需要处理的才着色。最大的那个色块（英雄卡）现在装的是最该被看见的东西，而不是一片底色。
 - 布局按**自适应网格**排，不假设手机就是 412px 宽：本机 WebView 实测 626 CSS px（1644px @420dpi），概览与「关于」的格子用 `auto-fit` + `minmax` 自己分列，宽屏 2 列、窄屏降 1 列，没有断点。改布局后用 CDP 在顶层文档扫溢出（5 页 × 320/360/412/626 × 浅/深），别只信 `--headless --screenshot`——它给出过与真实渲染不一致的读数。
 - 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
