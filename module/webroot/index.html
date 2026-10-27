@@ -241,7 +241,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 不用 opacity 压层次：那样审对比度时量到的是叠色前的值，读出来是假的 */
 .count-cap{padding-bottom:2px;font-size:var(--fs13);font-weight:600;color:var(--on-surface)}
 .count-cap small{display:block;font-weight:500;font-size:var(--fs12);margin-top:1px;color:var(--on-variant)}
-.hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-left:auto}
+/* 操作行自己占一行、两个按钮等宽。以前它是 `margin-left:auto` 挂在数字那行的
+   尾巴上，靠 flex-wrap 随机换行：本机 417 装不下（数字块 + 两个按钮要 386，
+   内容宽只有 335），于是换行后右对齐，左边空出 98px —— 看着像没排完。
+   现在写死一行：417 下正好铺满内容宽（每键 163），宽屏靠 max-width 收到 340
+   并保持右对齐，所以两种宽度下按钮的物理尺寸几乎一样，也不再取决于会不会换行。 */
+.hero-actions{display:flex;gap:var(--sp2);flex-wrap:wrap;margin-left:auto;
+  width:100%;max-width:340px}
+.hero-actions>.btn{flex:1 1 0;min-width:0}
 
 /* ================= 徽章 / chip ================= */
 /* 全站一套对称圆角：原先英雄卡切一角、徽章是叶子形、主按钮另一组不对称，
