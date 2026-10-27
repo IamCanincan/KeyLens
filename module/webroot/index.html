@@ -142,7 +142,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .wrap{padding:0 var(--sp4) calc(96px + var(--inset-bottom));
   display:flex;flex-direction:column;gap:var(--sp4);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
-.card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp5);
+.card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
    实测切一次页 opacity 是 0 → 0.028 → 1，看上去就是「每切一下都闪一下」。
@@ -180,6 +180,8 @@ button,input,textarea,select{font:inherit;color:inherit}
 .badge[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .badge[data-tone=bad] .dot{background:var(--error);animation:pulse 1.6s infinite}
 @keyframes pulse{50%{opacity:.35;transform:scale(.8)}}
+/* 版本号是个按钮（点开「关于」），所以补 cursor；视觉仍按 chip */
+button.chip{cursor:pointer}
 .chip{display:inline-flex;align-items:center;gap:4px;padding:3px 9px;border-radius:var(--r-full);
   background:var(--surface-highest);color:var(--on-variant);font-size:11.5px;
   min-width:0;max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
@@ -234,14 +236,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
    几百 px 的空洞，整页像一张被拉宽的收据。改成自适应网格：每格自己限宽，
    窄屏自动降列，不需要断点，也不会有行横跨整个画布。 */
-.grp+.grp{margin-top:var(--sp4)}
+.grp+.grp{margin-top:var(--sp5)}
 .grp-t{font-size:11.5px;font-weight:700;letter-spacing:.7px;text-transform:uppercase;color:var(--on-variant);
   margin-bottom:var(--sp2)}
 /* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
    容器比 260px 还窄（320px 视口下卡片内容只有 254px）轨道不会退让，
    格子就会捅出网格右边界。实测过这一处。 */
-.grid{display:grid;gap:var(--sp3);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,250px),100%),1fr))}
-.blk{background:var(--surface-high);border-radius:var(--r-l);padding:var(--sp3);min-width:0}
+.grid{display:grid;gap:var(--sp4);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
+.blk{background:var(--surface-high);border-radius:var(--r-l);padding:var(--sp4);min-width:0}
 .blk-k{display:block;font-size:12px;font-weight:600;color:var(--on-variant);margin-bottom:3px}
 .blk-v{display:flex;align-items:center;gap:8px;font-size:16px;font-weight:600;line-height:1.3;min-width:0}
 .blk-v>span{min-width:0}
@@ -372,7 +374,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .banner b{display:block;margin-bottom:2px}
 .dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp4);background:var(--scrim)}
 .dialog[hidden]{display:none}
-.sheet{width:100%;max-width:400px;background:var(--surface-high);border-radius:var(--r-2xl);
+.sheet{width:100%;max-width:460px;max-height:86vh;overflow:auto;background:var(--surface-high);border-radius:var(--r-2xl);
   padding:var(--sp4);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
 @keyframes pop{from{opacity:0;transform:scale(.9) translateY(16px)}}
 .sheet h3{font-size:17px;font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
@@ -435,7 +437,7 @@ button,input,textarea,select{font:inherit;color:inherit}
   <section class="hero" id="hero">
     <div class="hero-top">
       <span class="badge" id="stateBadge" data-tone="na"><i class="dot"></i><span id="stateText">连接中…</span></span>
-      <span class="chip mono" id="verChip">—</span>
+      <button class="chip mono" id="verChip" title="查看界面自检信息">—</button>
     </div>
     <div class="hero-count">
       <div class="count-num" id="countNum">—</div>
@@ -524,10 +526,15 @@ button,input,textarea,select{font:inherit;color:inherit}
       <div id="propsBody" style="margin-top:var(--sp3)"></div>
     </section>
 
-    <section class="card card-quiet" id="p-about" hidden>
-      <h2 class="card-title">关于</h2>
-      <div id="aboutBody"></div>
-    </section>
+    <!-- 「关于」不占概览页的地盘：它 437px、是整屏的 30%，却全是诊断信息。
+         改成点版本号打开的浮层，概览页因此空出近三分之一屏。 -->
+    <div class="dialog" id="aboutDlg" hidden role="dialog" aria-modal="true" aria-labelledby="aboutTitle">
+      <div class="sheet">
+        <h3 id="aboutTitle">关于</h3>
+        <div id="aboutBody"></div>
+        <div class="sheet-actions"><button class="btn btn-filled" id="aboutClose">关闭</button></div>
+      </div>
+    </div>
   </main>
 
   <!-- 页脚：页面短的时候下面是一大片空背景，系统的返回手势条会像"凭空一根药丸"。
@@ -1125,52 +1132,7 @@ function renderOver(){
   note.textContent = '模块只在开机与文件变化时同步，界面不会后台轮询；上面的数字每次点「重新读取」才更新。';
   box.appendChild(note);
 
-  // 「关于」卡：把界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对
-  var about = document.getElementById('aboutBody');
-  about.textContent = '';
-  about.appendChild(grp('界面自检', [
-    blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
-    blk('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
-      env.root_user === '0' ? 'ok' : 'na'),
-    blk('工具可用性', [
-      env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
-      env.resetprop ? 'resetprop' : '无 resetprop'
-    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
-    blk('后端模块', st.conflict === '1' ? '两个同时启用'
-        : st.teesim_enabled === '1' ? 'TEE Simulator'
-        : st.tricky_enabled === '1' ? 'Tricky Store' : '无已启用后端',
-      st.conflict === '1' ? 'bad'
-        : (st.teesim_enabled === '1' || st.tricky_enabled === '1' ? 'ok' : 'bad'),
-      'TEE Simulator ' + (st.teesim_enabled === '1' ? '启用' : '未启用') +
-      ' / Tricky Store ' + (st.tricky_enabled === '1' ? '启用' : '未启用'))
-  ]));
-  about.appendChild(grp('外观', [
-    blk('取色', THEME.frroOk ? '系统 overlay'
-        : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
-      (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
-      THEME.note || '—'),
-    blk('字体', THEME.fontFile ? '系统字体文件'
-        : (THEME.font ? '族名 ' + THEME.font : 'WebView 默认'),
-      THEME.fontFile ? 'ok' : (THEME.font ? 'warn' : 'na'),
-      THEME.fontFile ? '由 webroot/' + THEME.fontFile + ' 用 @font-face 加载'
-        : (THEME.font ? '只写了族名 —— 实测 Chromium 不认，可能仍是 Roboto'
-                      : '读不到系统字体，只能用它自己的默认')),
-    blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
-      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc),
-    blk('生效值', THEME.applied || '—', null, '色相与彩度都取自系统，界面不提供覆盖')
-  ]));
-
-  var paths = el('div', 'paths');
-  [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
-   ['日志文件', st.log_file || '—']].forEach(function (pair){
-    var row = el('div', 'path-row');
-    row.appendChild(el('span', 'path-k', pair[0]));
-    var v = el('span', 'path-v mono', pair[1]);
-    v.title = String(pair[1]);
-    row.appendChild(v);
-    paths.appendChild(row);
-  });
-  about.appendChild(paths);
+  renderAbout();
 }
 
 /* ---------- 常驻列表 ---------- */
@@ -1484,6 +1446,66 @@ function loadEnv(){
     return r;
   });
 }
+
+/* 关于：界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对。
+   以前它是概览页的第二张卡，占了整屏 30%；现在挂在版本号后面按需打开，
+   打开前重画一次，免得在别的页点开时读到旧数据。 */
+function renderAbout(){
+  var st = S.status, env = S.env;
+  var about = document.getElementById('aboutBody');
+  about.textContent = '';
+  about.appendChild(grp('界面自检', [
+    blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
+    blk('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
+      env.root_user === '0' ? 'ok' : 'na'),
+    blk('工具可用性', [
+      env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
+      env.resetprop ? 'resetprop' : '无 resetprop'
+    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
+    blk('后端模块', st.conflict === '1' ? '两个同时启用'
+        : st.teesim_enabled === '1' ? 'TEE Simulator'
+        : st.tricky_enabled === '1' ? 'Tricky Store' : '无已启用后端',
+      st.conflict === '1' ? 'bad'
+        : (st.teesim_enabled === '1' || st.tricky_enabled === '1' ? 'ok' : 'bad'),
+      'TEE Simulator ' + (st.teesim_enabled === '1' ? '启用' : '未启用') +
+      ' / Tricky Store ' + (st.tricky_enabled === '1' ? '启用' : '未启用'))
+  ]));
+  about.appendChild(grp('外观', [
+    blk('取色', THEME.frroOk ? '系统 overlay'
+        : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
+      (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
+      THEME.note || '—'),
+    blk('字体', THEME.fontFile ? '系统字体文件'
+        : (THEME.font ? '族名 ' + THEME.font : 'WebView 默认'),
+      THEME.fontFile ? 'ok' : (THEME.font ? 'warn' : 'na'),
+      THEME.fontFile ? '由 webroot/' + THEME.fontFile + ' 用 @font-face 加载'
+        : (THEME.font ? '只写了族名 —— 实测 Chromium 不认，可能仍是 Roboto'
+                      : '读不到系统字体，只能用它自己的默认')),
+    blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
+      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc),
+    blk('生效值', THEME.applied || '—', null, '色相与彩度都取自系统，界面不提供覆盖')
+  ]));
+
+  var paths = el('div', 'paths');
+  [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
+   ['日志文件', st.log_file || '—']].forEach(function (pair){
+    var row = el('div', 'path-row');
+    row.appendChild(el('span', 'path-k', pair[0]));
+    var v = el('span', 'path-v mono', pair[1]);
+    v.title = String(pair[1]);
+    row.appendChild(v);
+    paths.appendChild(row);
+  });
+  about.appendChild(paths);
+
+  var dlg = document.getElementById('aboutDlg');
+  if (dlg && !dlg.hidden) { /* 打开状态下重画即可，不用动显隐 */ }
+}
+function openAbout(){
+  renderAbout();
+  document.getElementById('aboutDlg').hidden = false;
+}
+
 /* 三份列表一起取：概览的三个数字、常驻编辑器、应用页的对照全靠它们，取一次三页共用 */
 function loadLists(){
   return Promise.all([call('targets'), call('apps'), call('rules')]).then(function (rs){
@@ -1751,7 +1773,6 @@ function showTab(name){
   ['over', 'rules', 'apps', 'log', 'props'].forEach(function (k){
     document.getElementById('p-' + k).hidden = k !== name;
   });
-  document.getElementById('p-about').hidden = name !== 'over';
 }
 function goTab(name){ showTab(name); loadTab(); }
 
@@ -1854,6 +1875,18 @@ function wire(){
       .then(function (yes){ if (yes) applyPropsNow(); });
   });
   btnPropsRefresh.addEventListener('click', function (){ S.loaded.props = false; loadTab(); });
+
+  /* 关于：点版本号打开。内容在打开前重画一次，所以在哪一页点都是最新的 */
+  verChip.addEventListener("click", openAbout);
+  document.getElementById("aboutClose").addEventListener("click", function (){
+    document.getElementById("aboutDlg").hidden = true;
+  });
+  document.getElementById("aboutDlg").addEventListener("click", function (e){
+    if (e.target === this) this.hidden = true;        // 点遮罩关掉
+  });
+  document.addEventListener("keydown", function (e){
+    if (e.key === "Escape") document.getElementById("aboutDlg").hidden = true;
+  });
 
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
   var mq = matchMedia('(prefers-color-scheme: dark)');
