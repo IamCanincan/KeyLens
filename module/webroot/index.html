@@ -77,6 +77,9 @@
   /* 阴影只留一层极轻的接触影，卡片之间的分隔交给 hairline：
      宽画布上大投影会把"浮起来的果冻"叠成一片糊 */
   --shadow:0 1px 2px oklch(30% .04 var(--hue) / 10%);
+  /* 药丸单独一层 8dp 投影（Opticon 的 shadowElevation）；卡片仍只用上面那层
+     接触影 —— 一屏全是浮起来的果冻，边界反而糊成一片。 */
+  --float-shadow:0 6px 16px oklch(25% .03 var(--hue) / 14%), 0 2px 4px oklch(25% .03 var(--hue) / 8%);
 }
 [data-scheme=dark]{
   --primary:oklch(80% calc(.13*var(--sat)) var(--hue));            --on-primary:oklch(30% calc(.14*var(--sat)) var(--hue));
@@ -95,6 +98,7 @@
   --outline-variant:oklch(42% calc(.02*var(--sat)) var(--hue));    --scrim:oklch(0% 0 0 / 55%);
   --card-line:oklch(47% calc(.022*var(--sat)) var(--hue));
   --shadow:0 1px 2px oklch(0% 0 0 / 35%);
+  --float-shadow:0 8px 22px oklch(0% 0 0 / 50%), 0 2px 6px oklch(0% 0 0 / 40%);
 }
 
 /* 守卫条件连同 calc() 一起测：只支持裸 oklch 而不支持 oklch 内 calc 的引擎，
@@ -108,6 +112,7 @@
     --surface:#fbf8ff;--on-surface:#1b1b21;--surface-lowest:#fff;--surface-low:#f5f2fa;--surface-mid:#efecf4;
     --surface-high:#e9e5ee;--surface-highest:#e3dfe8;--surface-bright:#fff;
     --on-variant:#47464f;--outline:#787680;--outline-variant:#c9c6d0;--card-line:#b6b2c2;--scrim:rgba(0,0,0,.45);--shadow:0 2px 16px rgba(0,0,0,.14);
+    --float-shadow:0 6px 16px rgba(0,0,0,.16),0 2px 4px rgba(0,0,0,.08);
   }
   [data-scheme=dark]{
     --primary:#c9bffd;--on-primary:#37279a;--primary-container:#4435b0;--on-primary-container:#e5defd;
@@ -117,6 +122,7 @@
     --surface:#1b1b21;--on-surface:#e5e1e9;--surface-lowest:#111116;--surface-low:#232329;--surface-mid:#1e1e24;
     --surface-high:#2c2c33;--surface-highest:#33333a;--surface-bright:#3a3a42;
     --on-variant:#c9c5cf;--outline:#938f99;--outline-variant:#494750;--card-line:#585562;--scrim:rgba(0,0,0,.6);--shadow:0 2px 16px rgba(0,0,0,.4);
+    --float-shadow:0 8px 22px rgba(0,0,0,.55),0 2px 6px rgba(0,0,0,.4);
   }
 }
 
@@ -174,25 +180,16 @@ button,input,textarea,select{font:inherit;color:inherit}
    跟手 / 惯性 / 吸附全由它负责，主线程一帧都不用干活。
    高度由 JS 同步成"当前页的高度"：整页滚动的前提下容器不能取最高那页，
    否则每页底下都会拖出一段空白。 */
-.pager{display:flex;align-items:flex-start;gap:16px;
-  overflow-x:auto;overflow-y:hidden;scroll-snap-type:x mandatory;
-  overscroll-behavior-x:contain;-webkit-overflow-scrolling:touch;
-  scrollbar-width:none}
-.pager::-webkit-scrollbar{display:none}
-/* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
-   底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
-/* 用 .card.panel 而不是 .panel：.card 在后面用 padding 简写把四边一起重置了，
-   单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
-/* contain 把布局与绘制限制在这一页里：改一页不会让其它四页跟着重排 */
-.card.panel{flex:0 0 100%;min-width:0;scroll-snap-align:start;scroll-snap-stop:always;contain:layout paint}
+/* 不做横滑：面板竖着排，靠 hidden 切换。切页是**瞬时**的 —— 没有滚动、
+   没有容器高度变化、也没有"相邻页第一次进视口才绘制"那一帧。 */
+.pages{display:block}
+.card.panel[hidden]{display:none}
 .card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
    实测切一次页 opacity 是 0 → 0.028 → 1，看上去就是「每切一下都闪一下」。
    入场效果只留给英雄卡（rise）：它从不被隐藏，所以只播一次。 */
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
-.card-title{font-size:12px;font-weight:700;letter-spacing:.5px;text-transform:uppercase;color:var(--on-variant);
-  margin:0 0 var(--sp3)}
 /* 英雄卡不再整块上色：最大的色块应该装最重要的信息，而它只有一个数字和两个按钮。
    主色只留在数字与主行动上，卡片的分隔交给发丝线。 */
 .hero{background:var(--surface-low);color:var(--on-surface);border:var(--hair);
@@ -252,39 +249,32 @@ button.chip{cursor:pointer}
 .fab:active{border-radius:50%;transform:scale(.9)}
 
 /* ================= 悬浮药丸底栏 ================= */
-/* 选中那格展开文字、其余只留图标，所以药丸宽度随当前页变化 —— 这是它像"药丸"的原因。
-   底色用 surface-high + 1dp 描边，不靠阴影：深色下阴影基本看不见，边界靠那根线钉住。
+/* 与 Opticon 的 FloatingNavBar 同构：悬浮药丸（28 圆角 + surfaceContainerHigh +
+   1dp 描边 + 8dp 投影），**选中那格展开成 图标+文字 的胶囊，其余只留图标**，
+   所以药丸宽度随当前页变化。横滑已经去掉，宽度变化只在"点一下"时发生一次。
+   描边不能省：深色下投影本来就几乎看不见，边界全靠那根线钉住。
    内容从药丸后面滚过去（让位只加在 .wrap 的 padding-bottom 上，body 不留空白带，
    否则药丸下面会凭空多出一条背景）。 */
-/* 照 M3 NavigationBar 的格子：**图标在上、文字在下、文字始终可见**，
-   选中只多一圈图标后面的胶囊。每格定宽 58px —— 整条药丸在任何一页都同一个
-   尺寸，滑动时不会胖瘦变化（那是"抽搐"的来源）。
-   胶囊是独立一层，横向位移由滚动进度连续驱动（见 JS），和页面同速。 */
 .tabs{position:fixed;left:50%;transform:translateX(-50%);z-index:40;
   bottom:calc(var(--inset-bottom) + 20px);
-  display:flex;align-items:flex-start;gap:4px;padding:6px 8px 4px;
+  display:flex;align-items:center;gap:4px;padding:6px 8px;
   background:var(--surface-high);border:1px solid var(--card-line);border-radius:28px;
+  box-shadow:var(--float-shadow);
   max-width:calc(100vw - 16px)}
-.nav-ind{position:absolute;top:14px;left:11px;width:52px;height:32px;border-radius:var(--r-full);
-  background:var(--secondary-container);pointer-events:none;
-  transition:transform var(--d3) var(--e-spring)}
-.tab{position:relative;z-index:1;flex:none;width:58px;
-  display:flex;flex-direction:column;align-items:center;gap:2px;
-  border:0;border-radius:var(--r-l);background:transparent;color:var(--on-variant);cursor:pointer;
-  padding:8px 0 2px;
-  transition:color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
-.tab:active{transform:scale(.94)}
-/* 用户自己拖着页面滚时，颜色切换不要过渡 —— 否则「页面到了、底栏还在路上」。 */
-#tabs.is-tracking .tab, #tabs.is-tracking .nav-ind{transition:none}
-.tab .ico{display:flex;flex:none;align-items:center;justify-content:center;height:32px}
-.tab .ico svg{width:24px;height:24px;display:block;fill:currentColor}
-@media (max-width:359px){
-  .tab{width:52px}
-  .tab .lb{font-size:10.5px}
-  .nav-ind{width:46px;left:11px}
-}
-.tab .lb{font-size:11.5px;font-weight:600;line-height:1.2;letter-spacing:.1px;white-space:nowrap}
-.tab.is-active{color:var(--on-secondary-container)}
+/* 内边距、格间距、图标 22、文字左边距 8、labelLarge（14/500/.1）全部照 Opticon 的
+   NavItem 取值；min-height 44 是网页自己的触控下限（M3 只要求 48 的命中区） */
+.tab{position:relative;z-index:1;flex:none;display:flex;align-items:center;justify-content:center;
+  min-height:44px;padding:10px 12px;border:0;border-radius:var(--r-full);
+  background:transparent;color:var(--on-variant);font-size:14px;font-weight:500;letter-spacing:.1px;cursor:pointer;
+  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
+.tab:active{transform:scale(.92)}
+.tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
+.tab .ico{display:flex;flex:none}
+.tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
+/* 未选中只留图标：文字宽度收到 0（用 max-width 过渡，width:auto 在 WebView 里不参与过渡） */
+.tab .lb{max-width:0;overflow:hidden;white-space:nowrap;opacity:0;
+  transition:max-width var(--d3) var(--e-spring),opacity var(--d2) var(--e-emph),margin-left var(--d3) var(--e-spring)}
+.tab.is-active .lb{max-width:140px;opacity:1;margin-left:8px}
 
 /* ================= 概览分组 ================= */
 /* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
@@ -466,6 +456,12 @@ button.chip{cursor:pointer}
   .count-num{font-size:30px}
   .appbar h1{font-size:18px}
 }
+/* 选中项展开文字后药丸要 328px；320 的屏只剩 304。收紧内边距与格间距
+   （图标尺寸不动），实测 320 下 276（宽松档 328）—— 只是给窄屏兜底，626 上不生效。 */
+@media (max-width:344px){
+  .tabs{gap:2px;padding:4px 6px}
+  .tab{padding:10px 8px}
+}
 </style>
 </head>
 <body>
@@ -503,7 +499,7 @@ button.chip{cursor:pointer}
     <div><b id="bannerTitle"></b><span id="bannerText"></span></div>
   </div>
 
-  <main class="pager" id="pager">
+  <main class="pages" id="pages">
     <section class="card panel" id="p-over">
       <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
            叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
@@ -511,7 +507,6 @@ button.chip{cursor:pointer}
     </section>
 
     <section class="card panel" id="p-rules">
-      <h2 class="card-title">常驻应用列表</h2>
       <div class="field">
         <label id="rulesLabel">每行一个包名 · # 开头为注释</label>
         <textarea id="rulesBox" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" aria-labelledby="rulesLabel"></textarea>
@@ -528,7 +523,6 @@ button.chip{cursor:pointer}
     </section>
 
     <section class="card panel" id="p-apps">
-      <h2 class="card-title">应用列表</h2>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="appsSeg">
           <button data-src="targets" class="is-active">生效列表</button>
@@ -545,7 +539,6 @@ button.chip{cursor:pointer}
     </section>
 
     <section class="card panel" id="p-log">
-      <h2 class="card-title">运行日志</h2>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="logSeg">
           <button data-n="30">30</button><button data-n="60" class="is-active">60</button>
@@ -587,15 +580,12 @@ button.chip{cursor:pointer}
 
 </div>
 
-<!-- 悬浮药丸底栏：选中那格展开文字、其余只留图标，所以药丸宽度随当前页变化。
-     底色用 surface-high + 1dp 描边而不是靠阴影 —— 深色下阴影基本看不见。 -->
-<!-- 定宽图标 + 一个滑动的指示胶囊。不再让选中项展开文字：那会让整条药丸在滑动
-     过程中反复变宽变窄（296↔322），居中之后两边一起弹 —— 就是"抽搐"。
-     当前在哪一页由顶栏标题说，底栏只负责"在哪一格"。 -->
+<!-- 悬浮药丸底栏（同 Opticon 的 FloatingNavBar）：选中那格展开成 图标+文字 的胶囊，
+     其余只留图标，所以药丸宽度随当前页变化 —— 横滑已经不做，宽度只在点按那一下变一次。
+     626 画布上实测：概览/应用/日志/属性 300，常驻列表 328。 -->
 <nav class="tabs" role="tablist" id="tabs">
-  <span class="nav-ind" id="navInd" aria-hidden="true"></span>
   <button class="tab is-active" role="tab" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
-  <button class="tab" role="tab" data-tab="rules" data-icon="list" aria-label="常驻列表"><i class="ico"></i><span class="lb">常驻</span></button>
+  <button class="tab" role="tab" data-tab="rules" data-icon="list" aria-label="常驻列表"><i class="ico"></i><span class="lb">常驻列表</span></button>
   <button class="tab" role="tab" data-tab="apps" data-icon="apps" aria-label="应用"><i class="ico"></i><span class="lb">应用</span></button>
   <button class="tab" role="tab" data-tab="log" data-icon="logs" aria-label="日志"><i class="ico"></i><span class="lb">日志</span></button>
   <button class="tab" role="tab" data-tab="props" data-icon="tune" aria-label="属性"><i class="ico"></i><span class="lb">属性</span></button>
@@ -1648,7 +1638,6 @@ function renderAll(){
   else if (S.tab === 'apps') renderApps();
   else if (S.tab === 'log') renderLog();
   else if (S.tab === 'props') renderProps();
-  syncTrackHeight();
 }
 
 /* S.seq：连点两次「重新读取」时，先回来的那次不能把后回来的覆盖掉 */
@@ -1824,31 +1813,7 @@ function confirm(title, text, okLabel){
 var tabsEl = document.getElementById('tabs');
 var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
 var TAB_LABEL = { over: '概览', rules: '常驻列表', apps: '应用列表', log: '运行日志', props: '系统属性伪装' };
-var PAGE_GAP = 16;                       // 两页之间留出的间隙，横滑时能看清是两页
-function pageStep(){
-  var e = document.getElementById('pager');
-  return (e.clientWidth || 1) + PAGE_GAP;
-}
-/* 整页滚动时轨道高度必须跟着当前页走，否则取最高那页、每页底下都拖一段空白。
-   高度变化用 transition 补一下，切页时不会硬跳。 */
-/* 读 offsetHeight 会强制重排；ResizeObserver 一次渲染里可能连触发多次，
-   所以合并到下一帧，并且高度没变就不写（写 style 又会引发布局）。 */
-var heightRaf = 0;
-function syncTrackHeight(){
-  if (heightRaf) return;
-  heightRaf = requestAnimationFrame(function (){
-    heightRaf = 0;
-    var pg = document.getElementById('pager');
-    var p = document.getElementById('p-' + S.tab);
-    if (!pg || !p) return;
-    var h = Math.max(0, Math.round(p.offsetHeight));
-    if (pg._h === h) return;
-    pg._h = h;
-    pg.style.height = h + 'px';
-  });
-}
-var SCROLLING = false, SCROLLING_T = 0;
-/* 只切状态与底栏：用户自己滚过去时用它 —— 不再调 scrollTo，否则会把手指的滚动打断 */
+/* 只切状态与底栏 */
 function applyTab(name){
   S.tab = name;
   Array.prototype.forEach.call(tabsEl.querySelectorAll('.tab'), function (t){
@@ -1858,39 +1823,18 @@ function applyTab(name){
   });
   TAB_ORDER.forEach(function (k){
     var el = document.getElementById('p-' + k);
-    if (el) el.setAttribute('aria-hidden', k === name ? 'false' : 'true');
+    if (el) el.hidden = k !== name;
   });
-  /* 滚动中由 scroll 监听按进度连续定位，这里别再插一脚把它拽回整格 */
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
-  if (!IN_SCROLL) moveIndicator(Math.max(0, TAB_ORDER.indexOf(name)) * tabPitch());
 }
-var IN_SCROLL = false;
-/* 步长按**实际**格子宽度算：窄屏下媒体查询会把 58 收到 52，写死常数会失配 */
-function tabPitch(){ var t = tabsEl.querySelector('.tab'); return (t ? t.offsetWidth : 58) + 4; }
-var TAB_PITCH = 62;
-var navInd = document.getElementById('navInd');
-/* 位移单位是 px：一格 56。滚动中会传小数进来，胶囊就跟页面同速走。 */
-function moveIndicator(px){
-  if (!navInd) navInd = document.getElementById('navInd');
-  if (navInd) navInd.style.transform = 'translateX(' + px + 'px)';
-}
+/* 切页是**瞬时**的：不滚、不动容器高度、不插值。
+   之前那一整套（pager 滚动 + 高度同步 + 指示胶囊插值）都只为横滑服务，
+   横滑去掉之后它们只会制造问题（切页闪、底栏抽搐）。 */
 function showTab(name){
   applyTab(name);
-  /* 先把目标页画出来再滚：否则容器高度还是上一页的，滚动中途再改高度会跳一下。
-     数据没到也没关系 —— 画出来的是骨架，loadTab 回来后会再画一次。 */
   renderAll();
-  var i = Math.max(0, TAB_ORDER.indexOf(name));
-  /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
-     看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
   window.scrollTo(0, 0);
-  navInd.style.transition = '';
-  var pg = document.getElementById('pager');
-  SCROLLING = true;
-  pg.scrollTo({ left: i * pageStep(), behavior: 'smooth' });
-  clearTimeout(SCROLLING_T);
-  SCROLLING_T = setTimeout(function (){ SCROLLING = false; }, 420);
-  syncTrackHeight();       // 上面已经 renderAll 过，这时量到的高度是真的
 }
 
 function goTab(name){ showTab(name); loadTab(); }
@@ -2030,54 +1974,7 @@ function wire(){
     rippleAt(el, e.clientX, e.clientY);
   }, { passive: true });
 
-  /* 切页交给**原生横向滚动**（.pager 上 scroll-snap-type:x mandatory）：
-     跟手、惯性、吸附都由浏览器负责，主线程一帧都不用干活 —— JS 逐帧写 transform
-     在手机上就是卡，will-change / translate3d / rAF 合并全试过，都救不回来。
-     这里只做一件事：用户滚到哪一页，把状态和底栏跟过去（不再回滚，否则会打断手指）。 */
-  var scrollT = 0;
-  var pagerScroller = document.getElementById('pager');
-  function nearestTab(){
-    var i = Math.round(pagerScroller.scrollLeft / pageStep());
-    return TAB_ORDER[Math.max(0, Math.min(TAB_ORDER.length - 1, i))];
-  }
-  pagerScroller.addEventListener('scroll', function (){
-    if (SCROLLING) return;
-    /* 指示胶囊跟着页面**同速**走：位置 = 滚动进度 × 格距，不是到点才跳 ——
-       底栏与页面之间没有任何时间差，也不会在滚动中变宽变窄。 */
-    navInd.style.transition = 'none';
-    var frac = pagerScroller.scrollLeft / pageStep();
-    moveIndicator(Math.max(0, Math.min(TAB_ORDER.length - 1, frac)) * tabPitch());
-    /* 跨过中点就把底栏切过去 —— 不等防抖。底栏跟页面同时变，才没有"时差"。
-       取数与高度同步仍然等滚动停下（中途改容器高度会让纵向位置抖）。 */
-    var name = nearestTab();
-    if (name && name !== S.tab) {
-      tabsEl.classList.add('is-tracking');
-      IN_SCROLL = true;
-      applyTab(name);
-      IN_SCROLL = false;
-    }
-    clearTimeout(scrollT);
-    scrollT = setTimeout(function (){
-      tabsEl.classList.remove('is-tracking');
-      navInd.style.transition = '';            /* 停下后恢复弹簧，点按才弹 */
-      if (name && name !== S.tab) applyTab(name);
-      loadTab();
-      syncTrackHeight();
-    }, 90);
-  }, { passive: true });
-
   /* 系统深浅变了就跟着变。没有"手动档"，所以不需要判断是否处于 auto */
-  /* 内容或视口变化都可能改变当前页高度，跟着同步一次 */
-  window.addEventListener('resize', syncTrackHeight);
-  if (window.ResizeObserver) {
-    var ro = new ResizeObserver(function (){ syncTrackHeight(); });
-    TAB_ORDER.forEach(function (k){
-      var id = 'p-' + k;
-      var el = document.getElementById(id);
-      if (el) ro.observe(el);
-    });
-  }
-
   var mq = matchMedia('(prefers-color-scheme: dark)');
   if (mq.addEventListener) mq.addEventListener('change', function (){
     if (THEME.dark === '') { applyScheme(); if (S.tab === 'over') renderOver(); }
