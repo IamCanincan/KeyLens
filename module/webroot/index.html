@@ -263,6 +263,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .pill[data-tone=bad]::before{background:var(--error)}
 /* 应用清单在 626px 画布上排单列，每行右边会空出一大截；
    自动分列后包名自己限宽，超长的用省略号收尾（title 给全名）。 */
+#rulesResolved{margin-top:var(--sp4)}
 #appsBody{display:grid;grid-template-columns:repeat(auto-fill,minmax(min(258px,100%),1fr));gap:1px}
 #appsBody .empty,#appsBody .hint{grid-column:1 / -1}
 .app-row{display:flex;align-items:center;gap:var(--sp3);padding:5px var(--sp2);border-radius:var(--r-m);
@@ -311,6 +312,10 @@ button,input,textarea,select{font:inherit;color:inherit}
   color:var(--on-variant);margin:0 0 var(--sp1) var(--sp1)}
 .field:focus-within label{color:var(--primary)}
 .hint{font-size:12px;color:var(--on-variant);margin-top:var(--sp1)}
+/* 需要处理才着色，与全局「正常态不上色」一致 */
+.hint-warn{color:var(--on-error-container);background:var(--error-container);
+  border-radius:var(--r-s);padding:var(--sp2) var(--sp3);margin-top:var(--sp2)}
+.hint-warn[hidden]{display:none}
 .toolbar{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp3)}
 .switch-row{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) 0}
 .switch-row .txt{flex:1;min-width:0}
@@ -448,12 +453,14 @@ button,input,textarea,select{font:inherit;color:inherit}
         <textarea id="rulesBox" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" aria-labelledby="rulesLabel"></textarea>
       </div>
       <p class="hint" id="rulesStat">—</p>
+      <p class="hint hint-warn" id="rulesSuspect" hidden></p>
       <div class="toolbar">
         <button class="btn btn-filled btn-sm" id="btnSaveRules"></button>
         <button class="btn btn-text btn-sm" id="btnRevertRules">放弃修改</button>
         <button class="btn btn-outline btn-sm" id="btnRulesHead">补默认注释头</button>
       </div>
       <p class="hint">保存 = 覆盖整个 <span class="mono" id="rulesPath">rules.txt</span>，并立即同步一次；行尾 <span class="mono">CR</span> 与 <span class="mono">BOM</span> 会被自动清掉。</p>
+      <div id="rulesResolved" hidden></div>
     </section>
 
     <section class="card" id="p-apps" hidden>
@@ -1112,21 +1119,70 @@ function renderOver(){
 
 /* ---------- 常驻列表 ---------- */
 function rulesStats(text){
-  var lines = String(text).split('\n'), valid = 0, comment = 0, blank = 0;
-  lines.forEach(function (raw){
+  var lines = String(text).split('\n'), valid = 0, comment = 0, blank = 0, suspect = [];
+  /* 不像包名的行不会报错，只会静默地永远匹配不上任何应用 —— 数上去却是"有效 1 条"。
+     所以单独挑出来报数，让人当场能看见，而不是等"为什么这个应用没进来"。 */
+  lines.forEach(function (raw, i){
     var l = raw.replace(/^\s+|\s+$/g, '');
     if (!l) blank++;
     else if (l.charAt(0) === '#') comment++;
-    else valid++;
+    else {
+      valid++;
+      if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/.test(l)) {
+        suspect.push('第 ' + (i + 1) + ' 行「' + l.slice(0, 40) + '」');
+      }
+    }
   });
-  return { valid: valid, comment: comment, blank: blank, total: lines.length };
+  return { valid: valid, comment: comment, blank: blank, suspect: suspect, total: lines.length };
 }
+/* 常驻项摊开：编辑器里只有裸包名，看不见"这一条到底进没进目标列表"。
+   下面这份用同一批数据（targets + 图标缓存）把它列出来，
+   图标和显示名回来后再重画一次。 */
+function renderRulesResolved(){
+  var box = document.getElementById('rulesResolved');
+  if (!box) return;
+  var list = Object.keys(rulesSetOf()).sort();
+  box.textContent = '';
+  if (!list.length) { box.hidden = true; return; }
+  box.hidden = false;
+  box.appendChild(el('h3', 'grp-t', '当前常驻项 · ' + list.length));
+  var g = el('div', 'grid');
+  var inTarget = targetSetOf();
+  list.forEach(function (p){
+    var ic = S.icons[p];
+    var row = el('div', 'app-row');
+    row.appendChild(appAvatar(p, ic));
+    var txt = el('span', 'app-txt');
+    if (ic && ic.label) {
+      txt.appendChild(el('span', 'app-name', ic.label));
+      var pk = el('span', 'app-pkg', p);
+      pk.title = p;
+      txt.appendChild(pk);
+    } else {
+      var nm = el('span', 'app-name is-mono', p);
+      nm.title = p;
+      txt.appendChild(nm);
+    }
+    row.appendChild(txt);
+    if (!inTarget[p]) {
+      var tg = el('span', 'app-tag', '未生效');
+      tg.setAttribute('data-tone', 'miss');
+      tg.title = '写在 rules.txt 里，但当前目标列表没有它（多半是还没同步，或该后端跳过了不可见应用）';
+      row.appendChild(tg);
+    }
+    g.appendChild(row);
+  });
+  box.appendChild(g);
+  ensureIcons(list);
+}
+
 function renderRules(){
   rulesPath.textContent = S.status.rules_file || 'rules.txt';
   /* 只有用户真的动过编辑器才保留草稿；首次进入时编辑器是空的，
      拿「内容等于基线」当判据会让它永远填不进去（实测过：显示 0 条且标成未保存）。 */
   if (!S.rulesEdited || rulesBox.value === S.rulesBase) rulesBox.value = S.rules;
   updateRulesStat();
+  renderRulesResolved();
 }
 function updateRulesStat(){
   var s = rulesStats(rulesBox.value);
@@ -1136,6 +1192,12 @@ function updateRulesStat(){
   if (dirty) parts.push('未保存');
   rulesStat.textContent = parts.join(' · ');
   rulesStat.style.color = dirty ? 'var(--primary)' : 'var(--on-variant)';
+  var sus = document.getElementById('rulesSuspect');
+  if (s.suspect.length) {
+    sus.hidden = false;
+    sus.textContent = '有 ' + s.suspect.length + ' 行不像包名，会一直匹配不到任何应用：' +
+      s.suspect.slice(0, 5).join('、') + (s.suspect.length > 5 ? ' 等' : '');
+  } else sus.hidden = true;
   btnSaveRules.disabled = !dirty || busyCount > 0;
   btnRevertRules.disabled = !dirty;
 }
@@ -1406,7 +1468,9 @@ function loadIcons(pkgs){
 
 function ensureIcons(pkgs){
   return loadIcons(pkgs).then(function (got){
-    if (got && S.tab === 'apps') renderApps();
+    if (!got) return;
+    if (S.tab === 'apps') renderApps();
+    else if (S.tab === 'rules') renderRulesResolved();
   });
 }
 function loadLog(){
