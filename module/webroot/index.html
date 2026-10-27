@@ -2154,6 +2154,15 @@ function adoptBridge(hit){
   var dir = moduleDirFromBridge();
   if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
   try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
+  /* 状态栏那条缝**不是页面画的**：宿主主题里既没有 statusBarColor 也没有
+     windowBackground，那一条是它窗口的底色（管理器的调色板），而页面底色是从
+     系统强调色推的 —— 两个来源，永远差一档。
+     要同色只能让页面画到状态栏下面：enableEdgeToEdge(true) 把宿主的让位 padding
+     归零，背景由页面画（body 的 --surface），于是那条缝就是页面色。
+     代价：底部手势把手直接浮在页面背景上（它由 SystemUI 画，页面去不掉）。
+     内容位置不变：appbar 的 padding-top 与 .wrap 的 padding-bottom 都吃 safe-area，
+     而 <meta viewport> 已经是 viewport-fit=cover。 */
+  try { if (typeof BRIDGE.enableEdgeToEdge === 'function') BRIDGE.enableEdgeToEdge(true); } catch (e) {}
   /* 曾试过 fullScreen(true)：状态栏确实藏掉了，但底部那根白色药丸**还在** ——
      说明它不是导航栏背景，而是别的东西（手势提示条，或宿主自己的悬浮底栏）。
      为了它把时钟电量一起藏掉不划算，已撤回。网页这一层没有别的办法让它消失。 */
