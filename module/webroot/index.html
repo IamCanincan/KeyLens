@@ -148,14 +148,18 @@ button,input,textarea,select{font:inherit;color:inherit}
    高度由 JS 同步成"当前页的高度"：整页滚动的前提下，轨道不能取最高那页，
    否则每页底下都会拖出一大段空白。 */
 .pager{overflow:hidden}
+/* will-change 只在拖拽期间临时加（见 JS）：常驻的话浏览器会把"五个全高页面"
+   合成成一个巨大的图层，手机上滚动就掉帧。
+   高度也不参与过渡 —— 每帧重排一次比高度突变更伤。 */
 .track{display:flex;align-items:flex-start;gap:16px;
   touch-action:pan-y;overscroll-behavior-x:contain;
-  transition:transform var(--d3) var(--e-emph),height var(--d2) var(--e-emph);will-change:transform}
+  transition:transform var(--d3) var(--e-emph)}
 /* 每页自己滚：高度锁在 pager 上，卡片边框/圆角不随内容滚走。
    底部那段 96px 是给悬浮药丸让位的（药丸高约 56 + 距底 20 + 余量） */
 /* 用 .card.panel 而不是 .panel：.card 在后面用 padding 简写把四边一起重置了，
    单写 .panel 的 padding-bottom 会被它按源码顺序盖掉（实测只剩 26px，底栏直接压住内容）。 */
-.card.panel{flex:0 0 100%;min-width:0}
+/* contain 把布局与绘制限制在这一页里：改一页不会让其它四页跟着重排 */
+.card.panel{flex:0 0 100%;min-width:0;contain:layout paint}
 .card{background:var(--surface-low);border:var(--hair);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
 /* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
@@ -1776,10 +1780,21 @@ function pageStep(){
 }
 /* 整页滚动时轨道高度必须跟着当前页走，否则取最高那页、每页底下都拖一段空白。
    高度变化用 transition 补一下，切页时不会硬跳。 */
+/* 读 offsetHeight 会强制重排；ResizeObserver 一次渲染里可能连触发多次，
+   所以合并到下一帧，并且高度没变就不写（写 style 又会引发布局）。 */
+var heightRaf = 0;
 function syncTrackHeight(){
-  var t = document.getElementById('track');
-  var p = document.getElementById('p-' + S.tab);
-  if (t && p) t.style.height = Math.max(0, Math.round(p.offsetHeight)) + 'px';
+  if (heightRaf) return;
+  heightRaf = requestAnimationFrame(function (){
+    heightRaf = 0;
+    var t = document.getElementById('track');
+    var p = document.getElementById('p-' + S.tab);
+    if (!t || !p) return;
+    var h = Math.max(0, Math.round(p.offsetHeight));
+    if (t._h === h) return;
+    t._h = h;
+    t.style.height = h + 'px';
+  });
 }
 function showTab(name){
   S.tab = name;
@@ -1791,7 +1806,10 @@ function showTab(name){
   /* 横排 pager：整条轨道左移 i 屏。不用 hidden —— 那样就没法"跟手"了；
      非当前页用 aria-hidden 标掉，读屏不会读到隔壁页。 */
   var i = Math.max(0, TAB_ORDER.indexOf(name));
-  var track = document.getElementById('track');
+  /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
+     看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
+  window.scrollTo(0, 0);
+  var pager = document.getElementById('pager');
   track.style.transition = '';
   track.style.transform = 'translateX(' + (-i * pageStep()) + 'px)';
   syncTrackHeight();
@@ -1941,7 +1959,7 @@ function wire(){
     if (!sw.axis) {
       if (Math.abs(dx) < 6 && Math.abs(dy) < 6) return;
       sw.axis = Math.abs(dx) > Math.abs(dy) * 1.2 ? 'x' : 'y';
-      if (sw.axis === 'x') trackEl.style.transition = 'none';
+      if (sw.axis === 'x') { trackEl.style.transition = 'none'; trackEl.style.willChange = 'transform'; }
     }
     if (sw.axis !== 'x') return;
     sw.dx = dx;
@@ -1956,6 +1974,7 @@ function wire(){
     sw.on = false;
     if (sw.axis !== 'x') { sw.axis = ''; return; }
     sw.axis = '';
+    trackEl.style.willChange = '';
     var i = Math.max(0, TAB_ORDER.indexOf(S.tab));
     var W = trackEl.clientWidth || 1;
     var far = Math.abs(sw.dx) > W * 0.3;
