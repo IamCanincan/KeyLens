@@ -243,7 +243,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .btn{display:inline-flex;align-items:center;justify-content:center;gap:var(--sp2);min-height:38px;padding:0 var(--sp4);
   border:0;border-radius:var(--r-full);font-size:14px;font-weight:600;cursor:pointer;letter-spacing:.1px;
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph),box-shadow var(--d2) var(--e-emph)}
-.btn svg{width:17px;height:17px;flex:none}
+.btn svg{width:18px;height:18px;flex:none}
 .btn:active{transform:scale(.94)}
 .btn[disabled]{opacity:.42;pointer-events:none}
 .btn-filled{background:var(--primary);color:var(--on-primary)}
@@ -251,7 +251,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 次行动不再上 secondary-container：英雄卡转中性之后，这里再放一块淡紫
    就等于把「两个按钮都很重要」画出来。它只需要读起来是「另一个动作」。 */
 .btn-tonal{background:var(--surface-high);color:var(--on-surface)}
-.btn-outline{background:transparent;color:var(--primary);border:1.5px solid var(--outline-variant)}
+.btn-outline{background:transparent;color:var(--primary);border:1px solid var(--outline-variant)}
 .btn-text{background:transparent;color:var(--primary);padding:0 var(--sp3)}
 .btn-sm{min-height:36px;padding:0 var(--sp3);font-size:13px}
 /* 主行动用 primary：它是唯一"跟着系统色相走"的实心色，别的角色要么太淡要么
@@ -275,7 +275,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 图标不再垫底盘：36px 的填色方块一屏 5 个，是入口卡里最后的"面"。
    去掉之后就是 M3 列表项的样子 —— 图标本身在 on-variant 上，靠标题拉层级。 */
 .menu-ic{flex:none;width:24px;height:24px;display:grid;place-items:center;color:var(--on-variant)}
-.menu-ic svg{width:22px;height:22px;display:block;fill:currentColor}
+.menu-ic svg{width:24px;height:24px;display:block;fill:currentColor}
 .menu-txt{flex:1;min-width:0;display:block}
 .menu-txt b{display:block;font-size:14px;font-weight:600;line-height:1.3}
 .menu-txt small{display:block;margin-top:2px;font-size:12px;color:var(--on-variant);
@@ -393,11 +393,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 表单：标签一律放在控件上方。浮动标签要和文本域首行算位置，textarea 一定压字 */
 .field{display:block}
 .field textarea,.field input[type=text]{width:100%;padding:var(--sp3);border-radius:var(--r-m);
-  background:var(--surface-lowest);border:1.5px solid var(--outline-variant);color:var(--on-surface);
+  background:var(--surface-lowest);border:1px solid var(--outline-variant);color:var(--on-surface);
   transition:border-color var(--d2) var(--e-emph),background var(--d2) var(--e-emph)}
 .field textarea{min-height:180px;font-family:var(--mono);font-size:13px;line-height:1.55;resize:vertical;tab-size:2}
 .field input[type=text]{min-height:42px}
-.field:focus-within textarea,.field:focus-within input{border-color:var(--primary);border-width:2.5px}
+/* 聚焦不再动 border-width：1.5 → 2.5 会让控件长高 2px、下面的东西整体下移 2px。
+   现在 border 恒 1px，聚焦时再加一圈同色 ring（视觉 2px，布局零位移）。 */
+.field:focus-within textarea,.field:focus-within input{border-color:var(--primary);
+  box-shadow:0 0 0 1px var(--primary)}
 .field label{display:block;font-size:12px;font-weight:700;letter-spacing:.4px;
   color:var(--on-variant);margin:0 0 var(--sp1) var(--sp1)}
 .field:focus-within label{color:var(--primary)}
