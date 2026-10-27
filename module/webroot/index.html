@@ -1910,13 +1910,15 @@ function showTab(name, back){
 
 /* 导航状态写在地址栏的 hash 上（#/over、#/rules…），顶栏箭头与 popstate
    合成一条路。
-   ⚠ 这**不能**让系统的边缘返回退到上一级。实测（logcat，二级页划边缘）：
-     18:04:52.105 {m=CHANGE WebUIActivity|FLAG_BACK_GESTURE_ANIMATED}
-                 {m=TO_FRONT MainActivity|IS_OCCLUDED|FLAG_BACK_GESTURE_ANIMATED}
-     18:04:52.189 {m=CLOSE  WebUIActivity}   ← 整个界面被关掉，不是退一级
-   也就是说宿主的返回没跟着 WebView 的历史走：pushState 与 hash 都没能刷新它的
-   canGoBack 状态（宿主里那条 webView.goBack() 回调压根没为这个 Activity 打开）。
-   页内返回一律以顶栏箭头为准；hash 的价值只剩"在哪一页写在地址上，排查时能看见"。
+   宿主的返回是怎么决定的（dex 实测）：WebViewClient.doUpdateVisitedHistory 里读
+   webView.canGoBack() 写进一个状态，返回回调里执行 webView.goBack()。hash 跳转
+   下"回到概览"是通的。
+   ⚠ 我一度拿一条 {m=CLOSE WebUIActivity} 的 logcat 断言"边缘返回退不了级"，那是
+   过度推断：日志只证明那次关闭发生过，证明不了当时停在二级页。据此做的整文档
+   跳转（每次换 URL 重载 + 一层缓存）已经回退，见 CHANGELOG。
+   真正缺的不是"退级"，是安卓的可预测预览：那要宿主实现 OnBackAnimationCallback
+   并驱动 startBackProgress —— 全 dex 里 startBackProgress / getBackProgress 各
+   0 次，所以页内返回没有预览，只有跨 Activity（退回管理器）那一下有。
    滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
    不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
