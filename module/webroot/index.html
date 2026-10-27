@@ -533,6 +533,13 @@ button.chip{cursor:pointer;min-height:32px}
           <span class="menu-txt"><b>系统属性伪装</b><small>开机写入的期望值 · 可立即应用一次</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
+        <!-- 「关于」原来只有英雄卡里那个版本号胶囊一个入口（27px 高、看着像标签
+             不像按钮），现在多一条行入口；版本号那个入口保留，两处都开同一个浮层 -->
+        <button class="menu-row" data-open="about">
+          <span class="menu-ic"><i class="ico" data-icon="info"></i></span>
+          <span class="menu-txt"><b>关于与自检</b><small>桥接 / 取色 / 字体 / 设备信息</small></span>
+          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+        </button>
       </nav>
       <section class="card home-card">
         <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
@@ -2001,7 +2008,9 @@ function wire(){
 
   homeMenu.addEventListener('click', function (e){
     var b = e.target.closest ? e.target.closest('.menu-row') : null;
-    if (b) goTab(b.dataset.go);
+    if (!b) return;
+    if (b.dataset.open === 'about') { openAbout(); return; }
+    goTab(b.dataset.go);
   });
   btnBack.addEventListener('click', goBack);
 
