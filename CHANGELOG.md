@@ -75,6 +75,9 @@
 
 #### 修复
 
+* **每切一次页整屏闪一下**：真正的原因是 **「读取中」那层全屏遮罩**，不是面板动画。`goTab` 一律走 `runChain`，而它开头就 `busy(true)` —— `.busy{position:fixed;inset:0;background:var(--scrim)}` 是一层 45% 的黑，压上去再收掉，整页自然闪一下。数据其实早就缓存好了，这一趟什么也不取。现在切页一律静默（`runChain(false, true)`），首次进某页真要取数时把「读取中…」写在该页自己的状态行里。实测：连续切五页（含首次进日志/属性），`#busy` 的 `hidden` 属性**一次都没翻过**（改前有 2 次），日志 9 行、属性 12 行照常填上。
+  * 顺带删掉 `.card` 的 `animation:fade`（切页时同样会重播，是第二层闪）—— 这一层单独看也是 220ms 从全透明淡回来。
+
 * **每切一次页都会闪一下**：`.card` 上挂着 `animation:fade 220ms`（从 `opacity:0` 起），而切页是把面板从 `display:none` 切回来 —— 动画每次都会整段重播。实测切一次页 opacity 序列是 **0 → 0.028 → 1**，看上去就是闪一下。删掉面板的入场动画（连同 `@keyframes fade`）；入场效果只留给英雄卡的 `rise`，它从不被隐藏，所以只播一次。改后再量：连续切两次页，四次采样的 opacity 全是 **1**，`animationName` 为 `none`。
 
 * **修掉一根「莫名其妙的白色药丸」—— 它是本界面自己的 snackbar**：隐藏状态只靠 `transform:translate(-50%,140%)` 挪走，而没文字时元素高度只有 16px，140% 只有 22px，**根本没挪出屏幕**。于是它在底部正中常驻成一条 32×16、18px 圆角、底色 `oklch(.99)` 的空白胶囊。实测量到的证据：`visibleNow=true`、`textContent=""`、`w=32 h=16`、`background=oklch(0.99 …)`、`data-show` 为 null —— 一条就够定案。现在用 `opacity:0` 兜底，与高度无关；`[data-show="1"]` 时恢复 `opacity:1`。正对照：调用后 opacity 1、在视口内、文字出现；移除属性后回到 0。

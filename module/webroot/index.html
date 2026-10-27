@@ -1547,9 +1547,12 @@ function renderAll(){
 }
 
 /* S.seq：连点两次「重新读取」时，先回来的那次不能把后回来的覆盖掉 */
-function runChain(withBase){
+function runChain(withBase, quiet){
   var seq = ++S.seq;
-  busy(true, '读取中');
+  /* quiet：不盖整屏遮罩。切页时数据通常已经缓存好，这一趟什么也不取，
+     遮罩却会把整页压暗一帧 —— 那就是「切一下整个页面闪一下」的来源。
+     遮罩只属于真的要取数的时候（首次进入某一页、显式刷新、写操作）。 */
+  if (!quiet) busy(true, '读取中');
 
   var chain;
   if (withBase) {
@@ -1565,7 +1568,7 @@ function runChain(withBase){
   chain.then(function (){ return ensure(S.tab); })
     .catch(function (e){ if (seq === S.seq) snackbar(String((e && e.message) || e), 'bad'); })
     .then(function (){
-      busy(false);                                  // 迟到也要配平，否则遮罩永远关不掉
+      if (!quiet) busy(false);                      // 迟到也要配平，否则遮罩永远关不掉
       if (seq !== S.seq || busyCount > 0) return;   // 有更新的请求在跑，让它来画
       renderAll();
       if (S.env.root_user && S.env.root_user !== '0') snackbar('exec 不是 root（uid ' + S.env.root_user + '）', 'bad');
@@ -1573,7 +1576,16 @@ function runChain(withBase){
 }
 
 function refresh(){ runChain(true); }
-function loadTab(){ runChain(false); }
+function loadTab(){
+  /* 切页一律不盖整屏遮罩：那层 45% 的黑一压一收，看就是"整个页面闪一下"。
+     首次进某页确实要取数，就在该页自己的状态行里写「读取中…」——反馈留在页面内。 */
+  var need = (S.tab === 'rules' || S.tab === 'apps' || S.tab === 'over') ? 'lists' : S.tab;
+  if (!S.loaded[need]) {
+    if (need === 'log') logStat.textContent = '读取中…';
+    else if (need === 'props') propsStat.textContent = '读取中…';
+  }
+  runChain(false, true);
+}
 
 /* =========================================================
    5. 写操作
