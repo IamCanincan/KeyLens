@@ -256,27 +256,26 @@ button.chip{cursor:pointer}
    底色用 surface-high + 1dp 描边，不靠阴影：深色下阴影基本看不见，边界靠那根线钉住。
    内容从药丸后面滚过去（让位只加在 .wrap 的 padding-bottom 上，body 不留空白带，
    否则药丸下面会凭空多出一条背景）。 */
+/* 每格定宽 52px：整条药丸在任何一页都同一个尺寸，滑动时不会胖瘦变化。
+   指示胶囊是独立一层，横向位移由滚动进度直接驱动（见 JS）—— 和页面同速。 */
 .tabs{position:fixed;left:50%;transform:translateX(-50%);z-index:40;
   bottom:calc(var(--inset-bottom) + 20px);
   display:flex;align-items:center;gap:4px;padding:6px 8px;
   background:var(--surface-high);border:1px solid var(--card-line);border-radius:28px;
   max-width:calc(100vw - 16px)}
-.tab{position:relative;flex:none;display:flex;align-items:center;justify-content:center;
-  min-height:44px;padding:10px 12px;border:0;border-radius:var(--r-full);
-  background:transparent;color:var(--on-variant);font-size:13px;font-weight:600;cursor:pointer;
-  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
+.nav-ind{position:absolute;top:6px;left:8px;width:52px;height:44px;border-radius:var(--r-full);
+  background:var(--secondary-container);pointer-events:none;
+  transition:transform var(--d3) var(--e-spring)}
+.tab{position:relative;z-index:1;flex:none;width:52px;height:44px;
+  display:flex;align-items:center;justify-content:center;
+  border:0;border-radius:var(--r-full);background:transparent;color:var(--on-variant);cursor:pointer;
+  transition:color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
 .tab:active{transform:scale(.92)}
-/* 用户自己拖着页面滚时，底栏要跟页面同时变 —— 那会儿把过渡关掉，
-   否则「页面已经到了、底栏还在 220ms 的路上」就是肉眼可见的时差。
-   点底栏切换不经过这里，动画照旧。 */
-#tabs.is-tracking .tab, #tabs.is-tracking .tab .lb{transition:none}
-.tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
+/* 用户自己拖着页面滚时，颜色切换不要过渡 —— 否则「页面到了、底栏还在路上」。 */
+#tabs.is-tracking .tab, #tabs.is-tracking .nav-ind{transition:none}
+.tab.is-active{color:var(--on-secondary-container)}
 .tab .ico{display:flex;flex:none}
 .tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
-/* 未选中只留图标：文字宽度收到 0。用 max-width 过渡而不是 width:auto —— 后者在 WebView 里不参与过渡 */
-.tab .lb{max-width:0;overflow:hidden;white-space:nowrap;opacity:0;
-  transition:max-width var(--d3) var(--e-spring),opacity var(--d2) var(--e-emph),margin-left var(--d3) var(--e-spring)}
-.tab.is-active .lb{max-width:140px;opacity:1;margin-left:6px}
 
 /* ================= 概览分组 ================= */
 /* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
@@ -467,8 +466,8 @@ button.chip{cursor:pointer}
        原先那两个按钮会让人不小心把界面调成和系统不一样的东西。 -->
   <div class="appbar-row">
     <div style="min-width:0">
-      <span class="kicker" id="kicker">正在读取模块状态</span>
-      <h1>TS-AUTO-ADD</h1>
+      <span class="kicker" id="kicker">TS-AUTO-ADD</span>
+      <h1 id="pageTitle">概览</h1>
     </div>
   </div>
 </header>
@@ -581,12 +580,16 @@ button.chip{cursor:pointer}
 
 <!-- 悬浮药丸底栏：选中那格展开文字、其余只留图标，所以药丸宽度随当前页变化。
      底色用 surface-high + 1dp 描边而不是靠阴影 —— 深色下阴影基本看不见。 -->
+<!-- 定宽图标 + 一个滑动的指示胶囊。不再让选中项展开文字：那会让整条药丸在滑动
+     过程中反复变宽变窄（296↔322），居中之后两边一起弹 —— 就是"抽搐"。
+     当前在哪一页由顶栏标题说，底栏只负责"在哪一格"。 -->
 <nav class="tabs" role="tablist" id="tabs">
-  <button class="tab is-active" role="tab" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
-  <button class="tab" role="tab" data-tab="rules" data-icon="list" aria-label="常驻列表"><i class="ico"></i><span class="lb">常驻列表</span></button>
-  <button class="tab" role="tab" data-tab="apps" data-icon="apps" aria-label="应用"><i class="ico"></i><span class="lb">应用</span></button>
-  <button class="tab" role="tab" data-tab="log" data-icon="logs" aria-label="日志"><i class="ico"></i><span class="lb">日志</span></button>
-  <button class="tab" role="tab" data-tab="props" data-icon="tune" aria-label="属性"><i class="ico"></i><span class="lb">属性</span></button>
+  <span class="nav-ind" id="navInd" aria-hidden="true"></span>
+  <button class="tab is-active" role="tab" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i></button>
+  <button class="tab" role="tab" data-tab="rules" data-icon="list" aria-label="常驻列表"><i class="ico"></i></button>
+  <button class="tab" role="tab" data-tab="apps" data-icon="apps" aria-label="应用"><i class="ico"></i></button>
+  <button class="tab" role="tab" data-tab="log" data-icon="logs" aria-label="日志"><i class="ico"></i></button>
+  <button class="tab" role="tab" data-tab="props" data-icon="tune" aria-label="属性"><i class="ico"></i></button>
 </nav>
 
 <div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
@@ -1095,7 +1098,7 @@ function renderHero(){
   if (env.brand) dev.push(env.brand);
   if (env.device) dev.push(env.device);
   if (env.android) dev.push('Android ' + env.android);
-  kicker.textContent = dev.join(' · ') || 'TS-AUTO-ADD';
+  kicker.textContent = "TS-AUTO-ADD" + (dev.length ? " · " + dev.join(" · ") : "");
 
   var bad = st.state === 'stopped' || st.state === 'failed' || st.conflict === '1' ||
             (st.target_exists === '0' && st.state !== 'unknown') || st.target_writable === '0';
@@ -1811,6 +1814,7 @@ function confirm(title, text, okLabel){
    ========================================================= */
 var tabsEl = document.getElementById('tabs');
 var TAB_ORDER = ['over', 'rules', 'apps', 'log', 'props'];
+var TAB_LABEL = { over: '概览', rules: '常驻列表', apps: '应用列表', log: '运行日志', props: '系统属性伪装' };
 var PAGE_GAP = 16;                       // 两页之间留出的间隙，横滑时能看清是两页
 function pageStep(){
   var e = document.getElementById('pager');
@@ -1847,6 +1851,18 @@ function applyTab(name){
     var el = document.getElementById('p-' + k);
     if (el) el.setAttribute('aria-hidden', k === name ? 'false' : 'true');
   });
+  /* 滚动中由 scroll 监听按进度连续定位，这里别再插一脚把它拽回整格 */
+  var pageTitle = document.getElementById('pageTitle');
+  if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
+  if (!IN_SCROLL) moveIndicator(Math.max(0, TAB_ORDER.indexOf(name)) * TAB_PITCH);
+}
+var IN_SCROLL = false;
+var TAB_PITCH = 56;                       // 52px 格子 + 4px 间隙
+var navInd = document.getElementById('navInd');
+/* 位移单位是 px：一格 56。滚动中会传小数进来，胶囊就跟页面同速走。 */
+function moveIndicator(px){
+  if (!navInd) navInd = document.getElementById('navInd');
+  if (navInd) navInd.style.transform = 'translateX(' + px + 'px)';
 }
 function showTab(name){
   applyTab(name);
@@ -1854,6 +1870,7 @@ function showTab(name){
   /* 整页滚动下每页高度不同：不回顶部的话，从长页切到短页会把滚动位置夹回去，
      看起来像"底栏跳一下"。统一回顶最省心，也符合"换了一页"的直觉。 */
   window.scrollTo(0, 0);
+  navInd.style.transition = '';
   var pg = document.getElementById('pager');
   SCROLLING = true;
   pg.scrollTo({ left: i * pageStep(), behavior: 'smooth' });
@@ -2011,16 +2028,24 @@ function wire(){
   }
   pagerScroller.addEventListener('scroll', function (){
     if (SCROLLING) return;
+    /* 指示胶囊跟着页面**同速**走：位置 = 滚动进度 × 格距，不是到点才跳 ——
+       底栏与页面之间没有任何时间差，也不会在滚动中变宽变窄。 */
+    navInd.style.transition = 'none';
+    var frac = pagerScroller.scrollLeft / pageStep();
+    moveIndicator(Math.max(0, Math.min(TAB_ORDER.length - 1, frac)) * TAB_PITCH);
     /* 跨过中点就把底栏切过去 —— 不等防抖。底栏跟页面同时变，才没有"时差"。
        取数与高度同步仍然等滚动停下（中途改容器高度会让纵向位置抖）。 */
     var name = nearestTab();
     if (name && name !== S.tab) {
       tabsEl.classList.add('is-tracking');
+      IN_SCROLL = true;
       applyTab(name);
+      IN_SCROLL = false;
     }
     clearTimeout(scrollT);
     scrollT = setTimeout(function (){
       tabsEl.classList.remove('is-tracking');
+      navInd.style.transition = '';            /* 停下后恢复弹簧，点按才弹 */
       if (name && name !== S.tab) applyTab(name);
       loadTab();
       syncTrackHeight();
