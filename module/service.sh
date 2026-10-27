@@ -14,6 +14,14 @@ MODDIR="${0%/*}"
 PROP_FILE="$MODDIR/module.prop"
 WATCH_DIR="/data/system"
 
+# 框架调 service.sh 时不带 umask（实测本机运行时文件落成了 0666），而本模块
+# 的运行时文件（pids 名单、指纹、临时文件）只给 root 自己看。customize.sh:50
+# 安装时就是 umask 077，这里对齐，别让同一模块的两套文件两种权限。
+# 注意：**webui.sh 不加这条** —— 它导出的 webroot/icons/*.png 现在是 0644，
+# 管理器怎么读到它们的（复制 webroot 还是就地读）没有实测过，
+# 在没验之前把 022 收紧成 077 有可能直接把图标弄黑。
+umask 077
+
 export PATH="/system/bin:/system/xbin:/odm/bin:/vendor/bin:/product/bin:$PATH"
 . "$MODDIR/lib/common.sh" || exit 1
 
