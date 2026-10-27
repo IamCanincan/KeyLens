@@ -131,7 +131,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 几点需要知道：
 
-- **调 `enableEdgeToEdge(true)`，不调 `fullScreen(true)`**：状态栏那条缝是宿主窗口的底色（`Theme.KernelSU.WebUI` 里既没有 `statusBarColor` 也没有 `windowBackground`），页面改 CSS 碰不到它，所以让页面画到状态栏下面 —— 宿主的让位 padding 归零后，那条缝就是页面的 `--surface`，两处终于同色。内容位置不变（`appbar`/`.wrap` 吃 `env(safe-area-inset-*)`，viewport 是 `viewport-fit=cover`）。代价：底部那根手势把手会浮在页面背景上（SystemUI 画的，去不掉）。`fullScreen(true)` 仍然不调 —— 它只是把状态栏藏掉，那根把手还在，还白白丢了时钟与电量。
+- **调 `enableEdgeToEdge(true)`，不调 `fullScreen(true)`**：状态栏那条缝是宿主窗口的底色（`Theme.KernelSU.WebUI` 里既没有 `statusBarColor` 也没有 `windowBackground`），页面改 CSS 碰不到它，所以让页面画到状态栏下面 —— 宿主的让位 padding 归零后，那条缝就是页面的 `--surface`，两处终于同色。内容位置不变（`appbar`/`.wrap` 吃 `env(safe-area-inset-*)`，viewport 是 `viewport-fit=cover`）。真机实测（2026-10-27）：状态栏与页面同色、顶栏没有被状态栏压住、底部没有再出现手势把手。`fullScreen(true)` 仍然不调 —— 它只是把状态栏藏掉，那根把手还在，还白白丢了时钟与电量。
 - 顶栏与系统栏无关：`<meta name="theme-color">` 主线 KernelSU 根本不读（dex 里 0 次出现），所以状态栏那条缝不是改它就能接上的。
 - 底部有页脚收尾（`TS-AUTO-ADD · 只在开机与文件变化时同步 · 界面不联网`），`body` 竖排 + `.wrap` 撑满 + 页脚 `margin-top:auto`：内容短时页脚贴视口底部，内容长时跟在内容后面；页面内容结束时有个明确收口。
 - **没有底栏，导航就是概览页上的四行入口**：每行是图标 + 标题 + 实时副标题（常驻 N 条 / 生效 N · 第三方 M / 缓冲 N 行 / 开机写入开或关）+ 右侧箭头。底栏那条横滑轨道（`scroll-snap` + 指示胶囊插值 + 容器高度同步）正是「抽搐」和「切页闪」的来源，连同它一起删掉了。
