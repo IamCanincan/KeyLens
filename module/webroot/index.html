@@ -1001,7 +1001,7 @@ var S = {
   rulesSet: null, rulesSetSrc: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {},
-  log: [], logSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
+  log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0
 };
 
 /* 数字都从列表直接数出来（见 webui.sh 里 status 不算数的原因）；
@@ -1298,7 +1298,8 @@ function appAvatar(pkg, ic){
   var a = el('span', 'app-ic');
   if (ic && ic.src) {
     var img = el('img');
-    img.src = ic.src; img.alt = ''; img.loading = 'lazy';
+    /* decoding=async：一百多张 PNG 若同步解码，会让插入列表的那一帧和滚动都卡一下 */
+    img.src = ic.src; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
     /* 相对路径能不能解析取决于管理器的资源 handler。读不到就换成首字块，
        别让列表里出现一片破图 —— 这一条我没法离线证明，所以按可能失败来写 */
     img.addEventListener('error', function (){ a.textContent = monogram(ic.label || pkg); });
@@ -1322,6 +1323,13 @@ function renderApps(){
     });
   }
   var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
+  /* 同样的输入不重建 DOM：切回这一页不该再付一次建 130 行的钱。
+     sig 把会影响这张列表的东西全串进来（两份名单、筛选、草稿基线、图标数），
+     少一项就会画出旧内容。 */
+  var sig = [S.appsSrc, S.onlyMissing ? 1 : 0, S.search, S.targets.join(','), S.apps.join(','),
+    S.rulesBase, Object.keys(S.icons).length].join('\u0001');
+  if (sig === S.appsSig) return;
+  S.appsSig = sig;
   appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
     ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '');
 
@@ -1336,6 +1344,14 @@ function renderApps(){
   }
   var frag = document.createDocumentFragment();
   var shown = Math.min(list.length, 800);
+  /* 「+」的图标只解析一次，之后每行 clone：一屏一百多行时 innerHTML 逐行解析
+     那一串 SVG 字符串是这条路上最贵的一步（手机上一百多毫秒）。 */
+  var addIcon = null;
+  if (S.appsSrc === 'apps') {
+    var tpl = el('span');
+    tpl.innerHTML = svg('add');
+    addIcon = tpl.firstChild;
+  }
   for (var i = 0; i < shown; i++) {
     var pkg = list[i];
     var ic = S.icons[pkg];
@@ -1364,7 +1380,7 @@ function renderApps(){
     }
     if (S.appsSrc === 'apps') {
       var add = el('button', 'icon-add');
-      add.innerHTML = svg('add');
+      add.appendChild(addIcon.cloneNode(true));
       add.title = '加入常驻列表';
       add.setAttribute('aria-label', '把 ' + pkg + ' 加入常驻列表');
       add.addEventListener('click', (function (p){
@@ -1620,13 +1636,15 @@ function split(text){
    两条链并发时（连点两次「重新读取」）要共用同一个在途请求，
    并且只在成功后才记「已加载」——否则第二条链会以为数据到手、把空列表画出来。 */
 var inflight = {};
+/* 返回值 = 这一趟有没有真的取数。调用方据此决定要不要重画 ——
+   切回一个已经画过的页面时这里什么都不取，重画只会把整张列表再建一遍。 */
 function ensure(tab){
   var need = (tab === 'rules' || tab === 'apps' || tab === 'over') ? 'lists' : tab;
-  if (S.loaded[need]) return Promise.resolve();
+  if (S.loaded[need]) return Promise.resolve(false);
   if (inflight[need]) return inflight[need];
 
   var p = need === 'lists' ? loadLists() : (need === 'log' ? loadLog() : loadProps());
-  inflight[need] = p.then(function (r){ S.loaded[need] = true; inflight[need] = null; return r; },
+  inflight[need] = p.then(function (r){ S.loaded[need] = true; inflight[need] = null; return true; },
                          function (e){ inflight[need] = null; throw e; });
   return inflight[need];
 }
@@ -1659,12 +1677,16 @@ function runChain(withBase, quiet){
     chain = Promise.resolve();
   }
 
+  var failed = false;
   chain.then(function (){ return ensure(S.tab); })
-    .catch(function (e){ if (seq === S.seq) snackbar(String((e && e.message) || e), 'bad'); })
-    .then(function (){
+    .catch(function (e){ failed = true; if (seq === S.seq) snackbar(String((e && e.message) || e), 'bad'); })
+    .then(function (got){
       if (!quiet) busy(false);                      // 迟到也要配平，否则遮罩永远关不掉
       if (seq !== S.seq || busyCount > 0) return;   // 有更新的请求在跑，让它来画
-      renderAll();
+      /* 只在真的取到数时重画：点底栏切页时 showTab 已经用缓存画完了，
+         这里再画一遍就是同一次点击里把列表建两次（实测 130 行 × 2）。
+         失败也要画一次：否则状态行会永远停在「读取中…」。 */
+      if (withBase || got || failed) renderAll();
       if (S.env.root_user && S.env.root_user !== '0') snackbar('exec 不是 root（uid ' + S.env.root_user + '）', 'bad');
     });
 }
