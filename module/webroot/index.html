@@ -346,12 +346,30 @@ button.chip{cursor:pointer;min-height:32px}
 .icon-add svg{width:16px;height:16px}
 /* 属性表：名字 + 状态一行，值单独一行横跨整格。
    以前三样挤在一行里，键和值中间没有间隔，读出来是「device_statelocked一致」。 */
-.prop-row{display:grid;grid-template-columns:minmax(0,1fr) auto;column-gap:var(--sp3);row-gap:1px;
-  align-items:center;padding:5px var(--sp2);border-bottom:var(--hair)}
+/* 属性表：一行一项（键 · 值 · 状态），键与值之间留 sp3 —— 以前两者之间没有
+   间隔，读出来是「device_statelocked一致」，才改成各占一行；但那样 12 项要
+   47.3px 一行，卡高 753。现在同排显示，长值走省略号 + title 看全文。
+   不符的那一行让值单独占第二行：期望值是这一行存在的理由，不能被省略号吃掉。 */
+.prop-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto;
+  column-gap:var(--sp3);align-items:center;padding:5px var(--sp2);border-bottom:var(--hair)}
+/* 不符的那行：键与状态在第一行、值整行放第二行。落位必须写死 ——
+   只靠自动放置，那颗 pill 会被塞到跨两列的一行里，被拉成整条红色。 */
+.prop-row.is-diff{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
+.prop-row.is-diff .prop-k{grid-column:1;grid-row:1}
+.prop-row.is-diff .pill{grid-column:2;grid-row:1;justify-self:end}
+.prop-row.is-diff .prop-v{grid-column:1 / -1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal}
 .prop-row:last-child{border-bottom:0}
-.prop-k{font-family:var(--mono);font-size:12px;color:var(--on-surface);word-break:break-all;min-width:0}
-.prop-v{grid-column:1 / -1;font-family:var(--mono);font-size:11.5px;color:var(--on-variant);
-  word-break:break-all;min-width:0}
+.prop-k{font-family:var(--mono);font-size:12px;color:var(--on-surface);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.prop-v{font-family:var(--mono);font-size:11.5px;color:var(--on-variant);min-width:0;
+  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+/* 窄屏放不下"键 · 值"同排（320 下键就吃掉 194px），退回两行 */
+@media (max-width:399px){
+  .prop-row{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
+  .prop-k{grid-column:1;grid-row:1}
+  .pill{grid-column:2;grid-row:1;justify-self:end}
+  .prop-v{grid-column:1 / -1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal}
+}
 .prop-row .pill[data-tone=ok]{font-size:11.5px;font-weight:500;color:var(--on-variant)}
 
 /* ================= 表单 ================= */
@@ -1463,16 +1481,19 @@ function renderProps(){
   var bad = 0;
   S.props.forEach(function (row){
     if (row[3] !== 'ok') bad++;
-    var line = el('div', 'prop-row');
-    line.appendChild(el('span', 'prop-k', row[0]));
-    var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
-    p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
-    line.appendChild(p);
+    var line = el('div', 'prop-row' + (row[3] === 'diff' ? ' is-diff' : ''));
+    var k = el('span', 'prop-k', row[0]);
+    k.title = row[0];
+    line.appendChild(k);
     var actual = row[1] ? row[1] : '(空)';
     var v = el('span', 'prop-v', row[3] === 'diff'
       ? '实际 ' + actual + ' · 期望 ' + (row[2] ? row[2] : '(空)')
       : actual);
+    v.title = v.textContent;
     line.appendChild(v);
+    var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
+    p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
+    line.appendChild(p);
     box.appendChild(line);
   });
   if (!S.props.length) box.appendChild(el('div', 'empty', '没有属性数据'));
