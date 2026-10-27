@@ -38,6 +38,10 @@
      字重只留 400 / 500 / 600 / 700。 */
   --fs11: 11px; --fs12: 12px; --fs13: 13px; --fs14: 14px;
   --fs16: 16px; --fs22: 22px; --fs38: 38px;
+  /* 板块底色：默认"比卡面抬一档"。必须定义在 :root 而不是 .grp 上 ——
+     写在 .grp 上会盖掉浮层里那条覆盖（自定义属性也是元素自己的声明赢过继承），
+     实测那样色块和浮层同色、等于没加。 */
+  --block: var(--surface-high);
   --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 24px; --sp7: 32px;
   /* 内容列宽上限：真机 WebView 是 **417 CSS px** 宽（1644px @630dpi，
      低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，见 CHANGELOG）。
@@ -319,9 +323,18 @@ button,input,textarea,select{font:inherit;color:inherit}
 .home-card{margin-top:var(--sp6)}
 
 /* ================= 概览分组 ================= */
-/* 626 CSS px 的画布上，「标签贴左、数值贴右」的整行布局会在中间拉出
-   几百 px 的空洞，整页像一张被拉宽的收据。改成自适应网格：每格自己限宽，
-   窄屏自动降列，不需要断点，也不会有行横跨整个画布。 */
+/* 「标签贴左、数值贴右」的整行布局会在中间拉出一大片空洞（本机内容宽 335，
+   一行里两端之间能空 200 以上），整页像一张被拉宽的收据。改成自适应网格：
+   每格自己限宽（下限 --cell，本机 150 → 两列），窄到放不下自动降列，
+   不需要断点，也不会有行横跨整个画布。 */
+/* 板块各一块底：分列之后一个板块里挤了 8 个键值，只靠间距分组读不出边界。
+   底色取"比卡面再抬一档"（--surface-high：与卡面比 1.143 深 / 1.116 浅，
+   和页底 vs 卡面那档 1.118/1.11 同量级 —— 他验收过的步进），浮层本身已经是
+   surface-high，所以里面改用 surface-highest，两处都是同一档落差。
+   负外边距 + 等值内边距：色块向外铺到卡内边距的中点，文字左缘仍然精确落在 41
+   （全站那一条内容左缘不能因为加底色而挪位置）。 */
+.grp{background:var(--block);border-radius:var(--r-m);
+  margin:0 calc(var(--sp3) * -1);padding:var(--sp3)}
 .grp+.grp{margin-top:var(--sp5)}
 .grp-t{font-size:var(--fs12);font-weight:600;letter-spacing:.1px;color:var(--on-variant);
   margin-bottom:var(--sp2)}
@@ -495,6 +508,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp4);background:var(--scrim)}
 .dialog[hidden]{display:none}
 .sheet{width:100%;max-width:460px;max-height:86vh;overflow:auto;background:var(--surface-high);border-radius:var(--r-2xl);
+  --block:var(--surface-highest);   /* 浮层自己已经是 surface-high，板块再抬一档才看得出边界 */
   padding:var(--sp4);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
 @keyframes pop{from{opacity:0;transform:scale(.9) translateY(16px)}}
 .sheet h3{font-size:var(--fs16);font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
