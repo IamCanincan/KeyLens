@@ -186,9 +186,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .card.panel[hidden]{display:none}
 .card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
   box-shadow:var(--shadow)}
-/* 面板**不要**入场动画：切页时面板从 display:none 变回来，动画会整段重播 ——
-   实测切一次页 opacity 是 0 → 0.028 → 1，看上去就是「每切一下都闪一下」。
-   入场效果只留给英雄卡（rise）：它从不被隐藏，所以只播一次。 */
+/* 面板不要 keyframes 入场：从 display:none 变回来时动画会整段重播，实测
+   opacity 0 → 0.028 → 1 就是「每切一下都闪一下」。切页的动效改由 WAAPI 在
+   showTab 里按方向播一次（只动 transform + 0.9→1，不碰高度、不盖遮罩）。 */
 @keyframes rise{from{opacity:0;transform:translateY(22px) scale(.97)}}
 /* 英雄卡不再整块上色：最大的色块应该装最重要的信息，而它只有一个数字和两个按钮。
    主色只留在数字与主行动上，卡片的分隔交给发丝线。 */
@@ -1850,13 +1850,28 @@ function applyTab(name){
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
 }
-/* 切页是**瞬时**的：不滚、不动容器高度、不插值。
+/* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
    之前那一整套（pager 滚动 + 高度同步 + 指示胶囊插值）都只为横滑服务，
-   横滑去掉之后它们只会制造问题（切页闪、底栏抽搐）。 */
+   横滑去掉之后它们只会制造问题（切页闪、底栏抽搐）。
+   入场从目标页所在的方向滑进来：位移 24px（窄屏按 5% 收，320 下 16px）、
+   透明度 0.9→1、200ms，全在合成器上 —— 不碰高度、不盖遮罩，所以不会回到「闪」。
+   整页滑过去需要把五页横排成轨道（就是刚删掉的那套），这里只做局部位移。 */
+var REDUCE_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+function pageSlide(el, dir){
+  if (!el || !el.animate || REDUCE_MOTION) return;
+  var dx = Math.min(24, Math.round((window.innerWidth || 626) * .05)) || 12;
+  el.animate(
+    [{ transform: 'translateX(' + (dir * dx) + 'px)', opacity: .9 },
+     { transform: 'translateX(0)', opacity: 1 }],
+    { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
+  );
+}
 function showTab(name){
+  var from = TAB_ORDER.indexOf(S.tab), to = TAB_ORDER.indexOf(name);
   applyTab(name);
   renderAll();
   window.scrollTo(0, 0);
+  if (from >= 0 && to >= 0 && from !== to) pageSlide(document.getElementById('p-' + name), to > from ? 1 : -1);
 }
 
 function goTab(name){ showTab(name); loadTab(); }
