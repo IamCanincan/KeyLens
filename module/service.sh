@@ -143,9 +143,20 @@ fi
 rm -rf "$TMP" "$LOCK_DIR" "$DEBOUNCE_LOCK" 2>/dev/null
 
 # ---------- 启动 ----------
-until [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ]; do sleep 2; done
-
-log_info "🚀 开机完成，执行首次同步"
+# 有界等待。以前这里是死等的 until：boot_completed 万一不翻，脚本就永远挂在
+# 这里 —— 不记日志、不报错，看上去像"模块没反应"。上限 120 秒；到点照实记一条
+# 再照原样同步：带着已知风险继续比挂着有用，因为文件变化仍会再触发同步，
+# 而这一趟结果可不可信，日志里写得清楚。
+tries=0
+until [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ] || [ "$tries" -ge 60 ]; do
+    sleep 2
+    tries=$((tries + 1))
+done
+if [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ]; then
+    log_info "🚀 开机完成（等了 $((tries * 2)) 秒），执行首次同步"
+else
+    log_info "⚠️ 等了 $((tries * 2)) 秒 sys.boot_completed 仍不为 1，仍继续首次同步：结果可能不完整"
+fi
 dispatch_sync
 
 # ---------- 事件监听 ----------

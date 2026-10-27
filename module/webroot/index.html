@@ -57,12 +57,13 @@
   /* 可点区下限：48dp（本机 = 48 CSS px）。只用来撑 ::after，不影响布局。 */
   --hit: 48px;
   --hair: 1px solid var(--outline-variant);
-  /* 系统栏让位量。界面**不请求** edge-to-edge（原因见 adoptBridge 里的注释），
-     宿主会把 WebView 用 padding 顶到状态栏下面，这时 env() 恒为 0、不需要额外留白。
-     但模板里仍只读这两个令牌、不把 env() 散在四处：哪天宿主自己改成 edge-to-edge，
-     改这两行就够，不用去动 appbar / 吸顶标签 / body / snackbar。 */
-  --inset-top: env(safe-area-inset-top);
-  --inset-bottom: env(safe-area-inset-bottom);
+  /* 系统栏让位量。界面会请求 edge-to-edge（见 adoptBridge），所以这两条必须
+     有真值。优先用宿主自己给的数：KernelSU 在 /internal/insets.css 里定义
+     --window-inset-top/bottom（实测 v3.3.1 的 dex 里有这条：它就是
+     var(--safe-area-inset-top, 0px) 那组），拿不到才退 CSS 的 env()。
+     两条都只在这里定义一次，appbar / 吸顶标签 / .wrap / snackbar 全读令牌。 */
+  --inset-top: var(--window-inset-top, env(safe-area-inset-top));
+  --inset-bottom: var(--window-inset-bottom, env(safe-area-inset-bottom));
   /* 不写死 Roboto / Segoe UI / 微软雅黑：那几个名字会**抢在系统字体之前**匹配上。
      WebView 在 Android 上有自己的一套字体映射（sans-serif 默认就是 Roboto），
      根本不读框架的 config_bodyFontFamily，所以 ROM 换了系统字体时界面会退回 Roboto。
@@ -1103,8 +1104,17 @@ applyScheme();
 /* =========================================================
    3. 状态与渲染
    ========================================================= */
+/* 命令层契约：与 webui.sh 的 TAA_API 成对。改任何一侧的输出形状都要同时改这里，
+   号不一致界面就拒绝写入（见 call()）。 */
+var EXPECT_API = 1;
+/* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
+   最需要的恰恰是还能看到现场。 */
+var WRITE_CMDS = 'save-rules sync props-apply props-on props-off clear-log';
+
 var S = {
   status: {}, env: {}, tab: 'over',
+  contract: { api: null, commands: '', bad: false, checked: false },
+  insetSrc: 'env()',
   rules: '', rulesBase: '', rulesEdited: false,
   targets: [], apps: [], targetSet: null,
   rulesSet: null, rulesSetSrc: null,
@@ -1159,6 +1169,11 @@ function busy(on, text){
    单条几百毫秒是正常的 root fork，上秒级说明那一步本身慢。 */
 var CALL_LOG = { cmd: '—', ms: 0, at: '' };
 function call(cmd, arg){
+  /* 停在传输层而不是停在某个按钮上：以后多加一个写入口就少漏一个。 */
+  if (S.contract.bad && (' ' + WRITE_CMDS + ' ').indexOf(' ' + cmd + ' ') >= 0) {
+    return Promise.reject(new Error('命令层契约不匹配（界面要 api=' + EXPECT_API
+      + '，命令层是 ' + (S.contract.api === null ? '无' : S.contract.api) + '），已拒绝写入'));
+  }
   var t0 = performance.now();
   return run(cmd, arg).then(function (r){
     CALL_LOG = { cmd: cmd, ms: Math.round(performance.now() - t0), at: new Date().toTimeString().slice(0, 8) };
@@ -1168,6 +1183,19 @@ function call(cmd, arg){
     throw e;
   });
 }
+/* 开机问一次就够：命令层换了版本必然是重新打开界面，而每次刷新多问一次
+   要多付一次 fork（本机实测 20~90ms）。 */
+function checkContract(){
+  return call('contract').then(function (r){
+    S.contract.checked = true;
+    if (!r.ok) { S.contract.api = null; S.contract.bad = true; return; }
+    var kv = parseKV(r.text);
+    S.contract.api = kv.api || null;
+    S.contract.commands = kv.commands || '';
+    S.contract.bad = (S.contract.api !== String(EXPECT_API));
+  }, function (){ S.contract.checked = true; /* 问不到也标已试：横幅要说"读不到" */ });
+}
+
 function failText(r){
   var t = String(r.text || '').trim().split('\n').filter(Boolean).slice(-2).join(' ');
   return t || ('命令失败（退出码 ' + r.code + '）');
@@ -1208,6 +1236,16 @@ function renderHero(){
   if (env.android) dev.push('Android ' + env.android);
   kicker.textContent = "TS-AUTO-ADD" + (dev.length ? " · " + dev.join(" · ") : "");
 
+  /* 契约不匹配排在最前：那时连 status 的解析都不可信，拿它决定的横幅更不可信。 */
+  if (S.contract.bad || (S.contract.checked && S.contract.api === null)) {
+    banner.hidden = false;
+    bannerIcon.innerHTML = svg('warn');
+    bannerTitle.textContent = '界面与命令层不是同一版';
+    bannerText.textContent = '界面要 api=' + EXPECT_API + '，命令层是 '
+      + (S.contract.api === null ? '读不到' : S.contract.api)
+      + '；已停止一切写入，把两个文件一起推上去或重装模块';
+    return;
+  }
   var bad = st.state === 'stopped' || st.state === 'failed' || st.conflict === '1' ||
             (st.target_exists === '0' && st.state !== 'unknown') || st.target_writable === '0';
   if (bad) {
@@ -1630,6 +1668,16 @@ function renderAbout(){
   about.textContent = '';
   about.appendChild(grp('界面自检', [
     blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
+    blk('命令层契约', S.contract.checked
+        ? ('api ' + (S.contract.api === null ? '读不到' : S.contract.api)
+           + ' / 界面 ' + EXPECT_API + (S.contract.bad ? '（不匹配，已停写）' : ''))
+        : '未检查',
+      (!S.contract.checked || S.contract.bad) ? 'bad' : 'ok',
+      '两边同在一个模块包里，但迭代时可以只推其中一个文件；号不一致界面就拒绝写入'),
+    blk('安全区留白', Math.round((parseFloat(getComputedStyle(document.documentElement)
+          .getPropertyValue('--inset-top')) || 0)) + ' / '
+        + Math.round((parseFloat(getComputedStyle(document.documentElement)
+          .getPropertyValue('--inset-bottom')) || 0)) + ' px', null, S.insetSrc),
     blk('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
       env.root_user === '0' ? 'ok' : 'na'),
     blk('工具可用性', [
@@ -2218,6 +2266,17 @@ function adoptBridge(hit){
   var dir = moduleDirFromBridge();
   if (dir) { MODDIR = dir; SH = 'sh ' + MODDIR + '/webui.sh'; }
   try { if (typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e){ /* 没有就算了 */ }
+  /* KernelSU 把安全区做成一张 CSS 让页面去取（宿主的 SuFilePathHandler 提供
+     /internal/insets.css，实测 v3.3.1 的 dex 里有这个路径与那组变量名）。
+     请求它同时会让宿主打开 edge-to-edge 绘制；别的宿主没有这个文件，所以只在
+     认出的桥是 ksu 时才请求，取不到就用 CSS 里的 env() 兜底。 */
+  if (hit.kind === 'ksu') {
+    var lk = document.createElement('link');
+    lk.rel = 'stylesheet'; lk.href = '/internal/insets.css';
+    lk.onload = function (){ S.insetSrc = '宿主 insets.css'; refresh(); };
+    lk.onerror = function (){ S.insetSrc = 'env()（宿主没有 insets.css）'; };
+    document.head.appendChild(lk);
+  }
   /* 状态栏那条缝**不是页面画的**：宿主主题里既没有 statusBarColor 也没有
      windowBackground，那一条是它窗口的底色（管理器的调色板），而页面底色是从
      系统强调色推的 —— 两个来源，永远差一档。
@@ -2230,7 +2289,7 @@ function adoptBridge(hit){
   /* 曾试过 fullScreen(true)：状态栏确实藏掉了，但底部那根白色药丸**还在** ——
      说明它不是导航栏背景，而是别的东西（手势提示条，或宿主自己的悬浮底栏）。
      为了它把时钟电量一起藏掉不划算，已撤回。网页这一层没有别的办法让它消失。 */
-  refresh();
+  checkContract().then(refresh);
 }
 
 function boot(){
@@ -2247,7 +2306,7 @@ function boot(){
     applyPage('over');    // 初始状态也要定死标题 / 英雄卡 / 返回箭头，不依赖标记默认值
   }
 
-  if (DEMO) { refresh(); return; }
+  if (DEMO) { checkContract().then(refresh); return; }
 
   /* 注入时机各家不同：有的在建好桥接对象之前就已经 DOMContentLoaded，
      所以先轮询几秒再判失败，别一上来就报"不支持"。 */
@@ -2275,7 +2334,11 @@ function demoResult(cmd, arg){
       'props_off_file=/data/adb/ts_auto.props_off', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
       'log_lines=1109', 'log_bytes=64061'
     ].join('\n'),
+    contract: ['api=' + (QUERY.get('badapi') || '1'),
+      'commands=status env rules targets apps icons log clear-log props props-apply' +
+      ' props-on props-off save-rules sync help contract'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
+    /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
       'vbstate=green',

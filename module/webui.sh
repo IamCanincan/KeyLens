@@ -11,6 +11,8 @@
 #   icons  「包名<TAB>显示名<TAB>相对路径」，同时把 PNG 写进 webroot/icons/
 #   rules / targets / apps / log
 #          原文逐行，不加装饰性文字（管理器按钮用的 action.sh 才带图标提示）
+#   contract
+#          key=value（api=<契约号> commands=<清单>），界面按自己期望的号比对
 #
 # 退出码：0=成功；1=参数非法、模块已停止、环境异常或写入失败
 #
@@ -38,6 +40,16 @@ ARG="${2:-}"
 
 # 图标缓存落在 webroot 下的这个子目录里（界面按相对路径引用）
 ICONS_SUBDIR="icons"
+
+# ---------- 命令层契约 ----------
+# 说明：界面与命令层虽然打在同一个模块包里，但迭代时是**分别推文件**的
+#       （只推 webroot/index.html 不用重装，或反之）。以前这种不同版只会
+#       在界面上表现为"某个值怪怪的"，没有任何一处会明说自己读错了格式。
+#       所以命令层自报一个号，界面拿自己期望的号比：对不上就横幅 + 停写，
+#       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
+TAA_API=1
+TAA_COMMANDS="status env rules targets apps icons log clear-log props props-apply \
+props-on props-off save-rules sync help contract"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -137,6 +149,11 @@ webui_lock() {
 
 # ---------- 状态 ----------
 # 说明：一次返回界面所需的全部状态；只读，不创建文件、不触发同步。
+cmd_contract() {
+  kv api "$TAA_API"
+  kv commands "$TAA_COMMANDS"
+}
+
 cmd_status() {
     local desc state masking ino p alive lines bytes mtime bname conflict
     local rules_exists
@@ -690,10 +707,12 @@ cmd_help() {
   props-on|props-off     开关开机属性伪装
   save-rules <base64>    覆盖常驻列表并同步
   sync                   立即同步一次应用列表
+  contract               自报命令层契约号与命令清单
 EOF
 }
 
 case "$CMD" in
+    contract)    cmd_contract ;;
     status)      cmd_status ;;
     env)         cmd_env ;;
     rules)       cmd_rules ;;

@@ -143,6 +143,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - 布局按**自适应网格**排，不写断点：本机 WebView 是 **417 CSS px** 宽（1644px @630dpi；低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，两套模式都是 417）。概览与「关于」的四个板块在这台机器上各排 **两列**（格子下限 `--cell:150`，列宽 158）—— 值按真机字符串最宽的 142 定，注释行改成换行而不是裁字；「当前常驻项」那一格要 208，两列放不下，按算术留一列。改布局后用 CDP 在顶层文档扫溢出（5 页 × 320/360/417 × 浅/深），别只信 `--headless --screenshot`——它给出过与真实渲染不一致的读数。
 - 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
 - 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
+- 界面开机先问一次 `contract`（命令层自报契约号与命令清单）：**号对不上就横幅明说「界面与命令层不是同一版」，并把写命令挡在传输层外**（读命令仍放行，好让人看到现场）。需要这条是因为迭代时可以只推 `index.html` 或只推 `webui.sh`，不同版以前只会表现为"某个值怪怪的"。改任何命令的输出形状都要两侧同时把号 +1；电脑上预览可用 `?badapi=99` 验这条确实会响。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
 - **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。
 - **强调色按四级回退，取到哪一级在概览页「关于 → 取色」里照实写出**：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`。
