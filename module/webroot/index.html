@@ -621,8 +621,8 @@ body.is-selecting #appsBody{padding-bottom:96px}
         <div class="seg" id="appsSeg">
           <button data-src="targets" class="is-active">名单</button>
           <button data-src="apps">已安装</button>
+          <button data-src="missing">未纳入</button>
         </div>
-        <button class="btn btn-outline btn-sm" id="btnOnlyMissing" aria-pressed="false">只看未纳入</button>
         <button class="btn btn-text btn-sm" id="btnSelect" title="批量选择应用" hidden>选择</button>
       </div>
       <div class="field" style="margin-top:var(--sp4)">
@@ -645,6 +645,8 @@ body.is-selecting #appsBody{padding-bottom:96px}
           <button data-n="120">120</button><button data-n="300">300</button>
         </div>
         <button class="btn btn-outline btn-sm" id="btnLogRefresh"></button>
+      </div>
+      <div class="toolbar" style="margin-top:var(--sp2)">
         <button class="btn btn-text btn-sm" id="btnLogClear">清空缓冲</button>
         <label class="switch-row" style="margin-left:auto;padding:0">
           <span class="txt" style="font-size:var(--fs13)">自动刷新</span>
@@ -1117,7 +1119,6 @@ var ICON_STATE = {};
 var S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, checked: false },
-  insetSrc: 'env()',
   targets: [], apps: [], targetSet: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
@@ -1168,22 +1169,14 @@ function busy(on, text){
 }
 
 /* 一次 root shell 调用的包装：返回 {ok, text, code} */
-/* 每条命令的耗时记在这里，「关于 → 上次命令」会读它 —— 卡在哪一段自己就能看见：
-   单条几百毫秒是正常的 root fork，上秒级说明那一步本身慢。 */
-var CALL_LOG = { cmd: '—', ms: 0, at: '' };
 function call(cmd, arg){
   /* 停在传输层而不是停在某个按钮上：以后多加一个写入口就少漏一个。 */
   if (S.contract.bad && (' ' + WRITE_CMDS + ' ').indexOf(' ' + cmd + ' ') >= 0) {
     return Promise.reject(new Error('命令层契约不匹配（界面要 api=' + EXPECT_API
       + '，命令层是 ' + (S.contract.api === null ? '无' : S.contract.api) + '），已拒绝写入'));
   }
-  var t0 = performance.now();
   return run(cmd, arg).then(function (r){
-    CALL_LOG = { cmd: cmd, ms: Math.round(performance.now() - t0), at: new Date().toTimeString().slice(0, 8) };
     return { ok: r.errno === 0, code: r.errno, text: r.stdout };
-  }, function (e){
-    CALL_LOG = { cmd: cmd + '（失败）', ms: Math.round(performance.now() - t0), at: '' };
-    throw e;
   });
 }
 /* 开机问一次就够：命令层换了版本必然是重新打开界面，而每次刷新多问一次
@@ -1405,7 +1398,6 @@ function renderApps(){
   }
   appsStat.textContent = parts.join(' · ');
   btnSelect.hidden = !(S.appsSrc === 'apps' && canBatch) || S.selectMode || !missing;
-  btnOnlyMissing.hidden = S.selectMode || (!missing && !S.onlyMissing);
   updateBulkBar();
 
   var box = document.getElementById('appsBody');
@@ -1724,10 +1716,6 @@ function renderAbout(){
            + ' / 界面 ' + EXPECT_API + (S.contract.bad ? '（不匹配，已停写）' : ''))
         : '未检查',
       (!S.contract.checked || S.contract.bad) ? 'bad' : 'ok'),
-    blk('安全区留白', Math.round((parseFloat(getComputedStyle(document.documentElement)
-          .getPropertyValue('--inset-top')) || 0)) + ' / '
-        + Math.round((parseFloat(getComputedStyle(document.documentElement)
-          .getPropertyValue('--inset-bottom')) || 0)) + ' px', null),
     (function (){
       var t = iconStatSummary();
       return blk('应用图标', t.text, t.tone, t.note);
@@ -1762,8 +1750,7 @@ function renderAbout(){
   var paths = el('div', 'paths');
   [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
    ['数据目录', st.data_dir || '—'], ['目标文件', st.target_file || '—'],
-   ['日志文件', st.log_file || '—'],
-   ['上次命令', CALL_LOG.cmd + ' · ' + CALL_LOG.ms + 'ms' + (CALL_LOG.at ? ' · ' + CALL_LOG.at : '')]]
+   ['日志文件', st.log_file || '—']]
    .forEach(function (pair){
     var row = el('div', 'path-row');
     row.appendChild(el('span', 'path-k', pair[0]));
@@ -2232,22 +2219,18 @@ function wire(){
   /* 列表来源、分段高亮、「只看未纳入」的按下态必须一起变 —— 以前点「只看未纳入」
      会把列表切到已安装第三方，但高亮还停在「生效列表」，等于在说谎（实测过）。
      切回「生效列表」时那个筛选本来就不生效，一并弹起。 */
-  function setAppsView(src, onlyMissing){
-    S.appsSrc = src;
-    S.onlyMissing = !!onlyMissing && src === 'apps';
-    if (src !== 'apps' && S.selectMode) { S.selectMode = false; S.selected = {}; }
+  function setAppsView(src){
+    S.onlyMissing = src === 'missing';
+    S.appsSrc = src === 'targets' ? 'targets' : 'apps';
+    if (src === 'targets' && S.selectMode) { S.selectMode = false; S.selected = {}; }
     document.querySelectorAll('#appsSeg button').forEach(function (x){
       x.classList.toggle('is-active', x.dataset.src === src);
     });
-    btnOnlyMissing.setAttribute('aria-pressed', S.onlyMissing ? 'true' : 'false');
-    btnOnlyMissing.classList.toggle('btn-filled', S.onlyMissing);
-    btnOnlyMissing.classList.toggle('btn-outline', !S.onlyMissing);
     renderApps();
   }
   Array.prototype.forEach.call(document.querySelectorAll('#appsSeg button'), function (b){
-    b.addEventListener('click', function (){ setAppsView(b.dataset.src, b.dataset.src === 'apps' && S.onlyMissing); });
+    b.addEventListener('click', function (){ setAppsView(b.dataset.src); });
   });
-  btnOnlyMissing.addEventListener('click', function (){ setAppsView('apps', !S.onlyMissing); });
   btnSelect.addEventListener('click', enterSelectMode);
   btnBulkExit.addEventListener('click', exitSelectMode);
   btnBulkAll.addEventListener('click', bulkSelectAll);
@@ -2383,8 +2366,7 @@ function adoptBridge(hit){
   if (hit.kind === 'ksu') {
     var lk = document.createElement('link');
     lk.rel = 'stylesheet'; lk.href = '/internal/insets.css';
-    lk.onload = function (){ S.insetSrc = '宿主 insets.css'; refresh(); };
-    lk.onerror = function (){ S.insetSrc = 'env()（宿主没有 insets.css）'; };
+    lk.onload = function (){ refresh(); };
     document.head.appendChild(lk);
   }
   /* 状态栏那条缝**不是页面画的**：宿主主题里既没有 statusBarColor 也没有
