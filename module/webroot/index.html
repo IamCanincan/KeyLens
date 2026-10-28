@@ -348,6 +348,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .blk-v .blk-num{font-size:var(--fs22);font-weight:700}
 /* 路径是脚注不是数据：单独一组小字，别塞进网格里当第 N 行收据 */
 .paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:6px}
+.grp>.paths{margin-top:0}
 .path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.6}
 .path-k{flex:none;font-size:var(--fs12);color:var(--on-variant)}
 .path-v{min-width:0;word-break:break-all;font-size:var(--fs12);color:var(--on-variant)}
@@ -1288,19 +1289,22 @@ function renderOver(){
     : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   var have = !!S.loaded.lists;
 
-  box.appendChild(grp('同步链路', [
+  box.appendChild(grp('运行', [
     blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok'),
     blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')),
     blk('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个',
-      st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num'),
-    blk('日志缓冲', bytesLabel(st.log_bytes), null, (st.log_lines || 0) + ' 行', 'blk-num')
+      st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num')
   ]));
 
-  box.appendChild(grp('配置与写入', [
+  box.appendChild(grp('目标', [
     blk('目标文件', (st.target_exists === '1' ? '存在' : '不存在') +
       (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
       st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad'),
-    blk('上次写入', timeLabel(st.target_mtime)),
+    blk('上次写入', timeLabel(st.target_mtime))
+  ]));
+
+  box.appendChild(grp('日志与属性', [
+    blk('日志缓冲', bytesLabel(st.log_bytes), null, (st.log_lines || 0) + ' 行', 'blk-num'),
     blk('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
       st.props_masking === 'off' ? 'na' : 'ok')
   ]));
@@ -1575,28 +1579,47 @@ function renderLog(){
 /* ---------- 属性 ---------- */
 var PROPS_TONE = { ok: 'ok', diff: 'bad', missing: 'na' };
 var PROPS_LABEL = { ok: '一致', diff: '不符', missing: '未定义' };
+var PROP_GROUPS = ['构建', '调试与安全', '启动与验证', '保修位', '其它'];
+function propGroupOf(k){
+  if (/^ro\.build\.|^ro\.bootloader$/.test(k)) return '构建';
+  if (/^ro\.(debuggable|force\.debuggable|secure|adb\.secure)$/.test(k)) return '调试与安全';
+  if (/^ro\.boot\.(vbmeta|verifiedbootstate|flash|veritymode)/.test(k)) return '启动与验证';
+  if (/(^|\.)warranty_bit$/.test(k)) return '保修位';
+  return '其它';
+}
 function renderProps(){
   var box = document.getElementById('propsBody');
   box.textContent = '';
-  var bad = 0;
+  var bad = 0, groups = {};
   S.props.forEach(function (row){
     if (row[3] !== 'ok') bad++;
-    var line = el('div', 'prop-row' + (row[3] === 'diff' ? ' is-diff' : '') + (row[3] === 'ok' ? ' is-ok' : ''));
-    var k = el('span', 'prop-k', row[0]);
-    k.title = row[0];
-    line.appendChild(k);
-    var actual = row[1] ? row[1] : '(空)';
-    var v = el('span', 'prop-v', row[3] === 'diff'
-      ? '实际 ' + actual + ' · 期望 ' + (row[2] ? row[2] : '(空)')
-      : actual);
-    v.title = v.textContent;
-    line.appendChild(v);
-    if (row[3] !== 'ok') {
-      var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
-      p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
-      line.appendChild(p);
-    }
-    box.appendChild(line);
+    var g = propGroupOf(row[0]);
+    (groups[g] || (groups[g] = [])).push(row);
+  });
+  PROP_GROUPS.forEach(function (title){
+    var rows = groups[title];
+    if (!rows || !rows.length) return;
+    var g = el('div', 'grp');
+    g.appendChild(el('h3', 'grp-t', title));
+    rows.forEach(function (row){
+      var line = el('div', 'prop-row' + (row[3] === 'diff' ? ' is-diff' : '') + (row[3] === 'ok' ? ' is-ok' : ''));
+      var k = el('span', 'prop-k', row[0]);
+      k.title = row[0];
+      line.appendChild(k);
+      var actual = row[1] ? row[1] : '(空)';
+      var v = el('span', 'prop-v', row[3] === 'diff'
+        ? '实际 ' + actual + ' · 期望 ' + (row[2] ? row[2] : '(空)')
+        : actual);
+      v.title = v.textContent;
+      line.appendChild(v);
+      if (row[3] !== 'ok') {
+        var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
+        p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
+        line.appendChild(p);
+      }
+      g.appendChild(line);
+    });
+    box.appendChild(g);
   });
   if (!S.props.length) box.appendChild(el('div', 'empty', '没有属性数据'));
   propsStat.textContent = '共 ' + S.props.length + ' 项 · 不符 ' + bad +
@@ -1693,8 +1716,6 @@ function renderAbout(){
   about.textContent = '';
   about.appendChild(grp('界面自检', [
     blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
-    blk('设备', [env.brand, env.device, env.android ? 'Android ' + env.android : '']
-      .filter(Boolean).join(' · '), null),
     blk('命令层契约', S.contract.checked
         ? ('api ' + (S.contract.api === null ? '读不到' : S.contract.api)
            + ' / 界面 ' + EXPECT_API + (S.contract.bad ? '（不匹配，已停写）' : ''))
@@ -1713,7 +1734,11 @@ function renderAbout(){
     blk('工具可用性', [
       env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
       env.resetprop ? 'resetprop' : '无 resetprop'
-    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
+    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn')
+  ]));
+  about.appendChild(grp('设备与后端', [
+    blk('设备', [env.brand, env.device, env.android ? 'Android ' + env.android : '']
+      .filter(Boolean).join(' · '), null),
     blk('后端模块', st.conflict === '1' ? '多个同时启用'
         : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk')
             ? (st.backend_name || st.backend || '已启用') : '无已启用后端'),
@@ -1744,7 +1769,10 @@ function renderAbout(){
     row.appendChild(v);
     paths.appendChild(row);
   });
-  about.appendChild(paths);
+  var pathGrp = el('div', 'grp');
+  pathGrp.appendChild(el('h3', 'grp-t', '路径'));
+  pathGrp.appendChild(paths);
+  about.appendChild(pathGrp);
 
 }
 
