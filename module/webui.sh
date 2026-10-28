@@ -647,6 +647,7 @@ cmd_icons() {
     # 包名逐个校验后才允许进 SQL：只留 Android 包名字符集，并挡掉 "." 与 ".."
     # （它们会变成文件名，"../x" 就能写到目录外面去）
     chain=""
+    want=""
     out="$ARG"
     while [ -n "$out" ]; do
         p="${out%%,*}"
@@ -658,6 +659,7 @@ cmd_icons() {
         case "$p" in
             *[!A-Za-z0-9._-]*|*..*|*/*) continue ;;
         esac
+        want="$want $p"
         chain="${chain:+$chain or }componentName like '$p/%'"
     done
     [ -n "$chain" ] || return 0
@@ -681,7 +683,73 @@ cmd_icons() {
     sql="$sql from icons where componentName not like '%#%' and ($chain)"
     sql="$sql ) group by p ) where w > 0;"
 
-    sqlite3 "$db" "$sql" 2>/dev/null
+    # ── 快路：桌面库没更新过 + 请求的包都在缓存里（图标仍在盘上）就直接回缓存 ──
+    # 为什么需要：冷路要跑一次 sqlite（重写全部 PNG，约 0.4s）再加一次 app_process
+    # （ART 启动约 1.5s，用来补没有启动器入口的那几个）。界面每次打开都会重新问一遍
+    # 图标，如果每次都走冷路，开一页就白付 2 秒。
+    cache="$dir/index.tsv"
+    dbm=$(stat -c %Y "$db" 2>/dev/null)
+    if [ -f "$cache" ] && [ -n "$dbm" ] && [ "$dbm" = "$(cat "$dir/.dbmtime" 2>/dev/null)" ]; then
+        hit=$(printf '%s\n' $want | awk -v c="$cache" '
+            BEGIN { while ((getline l < c) > 0) { split(l, a, "\t"); m[a[1]] = l } }
+            ($1 in m) { print m[$1] }')
+        hitp=" $(printf '%s\n' "$hit" | cut -f1 | tr '\n' ' ') "
+        nop=" $(printf '%s\n' "$hit" | awk -F'\t' '$3 == "" { print $1 }' | tr '\n' ' ') "
+        ok=1
+        for p in $want; do
+            case "$hitp" in *" $p "*) ;; *) ok=0; break ;; esac
+            case "$nop" in *" $p "*) continue ;; esac      # 本来就没有图标的，不要求 PNG
+            [ -f "$dir/$p.png" ] || { ok=0; break; }
+        done
+        if [ "$ok" = 1 ] && [ -n "$hit" ]; then
+            printf '%s\n' "$hit"
+            return 0
+        fi
+    fi
+
+    # ── 冷路：桌面库 ──
+    rows=$(sqlite3 "$db" "$sql" 2>/dev/null)
+    [ -n "$rows" ] && printf '%s\n' "$rows"
+
+    # ── 冷路：桌面缓存里没有的，用 PackageManager 补 ──────────────
+    # 桌面缓存只有**有启动器入口**的应用：GMS / GSF / WebView / AR Core 这类
+    # 后台组件在里面一行都没有，界面只能退成首字块。它们的图标在 APK 里，而
+    # Google 的包资源名被混淆过（WebView 的 base.apk 里是 res/j_ 这种名字），
+    # 按文件名抠图不可行、解析 resources.arsc 又不划算。所以带一个小 dex
+    # （源与编译命令在 tools/icondump/），在 app_process 里调
+    # PackageManager.loadIcon —— 顺带拿到显示名，自适应图标也由系统渲染好。
+    # 只补"缺的"、一次最多 60 个：实测 12 个包约 2s，其中约 1.5s 是 ART 启动。
+    dex="$MODDIR/lib/icondump.dex"
+    res2=""
+    if [ -n "$want" ] && [ -f "$dex" ] && command -v app_process >/dev/null 2>&1; then
+        have=" $(printf '%s\n' "$rows" | cut -f1 | tr '\n' ' ') "
+        miss=""
+        mn=0
+        for p in $want; do
+            case "$have" in *" $p "*) continue ;; esac
+            miss="$miss,$p"
+            mn=$((mn + 1))
+            [ "$mn" -ge 60 ] && break
+        done
+        miss="${miss#,}"
+        if [ -n "$miss" ]; then
+            res2=$(app_process -Djava.class.path="$dex" /system/bin IconDump \
+                "$miss" "$dir" 192 2>/dev/null)
+            [ -n "$res2" ] && printf '%s\n' "$res2"
+        fi
+    fi
+
+    # ── 落缓存：请求了什么、拿到什么 ──
+    # 没有图标的也记一行（第三列为空），否则它们每次都会逼着重跑 app_process，
+    # 白付一次 ART 启动。db 的 mtime 当失效判据：桌面缓存一更新，整份重来。
+    if [ -n "$dbm" ]; then
+        printf '%s\n%s\n' "$rows" "$res2" | awk -F'\t' -v want="$want" '
+            NF >= 2 && !seen[$1]++ { print; have[$1] = 1 }
+            END { n = split(want, w, " "); for (i = 1; i <= n; i++)
+                  if (w[i] != "" && !(w[i] in have)) print w[i] "\t\t" }
+        ' > "$cache" 2>/dev/null
+        printf '%s\n' "$dbm" > "$dir/.dbmtime" 2>/dev/null
+    fi
 
     # 界面经 WebView 读这些文件：writefile 建的默认是 666，收成 644 并把上下文
     # 对齐模块内其它文件

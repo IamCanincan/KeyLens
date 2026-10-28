@@ -6,6 +6,13 @@
 
 #### 新增
 
+* **没有启动器入口的应用也有图标与显示名了**：桌面缓存（`app_icons.db`）只有**有启动器入口**的应用，GMS / GSF / WebView / AR Core / SafetyCore / 开发者身份验证工具 这类后台组件在里面一行都没有，界面只能退成首字块（实测本机 122 个第三方应用里 12 个属于这一类）。它们的图标在 APK 里，而 Google 的包资源名被混淆过（WebView 的 `base.apk` 是 260MB、图标在 `res/j_` 这种名字下），按文件名抠图不可行、解析 `resources.arsc` 又不划算。
+  * 做法：带一个 **3.6KB 的 dex**（源与编译命令在 `tools/icondump/`，源码只调公开 API、隐藏 API 走反射），在 `app_process` 里调 `PackageManager.loadIcon / loadLabel` —— 自适应图标由系统渲染好，顺带拿到中文显示名。
+  * 踩到并修掉的两个坑：① 这台机器的 `app_process` 跑内置 `com.android.commands.pm.Pm` 会 SIGABRT —— tombstone 里写的是 `ClassNotFoundException`，也就是说 app_process 本身没问题，只是那个类在 API 37 上没了；② `ActivityThread.systemMain()` 报 `Can't create handler ... that has not called Looper.prepare()`，补一次反射的 `Looper.prepareMainLooper()` 才通。
+  * 缓存：冷路 122 个包 **2379ms**（sqlite 重写全部 PNG 约 0.4s + app_process 的 ART 启动约 1.5s），界面每次打开都会重新问图标，所以落一份 `webroot/icons/index.tsv`（`包名<TAB>显示名<TAB>相对路径`，没有图标的记空路径）并用 `app_icons.db` 的 mtime 当失效判据；快路 **321ms**。新装应用的包名不在缓存里 → 自动退回冷路。
+  * 实测（真机，122 个第三方应用）：返回行数 **110 → 122**，以前没图标的那 12 个拿到真图标 + 中文名（"Android System SafetyCore"、"Android 开发者身份验证工具"、"Android System WebView"、"Google Play Services for AR"…），文件 0644。冷/快两路输出**内容一致**，只差行序（页面按包名取用，不影响）。
+  * 代价与边界：dex 只补"桌面缓存里没有的"、一次最多 60 个；`app_process` 需要 root（本模块本来就在 root 下跑）。若某台机器上 `app_process` 不可用，这一段整体跳过，退回首字块 —— 不会让 `icons` 命令失败。
+
 * **「关于 → 应用图标」自己报数**：`appAvatar` 给每张 `<img>` 记 `ok / fail / none / pending` 四态，关于页那一格显示 `加载 N · 失败 M · 无缓存 K（· 待加载 P）`。分开这三层才有意义 —— **ok**=真解码出来了；**fail**=PNG 请求到了但管理器读不出来（相对路径没被宿主的资源处理器解析，`/data/adb` 是 0700、管理器是 uid 10222，只能走它的 root 路径处理器）；**none**=桌面缓存里本来就没有这个应用（后台组件，正常）；**pending**=`loading=lazy` 还没进视口（不算失败）。
   * 自检（桩传输层 + 122 条假应用 + 故意指向不存在的 PNG）：分桶实测 `{fail:61, pending:61}`，关于页那一格显示 `加载 0 · 失败 61 · 无缓存 0 · 待加载 61` 并带说明 —— 也就是**以后"没图标"会自己说是哪一层坏**，不用再猜。
   * 已知代价：`loading=lazy` 让视口外的图保持 pending，滚动才补齐；刷新（`重新读取`）会重开 `iconAsked`、再跑一趟 ~414ms。

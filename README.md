@@ -65,6 +65,7 @@ module/
 │  ├─ applist.sh          # 常驻列表与应用列表生成
 │  ├─ backend.sh          # 后端探测、后端写入、模块描述、同步入口
 │  ├─ props.sh            # 系统属性伪装（期望值表 + 伪装开关）
+│  ├─ icondump.dex        # 取图标用的小 dex（源在 tools/icondump/，可重放）
 │  └─ watch.sh            # 监听重启退避（纯函数，被 tests/ 直接 source）
 ├─ backends/
 │  ├─ tricky.sh           # Tricky Store 后端实现：写 target.txt
@@ -75,6 +76,10 @@ module/
 │                         # 运行时会多出 webroot/icons/*.png —— 由 webui.sh icons 从桌面
 │                         # 图标缓存导出，不进仓库、不进刷机包
 └─ META-INF/              # 刷机包脚本
+
+tools/                     # 不进刷机包：构建与自检
+tests/watch-backoff.sh     # 监听退避的自检（CI 跑）
+tools/icondump/            # 图标 dex 的源码与编译命令
 ```
 
 - **入口脚本必须留在根目录**：Magisk / KernelSU / APatch 按固定路径调用 `customize.sh` / `post-fs-data.sh` / `service.sh` / `uninstall.sh`，管理器“操作”按钮调用 `action.sh`。

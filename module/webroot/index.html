@@ -1464,7 +1464,8 @@ function appAvatar(pkg, ic){
     a.appendChild(img);
   } else {
     ICON_STATE[pkg] = 'none';
-    a.textContent = monogram(pkg);
+    /* 有显示名就用显示名的首字（中文名给出汉字，比包名首字母有用） */
+    a.textContent = monogram((ic && ic.label) || pkg);
   }
   return a;
 }
