@@ -18,6 +18,33 @@
 # 之后你从名单里删掉它们，也不会再被加回来（和其它包一样按手动删除处理）。
 SEED_PKGS="com.android.vending com.google.android.gms com.google.android.gsf"
 
+# ---------- 包名形态校验 ----------
+# 说明：给"界面把某个包名写回文件"这类入口用。只接受字母/数字/下划线与点，
+#       至少两段、每段以字母开头（Android 包名规则），挡掉空串、路径与怪字符。
+# 用法：is_pkg_name <名字>
+is_pkg_name() {
+    local p="${1:-}" seg oldifs
+
+    case "$p" in
+        ''|.*|*.|*..*|*[!A-Za-z0-9_.]*) return 1 ;;
+    esac
+    case "$p" in
+        *.*) ;;
+        *)   return 1 ;;
+    esac
+
+    oldifs=$IFS
+    IFS=.
+    for seg in $p; do
+        case "$seg" in
+            [A-Za-z]*) ;;
+            *) IFS=$oldifs; return 1 ;;
+        esac
+    done
+    IFS=$oldifs
+    return 0
+}
+
 # ---------- 应用列表生成（快照差分） ----------
 # 说明：was = 上一次成功同步时见到的已装集合（.ts_installed_last）。
 #   首次运行（没有基线）时 was 为空，等于把所有已装应用都当"新装"加一遍；

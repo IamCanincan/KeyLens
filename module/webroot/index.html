@@ -1104,7 +1104,7 @@ applyScheme();
 var EXPECT_API = 2;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
-var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash clear-log';
+var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app clear-log';
 
 /* 图标加载结果：包名 → ok / fail / none。
    "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
@@ -1375,6 +1375,8 @@ function renderApps(){
     });
   }
   var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
+  var excl = Object.keys(S.excluded).length;
+  var canRestore = hasCmd('restore-app');
   /* 同样的输入不重建 DOM：切回这一页不该再付一次建 130 行的钱。
      sig 把会影响这张列表的东西全串进来（两份名单、筛选、草稿基线、图标数），
      少一项就会画出旧内容。 */
@@ -1383,7 +1385,8 @@ function renderApps(){
   if (sig === S.appsSig) return;
   S.appsSig = sig;
   appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
-    ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '');
+    ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '') +
+    (excl && S.appsSrc === 'apps' ? ' · 已排除 ' + excl : '');
 
   var box = document.getElementById('appsBody');
   box.textContent = '';
@@ -1396,14 +1399,6 @@ function renderApps(){
   }
   var frag = document.createDocumentFragment();
   var shown = Math.min(list.length, 800);
-  /* 「+」的图标只解析一次，之后每行 clone：一屏一百多行时 innerHTML 逐行解析
-     那一串 SVG 字符串是这条路上最贵的一步（手机上一百多毫秒）。 */
-  var addIcon = null;
-  if (S.appsSrc === 'apps') {
-    var tpl = el('span');
-    tpl.innerHTML = svg('add');
-    addIcon = tpl.firstChild;
-  }
   for (var i = 0; i < shown; i++) {
     var pkg = list[i];
     var ic = S.icons[pkg];
@@ -1423,13 +1418,23 @@ function renderApps(){
     row.appendChild(txt);
     if (S.appsSrc === 'apps' && !inTarget[pkg]) {
       /* 装着却不在名单里 —— 同步过一次之后，只有一种原因：你手动删过它 */
-      var tg = el('span', 'app-tag', S.excluded[pkg] ? '已排除' : '未纳入');
+      var isExcluded = !!S.excluded[pkg];
+      var tg = el('span', 'app-tag', isExcluded ? '已排除' : '未纳入');
       /* 「已排除」是你自己的决定，用中性色；「未纳入」才需要提醒 */
-      tg.setAttribute('data-tone', S.excluded[pkg] ? 'na' : 'miss');
-      tg.title = S.excluded[pkg]
-        ? '你手动把它从目标名单里删过，所以不再自动加回来；把它加回文件、或卸载后再装一次即可恢复'
+      tg.setAttribute('data-tone', isExcluded ? 'na' : 'miss');
+      tg.title = isExcluded
+        ? '你手动把它从目标名单里删过，所以不再自动加回来' +
+          (canRestore ? '；点右侧的 + 可以立刻加回' : '；把它加回文件、或卸载后再装一次即可恢复')
         : '已安装，但目标名单里没有它（多半是还没同步）';
       row.appendChild(tg);
+      if (isExcluded && canRestore) {
+        var rb = el('button', 'icon-add');
+        rb.innerHTML = svg('add');
+        rb.title = '加回目标名单';
+        rb.setAttribute('aria-label', '把 ' + pkg + ' 加回目标名单');
+        rb.addEventListener('click', function (e){ e.stopPropagation(); restoreApp(pkg); });
+        row.appendChild(rb);
+      }
     }
     frag.appendChild(row);
   }
@@ -1509,7 +1514,7 @@ function renderProps(){
   var on = S.status.props_masking !== 'off';
   propsSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
   propsSwitchHint.textContent = on
-    ? '开机（Zygote 前）把上表写入；关闭后下次开机起不再写入'
+    ? '开机（Zygote 前）写入，开机完成后再复核一次；关闭后下次开机起不再写入'
     : '已关闭：下次开机不会重置这些属性（应用列表维护不受影响）';
   renderBootHash();
 }
@@ -1944,6 +1949,21 @@ function clearBootHash(){
     .then(function (){ finishWrite(note); });
 }
 
+/* 把「已排除」的行加回名单：等价于手动写回目标文件 */
+function restoreApp(pkg){
+  busy(true, '恢复');
+  var note = { text: '', tone: 'info' };
+  call('restore-app', pkg).then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.restored === '1' ? '已加回名单：' + pkg : '它已经在名单里';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
+}
+
 /* 确认对话框 */
 function confirm(title, text, okLabel){
   return new Promise(function (resolve){
@@ -2284,10 +2304,14 @@ function boot(){
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
-var DEMO_STATE = { masking: 'on', hash: '' };   /* 开关与 boot hash 的状态要留住，否则每次刷新都被 fixture 覆盖 */
+var DEMO_STATE = { masking: 'on', hash: '', restored: false };   /* 开关、boot hash 与恢复状态要留住 */
 var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1e';
 function demoResult(cmd, arg){
-  /* boot hash 是可变状态，不走静态表 */
+  /* boot hash 与「恢复」是可变状态，不走静态表 */
+  if (cmd === 'restore-app') {
+    if (String(arg == null ? '' : arg) === 'com.example.also') DEMO_STATE.restored = true;
+    return { errno: 0, stdout: 'restored=1' };
+  }
   if (cmd === 'boot-hash') {
     var bh = DEMO_STATE.hash || '';
     var bcur = bh || DEMO_HASH;              // 演示里保存即视为已应用
@@ -2314,7 +2338,8 @@ function demoResult(cmd, arg){
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || String(EXPECT_API)),
       'commands=status env targets apps icons log clear-log props props-apply' +
-      ' props-on props-off boot-hash props-boot-hash sync help contract excluded'].join('\n'),
+      ' props-on props-off boot-hash props-boot-hash restore-app' +
+      ' sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
@@ -2325,10 +2350,11 @@ function demoResult(cmd, arg){
       'sys_seed_raw=' + (QUERY.get('seed') || ''),
       'sys_seed_src=' + (QUERY.get('seed') ? 'demo' : 'none')].join('\n'),
     targets: ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
-      'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'].join('\n'),
+      'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient']
+      .concat(DEMO_STATE.restored ? ['com.example.also'] : []).join('\n'),
     apps: ['ai.x.grok', 'app.mihon', 'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria',
       'com.netflix.mediaclient', 'com.example.notyet', 'com.example.also'].join('\n'),
-    excluded: 'com.example.also',
+    excluded: DEMO_STATE.restored ? '' : 'com.example.also',
     log: ['10-26 15:33:01 🔄 开始应用列表同步', '10-26 15:33:04 ✅ 同步完成，应用总数：124',
       '10-26 15:36:18 🔍 后端：TEE Simulator（目录：/data/adb/teesim）', '10-26 15:36:18 👀 监听方式：inotifyd（inotifyd）',
       '10-26 15:36:30 🚀 开机完成，执行首次同步', '10-26 15:36:30 ✅ 守护进程就绪（日志：/data/adb/ts_auto.log）',

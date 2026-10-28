@@ -98,6 +98,55 @@ detect_backend() {
     fi
 }
 
+# ---------- 把单个包名加回目标文件 ----------
+# 说明：界面上的「恢复」用它，等价于你手动把包名写回文件；只动 apps 数组 /
+#       target.txt，profiles 其它字段与注释原样保留。调用方必须先 detect_backend
+#       并持有 webui_lock，避免和守护进程的同步互相覆盖。
+# 用法：add_target_app <包名>
+# 返回：0=已加入 1=本来就在 2=失败
+add_target_app() {
+    local pkg="$1" cur tmp out status rc=2
+
+    cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d')
+    case "
+$cur
+" in
+        *"
+$pkg
+"*) return 1 ;;
+    esac
+
+    tmp="${TAA_DIR}/.ts_restore.$$"
+    if [ "$TAA_BACKEND" = "teesim" ]; then
+        [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+        [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ] && [ -f "$TARGET_FILE" ] || return 2
+        out="${tmp}.json"; status="${tmp}.status"
+        { printf '%s\n' "$cur"; printf '%s\n' "$pkg"; } | sed '/^$/d' > "$tmp" 2>/dev/null || return 2
+        rm -f "$out" "$status" 2>/dev/null
+        $AWK_CMD -v listfile="$tmp" -v statusfile="$status" -f "$TAA_PATCH" "$TARGET_FILE" > "$out" 2>/dev/null
+        if [ "$(cat "$status" 2>/dev/null)" = "ok" ] && [ -s "$out" ]; then
+            chmod 600 "$out" 2>/dev/null
+            chown root:root "$out" 2>/dev/null
+            mv -f "$out" "$TARGET_FILE" 2>/dev/null && rc=0
+        fi
+        rm -f "$tmp" "$out" "$status" 2>/dev/null
+        return "$rc"
+    fi
+
+    # Tricky Store：逐行文件，追加。原文件末尾没有换行时先补一个，
+    # 否则新包名会和最后一行粘在一起。
+    [ -f "$TARGET_FILE" ] || return 2
+    {
+        cat "$TARGET_FILE"
+        [ -s "$TARGET_FILE" ] && [ -n "$(tail -c 1 "$TARGET_FILE" 2>/dev/null)" ] && echo
+        printf '%s\n' "$pkg"
+    } > "$tmp" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 2; }
+    chmod 644 "$tmp" 2>/dev/null
+    if mv -f "$tmp" "$TARGET_FILE" 2>/dev/null; then rc=0; fi
+    rm -f "$tmp" 2>/dev/null
+    return "$rc"
+}
+
 # ---------- 后端名称 ----------
 # 说明：用于日志与模块描述展示
 # 用法：backend_name

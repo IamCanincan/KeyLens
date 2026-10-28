@@ -59,6 +59,11 @@ jobs:
         # 十六进制、只补空 hash_alg、读回不一致要报失败。不需要设备。
         run: sh tests/props-boot-hash.sh
 
+      - name: Restore App Self-Test
+        # 「把已排除的应用加回名单」：两个后端的写回、已存在不落盘、
+        # 结尾换行、TEESim 其它字段保留。用真实 add_target_app。不需要设备。
+        run: sh tests/restore-app.sh
+
       - name: Dynamic Properties Injection
         id: version_info
         run: |

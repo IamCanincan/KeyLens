@@ -51,7 +51,7 @@ ICONS_SUBDIR="icons"
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
 TAA_API=2
 TAA_COMMANDS="status env targets apps icons log clear-log props props-apply \
-props-on props-off boot-hash props-boot-hash sync help contract excluded"
+props-on props-off boot-hash props-boot-hash restore-app sync help contract excluded"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -147,6 +147,33 @@ webui_lock() {
 cmd_excluded() {
   detect_backend "$MODDIR"     # 基线路径是探测后端时才定的
   excluded_apps
+}
+
+# 说明：把「已排除」的应用加回目标文件。等价于手动写回文件；只改 apps 数组 /
+#       target.txt，别的内容原样保留。包名来自界面列表，这里仍按规则再校验一次。
+cmd_restore_app() {
+  local pkg="$1" rc
+
+  require_runnable || return 1
+  is_pkg_name "$pkg" || { echo "不是合法的包名：$pkg" >&2; return 1; }
+
+  detect_backend "$MODDIR"
+  webui_lock || return 1
+  add_target_app "$pkg"
+  rc=$?
+  release_lock "${TAA_DIR}/.ts_lock"
+
+  case "$rc" in
+    0)
+      log_info "🧩 WebUI 把 $pkg 加回目标名单"
+      kv restored 1
+      ;;
+    1) kv restored 0 ;;
+    *)
+      echo "写入失败：$TARGET_FILE" >&2
+      return 1
+      ;;
+  esac
 }
 
 cmd_contract() {
@@ -750,6 +777,7 @@ cmd_help() {
   props-on|props-off     开关开机属性伪装
   boot-hash              读取 Verified Boot 哈希配置与当前 digest
   props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
+  restore-app <包名>     把被手动排除的应用加回目标名单
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
@@ -772,6 +800,7 @@ case "$CMD" in
     props-off)   cmd_props_switch off ;;
     boot-hash)   cmd_boot_hash ;;
     props-boot-hash) cmd_set_boot_hash "$ARG" ;;
+    restore-app) cmd_restore_app "$ARG" ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;

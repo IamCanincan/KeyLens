@@ -11,6 +11,9 @@
   * `tests/sync-incremental.sh` 按新模型重写：**14 个场景 / 31 条断言**（首次种子、目标非空不种、新装进/卸载出、手加保留、手删不回、卸载后重装回来、手加回、已装为空、清空不回填、种子只种一次、状态只写已装、旧状态清理、首次运行不误报排除）。本机 mksh + toybox awk 跑同一份全绿。
   * 真机端到端（本机 config.json）：换算法后跑 `sync`，内容一致（125 条），文件 sha 与测试前**逐位相同**。
 
+* **「已排除」可以一键加回**：应用页的「已安装第三方」视图里，已排除的行尾多一个 **+** —— 点它把包名写回目标文件（TEESim 走 `teesim.awk` 只改 `profiles.default.apps`；Tricky 逐行追加，原文件没有结尾换行时先补一个）。命令层新增 `restore-app <包名>`（能力门，`api` 仍为 2）：包名按 Android 规则二次校验，写之前持 `webui_lock`，本来就在名单里就返回 `restored=0` 且不落盘。统计行新增「已排除 N」。
+  * `tests/restore-app.sh`（接进 CI，**25 条断言**）：两个后端的写回、已存在不落盘且文件逐字节不变、原文件无结尾换行不粘连、TEESim 的 `mode` / 其它 profile / 顶层字段保留、数组定位失败时放弃且不改文件。两处变异（不落盘、不补换行）都验过会红。
+
 * **属性页新增 Verified Boot 哈希**：粘贴 `verifiedBootHash`（64 位 = sha256 / 128 位 = sha512）后写进 `ro.boot.vbmeta.digest`，只补空的 `ro.boot.vbmeta.hash_alg`。写后读回校验，不一致会如实报失败而不是"已应用"。它和伪装开关互相独立 —— 保存了就应用；只用 `resetprop -n`，重启回系统原值；配置文件 `/data/adb/ts_auto.boot_hash`（`600`）。
   * 命令层新增 `boot-hash`（读配置 / 当前 digest / 状态）与 `props-boot-hash <值|->`（保存 / 清除并立即应用）。只加命令、不改既有输出形状，`api` 仍为 2；界面按 `commands` 能力门显示，旧命令层上整块隐藏。
   * `tests/props-boot-hash.sh`（接进 CI）：格式校验、去空白转小写、原子写、非法值不覆盖、只在不同时写 digest、`hash_alg` 只补空、读回不一致报失败、无 `resetprop` 明确失败。**33 条断言**（Windows 本机跳过权限位那一条，其余 32 条通过；Linux CI 全跑）。
@@ -22,7 +25,7 @@
 
 * **命令参数统一做 shell 转义**：`run()` 以前把参数原样拼进命令串；boot hash 是用户输入，现在一律走单引号转义（值本身另有 64/128 位十六进制校验）。
 
-* **CI 增加两项静态自检**：`tests/contract-pair.sh`（对账 `TAA_API`/`EXPECT_API`、写命令清单、界面调用的命令名与能力门）与 `tests/props-boot-hash.sh`。契约对账来自上一轮真机横幅事故（界面停在 api=1、命令层已是 2），两种单边改动都验过会红。
+* **CI 增加三项静态自检**：`tests/contract-pair.sh`（对账 `TAA_API`/`EXPECT_API`、写命令清单、界面调用的命令名与能力门）、`tests/props-boot-hash.sh` 与 `tests/restore-app.sh`。契约对账来自上一轮真机横幅事故（界面停在 api=1、命令层已是 2），两种单边改动都验过会红。
 
 * **没有启动器入口的应用也有图标与显示名了**：桌面缓存（`app_icons.db`）只有**有启动器入口**的应用，GMS / GSF / WebView / AR Core / SafetyCore / 开发者身份验证工具 这类后台组件在里面一行都没有，界面只能退成首字块（实测本机 122 个第三方应用里 12 个属于这一类）。它们的图标在 APK 里，而 Google 的包资源名被混淆过（WebView 的 `base.apk` 是 260MB、图标在 `res/j_` 这种名字下），按文件名抠图不可行、解析 `resources.arsc` 又不划算。
   * 做法：带一个 **3.6KB 的 dex**（源与编译命令在 `tools/icondump/`，源码只调公开 API、隐藏 API 走反射），在 `app_process` 里调 `PackageManager.loadIcon / loadLabel` —— 自适应图标由系统渲染好，顺带拿到中文显示名。
