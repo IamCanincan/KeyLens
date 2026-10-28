@@ -1111,6 +1111,11 @@ var EXPECT_API = 1;
    最需要的恰恰是还能看到现场。 */
 var WRITE_CMDS = 'save-rules sync props-apply props-on props-off clear-log';
 
+/* 图标加载结果：包名 → ok / fail / none。
+   "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
+   只有页面自己知道，所以在这里记，并在「关于 → 应用图标」里照实报数。 */
+var ICON_STATE = {};
+
 var S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, checked: false },
@@ -1446,12 +1451,19 @@ function appAvatar(pkg, ic){
   if (ic && ic.src) {
     var img = el('img');
     /* decoding=async：一百多张 PNG 若同步解码，会让插入列表的那一帧和滚动都卡一下 */
+    ICON_STATE[pkg] = 'pending';   // loading=lazy：没进视口就不算失败也不算无缓存
     img.src = ic.src; img.alt = ''; img.loading = 'lazy'; img.decoding = 'async';
-    /* 相对路径能不能解析取决于管理器的资源 handler。读不到就换成首字块，
-       别让列表里出现一片破图 —— 这一条我没法离线证明，所以按可能失败来写 */
-    img.addEventListener('error', function (){ a.textContent = monogram(ic.label || pkg); });
+    /* 成功/失败各记一格：管理器的资源处理器能不能喂出这些 PNG，这一层在桌面上
+       证明不了（/data/adb 是 0700，只有它的 root 路径处理器读得到），所以让它
+       自己报数，「关于 → 应用图标」里能看见"加载了几张、失败几张"。 */
+    img.addEventListener('load', function (){ ICON_STATE[pkg] = 'ok'; });
+    img.addEventListener('error', function (){
+      ICON_STATE[pkg] = 'fail';
+      a.textContent = monogram(ic.label || pkg);
+    });
     a.appendChild(img);
   } else {
+    ICON_STATE[pkg] = 'none';
     a.textContent = monogram(pkg);
   }
   return a;
@@ -1540,8 +1552,12 @@ function renderApps(){
   box.appendChild(frag);
   if (list.length > shown) box.appendChild(el('p', 'hint', '仅显示前 ' + shown + ' 条，用搜索缩小范围。'));
   /* 图标后补：先让这一页画出来，再在空闲时跑。图标那一步是一次 root 调用
-     （sqlite 查询 + 写若干 PNG），手机上一两百毫秒起，抢在首帧里就是"卡一下"。 */
-  var pkgs = list.slice(0, 40);
+     （sqlite 查询 + 写若干 PNG），手机上一两百毫秒起，抢在首帧里就是"卡一下"。
+     问的是**整份可见列表**，不是前 40：以前写死 slice(0, 40)，列表 122 条时
+     后面 82 条永远是首字块 —— 文件系统里躺着 PNG 也没用，页面只认这一次命令
+     返回的行（"一大堆应用没图标"就是这么来的）。分批由 loadIcons 里的
+     ICON_BATCH 负责；实测 122 个包整趟 414ms，放空闲里跑不抢首帧。 */
+  var pkgs = list;
   var kick = function (){ ensureIcons(pkgs); };
   if (window.requestIdleCallback) requestIdleCallback(kick, { timeout: 800 });
   else setTimeout(kick, 60);
@@ -1662,6 +1678,26 @@ function loadEnv(){
 /* 关于：界面自身的来源与后端能力摊开，出问题时先能自证是哪一段不对。
    以前它是概览页的第二张卡，占了整屏 30%；现在挂在版本号后面按需打开，
    打开前重画一次，免得在别的页点开时读到旧数据。 */
+/* 「应用图标」这一格数的是**页面真的画出来的结果**，不是请求发了几个：
+   ok = img 解码成功，fail = 请求到了但读不出来（宿主资源处理器没喂出这些 PNG），
+   none = 桌面缓存里本来就没有这个应用的图标（后台组件，属正常）。
+   这三层混在一起看，就等于"一大堆没图标"，说不清坏在哪一层。 */
+function iconStatSummary(){
+  var ok = 0, fail = 0, none = 0, pending = 0, k;
+  for (k in ICON_STATE) {
+    if (ICON_STATE[k] === 'ok') ok++;
+    else if (ICON_STATE[k] === 'fail') fail++;
+    else if (ICON_STATE[k] === 'pending') pending++;
+    else none++;
+  }
+  return {
+    text: '加载 ' + ok + ' · 失败 ' + fail + ' · 无缓存 ' + none + (pending ? ' · 待加载 ' + pending : ''),
+    tone: fail ? 'bad' : (ok ? 'ok' : null),
+    note: fail ? '失败=PNG 请求到了但管理器读不出来（相对路径没被宿主解析）'
+               : (none ? '无缓存=该应用桌面上本来就没有图标（后台组件）' : '')
+  };
+}
+
 function renderAbout(){
   var st = S.status, env = S.env;
   var about = document.getElementById('aboutBody');
@@ -1678,6 +1714,10 @@ function renderAbout(){
           .getPropertyValue('--inset-top')) || 0)) + ' / '
         + Math.round((parseFloat(getComputedStyle(document.documentElement)
           .getPropertyValue('--inset-bottom')) || 0)) + ' px', null, S.insetSrc),
+    (function (){
+      var t = iconStatSummary();
+      return blk('应用图标', t.text, t.tone, t.note);
+    })(),
     blk('执行身份', env.root_user === '0' ? 'root' : (env.root_user ? 'uid ' + env.root_user : '读取中'),
       env.root_user === '0' ? 'ok' : 'na'),
     blk('工具可用性', [
