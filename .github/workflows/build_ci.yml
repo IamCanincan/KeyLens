@@ -49,6 +49,11 @@ jobs:
         # lib/applist.sh 里真实的 build_app_list，只桩掉外部依赖。不需要设备。
         run: sh tests/sync-incremental.sh
 
+      - name: UI / Command Contract Pairing
+        # TAA_API 与 EXPECT_API 是一对手写的号；只改一边时真机上表现为一条
+        # "不是同一版"的横幅。这里静态对账两侧的号与命令清单。不需要设备。
+        run: sh tests/contract-pair.sh
+
       - name: Dynamic Properties Injection
         id: version_info
         run: |

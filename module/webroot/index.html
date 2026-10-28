@@ -599,7 +599,7 @@ button,input,textarea,select{font:inherit;color:inherit}
           <span class="menu-txt"><b>系统属性伪装</b><small>开机写入的期望值 · 可立即应用一次</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
-        <!-- 五行入口现在走同一条路：都是 goTab + hash，都有返回箭头。
+        <!-- 四个入口现在走同一条路：都是 goTab + hash，都有返回箭头。
              「关于」以前是浮层，那一行看着一样、点下去行为不一样。 -->
         <button class="menu-row" data-go="about">
           <span class="menu-ic"><i class="ico" data-icon="info"></i></span>
@@ -1079,7 +1079,7 @@ applyScheme();
    ========================================================= */
 /* 命令层契约：与 webui.sh 的 TAA_API 成对。改任何一侧的输出形状都要同时改这里，
    号不一致界面就拒绝写入（见 call()）。 */
-var EXPECT_API = 1;
+var EXPECT_API = 2;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
 var WRITE_CMDS = 'sync props-apply props-on props-off clear-log';
@@ -2185,14 +2185,14 @@ function demoResult(cmd, arg){
       'state=ok', 'description=✅ [TEE Simulator | 应用: 125 | 更新: 17:50]', 'mod_id=ts-auto-add',
       'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator', 'conflict=0',
       'teesim_enabled=1', 'tricky_enabled=0', 'data_dir=/data/adb/teesim',
-      'rules_file=/data/adb/teesim/rules.txt', 'target_file=/data/adb/teesim/config.json',
+      'target_file=/data/adb/teesim/config.json',
       'target_exists=1', 'target_writable=1', 'target_mtime=1793001033',
-      'rules_exists=1', 'props_masking=on',
+      'props_masking=on',
       'props_off_file=/data/adb/ts_auto.props_off', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
       'log_lines=1109', 'log_bytes=64061'
     ].join('\n'),
-    contract: ['api=' + (QUERY.get('badapi') || '1'),
-      'commands=status env rules targets apps icons log clear-log props props-apply' +
+    contract: ['api=' + (QUERY.get('badapi') || String(EXPECT_API)),
+      'commands=status env targets apps icons log clear-log props props-apply' +
       ' props-on props-off sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
