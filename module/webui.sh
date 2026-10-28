@@ -51,7 +51,7 @@ ICONS_SUBDIR="icons"
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
 TAA_API=2
 TAA_COMMANDS="status env targets apps icons log clear-log props props-apply \
-props-on props-off boot-hash props-boot-hash restore-app sync help contract excluded"
+props-on props-off boot-hash props-boot-hash restore-app restore-apps sync help contract excluded"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -169,6 +169,59 @@ cmd_restore_app() {
       TAA_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
       [ "${TAA_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$TAA_COUNT"
       log_info "🧩 WebUI 把 $pkg 加回目标名单"
+      kv restored 1
+      ;;
+    1) kv restored 0 ;;
+    *)
+      echo "写入失败：$TARGET_FILE" >&2
+      return 1
+      ;;
+  esac
+}
+
+# 说明：批量版。参数是逗号分隔的包名；全部校验通过后只写一次目标文件，
+#       避免一条一条写把 OMK 的 injector 重载很多次。
+cmd_restore_apps() {
+  local raw="$1" file rc oldifs pkg n=0
+
+  require_runnable || return 1
+  [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
+
+  detect_backend "$MODDIR"
+  file="${TAA_DIR}/.ts_restore.req.$$"
+  : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
+
+  oldifs=$IFS
+  IFS=','
+  for pkg in $raw; do
+    [ -n "$pkg" ] || continue
+    if ! is_pkg_name "$pkg"; then
+      IFS=$oldifs
+      rm -f "$file" 2>/dev/null
+      echo "不是合法的包名：$pkg" >&2
+      return 1
+    fi
+    printf '%s\n' "$pkg" >> "$file"
+    n=$((n + 1))
+  done
+  IFS=$oldifs
+  if [ "$n" -eq 0 ]; then
+    rm -f "$file" 2>/dev/null
+    echo "没有有效包名" >&2
+    return 1
+  fi
+
+  webui_lock || { rm -f "$file" 2>/dev/null; return 1; }
+  add_target_apps "$file"
+  rc=$?
+  release_lock "${TAA_DIR}/.ts_lock"
+  rm -f "$file" 2>/dev/null
+
+  case "$rc" in
+    0)
+      TAA_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      [ "${TAA_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$TAA_COUNT"
+      log_info "🧩 WebUI 批量加入目标名单（$n 个包名）"
       kv restored 1
       ;;
     1) kv restored 0 ;;
@@ -777,6 +830,7 @@ cmd_help() {
   boot-hash              读取 Verified Boot 哈希配置与当前 digest
   props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
   restore-app <包名>     把未纳入或已排除的应用加入目标名单
+  restore-apps <包名,...> 批量加入（逗号分隔；只写一次目标文件）
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
@@ -800,6 +854,7 @@ case "$CMD" in
     boot-hash)   cmd_boot_hash ;;
     props-boot-hash) cmd_set_boot_hash "$ARG" ;;
     restore-app) cmd_restore_app "$ARG" ;;
+    restore-apps) cmd_restore_apps "$ARG" ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;

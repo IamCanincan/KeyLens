@@ -282,6 +282,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .btn svg{width:18px;height:18px;flex:none}
 .btn:active{transform:scale(.94)}
 .btn[disabled]{opacity:.42;pointer-events:none}
+/* .btn 自己声明了 display:inline-flex，会盖掉 hidden 属性的 display:none。
+   批量按钮要靠 hidden 在「生效列表」和批量模式里消失，必须显式补一条。 */
+.btn[hidden]{display:none}
 .btn-filled{background:var(--primary);color:var(--on-primary)}
 .btn-filled:hover{box-shadow:0 2px 10px var(--primary);filter:brightness(1.06)}
 /* 次行动不再上 secondary-container：英雄卡转中性之后，这里再放一块淡紫
@@ -411,6 +414,23 @@ button,input,textarea,select{font:inherit;color:inherit}
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
 .icon-add:active{transform:scale(.86)}
 .icon-add svg{width:16px;height:16px}
+/* 批量选择：行尾的选中圆点 + 固定在底部的操作条。
+   圆点用 SVG 对勾；未选时对勾透明，选中填主色，已在名单的显示绿色对勾。 */
+.selbox{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--outline-variant);
+  display:grid;place-items:center;color:transparent;
+  transition:background var(--d1) var(--e-emph),border-color var(--d1) var(--e-emph)}
+.selbox svg{width:14px;height:14px}
+.selbox[data-on="1"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
+.selbox[data-locked="1"]{border-color:transparent;color:var(--success)}
+.app-row.is-selectable{cursor:pointer}
+.app-row.is-selected{background:var(--surface-mid)}
+.bulkbar{position:fixed;left:var(--sp4);right:var(--sp4);bottom:calc(var(--inset-bottom) + 12px);z-index:60;
+  display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) var(--sp3);
+  background:var(--surface-high);border-radius:var(--r-l);box-shadow:0 6px 24px rgba(0,0,0,.28)}
+.bulkbar[hidden]{display:none}
+.bulk-count{flex:1 1 auto;min-width:0;font-size:var(--fs13);font-weight:600;color:var(--on-surface)}
+.bulkbar .btn{flex:none}
+body.is-selecting #appsBody{padding-bottom:96px}
 /* 属性表：名字 + 状态一行，值单独一行横跨整格。
    以前三样挤在一行里，键和值中间没有间隔，读出来是「device_statelocked一致」。 */
 /* 属性表：一行一项（键 · 值 · 状态），键与值之间留 sp3 —— 以前两者之间没有
@@ -626,6 +646,7 @@ button,input,textarea,select{font:inherit;color:inherit}
           <button data-src="apps">已安装第三方</button>
         </div>
         <button class="btn btn-outline btn-sm" id="btnOnlyMissing" aria-pressed="false">只看未纳入</button>
+        <button class="btn btn-text btn-sm" id="btnSelect" hidden>批量</button>
       </div>
       <div class="field" style="margin-top:var(--sp4)">
         <label>搜索应用名或包名</label>
@@ -633,6 +654,12 @@ button,input,textarea,select{font:inherit;color:inherit}
       </div>
       <p class="hint" id="appsStat">—</p>
       <div id="appsBody" style="margin-top:var(--sp3)"></div>
+      <div class="bulkbar" id="bulkBar" hidden>
+        <span class="bulk-count" id="bulkCount">已选 0</span>
+        <button class="btn btn-text btn-sm" id="btnBulkAll">全选当前</button>
+        <button class="btn btn-filled btn-sm" id="btnBulkAdd" disabled>加入名单</button>
+        <button class="btn btn-text btn-sm" id="btnBulkExit">取消</button>
+      </div>
     </section>
 
     <section class="card panel" id="p-log" hidden>
@@ -1104,7 +1131,7 @@ applyScheme();
 var EXPECT_API = 2;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
-var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app clear-log';
+var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app restore-apps clear-log';
 
 /* 图标加载结果：包名 → ok / fail / none。
    "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
@@ -1118,6 +1145,7 @@ var S = {
   targets: [], apps: [], targetSet: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
+  selectMode: false, selected: {}, selectable: [],
   log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], boot: null, loaded: {}, seq: 0, homeY: 0
 };
 
@@ -1379,16 +1407,30 @@ function renderApps(){
   var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
   var excl = Object.keys(S.excluded).length;
   var canRestore = hasCmd('restore-app');
+  var canBatch = hasCmd('restore-apps');
+  if (S.selectMode && (S.appsSrc !== 'apps' || !canBatch)) { S.selectMode = false; S.selected = {}; }
+  S.selectable = (S.appsSrc === 'apps' && S.selectMode)
+    ? list.filter(function (p){ return !inTarget[p]; }) : [];
+  if (S.selectMode) {
+    var keepSel = {};
+    Object.keys(S.selected).forEach(function (p){
+      if (S.apps.indexOf(p) >= 0 && !inTarget[p]) keepSel[p] = 1;
+    });
+    S.selected = keepSel;
+  }
   /* 同样的输入不重建 DOM：切回这一页不该再付一次建 130 行的钱。
      sig 把会影响这张列表的东西全串进来（两份名单、筛选、草稿基线、图标数），
-     少一项就会画出旧内容。 */
+     少一项就会画出旧内容。批量模式下选中项也要进 sig，否则搜索后重画会丢选中态。 */
   var sig = [S.appsSrc, S.onlyMissing ? 1 : 0, S.search, S.targets.join(','), S.apps.join(','),
-    Object.keys(S.excluded).length, Object.keys(S.icons).length].join('\u0001');
+    Object.keys(S.excluded).length, Object.keys(S.icons).length,
+    S.selectMode ? 1 : 0, Object.keys(S.selected).sort().join(',')].join('\u0001');
   if (sig === S.appsSig) return;
   S.appsSig = sig;
   appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
     ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '') +
     (excl && S.appsSrc === 'apps' ? ' · 已排除 ' + excl : '');
+  btnSelect.hidden = !(S.appsSrc === 'apps' && canBatch) || S.selectMode;
+  updateBulkBar();
 
   var box = document.getElementById('appsBody');
   box.textContent = '';
@@ -1418,19 +1460,35 @@ function renderApps(){
       txt.appendChild(nm);
     }
     row.appendChild(txt);
+    row.dataset.pkg = pkg;
     if (S.appsSrc === 'apps' && !inTarget[pkg]) {
       /* 装着却不在名单里 —— 同步过一次之后，只有一种原因：你手动删过它 */
       var isExcluded = !!S.excluded[pkg];
       var tg = el('span', 'app-tag', isExcluded ? '已排除' : '未纳入');
       /* 「已排除」是你自己的决定，用中性色；「未纳入」才需要提醒 */
       tg.setAttribute('data-tone', isExcluded ? 'na' : 'miss');
+      var hint = S.selectMode ? '；点这一行选中或取消'
+        : (canRestore ? (isExcluded ? '；点右侧的 + 可以立刻加回' : '；点右侧的 + 可以加入') : '');
       tg.title = isExcluded
-        ? '你手动把它从目标名单里删过，所以不再自动加回来' +
-          (canRestore ? '；点右侧的 + 可以立刻加回' : '；把它加回文件、或卸载后再装一次即可恢复')
-        : '已安装，但目标名单里没有它（多半是还没同步）' +
-          (canRestore ? '；点右侧的 + 可以加入' : '');
+        ? '你手动把它从目标名单里删过，所以不再自动加回来' + hint
+        : '已安装，但目标名单里没有它（多半是还没同步）' + hint;
       row.appendChild(tg);
-      if (canRestore) row.appendChild(restoreButton(pkg, isExcluded));
+    }
+    if (S.selectMode && S.appsSrc === 'apps') {
+      var locked = !!inTarget[pkg];
+      var sb = el('span', 'selbox');
+      sb.innerHTML = svg('check');
+      if (locked) {
+        sb.setAttribute('data-locked', '1');
+        sb.title = '已在名单';
+      } else {
+        sb.setAttribute('data-on', S.selected[pkg] ? '1' : '0');
+        row.classList.add('is-selectable');
+        if (S.selected[pkg]) row.classList.add('is-selected');
+      }
+      row.appendChild(sb);
+    } else if (S.appsSrc === 'apps' && !inTarget[pkg] && canRestore) {
+      row.appendChild(restoreButton(pkg, isExcluded));
     }
     frag.appendChild(row);
   }
@@ -1458,6 +1516,67 @@ function restoreButton(pkg, isExcluded){
   rb.setAttribute('aria-label', '把 ' + pkg + (isExcluded ? ' 加回目标名单' : ' 加入目标名单'));
   rb.addEventListener('click', function (e){ e.stopPropagation(); restoreApp(pkg); });
   return rb;
+}
+
+/* ---------- 批量选择 ---------- */
+function updateBulkBar(){
+  var total = Object.keys(S.selected).length;
+  bulkCount.textContent = '已选 ' + total;
+  btnBulkAdd.disabled = total === 0;
+  var all = S.selectable.length > 0 && S.selectable.every(function (p){ return S.selected[p]; });
+  btnBulkAll.textContent = all ? '取消全选' : '全选当前';
+  bulkBar.hidden = !S.selectMode;
+  document.body.classList.toggle('is-selecting', !!S.selectMode);
+}
+function enterSelectMode(){
+  if (!hasCmd('restore-apps')) return;
+  S.selectMode = true;
+  S.selected = {};
+  renderApps();
+  updateBulkBar();
+}
+function exitSelectMode(){
+  S.selectMode = false;
+  S.selected = {};
+  renderApps();
+  updateBulkBar();
+}
+function toggleSelect(pkg, row){
+  if (!S.selectMode || !pkg) return;
+  if (S.selected[pkg]) delete S.selected[pkg];
+  else S.selected[pkg] = 1;
+  var on = !!S.selected[pkg];
+  row.classList.toggle('is-selected', on);
+  var b = row.querySelector('.selbox');
+  if (b) b.setAttribute('data-on', on ? '1' : '0');
+  updateBulkBar();
+}
+function bulkSelectAll(){
+  if (!S.selectMode) return;
+  var all = S.selectable.length > 0 && S.selectable.every(function (p){ return S.selected[p]; });
+  S.selectable.forEach(function (p){ if (all) delete S.selected[p]; else S.selected[p] = 1; });
+  renderApps();
+}
+function bulkAddSelected(){
+  var pkgs = Object.keys(S.selected);
+  if (!pkgs.length) return;
+  confirm('加入 ' + pkgs.length + ' 个应用？', '会把选中的应用写回目标名单（只写一次）；OMK 只改 scoop。', '加入')
+    .then(function (yes){
+      if (!yes) return;
+      busy(true, '加入中');
+      var note = { text: '', tone: 'info' };
+      call('restore-apps', pkgs.join(',')).then(function (r){
+        if (r.ok) {
+          var kv = parseKV(r.text);
+          note.text = kv.restored === '1' ? ('已加入 ' + pkgs.length + ' 个应用') : '这些应用已经在名单里';
+          note.tone = 'ok';
+          S.selectMode = false;
+          S.selected = {};
+        } else { note.text = failText(r); note.tone = 'bad'; }
+        return reloadAll();
+      }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+        .then(function (){ finishWrite(note); updateBulkBar(); });
+    });
 }
 
 /* ---------- 日志 ---------- */
@@ -2008,6 +2127,7 @@ var TAB_LABEL = { over: '概览', apps: '应用列表', log: '运行日志',
    底栏没有了，这一层不再需要维护任何选中态。 */
 function applyPage(name){
   S.tab = name;
+  if (name !== 'apps' && S.selectMode) { S.selectMode = false; S.selected = {}; updateBulkBar(); }
   var home = name === 'over';
   PAGES.forEach(function (k){
     var el = document.getElementById('p-' + k);
@@ -2126,6 +2246,7 @@ function wire(){
   function setAppsView(src, onlyMissing){
     S.appsSrc = src;
     S.onlyMissing = !!onlyMissing && src === 'apps';
+    if (src !== 'apps' && S.selectMode) { S.selectMode = false; S.selected = {}; }
     document.querySelectorAll('#appsSeg button').forEach(function (x){
       x.classList.toggle('is-active', x.dataset.src === src);
     });
@@ -2138,6 +2259,17 @@ function wire(){
     b.addEventListener('click', function (){ setAppsView(b.dataset.src, b.dataset.src === 'apps' && S.onlyMissing); });
   });
   btnOnlyMissing.addEventListener('click', function (){ setAppsView('apps', !S.onlyMissing); });
+  btnSelect.addEventListener('click', enterSelectMode);
+  btnBulkExit.addEventListener('click', exitSelectMode);
+  btnBulkAll.addEventListener('click', bulkSelectAll);
+  btnBulkAdd.addEventListener('click', bulkAddSelected);
+  /* 选中用委托：行是每次重画新建的，逐个绑监听会越积越多 */
+  appsBody.addEventListener('click', function (e){
+    if (!S.selectMode) return;
+    var row = e.target.closest ? e.target.closest('.app-row') : null;
+    if (!row || !row.classList.contains('is-selectable')) return;
+    toggleSelect(row.dataset.pkg, row);
+  });
   /* 搜索防抖：两百多行列表每敲一个字符重建一次没有必要 */
   var searchTimer = null;
   appsSearch.addEventListener('input', function (){
@@ -2315,6 +2447,12 @@ var DEMO_STATE = { masking: 'on', hash: '', restored: {} };   /* 开关、boot h
 var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1e';
 function demoResult(cmd, arg){
   /* boot hash 与「恢复」是可变状态，不走静态表 */
+  if (cmd === 'restore-apps') {
+    String(arg == null ? '' : arg).split(',').forEach(function (p){
+      if (p) DEMO_STATE.restored[p] = 1;
+    });
+    return { errno: 0, stdout: 'restored=1' };
+  }
   if (cmd === 'restore-app') {
     DEMO_STATE.restored[String(arg == null ? '' : arg)] = 1;
     return { errno: 0, stdout: 'restored=1' };
@@ -2345,7 +2483,7 @@ function demoResult(cmd, arg){
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || String(EXPECT_API)),
       'commands=status env targets apps icons log clear-log props props-apply' +
-      ' props-on props-off boot-hash props-boot-hash restore-app' +
+      ' props-on props-off boot-hash props-boot-hash restore-app restore-apps' +
       ' sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */

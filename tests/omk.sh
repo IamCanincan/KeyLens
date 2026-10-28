@@ -107,6 +107,11 @@ chk "列表包含新条目" "com.a com.b com.g" "$(current_target_apps | tr '\n'
 chk_has "$TARGET_FILE" '^\[filter\]$' "其它段仍在"
 grep -qx "com.g" "$ST_EVER" && printf '  ok   加入的条目并入了 ever\n' || { printf '  ✗   ever 没有更新\n'; fail=1; }
 add_target_app "com.a"; chk_rc "已存在返回 1" 1 "$?"
+printf '%s\n' com.h com.i > "$T/batch"
+add_target_apps "$T/batch"; chk_rc "批量加入" 0 "$?"
+chk "批量后列表" "com.a com.b com.g com.h com.i" "$(current_target_apps | sort | tr '\n' ' ' | sed 's/ $//')"
+grep -qx "com.i" "$ST_EVER" && printf '  ok   批量条目也并入了 ever\n' || { printf '  ✗   批量 ever 没有更新\n'; fail=1; }
+add_target_apps "$T/batch"; chk_rc "批量全都在时返回 1" 1 "$?"
 
 echo "── 4 冲突矩阵（三个后端） ──"
 M="$T/mods"; mkdir -p "$M/teesim" "$M/tricky_store" "$M/oh_my_keymint"
