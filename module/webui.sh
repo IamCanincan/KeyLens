@@ -51,7 +51,7 @@ ICONS_SUBDIR="icons"
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
 TAA_API=2
 TAA_COMMANDS="status env targets apps icons log clear-log props props-apply \
-props-on props-off boot-hash props-boot-hash restore-app restore-apps sync help contract excluded"
+props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps sync help contract excluded"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -225,6 +225,66 @@ cmd_restore_apps() {
       kv restored 1
       ;;
     1) kv restored 0 ;;
+    *)
+      echo "写入失败：$TARGET_FILE" >&2
+      return 1
+      ;;
+  esac
+}
+
+# 说明：批量移出。和 restore-apps 对称：全部校验通过后只写一次，避免 OMK
+#       逐条重载。名单至少保留一条 —— 生成空列表会被守护进程当成写入失败。
+cmd_remove_apps() {
+  local raw="$1" file rc oldifs pkg n=0 before after removed
+
+  require_runnable || return 1
+  [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
+
+  detect_backend "$MODDIR"
+  file="${TAA_DIR}/.ts_remove.req.$$"
+  : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
+
+  oldifs=$IFS
+  IFS=','
+  for pkg in $raw; do
+    [ -n "$pkg" ] || continue
+    if ! is_pkg_name "$pkg"; then
+      IFS=$oldifs
+      rm -f "$file" 2>/dev/null
+      echo "不是合法的包名：$pkg" >&2
+      return 1
+    fi
+    printf '%s\n' "$pkg" >> "$file"
+    n=$((n + 1))
+  done
+  IFS=$oldifs
+  if [ "$n" -eq 0 ]; then
+    rm -f "$file" 2>/dev/null
+    echo "没有有效包名" >&2
+    return 1
+  fi
+
+  webui_lock || { rm -f "$file" 2>/dev/null; return 1; }
+  before=$(current_target_apps 2>/dev/null | sed 's/\r$//' | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+  remove_target_apps "$file"
+  rc=$?
+  after=$(current_target_apps 2>/dev/null | sed 's/\r$//' | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+  release_lock "${TAA_DIR}/.ts_lock"
+  rm -f "$file" 2>/dev/null
+
+  case "$rc" in
+    0)
+      removed=$(( ${before:-0} - ${after:-0} ))
+      [ "$removed" -lt 0 ] 2>/dev/null && removed=0
+      update_module_desc "$PROP_FILE" "${after:-0}"
+      log_info "🧩 WebUI 从目标名单移出 $removed 个应用"
+      kv removed "$removed"
+      ;;
+    1) kv removed 0 ;;
+    3)
+      echo "不能移出全部应用：目标名单至少保留一个" >&2
+      return 1
+      ;;
     *)
       echo "写入失败：$TARGET_FILE" >&2
       return 1
@@ -831,6 +891,7 @@ cmd_help() {
   props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
   restore-app <包名>     把未纳入或已排除的应用加入目标名单
   restore-apps <包名,...> 批量加入（逗号分隔；只写一次目标文件）
+  remove-apps <包名,...> 批量移出（逗号分隔；只写一次；至少保留一条）
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
@@ -855,6 +916,7 @@ case "$CMD" in
     props-boot-hash) cmd_set_boot_hash "$ARG" ;;
     restore-app) cmd_restore_app "$ARG" ;;
     restore-apps) cmd_restore_apps "$ARG" ;;
+    remove-apps) cmd_remove_apps "$ARG" ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;

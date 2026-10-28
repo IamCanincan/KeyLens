@@ -209,6 +209,88 @@ add_target_app() {
     return "$rc"
 }
 
+# ---------- 从目标文件里移出一批包名 ----------
+# 说明：只删请求里的包名；其余条目、注释与格式保持原样。目标名单不允许清空：
+#       生成空列表会与守护进程的空列表保护混在一起，界面会一直显示写入失败，
+#       用户也看不出「我确实删光了」和「读取失败」的区别。
+# 用法：remove_target_apps <每行一个包名的文件>
+# 返回：0=至少移出一个 1=这些包本来都不在 2=失败 3=会清空名单
+remove_target_apps() {
+    local list="$1" cur dir removed rc=2
+
+    [ -f "$list" ] || return 2
+    [ -f "$TARGET_FILE" ] || return 2
+    [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] || return 2
+
+    # 读取失败（文件损坏、定位不到数组）不能当成「名单是空的」：
+    # 否则会返回 1「本来就不在」，把一次失败伪装成成功。
+    if ! cur=$(current_target_apps 2>/dev/null); then
+        return 2
+    fi
+    cur=$(printf '%s\n' "$cur" | sed 's/\r$//' | sed '/^[[:space:]]*$/d')
+
+    dir="${TAA_DIR}/.ts_remove.$$"
+    mkdir -p "$dir" 2>/dev/null || return 2
+    printf '%s\n' "$cur" | sed '/^$/d' > "$dir/cur" 2>/dev/null
+    sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
+
+    if ! removed=$($AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
+        $0 != "" && ($0 in req) { n++ }
+        END { print n + 0 }' "$dir/req" "$dir/cur" 2>/dev/null); then
+        rm -rf "$dir" 2>/dev/null
+        return 2
+    fi
+    if [ "${removed:-0}" = "0" ]; then
+        rm -rf "$dir" 2>/dev/null
+        return 1
+    fi
+
+    # 保持剩余条目的原顺序，只去掉重复项；TEESim/OMK 的数组顺序因此不变。
+    if ! $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
+        $0 != "" && !($0 in req) && !seen[$0]++' "$dir/req" "$dir/cur" > "$dir/combo" 2>/dev/null; then
+        rm -rf "$dir" 2>/dev/null
+        return 2
+    fi
+    if [ ! -s "$dir/combo" ]; then
+        rm -rf "$dir" 2>/dev/null
+        return 3
+    fi
+
+    if [ "$TAA_BACKEND" = "omk" ]; then
+        if [ -f "$TAA_PATCH" ]; then
+            omk_write_list "$dir/combo"; rc=$?
+            # 请求里明明有可移出的条目，writer 却说内容一致：按失败处理，
+            # 不能让调用方以为删掉了。
+            [ "$rc" = 1 ] && rc=2
+        fi
+    elif [ "$TAA_BACKEND" = "teesim" ]; then
+        if [ -f "$TAA_PATCH" ]; then
+            $AWK_CMD -v listfile="$dir/combo" -v statusfile="$dir/status" \
+                -f "$TAA_PATCH" "$TARGET_FILE" > "$dir/out" 2>/dev/null
+            if [ "$(cat "$dir/status" 2>/dev/null)" = "ok" ] && [ -s "$dir/out" ]; then
+                chmod 600 "$dir/out" 2>/dev/null
+                chown root:root "$dir/out" 2>/dev/null
+                mv -f "$dir/out" "$TARGET_FILE" 2>/dev/null && rc=0
+            fi
+        fi
+    else
+        # Tricky：只删匹配的包名行，注释、空行与其余条目原样保留。
+        if $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
+            { p = $0; sub(/\r$/, "", p); if (p in req) next; print }' \
+            "$dir/req" "$TARGET_FILE" > "$dir/out" 2>/dev/null; then
+            chmod 644 "$dir/out" 2>/dev/null
+            mv -f "$dir/out" "$TARGET_FILE" 2>/dev/null && rc=0
+        fi
+    fi
+
+    # 移出前把当前名单并入 ever：手工加进文件、还没同步过的包也被记住，
+    # 移出后才能在「已安装」里显示成「已排除」，而不是凭空消失。
+    [ "$rc" = 0 ] && ever_add_list "$dir/cur"
+    rm -rf "$dir" 2>/dev/null
+    return "$rc"
+}
+
 # ---------- 后端名称 ----------
 # 说明：用于日志与模块描述展示
 # 用法：backend_name

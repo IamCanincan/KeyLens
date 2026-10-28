@@ -54,6 +54,11 @@ jobs:
         # "不是同一版"的横幅。这里静态对账两侧的号与命令清单。不需要设备。
         run: sh tests/contract-pair.sh
 
+      - name: WebUI Shape & Syntax Self-Test
+        # 从 index.html 原样抽出关键键校验逻辑执行，并检查 call() 已接上它、
+        # 超时标记已带到 call()、内联脚本可解析。不需要设备。
+        run: node tests/ui-shape.js
+
       - name: Verified Boot Hash Self-Test
         # 校验/保存/应用三条路径，resetprop 换成计次桩：只接受 64/128 位
         # 十六进制、只补空 hash_alg、读回不一致要报失败。不需要设备。
@@ -63,6 +68,11 @@ jobs:
         # 「把已排除的应用加回名单」：两个后端的写回、已存在不落盘、
         # 结尾换行、TEESim 其它字段保留。用真实 add_target_app。不需要设备。
         run: sh tests/restore-app.sh
+
+      - name: Remove App Self-Test
+        # 「从名单里移出」：三个后端的写入、注释/其它字段保留、本来不在返回 1、
+        # 会清空返回 3、读取失败返回 2、移出前并入 ever。不需要设备。
+        run: sh tests/remove-app.sh
 
       - name: Sync Empty-List Guard Self-Test
         # 已装读空但基线非空：自动同步必须放弃（rc=2、文件不动、基线不推进）；

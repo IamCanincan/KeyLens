@@ -278,8 +278,11 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* .btn 自己声明了 display:inline-flex，会盖掉 hidden 属性的 display:none。
    批量按钮要靠 hidden 在「生效列表」和批量模式里消失，必须显式补一条。 */
 .btn[hidden]{display:none}
+.icon-add[hidden]{display:none}
 .btn-filled{background:var(--primary);color:var(--on-primary)}
 .btn-filled:hover{box-shadow:0 2px 10px var(--primary);filter:brightness(1.06)}
+.btn-danger{background:var(--error);color:var(--on-error)}
+.btn-danger:hover{box-shadow:0 2px 10px var(--error);filter:brightness(1.06)}
 /* 次行动不再上 secondary-container：英雄卡转中性之后，这里再放一块淡紫
    就等于把「两个按钮都很重要」画出来。它只需要读起来是「另一个动作」。 */
 .btn-tonal{background:var(--surface-high);color:var(--on-surface)}
@@ -624,6 +627,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
           <button data-src="missing">未纳入</button>
         </div>
         <button class="btn btn-text btn-sm" id="btnSelect" title="批量选择应用" hidden>选择</button>
+        <button class="icon-add" id="btnAppsRefresh" type="button" title="重新读取应用列表" aria-label="重新读取应用列表"></button>
       </div>
       <div class="field" style="margin-top:var(--sp4)">
         <input type="text" id="appsSearch" placeholder="搜索应用或包名" aria-label="搜索应用或包名" autocomplete="off">
@@ -848,7 +852,7 @@ function normResult(v){
   var out = v.stdout;
   if (out === undefined) out = v.result;
   if (out === undefined) out = '';
-  return { errno: Number(code) || 0, stdout: String(out) };
+  return { errno: Number(code) || 0, stdout: String(out), timeout: !!v.timeout };
 }
 
 var cbSeq = 0;
@@ -863,7 +867,7 @@ function callExec(cmd){
       resolve(normResult(v));
     }
     /* 异步桥接万一没回调回来，给个上限：不然是界面永久转圈，且看不出卡在哪 */
-    timer = setTimeout(function (){ finish({ errno: 124, stdout: '命令超时（60 秒未返回）' }); }, 60000);
+    timer = setTimeout(function (){ finish({ errno: 124, stdout: '命令超时（60 秒未返回）', timeout: true }); }, 60000);
 
     if (BRIDGE_KIND === 'ksu') {
       var name = 'tsaa_cb_' + (cbSeq++) + '_' + Date.now();
@@ -909,6 +913,33 @@ function parseKV(text){
     if (i > 0) out[line.slice(0, i)] = line.slice(i + 1);
   });
   return out;
+}
+
+/* 只校验界面真正会读的键。命令层若把字段名改掉，以前会静默画成空值；
+   这里让它变成一条明说的契约错误，并停写（读仍放行，先让人看到现场）。 */
+var KV_REQUIRED = {
+  status: 'state backend mod_version target_file target_exists daemon_alive',
+  env: 'resetprop awk base64 inotify_mode root_user',
+  contract: 'api commands',
+  'boot-hash': 'configured current status',
+  sync: 'rc count description',
+  'restore-app': 'restored',
+  'restore-apps': 'restored',
+  'remove-apps': 'removed',
+  'props-apply': 'applied mismatch',
+  'props-on': 'props_masking',
+  'props-off': 'props_masking',
+  'props-boot-hash': 'saved applied current',
+  'clear-log': 'cleared'
+};
+function kvMissing(cmd, text){
+  var spec = KV_REQUIRED[cmd];
+  if (!spec) return null;
+  var kv = parseKV(text), miss = [];
+  spec.split(' ').forEach(function (k){
+    if (!Object.prototype.hasOwnProperty.call(kv, k)) miss.push(k);
+  });
+  return miss.length ? miss : null;
 }
 
 /* =========================================================
@@ -1109,7 +1140,7 @@ applyScheme();
 var EXPECT_API = 2;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
-var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app restore-apps clear-log';
+var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app restore-apps remove-apps clear-log';
 
 /* 图标加载结果：包名 → ok / fail / none。
    "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
@@ -1118,7 +1149,7 @@ var ICON_STATE = {};
 
 var S = {
   status: {}, env: {}, tab: 'over',
-  contract: { api: null, commands: '', bad: false, checked: false },
+  contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   targets: [], apps: [], targetSet: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
@@ -1172,11 +1203,25 @@ function busy(on, text){
 function call(cmd, arg){
   /* 停在传输层而不是停在某个按钮上：以后多加一个写入口就少漏一个。 */
   if (S.contract.bad && (' ' + WRITE_CMDS + ' ').indexOf(' ' + cmd + ' ') >= 0) {
-    return Promise.reject(new Error('命令层契约不匹配（界面要 api=' + EXPECT_API
-      + '，命令层是 ' + (S.contract.api === null ? '无' : S.contract.api) + '），已拒绝写入'));
+    return Promise.reject(new Error(S.contract.shape
+      ? (S.contract.shape + '，已拒绝写入')
+      : '命令层契约不匹配（界面要 api=' + EXPECT_API
+        + '，命令层是 ' + (S.contract.api === null ? '无' : S.contract.api) + '），已拒绝写入'));
   }
   return run(cmd, arg).then(function (r){
-    return { ok: r.errno === 0, code: r.errno, text: r.stdout };
+    var res = { ok: r.errno === 0, code: r.errno, text: r.stdout, timeout: !!r.timeout };
+    if (res.ok) {
+      var miss = kvMissing(cmd, res.text);
+      if (miss) {
+        res.ok = false;
+        res.shape = true;
+        res.text = '命令层返回格式不一致（' + cmd + ' 缺少 ' + miss.join('、')
+          + '），可能界面与命令层不是同一版';
+        S.contract.bad = true;
+        S.contract.shape = res.text;
+      }
+    }
+    return res;
   });
 }
 /* 开机问一次就够：命令层换了版本必然是重新打开界面，而每次刷新多问一次
@@ -1184,15 +1229,22 @@ function call(cmd, arg){
 function checkContract(){
   return call('contract').then(function (r){
     S.contract.checked = true;
-    if (!r.ok) { S.contract.api = null; S.contract.bad = true; return; }
+    if (!r.ok) {
+      S.contract.api = null;
+      S.contract.bad = true;
+      if (r.shape) S.contract.shape = r.text;
+      return;
+    }
     var kv = parseKV(r.text);
     S.contract.api = kv.api || null;
     S.contract.commands = kv.commands || '';
+    S.contract.shape = '';
     S.contract.bad = (S.contract.api !== String(EXPECT_API));
   }, function (){ S.contract.checked = true; /* 问不到也标已试：横幅要说"读不到" */ });
 }
 
 function failText(r){
+  if (r && r.timeout) return '命令超时，结果未知；已重新读取当前状态';
   var t = String(r.text || '').trim().split('\n').filter(Boolean).slice(-2).join(' ');
   return t || ('命令失败（退出码 ' + r.code + '）');
 }
@@ -1224,10 +1276,16 @@ function renderHero(){
   if (S.contract.bad || (S.contract.checked && S.contract.api === null)) {
     banner.hidden = false;
     bannerIcon.innerHTML = svg('warn');
-    bannerTitle.textContent = '界面与命令层不是同一版';
-    bannerText.textContent = '界面要 api=' + EXPECT_API + '，命令层是 '
-      + (S.contract.api === null ? '读不到' : S.contract.api)
-      + '；已停止一切写入，把两个文件一起推上去或重装模块';
+    if (S.contract.shape) {
+      bannerTitle.textContent = '命令层返回格式不认识';
+      bannerText.textContent = S.contract.shape
+        + '；已停止一切写入，把两个文件一起推上去或重装模块';
+    } else {
+      bannerTitle.textContent = '界面与命令层不是同一版';
+      bannerText.textContent = '界面要 api=' + EXPECT_API + '，命令层是 '
+        + (S.contract.api === null ? '读不到' : S.contract.api)
+        + '；已停止一切写入，把两个文件一起推上去或重装模块';
+    }
     return;
   }
   var bad = st.state === 'stopped' || st.state === 'failed' || st.conflict === '1' ||
@@ -1364,15 +1422,26 @@ function renderApps(){
   var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
   var excl = Object.keys(S.excluded).length;
   var canRestore = hasCmd('restore-app');
-  var canBatch = hasCmd('restore-apps');
-  if (S.selectMode && (S.appsSrc !== 'apps' || !canBatch || !missing)) { S.selectMode = false; S.selected = {}; }
-  /* 批量模式只列「可加入」的：已在名单的行没有可选动作，留着只是干扰 */
-  if (S.selectMode) list = list.filter(function (p){ return !inTarget[p]; });
+  var canBatchAdd = hasCmd('restore-apps');
+  var canBatchRemove = hasCmd('remove-apps');
+  if (S.selectMode) {
+    var invalidSel = S.appsSrc === 'targets'
+      ? (!canBatchRemove || S.targets.length < 2)
+      : (!canBatchAdd || !missing);
+    if (invalidSel) { S.selectMode = false; S.selected = {}; }
+  }
+  /* 批量模式只列当前视图中可操作的行：名单视图列可移出的，已安装视图列可加入的。 */
+  if (S.selectMode) {
+    list = list.filter(function (p){ return S.appsSrc === 'targets' ? inTarget[p] : !inTarget[p]; });
+  }
   S.selectable = S.selectMode ? list : [];
   if (S.selectMode) {
     var keepSel = {};
     Object.keys(S.selected).forEach(function (p){
-      if (S.apps.indexOf(p) >= 0 && !inTarget[p]) keepSel[p] = 1;
+      var keep = S.appsSrc === 'targets'
+        ? S.targets.indexOf(p) >= 0
+        : (S.apps.indexOf(p) >= 0 && !inTarget[p]);
+      if (keep) keepSel[p] = 1;
     });
     S.selected = keepSel;
   }
@@ -1386,7 +1455,7 @@ function renderApps(){
   S.appsSig = sig;
   var parts;
   if (S.selectMode) {
-    parts = ['可加入 ' + list.length];
+    parts = [(S.appsSrc === 'targets' ? '可移出 ' : '可加入 ') + list.length];
   } else if (S.appsSrc === 'targets') {
     parts = ['生效 ' + S.targets.length];
     if (S.search) parts.push('显示 ' + list.length);
@@ -1397,16 +1466,26 @@ function renderApps(){
     if (S.search) parts.push('显示 ' + list.length);
   }
   appsStat.textContent = parts.join(' · ');
-  btnSelect.hidden = !(S.appsSrc === 'apps' && canBatch) || S.selectMode || !missing;
+  var canSelect = S.appsSrc === 'targets'
+    ? (canBatchRemove && S.targets.length >= 2)
+    : (canBatchAdd && missing > 0);
+  btnSelect.hidden = S.selectMode || !canSelect;
+  btnSelect.title = S.appsSrc === 'targets' ? '批量移出名单' : '批量加入名单';
   updateBulkBar();
 
   var box = document.getElementById('appsBody');
   box.textContent = '';
   if (!list.length) {
     var e = el('div', 'empty');
-    e.appendChild(el('b', null, S.selectMode ? '没有可加入的应用' : '没有条目'));
-    e.appendChild(document.createTextNode(S.selectMode ? '已在名单的应用不会再列出来。'
-      : (S.appsSrc === 'targets' ? '目标文件还是空的，点上方「立即同步」生成一次。' : '没有匹配的应用。')));
+    var emptyTitle = S.selectMode
+      ? (S.appsSrc === 'targets' ? '没有可移出的应用' : '没有可加入的应用')
+      : '没有条目';
+    var emptyText = S.selectMode
+      ? (S.search ? '没有匹配的应用。'
+        : (S.appsSrc === 'targets' ? '目标名单还是空的。' : '已在名单的应用不会再列出来。'))
+      : (S.appsSrc === 'targets' ? '目标文件还是空的，点上方「立即同步」生成一次。' : '没有匹配的应用。');
+    e.appendChild(el('b', null, emptyTitle));
+    e.appendChild(document.createTextNode(emptyText));
     box.appendChild(e);
     return;
   }
@@ -1483,15 +1562,22 @@ function restoreButton(pkg, isExcluded){
 /* ---------- 批量选择 ---------- */
 function updateBulkBar(){
   var total = Object.keys(S.selected).length;
+  var remove = S.appsSrc === 'targets';
   bulkCount.textContent = '已选 ' + total;
   btnBulkAdd.disabled = total === 0;
+  btnBulkAdd.textContent = remove ? '移出名单' : '加入名单';
+  btnBulkAdd.classList.toggle('btn-danger', remove);
+  btnBulkAdd.classList.toggle('btn-filled', !remove);
+  btnAppsRefresh.hidden = !!S.selectMode;
   var all = S.selectable.length > 0 && S.selectable.every(function (p){ return S.selected[p]; });
   btnBulkAll.textContent = all ? '取消全选' : '全选';
   bulkBar.hidden = !S.selectMode;
   document.body.classList.toggle('is-selecting', !!S.selectMode);
 }
 function enterSelectMode(){
-  if (!hasCmd('restore-apps')) return;
+  if (S.appsSrc === 'targets') {
+    if (!hasCmd('remove-apps') || S.targets.length < 2) return;
+  } else if (!hasCmd('restore-apps')) return;
   S.selectMode = true;
   S.selected = {};
   renderApps();
@@ -1520,6 +1606,7 @@ function bulkSelectAll(){
   renderApps();
 }
 function bulkAddSelected(){
+  if (S.appsSrc !== 'apps') return;
   var pkgs = Object.keys(S.selected);
   if (!pkgs.length) return;
   confirm('加入 ' + pkgs.length + ' 个应用？', '会把选中的应用写回目标名单（只写一次）；OMK 只改 scoop。', '加入')
@@ -1531,6 +1618,40 @@ function bulkAddSelected(){
         if (r.ok) {
           var kv = parseKV(r.text);
           note.text = kv.restored === '1' ? ('已加入 ' + pkgs.length + ' 个应用') : '这些应用已经在名单里';
+          note.tone = 'ok';
+          S.selectMode = false;
+          S.selected = {};
+        } else { note.text = failText(r); note.tone = 'bad'; }
+        return reloadAll();
+      }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+        .then(function (){ finishWrite(note); updateBulkBar(); });
+    });
+}
+function bulkRemoveSelected(){
+  if (S.appsSrc !== 'targets') return;
+  var pkgs = Object.keys(S.selected);
+  if (!pkgs.length) return;
+  if (!hasCmd('remove-apps')) {
+    snackbar('命令层没有 remove-apps（界面与命令层不是同一版）', 'bad');
+    return;
+  }
+  if (pkgs.length >= S.targets.length) {
+    snackbar('至少保留一个应用：先取消一个再移出', 'bad');
+    return;
+  }
+  var omk = S.status.backend === 'omk';
+  confirm('移出 ' + pkgs.length + ' 个应用？',
+    '会从目标名单里删掉这些包名（只写一次）；' + (omk ? 'OMK 只改 scoop。' : '其它内容原样保留。')
+    + ' 移出后会显示为「已排除」，不会自动加回。', '移出')
+    .then(function (yes){
+      if (!yes) return;
+      busy(true, '移出中');
+      var note = { text: '', tone: 'info' };
+      call('remove-apps', pkgs.join(',')).then(function (r){
+        if (r.ok) {
+          var kv = parseKV(r.text);
+          var nrem = parseInt(kv.removed, 10);
+          note.text = nrem > 0 ? ('已移出 ' + nrem + ' 个应用') : '这些应用已经不在名单里';
           note.tone = 'ok';
           S.selectMode = false;
           S.selected = {};
@@ -1713,7 +1834,9 @@ function renderAbout(){
     blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
     blk('命令层契约', S.contract.checked
         ? ('api ' + (S.contract.api === null ? '读不到' : S.contract.api)
-           + ' / 界面 ' + EXPECT_API + (S.contract.bad ? '（不匹配，已停写）' : ''))
+           + ' / 界面 ' + EXPECT_API
+           + (S.contract.shape ? '（返回格式不认识，已停写）'
+              : S.contract.bad ? '（不匹配，已停写）' : ''))
         : '未检查',
       (!S.contract.checked || S.contract.bad) ? 'bad' : 'ok'),
     (function (){
@@ -2096,6 +2219,7 @@ function confirm(title, text, okLabel){
    ========================================================= */
 var homeMenu = document.getElementById('homeMenu');
 var btnBack = document.getElementById('btnBack');
+var btnAppsRefresh = document.getElementById('btnAppsRefresh');
 var PAGES = ['over', 'apps', 'log', 'props', 'about'];
 var TAB_LABEL = { over: '概览', apps: '应用列表', log: '运行日志',
   props: '系统属性伪装', about: '关于与自检' };
@@ -2222,7 +2346,7 @@ function wire(){
   function setAppsView(src){
     S.onlyMissing = src === 'missing';
     S.appsSrc = src === 'targets' ? 'targets' : 'apps';
-    if (src === 'targets' && S.selectMode) { S.selectMode = false; S.selected = {}; }
+    if (S.selectMode) { S.selectMode = false; S.selected = {}; }
     document.querySelectorAll('#appsSeg button').forEach(function (x){
       x.classList.toggle('is-active', x.dataset.src === src);
     });
@@ -2232,9 +2356,14 @@ function wire(){
     b.addEventListener('click', function (){ setAppsView(b.dataset.src); });
   });
   btnSelect.addEventListener('click', enterSelectMode);
+  btnAppsRefresh.innerHTML = svg('reload');
+  btnAppsRefresh.addEventListener('click', function (){ refresh(); });
   btnBulkExit.addEventListener('click', exitSelectMode);
   btnBulkAll.addEventListener('click', bulkSelectAll);
-  btnBulkAdd.addEventListener('click', bulkAddSelected);
+  btnBulkAdd.addEventListener('click', function (){
+    if (S.appsSrc === 'targets') bulkRemoveSelected();
+    else bulkAddSelected();
+  });
   /* 选中用委托：行是每次重画新建的，逐个绑监听会越积越多 */
   appsBody.addEventListener('click', function (e){
     if (!S.selectMode) return;
@@ -2413,19 +2542,34 @@ function boot(){
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
-var DEMO_STATE = { masking: 'on', hash: '', restored: {} };   /* 开关、boot hash 与「加入」状态要留住 */
+var DEMO_STATE = { masking: 'on', hash: '', restored: {}, removed: {} };   /* 开关、boot hash 与「加入/移出」状态要留住 */
 var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1e';
+function demoTargets(){
+  var base = ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
+    'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'];
+  return base.filter(function (p){ return !DEMO_STATE.removed[p]; })
+    .concat(Object.keys(DEMO_STATE.restored).filter(function (p){ return !DEMO_STATE.removed[p]; }));
+}
 function demoResult(cmd, arg){
-  /* boot hash 与「恢复」是可变状态，不走静态表 */
+  /* boot hash 与「加入/移出」是可变状态，不走静态表 */
   if (cmd === 'restore-apps') {
     String(arg == null ? '' : arg).split(',').forEach(function (p){
-      if (p) DEMO_STATE.restored[p] = 1;
+      if (p) { DEMO_STATE.restored[p] = 1; delete DEMO_STATE.removed[p]; }
     });
     return { errno: 0, stdout: 'restored=1' };
   }
   if (cmd === 'restore-app') {
-    DEMO_STATE.restored[String(arg == null ? '' : arg)] = 1;
+    var rp = String(arg == null ? '' : arg);
+    DEMO_STATE.restored[rp] = 1;
+    delete DEMO_STATE.removed[rp];
     return { errno: 0, stdout: 'restored=1' };
+  }
+  if (cmd === 'remove-apps') {
+    var before = demoTargets().length;
+    String(arg == null ? '' : arg).split(',').forEach(function (p){
+      if (p) DEMO_STATE.removed[p] = 1;
+    });
+    return { errno: 0, stdout: 'removed=' + (before - demoTargets().length) };
   }
   if (cmd === 'boot-hash') {
     var bh = DEMO_STATE.hash || '';
@@ -2453,7 +2597,7 @@ function demoResult(cmd, arg){
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || String(EXPECT_API)),
       'commands=status env targets apps icons log clear-log props props-apply' +
-      ' props-on props-off boot-hash props-boot-hash restore-app restore-apps' +
+      ' props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps' +
       ' sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
@@ -2464,12 +2608,11 @@ function demoResult(cmd, arg){
       'sys_dark_src=' + (QUERY.get('dark') ? 'demo' : 'none'),
       'sys_seed_raw=' + (QUERY.get('seed') || ''),
       'sys_seed_src=' + (QUERY.get('seed') ? 'demo' : 'none')].join('\n'),
-    targets: ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
-      'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient']
-      .concat(Object.keys(DEMO_STATE.restored)).join('\n'),
+    targets: demoTargets().join('\n'),
     apps: ['ai.x.grok', 'app.mihon', 'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria',
       'com.netflix.mediaclient', 'com.example.notyet', 'com.example.also'].join('\n'),
-    excluded: DEMO_STATE.restored['com.example.also'] ? '' : 'com.example.also',
+    excluded: (DEMO_STATE.restored['com.example.also'] ? [] : ['com.example.also'])
+      .concat(Object.keys(DEMO_STATE.removed)).join('\n'),
     log: ['10-26 15:33:01 🔄 开始应用列表同步', '10-26 15:33:04 ✅ 同步完成，应用总数：124',
       '10-26 15:36:18 🔍 后端：TEE Simulator（目录：/data/adb/teesim）', '10-26 15:36:18 👀 监听方式：inotifyd（inotifyd）',
       '10-26 15:36:30 🚀 开机完成，执行首次同步', '10-26 15:36:30 ✅ 守护进程就绪（日志：/data/adb/ts_auto.log）',
