@@ -63,6 +63,27 @@ use_backend() {
             log_warn "缺少后端脚本 backends/tricky.sh"
         fi
     fi
+
+    # 增量同步的状态：上次见到的「已装第三方」与「常驻条目」。
+    # 由 build_app_list 写到 *.new，再由 sync_* 在**写入成功后**提交；
+    # 失败不推进，否则那次卸载事件会被当成"已经处理过"而永远漏掉。
+    ST_INSTALLED="$TAA_DIR/.ts_installed_last"
+    ST_RULES="$TAA_DIR/.ts_rules_last"
+    ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
+    ST_RULES_NEW="$TAA_DIR/.ts_rules.new"
+}
+
+# ---------- 当前目标文件里有哪些包名 ----------
+# 说明：只读，给"保留人工条目"用。读不到就输出空（调用方按"文件里什么都没有"处理）。
+# 用法：current_target_apps
+current_target_apps() {
+    [ -f "$TARGET_FILE" ] || return 0
+    if [ "$TAA_BACKEND" = "teesim" ]; then
+        [ -n "$AWK_CMD" ] || return 0
+        $AWK_CMD -f "${TAA_PATCH%/*}/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
+    else
+        sed '/^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null
+    fi
 }
 
 # ---------- 后端探测 ----------
@@ -119,6 +140,12 @@ sync_teesim_config() {
                     chmod 600 "$out" 2>/dev/null
                     chown root:root "$out" 2>/dev/null
                     mv -f "$out" "$config" 2>/dev/null && rc=0
+                fi
+                # 内容与目标文件一致（刚写进去或本来就一样），这一趟的增量就算生效了：
+                # 提交状态，下次按新基线算。写失败（rc=2）不推进，否则卸载事件会漏。
+                if [ "$rc" != "2" ]; then
+                    mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
+                    mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
                 fi
             fi
         }

@@ -65,23 +65,60 @@ read_rules() {
     sed 's/^[[:space:]]*//; s/[[:space:]]*$//; /^#/d; /^$/d' "$RULES_FILE" 2>/dev/null
 }
 
-# ---------- 应用列表生成 ----------
-# 说明：常驻列表 + 已安装第三方应用，去重排序后写入指定文件，并设置 TAA_COUNT。
+# ---------- 应用列表生成（增量） ----------
+# 说明：不再"用 常驻 ∪ 已装 整份重写"，改成在**当前目标文件的基础上只应用增量**：
+#   保留  文件里现在的一切（所以人工加进去的条目天然不会被抹掉 —— 以前会被）
+#   加入  当前已装的全部、当前常驻的全部
+#   删除  上次装了、这次没了的（且不在常驻里）
+#         上次在常驻、这次从常驻里删掉的（且没装）
+#   "没有该包名的话就算了"：删除是对集合做 delete，文件里没有就是空操作。
+#   没有上次状态（首次运行/刚升级）时不删任何东西，只做并集 —— 那时分不清
+#   "已卸载"和"人工加的"，宁可贵一点。
 # 用法：build_app_list <输出文件>
 build_app_list() {
     local tmp="$1"
-    local apps_raw user_list
+    local apps_raw user_list rules_now cur base
 
     mkdir -p "$TAA_DIR" 2>/dev/null
     ensure_rules_file "$RULES_FILE"
     normalize_rules_file "$RULES_FILE"
 
     apps_raw=$(cmd package list packages -3 -u --user all 2>/dev/null || pm list packages -3 2>/dev/null)
-    user_list=$(echo "$apps_raw" | sed -n 's/^package://p')
+    user_list=$(printf '%s\n' "$apps_raw" | sed -n 's/^package://p' | sed '/^$/d' | sort -u)
+    rules_now=$(read_rules | sed '/^$/d' | sort -u)
+    cur=$(current_target_apps | sed '/^[[:space:]]*$/d' | sort -u)
 
-    # 两段之间补一个空行：部分 sed 实现不会为「末行无换行」补行尾换行，
-    # 补空行可避免 rules.txt 末行与应用清单首行粘连；空行随后被过滤
-    { read_rules; echo; echo "$user_list"; } | sort -u | sed '/^$/d' > "$tmp" 2>/dev/null
+    base="${tmp}.state"
+    mkdir -p "$base" 2>/dev/null
+    write_set() { if [ -n "$2" ]; then printf '%s\n' "$2" | sed '/^$/d' | sort -u > "$1"; else : > "$1"; fi; }
+    write_set "$base/inst" "$user_list"
+    write_set "$base/rules" "$rules_now"
+    write_set "$base/cur" "$cur"
+    : > "$base/was";    [ -s "$ST_INSTALLED" ] && cp -f "$ST_INSTALLED" "$base/was"
+    : > "$base/wrules"; [ -s "$ST_RULES" ] && cp -f "$ST_RULES" "$base/wrules"
+
+    # 一次 awk 做完全部集合运算
+    awk '
+        FILENAME == ARGV[1] { inst[$0] = 1; next }
+        FILENAME == ARGV[2] { rules[$0] = 1; next }
+        FILENAME == ARGV[3] { cur[$0] = 1; next }
+        FILENAME == ARGV[4] { was[$0] = 1; next }
+        FILENAME == ARGV[5] { wrules[$0] = 1; next }
+        END {
+            for (p in cur)    keep[p] = 1
+            for (p in inst)   keep[p] = 1
+            for (p in rules)  keep[p] = 1
+            for (p in was)    if (!(p in inst) && !(p in rules)) delete keep[p]
+            for (p in wrules) if (!(p in rules) && !(p in inst)) delete keep[p]
+            for (p in keep) print p
+        }
+    ' "$base/inst" "$base/rules" "$base/cur" "$base/was" "$base/wrules" \
+        | sort -u | sed '/^$/d' > "$tmp" 2>/dev/null
+    rm -rf "$base" 2>/dev/null
 
     TAA_COUNT=$(wc -l < "$tmp" 2>/dev/null | tr -d ' ')
+
+    # 这两份只在写成功后由 sync_* 提交，失败不推进
+    printf '%s\n' "$user_list" > "$ST_INSTALLED_NEW" 2>/dev/null
+    printf '%s\n' "$rules_now" > "$ST_RULES_NEW" 2>/dev/null
 }

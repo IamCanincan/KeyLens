@@ -36,6 +36,8 @@ pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 rm -rf "$TS/.ts_lock" "$TS/.ts_debounce" "$TS/.ts_tmp" \
        "$SIM/.ts_lock" "$SIM/.ts_debounce" "$SIM/.ts_tmp" 2>/dev/null
 rm -f "$TS/.ts_fingerprint" "$SIM/.ts_fingerprint" 2>/dev/null
+rm -f "$TS/.ts_installed_last" "$TS/.ts_rules_last" "$TS/.ts_installed.new" "$TS/.ts_rules.new" 2>/dev/null
+rm -f "$SIM/.ts_installed_last" "$SIM/.ts_rules_last" "$SIM/.ts_installed.new" "$SIM/.ts_rules.new" 2>/dev/null
 rm -f "$TS/.last_month" "$TS/security_patch.txt.bak" 2>/dev/null
 rm -f "$TS/rules.txt" "$SIM/rules.txt" "$TS/taa_sys.txt" 2>/dev/null
 rm -f "/data/adb/service.d/taa_resetprop.sh" 2>/dev/null

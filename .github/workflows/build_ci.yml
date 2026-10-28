@@ -44,6 +44,11 @@ jobs:
         # 并断言 service.sh 里没有第二份内联公式。不需要设备。
         run: sh tests/watch-backoff.sh
 
+      - name: Incremental Sync Self-Test
+        # 增量同步的六条语义（新装/卸载/常驻/人工项/首次运行），测的是
+        # lib/applist.sh 里真实的 build_app_list，只桩掉外部依赖。不需要设备。
+        run: sh tests/sync-incremental.sh
+
       - name: Dynamic Properties Injection
         id: version_info
         run: |
