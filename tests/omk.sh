@@ -105,6 +105,7 @@ fixture
 add_target_app "com.g"; chk_rc "加回成功" 0 "$?"
 chk "列表包含新条目" "com.a com.b com.g" "$(current_target_apps | tr '\n' ' ' | sed 's/ $//')"
 chk_has "$TARGET_FILE" '^\[filter\]$' "其它段仍在"
+grep -qx "com.g" "$ST_EVER" && printf '  ok   加入的条目并入了 ever\n' || { printf '  ✗   ever 没有更新\n'; fail=1; }
 add_target_app "com.a"; chk_rc "已存在返回 1" 1 "$?"
 
 echo "── 4 冲突矩阵（三个后端） ──"

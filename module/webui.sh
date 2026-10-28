@@ -149,7 +149,7 @@ cmd_excluded() {
   excluded_apps
 }
 
-# 说明：把「已排除」的应用加回目标文件。等价于手动写回文件；只改 apps 数组 /
+# 说明：把「未纳入」或「已排除」的应用加入目标文件。等价于手动写回文件；只改 apps 数组 /
 #       target.txt，别的内容原样保留。包名来自界面列表，这里仍按规则再校验一次。
 cmd_restore_app() {
   local pkg="$1" rc
@@ -776,7 +776,7 @@ cmd_help() {
   props-on|props-off     开关开机属性伪装
   boot-hash              读取 Verified Boot 哈希配置与当前 digest
   props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
-  restore-app <包名>     把被手动排除的应用加回目标名单
+  restore-app <包名>     把未纳入或已排除的应用加入目标名单
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名

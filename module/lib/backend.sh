@@ -122,6 +122,22 @@ detect_backend() {
     fi
 }
 
+# 说明：把包名并入 ever；界面「恢复/加入」在持锁时调用，保证下一轮 excluded
+#       仍认得出它。只影响界面标签，失败静默，不影响名单本身。
+# 用法：ever_add_pkg <包名>
+ever_add_pkg() {
+    local pkg="$1" tmp
+
+    [ -n "${ST_EVER:-}" ] || return 0
+    tmp="${ST_EVER}.tmp.$$"
+    { cat "$ST_EVER" 2>/dev/null; printf '%s\n' "$pkg"; } \
+        | sed '/^[[:space:]]*$/d' | sort -u > "$tmp" 2>/dev/null \
+        && mv -f "$tmp" "$ST_EVER" 2>/dev/null
+    rm -f "$tmp" 2>/dev/null
+    chmod 600 "$ST_EVER" 2>/dev/null
+    return 0
+}
+
 # ---------- 把单个包名加回目标文件 ----------
 # 说明：界面上的「恢复」用它，等价于你手动把包名写回文件；只动 apps 数组 /
 #       target.txt，profiles 其它字段与注释原样保留。调用方必须先 detect_backend
@@ -147,6 +163,7 @@ $pkg
         { printf '%s\n' "$cur"; printf '%s\n' "$pkg"; } | sed '/^$/d' > "$tmp" 2>/dev/null || return 2
         omk_write_list "$tmp"; rc=$?
         rm -f "$tmp" 2>/dev/null
+        [ "$rc" = 0 ] && ever_add_pkg "$pkg"
         return "$rc"
     fi
     if [ "$TAA_BACKEND" = "teesim" ]; then
@@ -162,6 +179,7 @@ $pkg
             mv -f "$out" "$TARGET_FILE" 2>/dev/null && rc=0
         fi
         rm -f "$tmp" "$out" "$status" 2>/dev/null
+        [ "$rc" = 0 ] && ever_add_pkg "$pkg"
         return "$rc"
     fi
 
@@ -176,6 +194,7 @@ $pkg
     chmod 644 "$tmp" 2>/dev/null
     if mv -f "$tmp" "$TARGET_FILE" 2>/dev/null; then rc=0; fi
     rm -f "$tmp" 2>/dev/null
+    [ "$rc" = 0 ] && ever_add_pkg "$pkg"
     return "$rc"
 }
 

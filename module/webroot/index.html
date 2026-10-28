@@ -1427,16 +1427,10 @@ function renderApps(){
       tg.title = isExcluded
         ? '你手动把它从目标名单里删过，所以不再自动加回来' +
           (canRestore ? '；点右侧的 + 可以立刻加回' : '；把它加回文件、或卸载后再装一次即可恢复')
-        : '已安装，但目标名单里没有它（多半是还没同步）';
+        : '已安装，但目标名单里没有它（多半是还没同步）' +
+          (canRestore ? '；点右侧的 + 可以加入' : '');
       row.appendChild(tg);
-      if (isExcluded && canRestore) {
-        var rb = el('button', 'icon-add');
-        rb.innerHTML = svg('add');
-        rb.title = '加回目标名单';
-        rb.setAttribute('aria-label', '把 ' + pkg + ' 加回目标名单');
-        rb.addEventListener('click', function (e){ e.stopPropagation(); restoreApp(pkg); });
-        row.appendChild(rb);
-      }
+      if (canRestore) row.appendChild(restoreButton(pkg, isExcluded));
     }
     frag.appendChild(row);
   }
@@ -1454,6 +1448,17 @@ function renderApps(){
   else setTimeout(kick, 60);
 }
 
+
+/* 每行一个 +：必须用函数参数把 pkg 固定住。以前按钮直接写在 for 里闭包了
+   var pkg，多行都有 + 时会全部指向最后一行（实测点 A 加的是 B）。 */
+function restoreButton(pkg, isExcluded){
+  var rb = el('button', 'icon-add');
+  rb.innerHTML = svg('add');
+  rb.title = isExcluded ? '加回目标名单' : '加入目标名单';
+  rb.setAttribute('aria-label', '把 ' + pkg + (isExcluded ? ' 加回目标名单' : ' 加入目标名单'));
+  rb.addEventListener('click', function (e){ e.stopPropagation(); restoreApp(pkg); });
+  return rb;
+}
 
 /* ---------- 日志 ---------- */
 function logLevel(line){
@@ -1958,7 +1963,7 @@ function restoreApp(pkg){
   call('restore-app', pkg).then(function (r){
     if (r.ok) {
       var kv = parseKV(r.text);
-      note.text = kv.restored === '1' ? '已加回名单：' + pkg : '它已经在名单里';
+      note.text = kv.restored === '1' ? '已加入目标名单：' + pkg : '它已经在目标名单里';
       note.tone = 'ok';
     } else { note.text = failText(r); note.tone = 'bad'; }
     return reloadAll();
@@ -2306,12 +2311,12 @@ function boot(){
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
-var DEMO_STATE = { masking: 'on', hash: '', restored: false };   /* 开关、boot hash 与恢复状态要留住 */
+var DEMO_STATE = { masking: 'on', hash: '', restored: {} };   /* 开关、boot hash 与「加入」状态要留住 */
 var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1e';
 function demoResult(cmd, arg){
   /* boot hash 与「恢复」是可变状态，不走静态表 */
   if (cmd === 'restore-app') {
-    if (String(arg == null ? '' : arg) === 'com.example.also') DEMO_STATE.restored = true;
+    DEMO_STATE.restored[String(arg == null ? '' : arg)] = 1;
     return { errno: 0, stdout: 'restored=1' };
   }
   if (cmd === 'boot-hash') {
@@ -2353,10 +2358,10 @@ function demoResult(cmd, arg){
       'sys_seed_src=' + (QUERY.get('seed') ? 'demo' : 'none')].join('\n'),
     targets: ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
       'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient']
-      .concat(DEMO_STATE.restored ? ['com.example.also'] : []).join('\n'),
+      .concat(Object.keys(DEMO_STATE.restored)).join('\n'),
     apps: ['ai.x.grok', 'app.mihon', 'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria',
       'com.netflix.mediaclient', 'com.example.notyet', 'com.example.also'].join('\n'),
-    excluded: DEMO_STATE.restored ? '' : 'com.example.also',
+    excluded: DEMO_STATE.restored['com.example.also'] ? '' : 'com.example.also',
     log: ['10-26 15:33:01 🔄 开始应用列表同步', '10-26 15:33:04 ✅ 同步完成，应用总数：124',
       '10-26 15:36:18 🔍 后端：TEE Simulator（目录：/data/adb/teesim）', '10-26 15:36:18 👀 监听方式：inotifyd（inotifyd）',
       '10-26 15:36:30 🚀 开机完成，执行首次同步', '10-26 15:36:30 ✅ 守护进程就绪（日志：/data/adb/ts_auto.log）',
