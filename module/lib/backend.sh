@@ -218,6 +218,7 @@ add_target_app() {
 remove_target_apps() {
     local list="$1" cur dir removed rc=2
 
+    TAA_REMOVED_LIST=""
     [ -f "$list" ] || return 2
     [ -f "$TARGET_FILE" ] || return 2
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
@@ -235,16 +236,19 @@ remove_target_apps() {
     printf '%s\n' "$cur" | sed '/^$/d' > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
 
-    if ! removed=$($AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
-        $0 != "" && ($0 in req) { n++ }
-        END { print n + 0 }' "$dir/req" "$dir/cur" 2>/dev/null); then
+    # 实际被移出的包名（去重、保留原顺序），界面「撤销」用它精确恢复；
+    # 不能用界面勾选的那一份：列表可能已经刷新过，勾选里可能夹着已不在文件里的包。
+    if ! $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
+        $0 != "" && ($0 in req) && !seen[$0]++ { print }' "$dir/req" "$dir/cur" > "$dir/removed" 2>/dev/null; then
         rm -rf "$dir" 2>/dev/null
         return 2
     fi
+    removed=$(wc -l < "$dir/removed" 2>/dev/null | tr -d ' ')
     if [ "${removed:-0}" = "0" ]; then
         rm -rf "$dir" 2>/dev/null
         return 1
     fi
+    TAA_REMOVED_LIST=$(tr '\n' ',' < "$dir/removed" 2>/dev/null | sed 's/,$//')
 
     # 保持剩余条目的原顺序，只去掉重复项；TEESim/OMK 的数组顺序因此不变。
     if ! $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }

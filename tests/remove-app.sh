@@ -49,11 +49,13 @@ printf '# keep\ncom.a\ncom.c\n' > "$T/exp"
 cmp -s "$T/exp" "$TARGET_FILE" && printf '  ok   注释与剩余顺序保留、补了结尾换行\n' \
     || { printf '  ✗   移出后的内容不对\n'; fail=1; }
 chk_has "$ST_EVER" '^com\.b$' "被移出的包并入了 ever"
+chk "removed_list 记录 b" "com.b" "$TAA_REMOVED_LIST"
 
 before=$(sha256sum "$TARGET_FILE" | cut -d' ' -f1)
 req com.d
 remove_target_apps "$T/req"; chk_rc "本来就不在返回 1" 1 "$?"
 chk "文件逐字节未变" "$before" "$(sha256sum "$TARGET_FILE" | cut -d' ' -f1)"
+chk "未移出时 removed_list 为空" "" "$TAA_REMOVED_LIST"
 
 req com.a com.c
 remove_target_apps "$T/req"; chk_rc "会清空时返回 3" 3 "$?"
@@ -63,6 +65,7 @@ printf '# keep\ncom.a\ncom.b\ncom.c\n' > "$TARGET_FILE"
 req com.a com.b
 remove_target_apps "$T/req"; chk_rc "一次移出多条" 0 "$?"
 chk "多条移出后只剩 c" "com.c" "$(list)"
+chk "removed_list 记录两条" "com.a,com.b" "$TAA_REMOVED_LIST"
 
 printf '# only\n\n' > "$TARGET_FILE"
 req com.a

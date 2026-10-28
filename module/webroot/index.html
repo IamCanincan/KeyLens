@@ -405,6 +405,7 @@ button,input,textarea,select{font:inherit;color:inherit}
 .icon-add:hover{background:var(--surface-high)}
 .icon-add:active{transform:scale(.86)}
 .icon-add svg{width:16px;height:16px}
+#btnAppsRefresh{margin-left:auto}
 /* 批量选择：行尾的选中圆点 + 固定在底部的操作条。 */
 .selbox{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--outline-variant);
   display:grid;place-items:center;color:transparent;
@@ -534,6 +535,10 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .snackbar[data-show="1"]{transform:translate(-50%,0);opacity:1}
 .snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .snackbar[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
+.snack-text{min-width:0}
+.snack-action{flex:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;
+  padding:4px 8px;border-radius:var(--r-s);cursor:pointer}
+.snack-action:active{transform:scale(.94)}
 
 /* ================= 加载/空态 ================= */
 .spin{width:16px;height:16px;border-radius:50%;border:2.5px solid var(--outline-variant);border-top-color:var(--primary);
@@ -1182,13 +1187,36 @@ function timeLabel(epoch){
 }
 var STATE_TONE = { ok: ['ok', '运行中'], stopped: ['bad', '已停止'], failed: ['bad', '写入失败'], unknown: ['warn', '未同步'] };
 
-function snackbar(text, tone){
+function snackbar(text, tone, action){
   var s = document.getElementById('snackbar');
-  s.textContent = text;
+  s.textContent = '';
+  var txt = document.createElement('span');
+  txt.className = 'snack-text';
+  txt.textContent = text;
+  s.appendChild(txt);
+  var hasAction = !!(action && action.label && typeof action.run === 'function');
+  if (hasAction) {
+    var b = document.createElement('button');
+    b.type = 'button';
+    b.className = 'snack-action';
+    b.textContent = action.label;
+    b.addEventListener('click', function (e){
+      e.stopPropagation();
+      clearTimeout(snackbar._t);
+      s.removeAttribute('data-show');
+      s.style.pointerEvents = 'none';
+      action.run();
+    });
+    s.appendChild(b);
+  }
+  s.style.pointerEvents = hasAction ? 'auto' : 'none';
   s.setAttribute('data-tone', tone || 'info');
   s.setAttribute('data-show', '1');
   clearTimeout(snackbar._t);
-  snackbar._t = setTimeout(function (){ s.removeAttribute('data-show'); }, tone === 'bad' ? 5200 : 3000);
+  snackbar._t = setTimeout(function (){
+    s.removeAttribute('data-show');
+    s.style.pointerEvents = 'none';
+  }, hasAction ? 6000 : (tone === 'bad' ? 5200 : 3000));
 }
 
 var busyCount = 0;
@@ -1640,8 +1668,9 @@ function bulkRemoveSelected(){
     return;
   }
   var omk = S.status.backend === 'omk';
+  var names = pkgs.slice(0, 3).join('、') + (pkgs.length > 3 ? ' 等' : '');
   confirm('移出 ' + pkgs.length + ' 个应用？',
-    '会从目标名单里删掉这些包名（只写一次）；' + (omk ? 'OMK 只改 scoop。' : '其它内容原样保留。')
+    '会从目标名单里移出 ' + names + '（只写一次）；' + (omk ? 'OMK 只改 scoop。' : '其它内容原样保留。')
     + ' 移出后会显示为「已排除」，不会自动加回。', '移出')
     .then(function (yes){
       if (!yes) return;
@@ -1651,8 +1680,12 @@ function bulkRemoveSelected(){
         if (r.ok) {
           var kv = parseKV(r.text);
           var nrem = parseInt(kv.removed, 10);
+          var actual = kv.removed_list ? String(kv.removed_list).split(',').filter(Boolean) : pkgs.slice();
           note.text = nrem > 0 ? ('已移出 ' + nrem + ' 个应用') : '这些应用已经不在名单里';
           note.tone = 'ok';
+          if (nrem > 0 && actual.length) {
+            note.action = { label: '撤销', run: function (){ undoRemove(actual); } };
+          }
           S.selectMode = false;
           S.selected = {};
         } else { note.text = failText(r); note.tone = 'bad'; }
@@ -1660,6 +1693,24 @@ function bulkRemoveSelected(){
       }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
         .then(function (){ finishWrite(note); updateBulkBar(); });
     });
+}
+function undoRemove(pkgs){
+  if (!pkgs || !pkgs.length) return;
+  if (!hasCmd('restore-apps')) {
+    snackbar('命令层不支持撤销（缺少 restore-apps）', 'bad');
+    return;
+  }
+  busy(true, '撤销中');
+  var note = { text: '', tone: 'info' };
+  call('restore-apps', pkgs.join(',')).then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.restored === '1' ? ('已撤销移出（' + pkgs.length + ' 个应用）') : '这些应用已经在名单里';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); updateBulkBar(); });
 }
 
 /* ---------- 日志 ---------- */
@@ -2080,7 +2131,7 @@ function reloadAll(){
 function finishWrite(note){
   busy(false);
   renderAll();
-  if (note.text) snackbar(note.text, note.tone);
+  if (note.text) snackbar(note.text, note.tone, note.action);
 }
 
 function doSync(){
@@ -2547,8 +2598,9 @@ var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1
 function demoTargets(){
   var base = ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
     'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'];
-  return base.filter(function (p){ return !DEMO_STATE.removed[p]; })
+  var out = base.filter(function (p){ return !DEMO_STATE.removed[p]; })
     .concat(Object.keys(DEMO_STATE.restored).filter(function (p){ return !DEMO_STATE.removed[p]; }));
+  return out.filter(function (p, i){ return out.indexOf(p) === i; });
 }
 function demoResult(cmd, arg){
   /* boot hash 与「加入/移出」是可变状态，不走静态表 */
@@ -2565,11 +2617,11 @@ function demoResult(cmd, arg){
     return { errno: 0, stdout: 'restored=1' };
   }
   if (cmd === 'remove-apps') {
-    var before = demoTargets().length;
-    String(arg == null ? '' : arg).split(',').forEach(function (p){
-      if (p) DEMO_STATE.removed[p] = 1;
-    });
-    return { errno: 0, stdout: 'removed=' + (before - demoTargets().length) };
+    var req = String(arg == null ? '' : arg).split(',').filter(Boolean);
+    var base = demoTargets();
+    var hit = req.filter(function (p, i){ return req.indexOf(p) === i && base.indexOf(p) >= 0; });
+    hit.forEach(function (p){ DEMO_STATE.removed[p] = 1; });
+    return { errno: 0, stdout: 'removed=' + hit.length + '\nremoved_list=' + hit.join(',') };
   }
   if (cmd === 'boot-hash') {
     var bh = DEMO_STATE.hash || '';

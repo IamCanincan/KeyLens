@@ -279,8 +279,9 @@ cmd_remove_apps() {
       update_module_desc "$PROP_FILE" "${after:-0}"
       log_info "🧩 WebUI 从目标名单移出 $removed 个应用"
       kv removed "$removed"
+      kv removed_list "${TAA_REMOVED_LIST:-}"
       ;;
-    1) kv removed 0 ;;
+    1) kv removed 0; kv removed_list "" ;;
     3)
       echo "不能移出全部应用：目标名单至少保留一个" >&2
       return 1
