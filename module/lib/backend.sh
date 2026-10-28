@@ -172,7 +172,11 @@ sync_teesim_config() {
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
 
     if [ -f "$config" ] && [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ]; then
-        build_app_list "$tmp"
+        if ! build_app_list "$tmp"; then
+            log_warn "⚠️ 已装列表为空但基线非空：跳过本次写入，避免误清名单（手动同步可强制）"
+            rm -f "$tmp" 2>/dev/null
+            return 2
+        fi
         [ -s "$tmp" ] && {
             # 生成替换后的内容；状态文件不是 "ok" 说明未定位到 apps 数组，保持原配置
             rm -f "$out" "$status" 2>/dev/null

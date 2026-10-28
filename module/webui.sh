@@ -165,6 +165,9 @@ cmd_restore_app() {
 
   case "$rc" in
     0)
+      # 恢复后顺手把模块描述里的条数刷新，管理器里不用等下一轮同步
+      TAA_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      [ "${TAA_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$TAA_COUNT"
       log_info "🧩 WebUI 把 $pkg 加回目标名单"
       kv restored 1
       ;;
@@ -599,6 +602,9 @@ cmd_sync() {
     require_runnable || return 1
     detect_backend "$MODDIR"
     webui_lock || return 1
+    # 用户显式点了「立即同步」：允许把"读到空已装列表"当成真的清空处理；
+    # 后台守护进程不加这个标记（读取失败时宁可不写）。
+    TAA_EMPTY_OK=1
     run_sync "$PROP_FILE" "${TAA_DIR}/.ts_tmp"
     rc=$?
     release_lock "${TAA_DIR}/.ts_lock"

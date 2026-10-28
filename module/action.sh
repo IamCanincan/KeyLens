@@ -45,6 +45,8 @@ echo ""
 acquire_lock "$LOCK_DIR" || { echo " ❌ 获取锁超时" >&2; exit 1; }
 
 echo "🔄 [1/1] 正在同步应用列表..."
+# 手动入口：允许把"读到空已装列表"当成真的清空处理；后台守护进程不这样处理。
+TAA_EMPTY_OK=1
 run_sync "$PROP_FILE" "$TMP"
 rc=$?
 

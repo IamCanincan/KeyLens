@@ -16,12 +16,13 @@
 #   6 手动删掉的已装包：不加回来；excluded 认得出
 #   7 卸载→重装：重新加入；卸载后 excluded 清空
 #   8 手动加回去：保留（没有墓碑要撤销）
-#   9 已装为空：只剩手工项
+#   9 已装读空 + 有基线：自动同步放弃（防误清）；手动可强制
 #  10 目标被清空：不回填；excluded 认得出
 #  11 种子只种一次
 #  12 状态只写「本轮已装」，不再产生墓碑/写入清单
 #  13 旧版本遗留状态在成功同步后清掉
 #  14 首次运行但目标非空：excluded 为空（基线之前的未纳入不算手动排除）
+#  15 首次运行且已装为空：不触发「空列表保护」
 #=============================================================================
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -128,11 +129,16 @@ FAKE_INSTALLED="a.inst
 b.inst"
 run; chk "又有了就保留" "a.inst b.inst"; chk_excl "不在排除里" ""
 
-echo "── 9 已装为空：只剩手工项 ──"
+echo "── 9 已装读空 + 有基线：自动同步放弃，手动可强制 ──"
 reset; put "$TARGET_FILE" "a.manual
 b.inst"; put "$ST_INSTALLED" "b.inst"
 FAKE_INSTALLED=""
-run; chk "b 被删（卸载），手工项留下" "a.manual"
+run; rc=$?
+if [ "$rc" = 1 ]; then printf '  ok   自动同步返回 1（放弃）\n'; else printf '  ✗   自动同步返回 %s，期望 1\n' "$rc"; fail=1; fi
+[ ! -e "$T/out" ] && printf '  ok   没有生成待写列表\n' || { printf '  ✗   仍生成了待写列表\n'; fail=1; }
+TAA_EMPTY_OK=1
+run; unset TAA_EMPTY_OK
+chk "手动强制后只剩手工项" "a.manual"
 
 echo "── 10 目标文件被清空：算你把它们都删了 ──"
 reset; put "$TARGET_FILE" ""; put "$ST_INSTALLED" "a.inst"
@@ -170,6 +176,10 @@ fi
 echo "── 14 首次运行但目标非空：excluded 为空 ──"
 reset; put "$TARGET_FILE" "x.keep"; FAKE_INSTALLED="a.inst"
 run; chk_excl "基线之前的未纳入不算手动排除" ""
+
+echo "── 15 首次运行且已装为空：不触发空列表保护 ──"
+reset; put "$TARGET_FILE" "x.keep"; FAKE_INSTALLED=""
+run; chk "手工项保留，不被保护拦下" "x.keep"
 
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

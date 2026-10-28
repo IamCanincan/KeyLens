@@ -14,7 +14,11 @@ sync_target_list() {
     local target="$1"
     local tmp="$2"
 
-    build_app_list "$tmp"
+    if ! build_app_list "$tmp"; then
+        log_warn "⚠️ 已装列表为空但基线非空：跳过本次写入，避免误清名单（手动同步可强制）"
+        rm -f "$tmp" 2>/dev/null
+        return 2
+    fi
 
     if [ ! -s "$tmp" ]; then
         rm -f "$tmp" 2>/dev/null

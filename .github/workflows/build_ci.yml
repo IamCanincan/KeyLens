@@ -45,8 +45,8 @@ jobs:
         run: sh tests/watch-backoff.sh
 
       - name: Incremental Sync Self-Test
-        # 增量同步的六条语义（新装/卸载/常驻/人工项/首次运行），测的是
-        # lib/applist.sh 里真实的 build_app_list，只桩掉外部依赖。不需要设备。
+        # 快照差分模型的语义（新装/卸载/手删不回/重装回来/种子/空列表保护），
+        # 测的是 lib/applist.sh 里真实的 build_app_list，只桩外部依赖。不需要设备。
         run: sh tests/sync-incremental.sh
 
       - name: UI / Command Contract Pairing
@@ -63,6 +63,11 @@ jobs:
         # 「把已排除的应用加回名单」：两个后端的写回、已存在不落盘、
         # 结尾换行、TEESim 其它字段保留。用真实 add_target_app。不需要设备。
         run: sh tests/restore-app.sh
+
+      - name: Sync Empty-List Guard Self-Test
+        # 已装读空但基线非空：自动同步必须放弃（rc=2、文件不动、基线不推进）；
+        # 手动同步（TAA_EMPTY_OK=1）按当前已装处理。跑两个后端真实的 sync_*。
+        run: sh tests/sync-guard.sh
 
       - name: Dynamic Properties Injection
         id: version_info

@@ -61,6 +61,14 @@ build_app_list() {
     user_list=$(printf '%s\n' "$apps_raw" | sed -n 's/^package://p' | sed '/^$/d' | sort -u)
     cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u)
 
+    # 已装列表读空但基线非空：更像是一次读取失败，而不是真的把应用全卸了。
+    # 自动同步放弃（不写、不提交基线）；界面「立即同步」/管理器「操作」按钮会
+    # 显式设 TAA_EMPTY_OK=1 强制按当前已装处理。
+    if [ -z "$user_list" ] && [ -s "$ST_INSTALLED" ] && [ "${TAA_EMPTY_OK:-0}" != 1 ]; then
+        rm -f "$tmp" 2>/dev/null
+        return 1
+    fi
+
     # 首次安装：目标文件空 + 没有基线
     seed=""
     if [ ! -f "$ST_INSTALLED" ] && [ -z "$cur" ]; then
@@ -104,6 +112,7 @@ build_app_list() {
     # WebUI 经管理器 exec 出来的 umask 可能是 000（实测生成过 666 的状态文件）。
     printf '%s\n' "$user_list" > "$ST_INSTALLED_NEW" 2>/dev/null
     chmod 600 "$ST_INSTALLED_NEW" 2>/dev/null
+    return 0
 }
 
 # ---------- 「已排除」= 已装、有基线、但目标文件里没有 ----------
