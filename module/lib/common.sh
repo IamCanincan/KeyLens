@@ -9,7 +9,7 @@
 #   core.sh     路径常量、运行期状态、系统日志
 #   lock.sh     并发锁
 #   tools.sh    外部工具定位（awk / inotify）
-#   applist.sh  常驻列表 rules.txt 与应用列表生成
+#   applist.sh  目标名单生成（增量同步）
 #   backend.sh  后端探测、后端写入、模块描述、同步入口
 #   props.sh    系统属性伪装
 #   watch.sh    监听重启退避（纯函数，可被测试单独 source）

@@ -28,7 +28,7 @@ find_awk() {
 }
 
 # ---------- base64 定位 ----------
-# 说明：WebUI 保存常驻列表时用 base64 传内容（避免包名/注释被 shell 解析），
+# 说明：命令层要把 SystemUI 的 .frro（二进制）传给界面，走 base64；
 #       因此需要一个能解码的 base64。与 find_awk 同理：必须实际执行一次解码
 #       来验证，只判断命令是否存在会把「applet 未编译进去」的 busybox 当成可用。
 # 用法：find_base64

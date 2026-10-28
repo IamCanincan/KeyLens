@@ -34,7 +34,12 @@ build_app_list() {
 
     # 首次安装：目标文件空 + 没有基线
     seed=""
-    if [ ! -f "$ST_WRITTEN" ] && [ -z "$cur" ]; then seed="$SEED_PKGS"; fi
+    if [ ! -f "$ST_WRITTEN" ] && [ -z "$cur" ]; then
+        # 空格分隔 → 一行一个：write_set 与 awk 都是按行读的，
+        # 直接传 "a b c" 会变成**一行**三个包名（实测输出 123 行而不是 125）
+        seed=$(printf "%s
+" $SEED_PKGS)
+    fi
 
     base="${tmp}.state"
     mkdir -p "$base" 2>/dev/null

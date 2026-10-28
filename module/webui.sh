@@ -109,16 +109,6 @@ clamp_int() {
     printf '%s' "$v"
 }
 
-# 说明：只允许 base64 字符集（A-Za-z0-9+/=），且不能为空
-# 用法：is_b64 <字符串>
-is_b64() {
-    [ -n "$1" ] || return 1
-    case "$1" in
-        *[!A-Za-z0-9+/=]*) return 1 ;;
-    esac
-    return 0
-}
-
 # 说明：模块因后端互斥而停止时，写类命令一律拒绝执行
 # 用法：require_runnable
 require_runnable() {

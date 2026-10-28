@@ -61,6 +61,15 @@ chk() {
     if [ "$got" = "$exp" ]; then printf '  ok   %s\n' "$1"
     else printf '  ✗    %s\n        期望: %s\n        实得: %s\n' "$1" "$exp" "$got"; fail=1; fi
 }
+chk_lines() {  # chk_lines <标签> <期望行数>
+    got=$(sed '/^$/d' "$T/out" | wc -l | tr -d ' ')
+    if [ "$got" = "$2" ]; then printf '  ok   %s（%s 行）
+' "$1" "$got"
+    else printf '  ✗    %s
+        期望 %s 行，实得 %s 行
+' "$1" "$2" "$got"; fail=1; fi
+}
+
 chk_tomb() {
     f="$ST_REMOVED_NEW"; [ -f "$f" ] || f="$ST_REMOVED"
     got=$([ -f "$f" ] && sed '/^$/d' "$f" | sort | tr '\n' ' ' | sed 's/ $//')
@@ -72,7 +81,7 @@ SEED="com.android.vending com.google.android.gms com.google.android.gsf"
 
 echo "── 1 首次安装：目标空 + 没基线 → 种入三件套 + 已装 ──"
 reset; FAKE_INSTALLED="a.inst"
-run; chk "三件套 + 已装 都在" "$SEED a.inst"
+run; chk "三件套 + 已装 都在" "$SEED a.inst"; chk_lines "一行一个包名" 4
 chk_tomb "不产生墓碑" ""
 
 echo "── 2 首次运行但目标已有内容：不种种子 ──"
