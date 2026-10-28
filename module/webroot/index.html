@@ -407,21 +407,21 @@ button,input,textarea,select{font:inherit;color:inherit}
   font-family:var(--mono);font-size:var(--fs12);font-weight:400;color:var(--on-variant);margin-top:1px}
 .app-tag{flex:none;font-size:var(--fs11);font-weight:700;padding:1px 6px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
-.app-tag[data-tone=miss]{background:var(--error-container);color:var(--on-error-container)}
 .app-tag[data-tone=na]{background:var(--surface-highest);color:var(--on-variant);font-weight:600}
-.icon-add{flex:none;width:32px;height:32px;border:0;border-radius:var(--r-s);background:var(--surface-lowest);
-  color:var(--primary);cursor:pointer;display:grid;place-items:center;border:1px solid var(--outline-variant);
+/* 列表里的 + 是高频动作：不加底色和边框，只在按/悬停时给一层浅底，避免 100 多行
+   变成一排按钮。命中区仍由 .icon-add::after 撑到 48。 */
+.icon-add{flex:none;width:32px;height:32px;border:0;border-radius:var(--r-s);background:transparent;
+  color:var(--on-variant);cursor:pointer;display:grid;place-items:center;
   transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
+.icon-add:hover{background:var(--surface-high)}
 .icon-add:active{transform:scale(.86)}
 .icon-add svg{width:16px;height:16px}
-/* 批量选择：行尾的选中圆点 + 固定在底部的操作条。
-   圆点用 SVG 对勾；未选时对勾透明，选中填主色，已在名单的显示绿色对勾。 */
+/* 批量选择：行尾的选中圆点 + 固定在底部的操作条。 */
 .selbox{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--outline-variant);
   display:grid;place-items:center;color:transparent;
   transition:background var(--d1) var(--e-emph),border-color var(--d1) var(--e-emph)}
 .selbox svg{width:14px;height:14px}
 .selbox[data-on="1"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
-.selbox[data-locked="1"]{border-color:transparent;color:var(--success)}
 .app-row.is-selectable{cursor:pointer}
 .app-row.is-selected{background:var(--surface-mid)}
 .bulkbar{position:fixed;left:var(--sp4);right:var(--sp4);bottom:calc(var(--inset-bottom) + 12px);z-index:60;
@@ -646,7 +646,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
           <button data-src="apps">已安装第三方</button>
         </div>
         <button class="btn btn-outline btn-sm" id="btnOnlyMissing" aria-pressed="false">只看未纳入</button>
-        <button class="btn btn-text btn-sm" id="btnSelect" hidden>批量</button>
+        <button class="btn btn-text btn-sm" id="btnSelect" title="批量选择应用" hidden>选择</button>
       </div>
       <div class="field" style="margin-top:var(--sp4)">
         <label>搜索应用名或包名</label>
@@ -656,7 +656,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
       <div id="appsBody" style="margin-top:var(--sp3)"></div>
       <div class="bulkbar" id="bulkBar" hidden>
         <span class="bulk-count" id="bulkCount">已选 0</span>
-        <button class="btn btn-text btn-sm" id="btnBulkAll">全选当前</button>
+        <button class="btn btn-text btn-sm" id="btnBulkAll">全选</button>
         <button class="btn btn-filled btn-sm" id="btnBulkAdd" disabled>加入名单</button>
         <button class="btn btn-text btn-sm" id="btnBulkExit">取消</button>
       </div>
@@ -1408,9 +1408,10 @@ function renderApps(){
   var excl = Object.keys(S.excluded).length;
   var canRestore = hasCmd('restore-app');
   var canBatch = hasCmd('restore-apps');
-  if (S.selectMode && (S.appsSrc !== 'apps' || !canBatch)) { S.selectMode = false; S.selected = {}; }
-  S.selectable = (S.appsSrc === 'apps' && S.selectMode)
-    ? list.filter(function (p){ return !inTarget[p]; }) : [];
+  if (S.selectMode && (S.appsSrc !== 'apps' || !canBatch || !missing)) { S.selectMode = false; S.selected = {}; }
+  /* 批量模式只列「可加入」的：已在名单的行没有可选动作，留着只是干扰 */
+  if (S.selectMode) list = list.filter(function (p){ return !inTarget[p]; });
+  S.selectable = S.selectMode ? list : [];
   if (S.selectMode) {
     var keepSel = {};
     Object.keys(S.selected).forEach(function (p){
@@ -1426,18 +1427,30 @@ function renderApps(){
     S.selectMode ? 1 : 0, Object.keys(S.selected).sort().join(',')].join('\u0001');
   if (sig === S.appsSig) return;
   S.appsSig = sig;
-  appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
-    ' · 显示 ' + list.length + (missing && S.appsSrc === 'apps' ? ' · 未纳入 ' + missing : '') +
-    (excl && S.appsSrc === 'apps' ? ' · 已排除 ' + excl : '');
-  btnSelect.hidden = !(S.appsSrc === 'apps' && canBatch) || S.selectMode;
+  var parts;
+  if (S.selectMode) {
+    parts = ['可加入 ' + list.length];
+  } else if (S.appsSrc === 'targets') {
+    parts = ['生效 ' + S.targets.length];
+    if (S.search) parts.push('显示 ' + list.length);
+  } else {
+    parts = ['已安装 ' + S.apps.length];
+    if (missing) parts.push('未纳入 ' + missing);
+    if (excl) parts.push('已排除 ' + excl);
+    if (S.search) parts.push('显示 ' + list.length);
+  }
+  appsStat.textContent = parts.join(' · ');
+  btnSelect.hidden = !(S.appsSrc === 'apps' && canBatch) || S.selectMode || !missing;
+  btnOnlyMissing.hidden = S.selectMode || (!missing && !S.onlyMissing);
   updateBulkBar();
 
   var box = document.getElementById('appsBody');
   box.textContent = '';
   if (!list.length) {
     var e = el('div', 'empty');
-    e.appendChild(el('b', null, '没有条目'));
-    e.appendChild(document.createTextNode(S.appsSrc === 'targets' ? '目标文件还是空的，点上方「立即同步」生成一次。' : '没有匹配的应用。'));
+    e.appendChild(el('b', null, S.selectMode ? '没有可加入的应用' : '没有条目'));
+    e.appendChild(document.createTextNode(S.selectMode ? '已在名单的应用不会再列出来。'
+      : (S.appsSrc === 'targets' ? '目标文件还是空的，点上方「立即同步」生成一次。' : '没有匹配的应用。')));
     box.appendChild(e);
     return;
   }
@@ -1461,34 +1474,25 @@ function renderApps(){
     }
     row.appendChild(txt);
     row.dataset.pkg = pkg;
-    if (S.appsSrc === 'apps' && !inTarget[pkg]) {
-      /* 装着却不在名单里 —— 同步过一次之后，只有一种原因：你手动删过它 */
-      var isExcluded = !!S.excluded[pkg];
-      var tg = el('span', 'app-tag', isExcluded ? '已排除' : '未纳入');
-      /* 「已排除」是你自己的决定，用中性色；「未纳入」才需要提醒 */
-      tg.setAttribute('data-tone', isExcluded ? 'na' : 'miss');
-      var hint = S.selectMode ? '；点这一行选中或取消'
-        : (canRestore ? (isExcluded ? '；点右侧的 + 可以立刻加回' : '；点右侧的 + 可以加入') : '');
-      tg.title = isExcluded
-        ? '你手动把它从目标名单里删过，所以不再自动加回来' + hint
-        : '已安装，但目标名单里没有它（多半是还没同步）' + hint;
-      row.appendChild(tg);
-    }
-    if (S.selectMode && S.appsSrc === 'apps') {
-      var locked = !!inTarget[pkg];
+    if (S.selectMode) {
       var sb = el('span', 'selbox');
       sb.innerHTML = svg('check');
-      if (locked) {
-        sb.setAttribute('data-locked', '1');
-        sb.title = '已在名单';
-      } else {
-        sb.setAttribute('data-on', S.selected[pkg] ? '1' : '0');
-        row.classList.add('is-selectable');
-        if (S.selected[pkg]) row.classList.add('is-selected');
-      }
+      sb.setAttribute('data-on', S.selected[pkg] ? '1' : '0');
+      row.classList.add('is-selectable');
+      if (S.selected[pkg]) row.classList.add('is-selected');
       row.appendChild(sb);
-    } else if (S.appsSrc === 'apps' && !inTarget[pkg] && canRestore) {
-      row.appendChild(restoreButton(pkg, isExcluded));
+    } else if (S.appsSrc === 'apps' && !inTarget[pkg]) {
+      /* 未纳入不挂标签：整屏 100 多个红标签只会变成噪音，+ 本身已经说明它不在名单里。
+         只有「已排除」保留中性标签 —— 那是你主动删的，值得说明。 */
+      var isExcluded = !!S.excluded[pkg];
+      if (isExcluded) {
+        var tg = el('span', 'app-tag', '已排除');
+        tg.setAttribute('data-tone', 'na');
+        tg.title = '你手动把它从目标名单里删过，所以不再自动加回来' +
+          (canRestore ? '；点右侧的 + 可以立刻加回' : '');
+        row.appendChild(tg);
+      }
+      if (canRestore) row.appendChild(restoreButton(pkg, isExcluded));
     }
     frag.appendChild(row);
   }
@@ -1524,7 +1528,7 @@ function updateBulkBar(){
   bulkCount.textContent = '已选 ' + total;
   btnBulkAdd.disabled = total === 0;
   var all = S.selectable.length > 0 && S.selectable.every(function (p){ return S.selected[p]; });
-  btnBulkAll.textContent = all ? '取消全选' : '全选当前';
+  btnBulkAll.textContent = all ? '取消全选' : '全选';
   bulkBar.hidden = !S.selectMode;
   document.body.classList.toggle('is-selecting', !!S.selectMode);
 }
