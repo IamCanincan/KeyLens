@@ -6,10 +6,10 @@
 
 #### 新增
 
-* **支持 OhMyKeymint（第三个后端）**：模块现在识别 `/data/adb/modules/oh_my_keymint`，维护 `/data/misc/keystore/omk/injector.toml` 里的 `scoop` 数组。只替换这个数组：注释、`version`、`[main]` / `[filter]` / `[intercept]` 与每个包的 `[scoop.<包名>]` 段逐字节保留；`config.toml` 完全不碰。写入前备份到 `/data/adb/ts_auto.omk/injector.toml.bak`，保留原文件的 owner / mode / SELinux 上下文，成功后写 `/data/adb/omk/restart.injector` 让 OMK 自己重载 injector。
+* **支持 OhMyKeymint（第三个后端）**：模块现在识别 `/data/adb/modules/oh_my_keymint`，维护 `/data/misc/keystore/omk/injector.toml` 里的 `scoop` 数组。只替换这个数组：注释、`version`、`[main]` / `[filter]` / `[intercept]` 与每个包的 `[scoop.<包名>]` 段逐字节保留；`config.toml` 完全不碰。写入前备份到 `/data/adb/omk/injector.toml.bak`，保留原文件的 owner / mode / SELinux 上下文，成功后写 `/data/adb/omk/restart.injector` 让 OMK 自己重载 injector。
   * **首次接入沿用现有名单**：`scoop` 已有内容时只把当前已装记成基线，不把已装应用批量灌入；之后新装自动加入、卸载自动移除、手删不回。`scoop` 为空时才按其它后端一样加入全部已装 + 三件套。
   * 三方冲突：`backends_conflict` 现在统计 TEE Simulator / Tricky Store / OhMyKeymint，多于一个启用就停止模块；描述统一写「多个密钥库后端同时启用」。
-  * 状态文件放在本模块自己的 `/data/adb/ts_auto.omk/`（0700），不往 keystore 目录里塞 dotfile；`targets` 命令改走 `current_target_apps`（修掉旧代码会把整份 TOML 当名单吐出来的问题）；「关于」页的后端格改用 `backend` / `backend_name`，不再只认 TEE/Tricky。
+  * 状态文件**寄生在 OMK 自己的 `/data/adb/omk/`**（`.ts_*` 前缀，不往 keystore 目录里塞 dotfile，也不新开顶层目录）；`targets` 命令改走 `current_target_apps`（修掉旧代码会把整份 TOML 当名单吐出来的问题）；「关于」页的后端格改用 `backend` / `backend_name`，不再只认 TEE/Tricky。
   * `tests/omk.sh`（接进 CI，**37 条断言**）：scoop 多行/单行/空/缺失读取、定点替换、其它段与 per-package 段保留、内容一致不落盘、备份与重载请求、恢复单条、三方冲突矩阵，以及「首次沿用整条同步不改文件、有新装时写入」。三处变异（去掉沿用、冲突阈值、整份重写）都验过会红。
 
 * **同步模型换成快照差分，墓碑文件整个拿掉**：加入的来源从「已装但文件里没有」改成「上一轮之后新装的」（`inst − was`），删除只删「上一轮之后卸载的」（`was − inst`），文件里其余条目原样保留。手动删掉的包仍然装着、但不在"新装"里，所以**结构上就不可能被回填** —— 不再需要 `.ts_removed` 与那份"上次写了什么"的 `.ts_written_last`；差分状态只剩 `.ts_installed_last` 一份基线，另加一份 `.ts_ever`（历次纳入的并集，只用于「已排除」判定）。

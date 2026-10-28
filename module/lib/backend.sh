@@ -60,13 +60,12 @@ use_backend() {
         AWK_CMD=$(find_awk)
     elif [ "$1" = "omk" ]; then
         TAA_BACKEND="omk"
-        # 不在 keystore 的目录里放本模块的状态文件：单独一个我们自己的目录
-        TAA_DIR="$TAA_OMK_STATE"
+        # 状态寄生在 OMK 自己的状态目录（.ts_* 前缀不会和它的 pid/restart 撞名）
+        TAA_DIR="$OMK_STATE_DIR"
         TARGET_FILE="$OMK_INJECTOR"
         TAA_PATCH="$mdir/backends/omk.awk"
         AWK_CMD=$(find_awk)
         mkdir -p "$TAA_DIR" 2>/dev/null
-        chmod 700 "$TAA_DIR" 2>/dev/null
     else
         TAA_BACKEND="tricky"
         TAA_DIR="$TSTORE_DIR"

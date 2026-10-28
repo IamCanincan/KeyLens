@@ -16,7 +16,7 @@ TS-AUTO-ADD 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickySt
 | **Tricky Store / OSS** | `tricky_store` | `/data/adb/tricky_store/target.txt` |
 | **OhMyKeymint** | `oh_my_keymint` | `/data/misc/keystore/omk/injector.toml` 的 `scoop` 数组（`config.toml` 不碰） |
 
-TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段（`keybox` / `mode` / `patchLevel` / 设备信息等）与其它 profile 一律原样保留；无法可靠定位数组时放弃写入。OhMyKeymint 同样**只替换 `scoop` 数组**，注释、`version`、`[main]` / `[filter]` / `[intercept]` 与每个包的 `[scoop.<包名>]` 段逐字节保留。两者的目标文件在被写入前会先备份（OhMyKeymint 的备份在 `/data/adb/ts_auto.omk/injector.toml.bak`）。
+TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段（`keybox` / `mode` / `patchLevel` / 设备信息等）与其它 profile 一律原样保留；无法可靠定位数组时放弃写入。OhMyKeymint 同样**只替换 `scoop` 数组**，注释、`version`、`[main]` / `[filter]` / `[intercept]` 与每个包的 `[scoop.<包名>]` 段逐字节保留。两者的目标文件在被写入前会先备份（OhMyKeymint 的备份在 `/data/adb/omk/injector.toml.bak`，与 OMK 自己的状态文件放在一起）。
 
 > OhMyKeymint 第一次接入时，如果 `scoop` 里**已有内容**，模块会沿用这份名单（只把当前已装记成基线，不批量灌入），之后新装自动加入、卸载自动移除；只有 `scoop` 为空时才按其它后端一样加入全部已装 + 谷歌三件套。
 
@@ -218,7 +218,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 ## 📂 数据与配置路径
 
-运行时文件位于**当前后端目录**（TEE Simulator：`/data/adb/teesim/`；Tricky Store：`/data/adb/tricky_store/`；OhMyKeymint：状态在 `/data/adb/ts_auto.omk/`，配置本身在 `/data/misc/keystore/omk/`）：
+运行时文件位于**当前后端目录**（TEE Simulator：`/data/adb/teesim/`；Tricky Store：`/data/adb/tricky_store/`；OhMyKeymint：本模块的 `.ts_*` 状态寄生在 OMK 自己的 `/data/adb/omk/`，配置本身在 `/data/misc/keystore/omk/`）：
 
 | 文件 | 说明 |
 |------|------|
@@ -313,7 +313,7 @@ A：目标文件不可写（目录只读、文件被占用等），或 OhMyKeymi
 A：先看本地缓冲 `tail -n 50 /data/adb/ts_auto.log`（或 `logcat -d -s TS-AUTO`）里的错误信息；确认 `pm` 命令可用；尝试手动执行 `action.sh` 测试。
 
 **Q：OhMyKeymint 的 `injector.toml` 被改动了？**  
-A：模块只改 `scoop` 数组，写入前备份到 `/data/adb/ts_auto.omk/injector.toml.bak`；其它段与 `config.toml` 不碰。写入后会写 `/data/adb/omk/restart.injector`，让 OMK 自己重载 injector。
+A：模块只改 `scoop` 数组，写入前备份到 `/data/adb/omk/injector.toml.bak`；其它段与 `config.toml` 不碰。写入后会写 `/data/adb/omk/restart.injector`，让 OMK 自己重载 injector。
 
 **Q：如何临时禁用后台监听？**  
 A：可删除后端目录下的 `.ts_daemon_pids.list` 并重启，或直接卸载模块。

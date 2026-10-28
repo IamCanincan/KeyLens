@@ -67,9 +67,9 @@ ui_print " "
 ui_print "🧹 [4/5] 清理旧版文件"
 rm -rf "$TSTORE_DIR/.ts_lock" "$TSTORE_DIR/.ts_debounce" "$TSTORE_DIR/.ts_tmp" \
        "$TEESIM_DIR/.ts_lock" "$TEESIM_DIR/.ts_debounce" "$TEESIM_DIR/.ts_tmp" \
-       "$TAA_OMK_STATE/.ts_lock" "$TAA_OMK_STATE/.ts_debounce" "$TAA_OMK_STATE/.ts_tmp" \
-       "$TSTORE_DIR"/.ts_daemon*.pid "$TEESIM_DIR"/.ts_daemon*.pid "$TAA_OMK_STATE"/.ts_daemon*.pid 2>/dev/null
-rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.ts_fingerprint" "$TEESIM_DIR/.ts_fingerprint" "$TAA_OMK_STATE/.ts_fingerprint" 2>/dev/null
+       "$OMK_STATE_DIR/.ts_lock" "$OMK_STATE_DIR/.ts_debounce" "$OMK_STATE_DIR/.ts_tmp" \
+       "$TSTORE_DIR"/.ts_daemon*.pid "$TEESIM_DIR"/.ts_daemon*.pid "$OMK_STATE_DIR"/.ts_daemon*.pid 2>/dev/null
+rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.ts_fingerprint" "$TEESIM_DIR/.ts_fingerprint" "$OMK_STATE_DIR/.ts_fingerprint" 2>/dev/null
 rm -f "$TSTORE_DIR/taa_sys.txt" 2>/dev/null
 rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 
