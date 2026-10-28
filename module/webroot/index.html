@@ -202,13 +202,6 @@ button,input,textarea,select{font:inherit;color:inherit}
 .icon-add::after{content:"";position:absolute;top:50%;left:50%;width:var(--hit);height:var(--hit);
   transform:translate(-50%,-50%)}
 .back[hidden]{display:none}
-/* kicker 不再全大写 + 字距：那一行是全屏最吵的东西，而它只是一行设备注脚。
-   混合大小写、常规字重，安静下来之后大标题才是唯一的重心。 */
-/* 二级页只留大标题：设备行是概览的身份注脚，进到某一页之后不需要再重复一遍。
-   .kicker 自带 display:block，会盖掉 hidden 属性 —— 必须补一条显式规则。 */
-.kicker[hidden]{display:none}
-.kicker{display:block;font-size:var(--fs12);font-weight:500;letter-spacing:.1px;color:var(--on-variant);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap;max-width:60vw}
 .appbar h1{font-size:var(--fs22);font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
 /* ================= 卡片 ================= */
@@ -300,27 +293,18 @@ button,input,textarea,select{font:inherit;color:inherit}
 .fab:active{border-radius:50%;transform:scale(.9)}
 
 /* ================= 二级页入口（底栏已去掉） ================= */
-/* 一切从概览下钻：一张卡里四行，每行 图标 + 标题/副标题 + chevron。
-   二级页的返回在顶栏左侧，系统返回键走同一套（history + popstate）。 */
-/* 通栏行：行自己左右留 sp6，与卡片内容左缘严格对齐（以前入口图标在 50、
-       状态卡标签在 56，两张并排的卡有两条缩进线）。overflow:hidden 把行的
-       悬停底色裁进卡片圆角。 */
+/* 一切从概览下钻：一张卡里四行，每行只有标题 —— 旧版还有副标题和图标位，
+   副标题是解释、图标位从来没被渲染出来，留着只是两条缩进。 */
+/* 通栏行：行自己左右留 sp6，与卡片内容左缘严格对齐。
+   overflow:hidden 把行的悬停底色裁进卡片圆角。 */
 .menu{padding:var(--sp3) 0;overflow:hidden}
 .menu-row{display:flex;align-items:center;gap:var(--sp3);width:100%;
-  padding:12px var(--sp6);border:0;border-radius:0;background:transparent;
+  padding:16px var(--sp6);border:0;border-radius:0;background:transparent;
   color:var(--on-surface);text-align:left;cursor:pointer;
   transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
 .menu-row:active{transform:scale(.985);background:var(--surface-mid)}
-/* 图标不再垫底盘：36px 的填色方块一屏 5 个，是入口卡里最后的"面"。
-   去掉之后就是 M3 列表项的样子 —— 图标本身在 on-variant 上，靠标题拉层级。 */
-.menu-ic{flex:none;width:24px;height:24px;display:grid;place-items:center;color:var(--on-variant)}
-.menu-ic svg{width:24px;height:24px;display:block;fill:currentColor}
 .menu-txt{flex:1;min-width:0;display:block}
-.menu-txt b{display:block;font-size:var(--fs14);font-weight:600;line-height:1.3}
-.menu-txt small{display:block;margin-top:2px;font-size:var(--fs12);color:var(--on-variant);
-  overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.menu .chev{flex:none;color:var(--on-variant);opacity:.64}
-.menu .chev svg{width:20px;height:20px;display:block;fill:currentColor}
+.menu-txt b{display:block;font-size:var(--fs14);font-weight:600;line-height:1.4}
 /* 概览里是两张卡：入口在上、状态明细在下 */
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
    它们自己的内容还亲，版面立刻显得局促。 */
@@ -338,8 +322,8 @@ button,input,textarea,select{font:inherit;color:inherit}
    负外边距 + 等值内边距：色块向外铺到卡内边距的中点，文字左缘仍然精确落在 41
    （全站那一条内容左缘不能因为加底色而挪位置）。 */
 .grp{background:var(--block);border-radius:var(--r-m);
-  margin:0 calc(var(--sp3) * -1);padding:var(--sp3)}
-.grp+.grp{margin-top:var(--sp5)}
+  margin:0 calc(var(--sp4) * -1);padding:var(--sp4)}
+.grp+.grp{margin-top:var(--sp6)}
 .grp-t{font-size:var(--fs12);font-weight:600;letter-spacing:.1px;color:var(--on-variant);
   margin-bottom:var(--sp2)}
 /* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
@@ -348,30 +332,30 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 格子不再填色：一屏 8 个灰块等于 8 个"面"，卡片里再套盒子就显得碎。
    也不画分隔线：两列的格子高度天然不同（日志缓冲多一行小字），线会参差 ——
    分层交给组标题与行距。列保持两列（整行 label/value 会在中间拉出几百 px 空洞）。 */
-.grid{display:grid;gap:var(--sp3) var(--sp5);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
+.grid{display:grid;gap:var(--sp4) var(--sp5);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
 .blk{background:transparent;border-radius:0;padding:0;min-width:0}
-.blk-k{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:3px}
-.blk-v{display:flex;align-items:center;gap:8px;font-size:var(--fs16);font-weight:600;line-height:1.3;min-width:0}
+.blk-k{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:5px}
+.blk-v{display:flex;align-items:center;gap:8px;font-size:var(--fs16);font-weight:600;line-height:1.4;min-width:0}
 .blk-v>span{min-width:0}
 .blk-v .pill{font-weight:inherit}
 /* 注释行不再裁：以前 nowrap + ellipsis，板块一分列，路径与说明就被切成
    "/data/adb/teesim/conf…"。改成换行，宁可格子高一点也不丢字。
    完整值仍在 title 上；断点优先落在 "/" 后面（见 blk 里的零宽空格），
    overflow-wrap 只是那种没有斜杠的长串兜底。 */
-.blk small{display:block;font-size:var(--fs12);font-weight:400;color:var(--on-variant);margin-top:3px;
+.blk small{display:block;font-size:var(--fs12);font-weight:400;color:var(--on-variant);margin-top:5px;line-height:1.55;
   overflow-wrap:anywhere}
 .blk-num{font-size:var(--fs22);font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
 .blk-v .blk-num{font-size:var(--fs22);font-weight:700}
 /* 路径是脚注不是数据：单独一组小字，别塞进网格里当第 N 行收据 */
-.paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:2px}
-.path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.5}
+.paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:6px}
+.path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.6}
 .path-k{flex:none;font-size:var(--fs12);color:var(--on-variant)}
 .path-v{min-width:0;word-break:break-all;font-size:var(--fs12);color:var(--on-variant)}
 /* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
 .card-quiet .blk{background:transparent;border-bottom:0;padding:0}
-.card-quiet .grid{gap:var(--sp3)}
+.card-quiet .grid{gap:var(--sp4)}
 .card-quiet .blk-v{font-size:var(--fs14);font-weight:600}
-.card-quiet .blk-k{margin-bottom:1px}
+.card-quiet .blk-k{margin-bottom:5px}
 /* 状态只在「需要关注」时才着色：正常值就是普通文字，不给绿点。
    一排绿点等于什么都没说，还会把概览变成红绿灯阵列；
    只有 warn/bad/na 才画点或胶囊，眼睛第一眼落在的就是它们。 */
@@ -390,7 +374,7 @@ button,input,textarea,select{font:inherit;color:inherit}
    从 26 收到 24 之后内容宽度 514 → 518，越过 2×258+1 的阈值，列表自己翻成了
    两列。现在显式写死。 */
 #appsBody{display:block}
-.app-row{display:flex;align-items:center;gap:var(--sp3);padding:5px var(--sp2);border-radius:var(--r-m);
+.app-row{display:flex;align-items:center;gap:var(--sp3);padding:7px 0;border-radius:var(--r-m);
   min-width:0;transition:background var(--d1) var(--e-emph)}
 .app-row:hover{background:var(--surface-mid)}
 /* 头像：有桌面缓存就用那张真图标，没有就用首字块。
@@ -436,7 +420,8 @@ body.is-selecting #appsBody{padding-bottom:96px}
    47.3px 一行，卡高 753。现在同排显示，长值走省略号 + title 看全文。
    不符的那一行让值单独占第二行：期望值是这一行存在的理由，不能被省略号吃掉。 */
 .prop-row{display:grid;grid-template-columns:minmax(0,1fr) minmax(0,1.3fr) auto;
-  column-gap:var(--sp3);align-items:center;padding:5px var(--sp2);border-bottom:var(--hair)}
+  column-gap:var(--sp3);align-items:center;padding:9px 0;border-bottom:var(--hair)}
+.prop-row.is-ok{grid-template-columns:minmax(0,1fr) minmax(0,1.6fr)}
 /* 不符的那行：键与状态在第一行、值整行放第二行。落位必须写死 ——
    只靠自动放置，那颗 pill 会被塞到跨两列的一行里，被拉成整条红色。 */
 .prop-row.is-diff{grid-template-columns:minmax(0,1fr) auto;row-gap:2px}
@@ -444,9 +429,9 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .prop-row.is-diff .pill{grid-column:2;grid-row:1;justify-self:end}
 .prop-row.is-diff .prop-v{grid-column:1 / -1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal}
 .prop-row:last-child{border-bottom:0}
-.prop-k{font-family:var(--mono);font-size:var(--fs12);color:var(--on-surface);min-width:0;
+.prop-k{font-family:var(--mono);font-size:var(--fs12);color:var(--on-surface);min-width:0;line-height:1.5;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
-.prop-v{font-family:var(--mono);font-size:var(--fs12);color:var(--on-variant);min-width:0;
+.prop-v{font-family:var(--mono);font-size:var(--fs12);color:var(--on-variant);min-width:0;line-height:1.5;
   overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
 /* 窄屏放不下"键 · 值"同排（320 下键就吃掉 194px），退回两行 */
 @media (max-width:399px){
@@ -455,9 +440,8 @@ body.is-selecting #appsBody{padding-bottom:96px}
   .pill{grid-column:2;grid-row:1;justify-self:end}
   .prop-v{grid-column:1 / -1;grid-row:2;overflow:visible;text-overflow:clip;white-space:normal}
 }
-.prop-row .pill[data-tone=ok]{font-size:var(--fs12);font-weight:500;color:var(--on-variant)}
 /* Verified Boot 哈希：值是一长串十六进制，必须能断行，省略号在这里没有意义 */
-.hash-line{display:flex;align-items:baseline;gap:var(--sp3);padding:3px var(--sp2);min-width:0}
+.hash-line{display:flex;align-items:baseline;gap:var(--sp3);padding:3px 0;min-width:0}
 .hash-k{flex:none;font-size:var(--fs12);font-weight:600;color:var(--on-variant)}
 .hash-v{min-width:0;font-family:var(--mono);font-size:var(--fs12);color:var(--on-surface);overflow-wrap:anywhere}
 
@@ -476,12 +460,12 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .field label{display:block;font-size:var(--fs12);font-weight:700;letter-spacing:.4px;
   color:var(--on-variant);margin:0 0 var(--sp1) var(--sp1)}
 .field:focus-within label{color:var(--primary)}
-.hint{font-size:var(--fs12);color:var(--on-variant);margin-top:var(--sp1)}
+.hint{font-size:var(--fs12);color:var(--on-variant);margin-top:var(--sp1);line-height:1.55}
 /* 需要处理才着色，与全局「正常态不上色」一致 */
 .hint-warn{color:var(--on-error-container);background:var(--error-container);
   border-radius:var(--r-s);padding:var(--sp2) var(--sp3);margin-top:var(--sp2)}
 .hint-warn[hidden]{display:none}
-.toolbar{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap;margin-top:var(--sp3)}
+.toolbar{display:flex;align-items:center;gap:var(--sp3);flex-wrap:wrap;margin-top:var(--sp3)}
 .switch-row{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) 0}
 .switch-row .txt{flex:1;min-width:0}
 .switch-row .txt b{display:block;font-size:var(--fs14);font-weight:600}
@@ -500,8 +484,8 @@ body.is-selecting #appsBody{padding-bottom:96px}
 
 /* ================= 日志 ================= */
 .console{background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-m);
-  padding:var(--sp2);max-height:52vh;overflow:auto;font-family:var(--mono);font-size:var(--fs12);line-height:1.5;-webkit-overflow-scrolling:touch}
-.log-line{white-space:pre-wrap;word-break:break-all;padding:0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
+  padding:var(--sp2);max-height:52vh;overflow:auto;font-family:var(--mono);font-size:var(--fs12);line-height:1.7;-webkit-overflow-scrolling:touch}
+.log-line{white-space:pre-wrap;word-break:break-all;padding:3px 0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
 .log-line:last-child{border-bottom:0}
 .log-line[data-lvl=err]{background:var(--error-container);color:var(--on-error-container)}
 .log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
@@ -574,7 +558,6 @@ body.is-selecting #appsBody{padding-bottom:96px}
   <div class="appbar-row">
     <button class="back" id="btnBack" aria-label="返回上一级" hidden></button>
     <div style="min-width:0">
-      <span class="kicker" id="kicker">TS-AUTO-ADD</span>
       <h1 id="pageTitle">概览</h1>
     </div>
   </div>
@@ -607,26 +590,18 @@ body.is-selecting #appsBody{padding-bottom:96px}
       <!-- 二级页入口：底栏去掉之后，三个子页都从这里进；返回在顶栏最左 -->
       <nav class="card menu" id="homeMenu" aria-label="二级页">
         <button class="menu-row" data-go="apps">
-          <span class="menu-ic"><i class="ico" data-icon="apps"></i></span>
-          <span class="menu-txt"><b>应用列表</b><small>桌面图标与应用名 · 对照目标名单</small></span>
-          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+          <span class="menu-txt"><b>应用列表</b></span>
         </button>
         <button class="menu-row" data-go="log">
-          <span class="menu-ic"><i class="ico" data-icon="logs"></i></span>
-          <span class="menu-txt"><b>运行日志</b><small>末尾 30~300 行 · 可自动刷新</small></span>
-          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+          <span class="menu-txt"><b>运行日志</b></span>
         </button>
         <button class="menu-row" data-go="props">
-          <span class="menu-ic"><i class="ico" data-icon="tune"></i></span>
-          <span class="menu-txt"><b>系统属性伪装</b><small>开机写入的期望值 · 可立即应用一次</small></span>
-          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+          <span class="menu-txt"><b>系统属性伪装</b></span>
         </button>
         <!-- 四个入口现在走同一条路：都是 goTab + hash，都有返回箭头。
              「关于」以前是浮层，那一行看着一样、点下去行为不一样。 -->
         <button class="menu-row" data-go="about">
-          <span class="menu-ic"><i class="ico" data-icon="info"></i></span>
-          <span class="menu-txt"><b>关于与自检</b><small>桥接 / 取色 / 字体 / 设备信息</small></span>
-          <span class="chev"><i class="ico" data-icon="chev"></i></span>
+          <span class="menu-txt"><b>关于与自检</b></span>
         </button>
       </nav>
       <section class="card home-card">
@@ -678,7 +653,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
 
     <section class="card panel" id="p-props" hidden>
       <div class="switch-row">
-        <span class="txt"><b>开机时重置属性</b><span id="propsSwitchHint">关闭后下次开机起不再写入期望值</span></span>
+        <span class="txt"><b>开机时重置属性</b><span id="propsSwitchHint">开机写入并复核；关闭后下次开机生效</span></span>
         <span class="switch" id="propsSwitch" role="switch" aria-checked="true" tabindex="0"></span>
       </div>
       <div class="toolbar" style="margin-top:0">
@@ -692,7 +667,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
         <div class="hash-line"><span class="hash-k">已保存</span><span class="hash-v" id="bhSaved">—</span></div>
         <div class="field" style="margin-top:var(--sp3)">
           <label for="bhInput">verifiedBootHash（64 或 128 位十六进制）</label>
-          <input type="text" id="bhInput" placeholder="从 KeyAttestation 等处取到后粘贴到这里" autocomplete="off" spellcheck="false">
+          <input type="text" id="bhInput" placeholder="粘贴 verifiedBootHash" autocomplete="off" spellcheck="false">
         </div>
         <div class="toolbar" style="margin-top:var(--sp2)">
           <button class="btn btn-filled btn-sm" id="btnBhSave">保存并应用</button>
@@ -1243,21 +1218,10 @@ function renderHero(){
     setTimeout(function (){ countNum.classList.remove('bump'); }, 220);
   }
 
-  var sub = [];
-  sub.push('第三方 ' + orDash(have ? S.apps.length : null));
-  if (n(st.daemon_alive)) sub.push('守护进程 ' + st.daemon_alive + ' 个');
-  else if (st.daemon_alive === '0') sub.push('守护进程未运行');
-  countSub.textContent = sub.join(' · ');
+  countSub.textContent = '第三方 ' + orDash(have ? S.apps.length : null);
 
   /* 标签上的角标也在这里统一挂：列表是共用的一份，不该等某页画过才亮；
      日志行数 status 里就有，同样不必先进日志页 */
-
-  // 设备行：env 还没回来时不能拼出「Android undefined」，逐项判空
-  var dev = [];
-  if (env.brand) dev.push(env.brand);
-  if (env.device) dev.push(env.device);
-  if (env.android) dev.push('Android ' + env.android);
-  kicker.textContent = "TS-AUTO-ADD" + (dev.length ? " · " + dev.join(" · ") : "");
 
   /* 契约不匹配排在最前：那时连 status 的解析都不可信，拿它决定的横幅更不可信。 */
   if (S.contract.bad || (S.contract.checked && S.contract.api === null)) {
@@ -1322,27 +1286,23 @@ function renderOver(){
   box.textContent = '';
   var ino = !env.inotify_mode ? '读取中'
     : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
-  var inoNote = env.inotify_cmd && env.inotify_cmd !== env.inotify_mode
-    ? '命令 ' + env.inotify_cmd : '';
   var have = !!S.loaded.lists;
 
   box.appendChild(grp('同步链路', [
-    blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok', st.data_dir),
-    blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok'), inoNote),
+    blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok'),
+    blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')),
     blk('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个',
       st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num'),
-    blk('日志缓冲', bytesLabel(st.log_bytes), null,
-      (st.log_lines || 0) + ' 行 · ' + (st.log_file || ''), 'blk-num')
+    blk('日志缓冲', bytesLabel(st.log_bytes), null, (st.log_lines || 0) + ' 行', 'blk-num')
   ]));
 
   box.appendChild(grp('配置与写入', [
     blk('目标文件', (st.target_exists === '1' ? '存在' : '不存在') +
       (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
-      st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', st.target_file),
+      st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad'),
     blk('上次写入', timeLabel(st.target_mtime)),
     blk('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
-      st.props_masking === 'off' ? 'na' : 'ok',
-      env.resetprop === '1' ? 'resetprop 可用' : '未找到 resetprop')
+      st.props_masking === 'off' ? 'na' : 'ok')
   ]));
 }
 
@@ -1607,8 +1567,8 @@ function renderLog(){
     S.logSig = sig;
     if (atBottom) box.scrollTop = box.scrollHeight;
   }
-  logStat.textContent = '显示末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes) +
-    ' · 上限 64KB，超出后只保留末尾 200 行' + (S.status.log_lines && n(S.status.log_lines) > S.log.length
+  logStat.textContent = '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes) +
+    (S.status.log_lines && n(S.status.log_lines) > S.log.length
     ? '（共 ' + S.status.log_lines + ' 行）' : '');
 }
 
@@ -1621,7 +1581,7 @@ function renderProps(){
   var bad = 0;
   S.props.forEach(function (row){
     if (row[3] !== 'ok') bad++;
-    var line = el('div', 'prop-row' + (row[3] === 'diff' ? ' is-diff' : ''));
+    var line = el('div', 'prop-row' + (row[3] === 'diff' ? ' is-diff' : '') + (row[3] === 'ok' ? ' is-ok' : ''));
     var k = el('span', 'prop-k', row[0]);
     k.title = row[0];
     line.appendChild(k);
@@ -1631,9 +1591,11 @@ function renderProps(){
       : actual);
     v.title = v.textContent;
     line.appendChild(v);
-    var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
-    p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
-    line.appendChild(p);
+    if (row[3] !== 'ok') {
+      var p = el('span', 'pill', PROPS_LABEL[row[3]] || row[3]);
+      p.setAttribute('data-tone', PROPS_TONE[row[3]] || 'na');
+      line.appendChild(p);
+    }
     box.appendChild(line);
   });
   if (!S.props.length) box.appendChild(el('div', 'empty', '没有属性数据'));
@@ -1643,8 +1605,8 @@ function renderProps(){
   var on = S.status.props_masking !== 'off';
   propsSwitch.setAttribute('aria-checked', on ? 'true' : 'false');
   propsSwitchHint.textContent = on
-    ? '开机（Zygote 前）写入，开机完成后再复核一次；关闭后下次开机起不再写入'
-    : '已关闭：下次开机不会重置这些属性（应用列表维护不受影响）';
+    ? '开机写入并复核；关闭后下次开机生效'
+    : '已关闭：下次开机不再重置（列表维护照旧）';
   renderBootHash();
 }
 
@@ -1660,12 +1622,12 @@ function renderBootHash(){
   var st = S.boot || {};
   document.getElementById('bhCurrent').textContent = st.current || '(空)';
   document.getElementById('bhSaved').textContent = st.configured || '(未保存)';
-  var base = '只影响 ro.boot.vbmeta.digest，不受上面的伪装开关影响；只写本次运行，重启回系统原值。';
+  var base = '只写本次运行，重启回原值；不受上面的开关影响。';
   var hint = document.getElementById('bhHint');
-  if (st.status === 'invalid') hint.textContent = '保存的文件不是 64/128 位十六进制，已忽略。' + base;
-  else if (st.status === 'mismatch') hint.textContent = '已保存的值与当前运行值不同；点「保存并应用」立即写入。' + base;
-  else if (st.status === 'ok') hint.textContent = '当前 digest 与保存值一致。' + base;
-  else hint.textContent = '未保存：显示系统原值。' + base;
+  if (st.status === 'invalid') hint.textContent = '配置非法，已忽略。' + base;
+  else if (st.status === 'mismatch') hint.textContent = '与当前值不一致，保存后立即写入。' + base;
+  else if (st.status === 'ok') hint.textContent = '已应用。' + base;
+  else hint.textContent = '未保存。' + base;
 }
 
 /* =========================================================
@@ -1731,16 +1693,17 @@ function renderAbout(){
   about.textContent = '';
   about.appendChild(grp('界面自检', [
     blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
+    blk('设备', [env.brand, env.device, env.android ? 'Android ' + env.android : '']
+      .filter(Boolean).join(' · '), null),
     blk('命令层契约', S.contract.checked
         ? ('api ' + (S.contract.api === null ? '读不到' : S.contract.api)
            + ' / 界面 ' + EXPECT_API + (S.contract.bad ? '（不匹配，已停写）' : ''))
         : '未检查',
-      (!S.contract.checked || S.contract.bad) ? 'bad' : 'ok',
-      '两边同在一个模块包里，但迭代时可以只推其中一个文件；号不一致界面就拒绝写入'),
+      (!S.contract.checked || S.contract.bad) ? 'bad' : 'ok'),
     blk('安全区留白', Math.round((parseFloat(getComputedStyle(document.documentElement)
           .getPropertyValue('--inset-top')) || 0)) + ' / '
         + Math.round((parseFloat(getComputedStyle(document.documentElement)
-          .getPropertyValue('--inset-bottom')) || 0)) + ' px', null, S.insetSrc),
+          .getPropertyValue('--inset-bottom')) || 0)) + ' px', null),
     (function (){
       var t = iconStatSummary();
       return blk('应用图标', t.text, t.tone, t.note);
@@ -1755,28 +1718,22 @@ function renderAbout(){
         : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk')
             ? (st.backend_name || st.backend || '已启用') : '无已启用后端'),
       st.conflict === '1' ? 'bad'
-        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk') ? 'ok' : 'bad'),
-      st.conflict === '1' ? 'Tricky Store / TEE Simulator / OhMyKeymint 只能留一个'
-        : (st.backend ? '当前：' + (st.backend_name || st.backend) : '未探测到'))
+        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk') ? 'ok' : 'bad'))
   ]));
   about.appendChild(grp('外观', [
     blk('取色', THEME.frroOk ? '系统 overlay'
         : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
-      (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na',
-      THEME.note || '—'),
+      (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na'),
     blk('字体', THEME.fontFile ? '系统字体文件'
         : (THEME.font ? '族名 ' + THEME.font : 'WebView 默认'),
-      THEME.fontFile ? 'ok' : (THEME.font ? 'warn' : 'na'),
-      THEME.fontFile ? '由 webroot/' + THEME.fontFile + ' 用 @font-face 加载'
-        : (THEME.font ? '只写了族名 —— 实测 Chromium 不认，可能仍是 Roboto'
-                      : '读不到系统字体，只能用它自己的默认')),
-    blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok',
-      THEME.dark === '' ? '系统未给出计算结果，用 WebView 的媒体查询' : '系统计算来源：' + THEME.darkSrc),
-    blk('生效值', THEME.applied || '—', null, '色相与彩度都取自系统，界面不提供覆盖')
+      THEME.fontFile ? 'ok' : (THEME.font ? 'warn' : 'na')),
+    blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok'),
+    blk('生效值', THEME.applied || '—')
   ]));
 
   var paths = el('div', 'paths');
   [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
+   ['数据目录', st.data_dir || '—'], ['目标文件', st.target_file || '—'],
    ['日志文件', st.log_file || '—'],
    ['上次命令', CALL_LOG.cmd + ' · ' + CALL_LOG.ms + 'ms' + (CALL_LOG.at ? ' · ' + CALL_LOG.at : '')]]
    .forEach(function (pair){
@@ -1788,8 +1745,6 @@ function renderAbout(){
     paths.appendChild(row);
   });
   about.appendChild(paths);
-  /* 概览底部那句说明搬到这里：它是解释，不是数据，留在概览只会把卡片收尾拖着两条小字 */
-  about.appendChild(el('p', 'hint', '模块只在开机与文件变化时同步，界面不会后台轮询；概览上的数字每次点「重新读取」才更新。'));
 
 }
 
@@ -2139,7 +2094,6 @@ function applyPage(name){
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
   hero.hidden = !home;        // 二级页不重复英雄卡：那一屏只有标题 + 内容
-  kicker.hidden = !home;      // 设备行也只属于概览
   btnBack.hidden = home;
   document.querySelector('.appbar').classList.toggle('is-sub', !home);
 }
@@ -2235,6 +2189,7 @@ function wire(){
   btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
   btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
   btnPropsApply.innerHTML = svg('tune') + '<span>立即应用</span>';
+  btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
 
   homeMenu.addEventListener('click', function (e){
     var b = e.target.closest ? e.target.closest('.menu-row') : null;
@@ -2364,7 +2319,6 @@ function showNoBridge(){
     '界面每次刷新发的就是这个命令，参数换成 help 可以看全部子命令。';
   stateText.textContent = '无法连接';
   stateBadge.setAttribute('data-tone', 'bad');
-  kicker.textContent = 'WebUI 桥接不可用';
 
   /* 把扫到的东西列出来：连不上时最需要的不是道歉，是"到底看见了什么" */
   var box = document.getElementById('overBody');
