@@ -224,6 +224,11 @@
 
 #### 修复
 
+* **图标分批时把列表尾巴静默丢了**：`loadIcons` 一次最多问 120 个包（SQL 里是 120 条 or 子句，一次 sqlite 整批处理），问满就跳出循环，剩下的这一趟不管 —— 而 `iconAsked` 已经把前 120 个标成"问过"，尾巴也不会再来。实测本机 125 个目标的列表里，排在 **#124 `sh.ppy.osulazer`、#125 `tv.danmaku.bili`** 的两个：缓存里分别有 1 行和 13 行图标，目录里却没有它们的 PNG；单独跑一次 `webui.sh icons` 就正常导出（osu! / 哔哩哔哩）。列表越长丢得越多。现在改成**分批递归**：一批问完还有没问过的就接着问下一批，`iconAsked` 保证必然收敛。
+  * 自检（桩掉传输层，测的就是页面上那个 `loadIcons`）：125 个包 → 调用 `["icons:120","icons:5"]`、**125/125 全部问到**；命令失败时只调 1 次就停（不会死循环）；已问过的再调只补问剩下 5 个。修完设备上 PNG 从 109 张补到 **111 张**（= 缓存里有图的包数）。
+  * **不是 bug 的那一类**：另有 **14/125** 在桌面缓存里连一行都没有 —— `com.google.android.gms` / `gsf` / `webview` / `ar.core` / `safetycore` / `verifier` / `contactkeys` / `ambient.streaming` / `as.oss` / `apps.work.clouddpc` / `apps.setupwizard.searchselector` / `breezyweather.geometriciconprovider` / 一个 tachiyomi 扩展等。这些是**没有启动器入口的后台组件**，桌面上本来就没有图标可取，降级成首字块是正确行为。设备上没有 aapt、也没有能读 APK 资源的工具，从 APK 里抠图标这条路之前就验过走不通。
+  * 顺带核过、不改：降级块取的是包名**最后一段**的首字母（`monogram`，`gms`→G），不是"整页一片 C" —— 这条早就在做了，别为它再改一遍。
+
 * **收尸的 `pkill` 匹配太宽，会杀掉别的模块的监听**：`uninstall.sh` 原来写的是 `pkill -f "inotifyd.*rules.txt"` —— 任何模块只要监听一个**叫 `rules.txt`** 的文件就会被连带停掉，而本模块的常驻列表与 Tricky Addon 之类的文件正是同名的。匹配串改成带绝对路径（`/data/adb/teesim/rules.txt` 与 `/data/adb/tricky_store/rules.txt` 两个后端目录都列）：卸载是本模块的事，不该顺手停别人的监听。
   * 顺带补一处：`service.sh` 的清理只按 `.ts_daemon_pids.list` 里的 PID 收，而记下的那个 PID 是管道**右边**的 while 子壳，左边的 `inotifyd` 不在名单上 —— 只按 PID 收会留下一个还在往管道里写的孤儿监视。现在清理阶段再按"我们自己的 rules.txt 绝对路径"精确收一次（放在启动新监视**之前**，不会误杀本轮刚起的）。
 

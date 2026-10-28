@@ -1744,9 +1744,13 @@ function loadLists(){
 /* 图标与显示名取自桌面自己的缓存（webui.sh icons 把 PNG 导进 webroot/icons/）。
    先画行、后补图标：这一步慢或压根没有缓存时，列表仍然是完整可读的，
    不该让一整页应用等一次 sqlite。 */
+/* 一批最多问 120 个（SQL 里是 120 条 or 子句，一次 sqlite 调用整批处理）。
+   分批不等于可以丢：以前问满 120 就把剩下的静默丢掉，实测 125 个目标的列表里
+   osu!、哔哩哔哩 因为排在尾巴上就一直没图标，列表越长丢得越多。 */
+var ICON_BATCH = 120;
 function loadIcons(pkgs){
   var todo = [], i;
-  for (i = 0; i < pkgs.length && todo.length < 120; i++) {
+  for (i = 0; i < pkgs.length && todo.length < ICON_BATCH; i++) {
     if (S.iconAsked[pkgs[i]]) continue;
     S.iconAsked[pkgs[i]] = 1;
     todo.push(pkgs[i]);
@@ -1758,7 +1762,9 @@ function loadIcons(pkgs){
       var f = line.split('\t');
       if (f.length >= 3 && f[0]) S.icons[f[0]] = { label: f[1] || '', src: f[2] };
     });
-    return true;
+    /* 这一批问完，如果还有没问过的就接着问下一批。递归一定会停：
+       每轮都往 S.iconAsked 里加，todo 为空时直接返回。 */
+    return loadIcons(pkgs).then(function (){ return true; });
   });
 }
 
