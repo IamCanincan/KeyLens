@@ -221,10 +221,12 @@ sh /data/adb/modules/ts-auto-add/action.sh
 | 文件 | 说明 |
 |------|------|
 | `config.json` | TEE Simulator 配置（模块仅维护 `profiles.default.apps`） |
-| `target.txt` | Tricky Store / OSS 的应用列表（模块整体重写） |
+| `target.txt` | Tricky Store / OSS 的应用列表（模块按增量维护：只加新装、只删卸掉的，你手动加的条目保留） |
 | `rules.txt` | 常驻应用列表（始终并入目标，可手动编辑，支持 `#` 注释） |
 | `.ts_daemon_pids.list` | 所有后台子进程 PID 列表 |
 | `.ts_fingerprint` | 源数据指纹缓存（变更检测用） |
+| `.ts_installed_last` / `.ts_rules_last` | 上次同步看到的「已装第三方」与「有效常驻」，增量同步的基线 |
+| `.ts_written_last` / `.ts_removed` | 上次写进目标文件的完整列表（用于识别"这条是你手动删的"）与「手动删除」的墓碑 |
 | `.ts_lock` / `.ts_debounce` / `.ts_tmp` | 运行时锁与临时文件 |
 
 > 日志缓冲不放在后端目录，而是固定在 `/data/adb/ts_auto.log`（权限 `600`，仅 root 可读；超过 64KB 自动只保留末尾 200 行；卸载时自动删除）。

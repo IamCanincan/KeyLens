@@ -25,6 +25,8 @@ sync_target_list() {
         rm -f "$tmp" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
         mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
+        cp -f "$target" "$ST_WRITTEN" 2>/dev/null
+        mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
         return 1
     fi
 
@@ -33,6 +35,8 @@ sync_target_list() {
         chmod 644 "$target" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
         mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
+        cp -f "$target" "$ST_WRITTEN" 2>/dev/null
+        mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
         return 0
     fi
 
