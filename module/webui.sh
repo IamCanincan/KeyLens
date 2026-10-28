@@ -754,6 +754,7 @@ cmd_icons() {
     # 界面经 WebView 读这些文件：writefile 建的默认是 666，收成 644 并把上下文
     # 对齐模块内其它文件
     chmod 644 "$dir"/*.png >/dev/null 2>&1
+    chmod 644 "$dir/index.tsv" "$dir/.dbmtime" >/dev/null 2>&1
     chmod 755 "$dir" >/dev/null 2>&1
     chcon -R u:object_r:system_file:s0 "$dir" >/dev/null 2>&1
     return 0
