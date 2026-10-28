@@ -403,8 +403,6 @@ button,input,textarea,select{font:inherit;color:inherit}
 .app-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
   font-size:var(--fs14);font-weight:600}
 .app-name.is-mono{font-family:var(--mono);font-size:var(--fs12);font-weight:400;letter-spacing:-.2px}
-.app-pkg{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-family:var(--mono);font-size:var(--fs12);font-weight:400;color:var(--on-variant);margin-top:1px}
 .app-tag{flex:none;font-size:var(--fs11);font-weight:700;padding:1px 6px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
 .app-tag[data-tone=na]{background:var(--surface-highest);color:var(--on-variant);font-weight:600}
@@ -642,15 +640,14 @@ body.is-selecting #appsBody{padding-bottom:96px}
     <section class="card panel" id="p-apps" hidden>
       <div class="toolbar" style="margin-top:0">
         <div class="seg" id="appsSeg">
-          <button data-src="targets" class="is-active">生效列表</button>
-          <button data-src="apps">已安装第三方</button>
+          <button data-src="targets" class="is-active">名单</button>
+          <button data-src="apps">已安装</button>
         </div>
         <button class="btn btn-outline btn-sm" id="btnOnlyMissing" aria-pressed="false">只看未纳入</button>
         <button class="btn btn-text btn-sm" id="btnSelect" title="批量选择应用" hidden>选择</button>
       </div>
       <div class="field" style="margin-top:var(--sp4)">
-        <label>搜索应用名或包名</label>
-        <input type="text" id="appsSearch" placeholder="例如 微信 / termux" autocomplete="off">
+        <input type="text" id="appsSearch" placeholder="搜索应用或包名" aria-label="搜索应用或包名" autocomplete="off">
       </div>
       <p class="hint" id="appsStat">—</p>
       <div id="appsBody" style="margin-top:var(--sp3)"></div>
@@ -1463,10 +1460,12 @@ function renderApps(){
     row.appendChild(appAvatar(pkg, ic));
     var txt = el('span', 'app-txt');
     if (ic && ic.label) {
-      txt.appendChild(el('span', 'app-name', ic.label));
-      var pk = el('span', 'app-pkg', pkg);
-      pk.title = pkg;
-      txt.appendChild(pk);
+      /* 有显示名就只显示名字：每行再挂一排包名等于把文字量翻倍，
+         包名在 title 里，搜索也仍然匹配包名。 */
+      var nm = el('span', 'app-name', ic.label);
+      nm.title = pkg;
+      txt.appendChild(nm);
+      row.title = pkg;
     } else {
       var nm = el('span', 'app-name is-mono', pkg);
       nm.title = pkg;
