@@ -173,5 +173,61 @@ sw=$(sed '/^$/d' "$ST_WRITTEN_NEW" | sort | tr '\n' ' ')
 grep -qx "a.manual" "$ST_INSTALLED_NEW" && { printf '  ✗   人工项混进了「已装」状态\n'; fail=1; } \
     || printf '  ok   人工项没有混进「已装」状态\n'
 
+echo "── 11 手动删除后又从文件里加回来：撤销墓碑 ──"
+reset
+put "$TARGET_FILE" "a.inst
+b.inst"; put "$RULES_FILE" ""
+put "$ST_INSTALLED" "a.inst"; put "$ST_RULES" ""; put "$ST_WRITTEN" "a.inst
+b.inst"; put "$ST_REMOVED" "b.inst"
+FAKE_INSTALLED="a.inst
+b.inst"
+run; chk "b.inst 在文件里了，就保留" "a.inst b.inst"; chk_tomb "墓碑被撤销" ""
+
+echo "── 12 手动删除后把它加进常驻（新加）：撤销墓碑（自查抓到的洞）──"
+reset
+put "$TARGET_FILE" ""
+put "$RULES_FILE" "x.rule"
+put "$ST_INSTALLED" ""; put "$ST_RULES" ""; put "$ST_WRITTEN" "x.rule"; put "$ST_REMOVED" "x.rule"
+FAKE_INSTALLED=""
+run; chk "常驻里新加了它，就回来" "x.rule"; chk_tomb "墓碑被撤销" ""
+
+echo "── 13 手动删除一个「已装且一直在常驻」的包：手动优先；把它从常驻删掉再加回，才回来 ──"
+reset
+put "$TARGET_FILE" "a.inst
+b.inst"; put "$RULES_FILE" "b.inst"
+put "$ST_INSTALLED" "a.inst
+b.inst"; put "$ST_RULES" "b.inst"; put "$ST_WRITTEN" "a.inst
+b.inst"
+FAKE_INSTALLED="a.inst
+b.inst"
+run; chk "基线：a 被常驻的 b 拉回来" "a.inst b.inst"; commit
+put "$TARGET_FILE" "a.inst"       # 手动删掉 b（它一直在常驻里）
+run; chk "手动删除优先，b 不回来" "a.inst"; commit
+put "$RULES_FILE" ""              # 先从常驻撤掉
+run; chk "撤出常驻后仍然只有 a" "a.inst"; commit
+put "$RULES_FILE" "b.inst"        # 再新加回常驻
+run; chk "重新声明后 b 回来" "a.inst b.inst"
+
+echo "── 14 已装与常驻都为空：只剩人工项 ──"
+reset
+put "$TARGET_FILE" "a.manual
+b.inst"; put "$RULES_FILE" ""
+put "$ST_INSTALLED" "b.inst"; put "$ST_RULES" ""; put "$ST_WRITTEN" "a.manual
+b.inst"
+FAKE_INSTALLED=""
+run; chk "b 被删（卸载），人工项留下" "a.manual"
+
+echo "── 15 目标文件被清空：算你把它们都删了（配置解析不了时由写入器兜底，见下）──"
+reset
+put "$TARGET_FILE" ""; put "$RULES_FILE" "c.rule"
+put "$ST_INSTALLED" "a.inst"; put "$ST_RULES" "c.rule"; put "$ST_WRITTEN" "a.inst
+c.rule"
+FAKE_INSTALLED="a.inst"
+run; chk "清空后确实为空" ""; chk_tomb "两条都记进墓碑" "a.inst c.rule"
+# 之后新装一个应用，仍然能加进来（不在墓碑里）
+FAKE_INSTALLED="a.inst
+d.new"
+run; chk "新装的照样能进" "d.new"
+
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

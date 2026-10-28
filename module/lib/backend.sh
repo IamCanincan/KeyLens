@@ -86,7 +86,7 @@ current_target_apps() {
         [ -n "$AWK_CMD" ] || return 0
         $AWK_CMD -f "${TAA_PATCH%/*}/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
     else
-        sed '/^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null
+        sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null
     fi
 }
 

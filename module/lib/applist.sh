@@ -84,10 +84,10 @@ build_app_list() {
     ensure_rules_file "$RULES_FILE"
     normalize_rules_file "$RULES_FILE"
 
-    apps_raw=$(cmd package list packages -3 -u --user all 2>/dev/null || pm list packages -3 2>/dev/null)
+    apps_raw=$(cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null)
     user_list=$(printf '%s\n' "$apps_raw" | sed -n 's/^package://p' | sed '/^$/d' | sort -u)
     rules_now=$(read_rules | sed '/^$/d' | sort -u)
-    cur=$(current_target_apps | sed '/^[[:space:]]*$/d' | sort -u)
+    cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u)
 
     base="${tmp}.state"
     mkdir -p "$base" 2>/dev/null
@@ -113,12 +113,18 @@ build_app_list() {
         FILENAME == ARGV[6] { wrote[$0] = 1; next }
         FILENAME == ARGV[7] { tomb[$0] = 1; next }
         END {
-            # 我们上次写过、这次文件里没有 => 你手动删的
+            # 我们上次写过、这次文件里没有 => 你手动删的。
+            # 配置解析不了时这里会算出"全删"，但那样 teesim.awk 也定位不到 apps
+            # 数组、写入直接返回 2，状态与墓碑都不会提交 —— 由写入器兜底，
+            # 不在这里靠读取命令的退码猜（实测那个退码并不可靠）
             for (p in wrote) if (p != "" && !(p in cur)) tomb[p] = 1
             # 又出现在文件里 => 撤销标记
             for (p in cur) delete tomb[p]
             # 卸载过 => 撤销标记（重装应算新安装，重新加入）
             for (p in was) if (!(p in inst)) delete tomb[p]
+            # 常驻里"新加"了它 => 你明确说要，撤销标记（否则一个常驻条目被你
+            # 从文件里删掉之后就永远加不回来了 —— 这正是自查时抓到的洞）
+            for (p in rules) if (!(p in wrules)) delete tomb[p]
 
             for (p in cur)   keep[p] = 1
             for (p in inst)  keep[p] = 1

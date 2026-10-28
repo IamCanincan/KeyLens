@@ -423,7 +423,7 @@ cmd_targets() {
 
 # ---------- 已安装第三方应用 ----------
 cmd_apps() {
-    (cmd package list packages -3 -u --user all 2>/dev/null || pm list packages -3 2>/dev/null) \
+    (cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null) \
         | sed -n 's/^package://p' | sed 's/\[[0-9]*\]$//' | sort -u
 }
 
