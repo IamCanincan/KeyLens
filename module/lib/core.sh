@@ -8,6 +8,12 @@ TSTORE_DIR="/data/adb/tricky_store"      # Tricky Store / OSS 的数据目录
 TEESIM_DIR="/data/adb/teesim"            # TEE Simulator 的数据目录
 TEESIM_CONFIG="$TEESIM_DIR/config.json"  # TEE Simulator 配置文件
 
+OMK_DIR="/data/misc/keystore/omk"        # OhMyKeymint 的运行时配置目录
+OMK_INJECTOR="$OMK_DIR/injector.toml"    # 目标名单（scoop）所在文件
+OMK_STATE_DIR="/data/adb/omk"            # OhMyKeymint 自己的守护进程状态目录
+OMK_MODULE="/data/adb/modules/oh_my_keymint"
+TAA_OMK_STATE="/data/adb/ts_auto.omk"    # 本模块给 OMK 后端用的状态目录（自己拥有）
+
 TRICKY_MODULE="/data/adb/modules/tricky_store"   # Tricky Store / OSS 模块 id
 TEESIM_MODULE="/data/adb/modules/teesim"         # TEE Simulator 模块 id
 

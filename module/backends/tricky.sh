@@ -29,6 +29,8 @@ sync_target_list() {
         rm -f "$tmp" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
         chmod 600 "$ST_INSTALLED" 2>/dev/null
+        mv -f "$ST_EVER_NEW" "$ST_EVER" 2>/dev/null
+        chmod 600 "$ST_EVER" 2>/dev/null
         drop_legacy_state
         return 1
     fi
@@ -38,6 +40,8 @@ sync_target_list() {
         chmod 644 "$target" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
         chmod 600 "$ST_INSTALLED" 2>/dev/null
+        mv -f "$ST_EVER_NEW" "$ST_EVER" 2>/dev/null
+        chmod 600 "$ST_EVER" 2>/dev/null
         drop_legacy_state
         return 0
     fi

@@ -212,7 +212,7 @@ cmd_status() {
         target_writable=1
     fi
 
-    # 生效条目数、第三方应用数、常驻有效数都不在这里算：
+    # 生效条目数、第三方应用数都不在这里算：
     # 它们各自要跑 awk(约 330ms) / pm list(约 200ms) / grep(约 60ms)，而界面本来就要
     # 取 targets / apps 两条完整列表，数量由那些列表直接数出来即可。
     # 在这里再算一遍只会让每次刷新多等一倍时间，且两份数字可能互相对不上。
@@ -220,11 +220,8 @@ cmd_status() {
     [ -f "$TARGET_FILE" ] && mtime=$(stat -c %Y "$TARGET_FILE" 2>/dev/null)
 
     conflict=0
-    [ "$teesim_en" = 1 ] && [ "$tricky_en" = 1 ] && conflict=1
-    case "$TAA_BACKEND" in
-        teesim) bname="TEE Simulator" ;;
-        *)      bname="Tricky Store" ;;
-    esac
+    backends_conflict && conflict=1
+    bname=$(backend_name)
 
     kv state "$state"
     kv description "$desc"
@@ -429,13 +426,9 @@ cmd_env() {
 cmd_targets() {
     detect_backend "$MODDIR"
     [ -f "$TARGET_FILE" ] || { echo "目标文件不存在：$TARGET_FILE" >&2; return 1; }
-
-    if [ "$TAA_BACKEND" = "teesim" ]; then
-        [ -n "$AWK_CMD" ] || { echo "未找到 awk，无法读取 TEE Simulator 配置" >&2; return 1; }
-        $AWK_CMD -f "$MODDIR/backends/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
-    else
-        sed '/^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null
-    fi
+    # 读取逻辑集中在 current_target_apps：三个后端的格式各自处理，注释在
+    # Tricky 的逐行文件里剥掉；这里不再各写一份（以前 OMK 会整份 TOML 吐出来）。
+    current_target_apps
 }
 
 # ---------- 已安装第三方应用 ----------

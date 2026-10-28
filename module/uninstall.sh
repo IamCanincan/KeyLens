@@ -37,9 +37,11 @@ rm -rf "$TS/.ts_lock" "$TS/.ts_debounce" "$TS/.ts_tmp" \
        "$SIM/.ts_lock" "$SIM/.ts_debounce" "$SIM/.ts_tmp" 2>/dev/null
 rm -f "$TS/.ts_fingerprint" "$SIM/.ts_fingerprint" 2>/dev/null
 for f in .ts_installed_last .ts_rules_last .ts_written_last .ts_removed \
-         .ts_installed.new .ts_rules.new .ts_written.new .ts_removed.new; do
+         .ts_installed.new .ts_rules.new .ts_written.new .ts_removed.new \
+         .ts_ever .ts_ever.new; do
     rm -f "$TS/$f" "$SIM/$f" 2>/dev/null
 done
+rm -rf "/data/adb/ts_auto.omk" 2>/dev/null
 rm -f "$TS/.last_month" "$TS/security_patch.txt.bak" 2>/dev/null
 rm -f "$TS/rules.txt" "$SIM/rules.txt" "$TS/taa_sys.txt" 2>/dev/null
 rm -f "/data/adb/service.d/taa_resetprop.sh" 2>/dev/null

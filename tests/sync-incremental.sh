@@ -23,6 +23,7 @@
 #  13 旧版本遗留状态在成功同步后清掉
 #  14 首次运行但目标非空：excluded 为空（基线之前的未纳入不算手动排除）
 #  15 首次运行且已装为空：不触发「空列表保护」
+#  16 OhMyKeymint 首次接入：沿用现有 scoop，不批量加入已装
 #=============================================================================
 set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
@@ -35,6 +36,8 @@ TAA_DIR="$T"
 TARGET_FILE="$T/target.txt"
 ST_INSTALLED="$T/.ts_installed_last"
 ST_INSTALLED_NEW="$T/.ts_installed.new"
+ST_EVER="$T/.ts_ever"
+ST_EVER_NEW="$T/.ts_ever.new"
 
 FAKE_INSTALLED=""
 cmd() { printf '%s\n' "$FAKE_INSTALLED" | sed 's/^/package:/'; }
@@ -43,7 +46,7 @@ current_target_apps() { [ -f "$TARGET_FILE" ] && sed '/^[[:space:]]*$/d' "$TARGE
 
 reset() {
     : > "$TARGET_FILE"
-    rm -f "$ST_INSTALLED" "$ST_INSTALLED_NEW"
+    rm -f "$ST_INSTALLED" "$ST_INSTALLED_NEW" "$ST_EVER" "$ST_EVER_NEW"
     rm -f "$TAA_DIR/.ts_written_last" "$TAA_DIR/.ts_written.new" \
           "$TAA_DIR/.ts_removed" "$TAA_DIR/.ts_removed.new"
 }
@@ -52,6 +55,7 @@ run() { build_app_list "$T/out"; }
 commit() {
     cp -f "$T/out" "$TARGET_FILE"
     mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
+    mv -f "$ST_EVER_NEW" "$ST_EVER" 2>/dev/null
     drop_legacy_state
 }
 line_set() { printf '%s\n' "$2" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//'; }
@@ -106,6 +110,7 @@ commit; run; chk "下一轮仍然保留" "a.inst e.manual"
 echo "── 6 手动从名单删掉一个已装的包：下一轮不会加回来 ──"
 reset; put "$TARGET_FILE" "a.inst
 b.inst"; put "$ST_INSTALLED" "a.inst
+b.inst"; put "$ST_EVER" "a.inst
 b.inst"
 FAKE_INSTALLED="a.inst
 b.inst"
@@ -119,7 +124,7 @@ FAKE_INSTALLED="a.inst"
 run; chk "卸载时仍然不加回来" "a.inst"; chk_excl "卸载后不再是排除项" ""; commit
 FAKE_INSTALLED="a.inst
 b.inst"
-run; chk "重装后重新加入" "a.inst b.inst"; chk_excl "重装后不再排除" ""
+run; chk "重装后重新加入" "a.inst b.inst"; commit; chk_excl "重装后不再排除" ""
 
 echo "── 8 手动删掉后又手动加回去：保留 ──"
 reset; put "$TARGET_FILE" "a.inst
@@ -141,7 +146,7 @@ run; unset TAA_EMPTY_OK
 chk "手动强制后只剩手工项" "a.manual"
 
 echo "── 10 目标文件被清空：算你把它们都删了 ──"
-reset; put "$TARGET_FILE" ""; put "$ST_INSTALLED" "a.inst"
+reset; put "$TARGET_FILE" ""; put "$ST_INSTALLED" "a.inst"; put "$ST_EVER" "a.inst"
 FAKE_INSTALLED="a.inst"
 run; chk "清空后确实为空" ""; chk_excl "a.inst 被认作手动排除" "a.inst"
 
@@ -180,6 +185,16 @@ run; chk_excl "基线之前的未纳入不算手动排除" ""
 echo "── 15 首次运行且已装为空：不触发空列表保护 ──"
 reset; put "$TARGET_FILE" "x.keep"; FAKE_INSTALLED=""
 run; chk "手工项保留，不被保护拦下" "x.keep"
+
+echo "── 16 OhMyKeymint 首次接入：沿用现有 scoop，不批量加入 ──"
+reset; TAA_BACKEND=omk; put "$TARGET_FILE" "a.manual"; FAKE_INSTALLED="a.manual
+b.inst"
+run; chk "只保留现有条目" "a.manual"; chk_excl "从未纳入的不算排除" ""
+commit; FAKE_INSTALLED="a.manual
+b.inst
+c.new"
+run; chk "之后的新装照常加入" "a.manual c.new"
+unset TAA_BACKEND
 
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

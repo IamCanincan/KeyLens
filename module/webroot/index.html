@@ -1137,7 +1137,9 @@ function bytesLabel(v){
   return x < 1024 ? x + ' B' : (x / 1024).toFixed(1) + ' KB';
 }
 function timeLabel(epoch){
-  var x = n(epoch); if (!x) return '未写入';
+  /* 早于 2000 的 epoch 不是真实写入时间：开机早期系统时钟还是 1970，
+     此时创建的文件会带这个时间戳（OMK 的 injector.toml 实测 1970-02-20）。 */
+  var x = n(epoch); if (!x || x < 946684800) return '未写入';
   var d = new Date(x * 1000);
   function p(m){ return (m < 10 ? '0' : '') + m; }
   return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate()) + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
@@ -1622,13 +1624,13 @@ function renderAbout(){
       env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
       env.resetprop ? 'resetprop' : '无 resetprop'
     ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
-    blk('后端模块', st.conflict === '1' ? '两个同时启用'
-        : st.teesim_enabled === '1' ? 'TEE Simulator'
-        : st.tricky_enabled === '1' ? 'Tricky Store' : '无已启用后端',
+    blk('后端模块', st.conflict === '1' ? '多个同时启用'
+        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk')
+            ? (st.backend_name || st.backend || '已启用') : '无已启用后端'),
       st.conflict === '1' ? 'bad'
-        : (st.teesim_enabled === '1' || st.tricky_enabled === '1' ? 'ok' : 'bad'),
-      'TEE Simulator ' + (st.teesim_enabled === '1' ? '启用' : '未启用') +
-      ' / Tricky Store ' + (st.tricky_enabled === '1' ? '启用' : '未启用'))
+        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk') ? 'ok' : 'bad'),
+      st.conflict === '1' ? 'Tricky Store / TEE Simulator / OhMyKeymint 只能留一个'
+        : (st.backend ? '当前：' + (st.backend_name || st.backend) : '未探测到'))
   ]));
   about.appendChild(grp('外观', [
     blk('取色', THEME.frroOk ? '系统 overlay'

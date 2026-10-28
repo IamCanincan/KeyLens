@@ -36,16 +36,23 @@ mkdir -p "$TAA_DIR" 2>/dev/null || abort "  ❌ 无法创建目录 $TAA_DIR"
 ui_print "  🔌 后端：$(backend_name)"
 ui_print "  📁 目录：$TAA_DIR"
 
-if [ "$TAA_BACKEND" = "teesim" ]; then
-    [ -n "$AWK_CMD" ] || ui_print "  ⚠️ 未找到 awk，TEE Simulator 配置将无法维护"
+if [ "$TAA_BACKEND" = "teesim" ] || [ "$TAA_BACKEND" = "omk" ]; then
+    [ -n "$AWK_CMD" ] || ui_print "  ⚠️ 未找到 awk，$(backend_name) 配置将无法维护"
 elif [ ! -f "$TARGET_FILE" ]; then
     touch "$TARGET_FILE" 2>/dev/null
     chmod 644 "$TARGET_FILE" 2>/dev/null
 fi
+if [ "$TAA_BACKEND" = "omk" ] && [ ! -f "$TARGET_FILE" ]; then
+    ui_print "  ⚠️ 未找到 $TARGET_FILE；先打开一次 OhMyKeymint 生成配置，再点「立即同步」"
+fi
 
 # 名单只有目标文件本身。第一次同步（见下）会在目标文件还没有内容时把谷歌三件套
-# 种进去；旧版的 rules.txt 内容早就在目标文件里了，这里不需要再迁移。
-ui_print "  📝 名单：$TARGET_FILE（首次同步会种入谷歌三件套）"
+# 种进去；OhMyKeymint 首次接入则沿用现有 scoop，只把当前已装记成基线。
+if [ "$TAA_BACKEND" = "omk" ]; then
+    ui_print "  📝 名单：$TARGET_FILE（首次沿用现有 scoop，之后新装自动加入）"
+else
+    ui_print "  📝 名单：$TARGET_FILE（首次同步会种入谷歌三件套）"
+fi
 
 # ---------- [3/5] 脚本权限 ----------
 ui_print " "
@@ -60,8 +67,9 @@ ui_print " "
 ui_print "🧹 [4/5] 清理旧版文件"
 rm -rf "$TSTORE_DIR/.ts_lock" "$TSTORE_DIR/.ts_debounce" "$TSTORE_DIR/.ts_tmp" \
        "$TEESIM_DIR/.ts_lock" "$TEESIM_DIR/.ts_debounce" "$TEESIM_DIR/.ts_tmp" \
-       "$TSTORE_DIR"/.ts_daemon*.pid "$TEESIM_DIR"/.ts_daemon*.pid 2>/dev/null
-rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.ts_fingerprint" "$TEESIM_DIR/.ts_fingerprint" 2>/dev/null
+       "$TAA_OMK_STATE/.ts_lock" "$TAA_OMK_STATE/.ts_debounce" "$TAA_OMK_STATE/.ts_tmp" \
+       "$TSTORE_DIR"/.ts_daemon*.pid "$TEESIM_DIR"/.ts_daemon*.pid "$TAA_OMK_STATE"/.ts_daemon*.pid 2>/dev/null
+rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.ts_fingerprint" "$TEESIM_DIR/.ts_fingerprint" "$TAA_OMK_STATE/.ts_fingerprint" 2>/dev/null
 rm -f "$TSTORE_DIR/taa_sys.txt" 2>/dev/null
 rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 

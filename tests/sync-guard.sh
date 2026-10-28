@@ -20,6 +20,8 @@ AWK_CMD="awk"
 TAA_PATCH="$ROOT/module/backends/teesim.awk"
 ST_INSTALLED="$T/.ts_installed_last"
 ST_INSTALLED_NEW="$T/.ts_installed.new"
+ST_EVER="$T/.ts_ever"
+ST_EVER_NEW="$T/.ts_ever.new"
 
 # 已装清单读空（模拟 pm 读取失败）；日志与描述写入都桩掉
 cmd() { :; }

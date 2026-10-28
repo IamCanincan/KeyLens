@@ -42,9 +42,9 @@ DEBOUNCE_LOCK="${TAA_DIR}/.ts_debounce"
 PIDS_FILE="${TAA_DIR}/.ts_daemon_pids.list"
 FP_FILE="${TAA_DIR}/.ts_fingerprint"
 
-log_info "🔍 后端：$(backend_name)（目录：$TAA_DIR）"
-if [ "$TAA_BACKEND" = "teesim" ] && [ -z "$AWK_CMD" ]; then
-    log_warn "⚠️ 未找到 awk，暂时无法维护 TEE Simulator 配置"
+log_info "🔍 后端：$(backend_name)（配置：$TARGET_FILE，状态：$TAA_DIR）"
+if [ "$TAA_BACKEND" != "tricky" ] && [ -z "$AWK_CMD" ]; then
+    log_warn "⚠️ 未找到 awk，暂时无法维护 $(backend_name) 配置"
 fi
 
 # ---------- inotify 依赖检查 ----------

@@ -69,6 +69,11 @@ jobs:
         # 手动同步（TAA_EMPTY_OK=1）按当前已装处理。跑两个后端真实的 sync_*。
         run: sh tests/sync-guard.sh
 
+      - name: OhMyKeymint Backend Self-Test
+        # scoop 读取/定点替换/其它字段保留/内容一致不落盘/恢复单条/三方冲突矩阵。
+        # 用真实的 backend.sh + omk*.awk。不需要设备。
+        run: sh tests/omk.sh
+
       - name: Dynamic Properties Injection
         id: version_info
         run: |

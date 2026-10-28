@@ -4,27 +4,30 @@
 [![Latest Release](https://img.shields.io/github/v/release/IamCanincan/TS-AUTO-ADD?label=release&color=blue)](https://github.com/IamCanincan/TS-AUTO-ADD/releases/latest)
 [![License](https://img.shields.io/github/license/IamCanincan/TS-AUTO-ADD?color=green)](LICENSE)
 
-TS-AUTO-ADD 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** / **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)** / **TEE Simulator** 的 Magisk 辅助模块，通过后台守护进程自动维护应用包名列表，并可在开机时重置关键系统属性，有效提升 Play Integrity 通过率。
+TS-AUTO-ADD 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** / **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)** / **TEE Simulator** / **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)** 的 Magisk 辅助模块，通过后台守护进程自动维护应用包名列表，并可在开机时重置关键系统属性，有效提升 Play Integrity 通过率。
 
 > 本模块**不再修改安全补丁**（`security_patch.txt`），仅维护应用列表与系统属性。
 
-### 🔌 双后端自动探测
+### 🔌 三后端自动探测
 
 | 后端 | 判定依据（`/data/adb/modules` 下的模块 id） | 维护目标 |
 |------|----------------------------------------------|----------|
 | **TEE Simulator** | `teesim` | `/data/adb/teesim/config.json` 的 `profiles.default.apps` |
 | **Tricky Store / OSS** | `tricky_store` | `/data/adb/tricky_store/target.txt` |
+| **OhMyKeymint** | `oh_my_keymint` | `/data/misc/keystore/omk/injector.toml` 的 `scoop` 数组（`config.toml` 不碰） |
 
-TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段（`keybox` / `mode` / `patchLevel` / 设备信息等）与其它 profile 一律原样保留；无法可靠定位数组时放弃写入。
+TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段（`keybox` / `mode` / `patchLevel` / 设备信息等）与其它 profile 一律原样保留；无法可靠定位数组时放弃写入。OhMyKeymint 同样**只替换 `scoop` 数组**，注释、`version`、`[main]` / `[filter]` / `[intercept]` 与每个包的 `[scoop.<包名>]` 段逐字节保留。两者的目标文件在被写入前会先备份（OhMyKeymint 的备份在 `/data/adb/ts_auto.omk/injector.toml.bak`）。
 
-> ⛔ 两个模块**同时启用**时，模块直接停止运行（不做优先级选择），并把停止状态写入模块描述。
+> OhMyKeymint 第一次接入时，如果 `scoop` 里**已有内容**，模块会沿用这份名单（只把当前已装记成基线，不批量灌入），之后新装自动加入、卸载自动移除；只有 `scoop` 为空时才按其它后端一样加入全部已装 + 谷歌三件套。
+
+> ⛔ 三个后端中**多于一个启用**时，模块直接停止运行（不做优先级选择），并把停止状态写入模块描述。
 
 ---
 
 ## ✨ 核心功能
 
 - **增量维护目标名单**  
-  名单**只有目标文件本身**（`config.json` 的 `profiles.default.apps` / `target.txt`）：装上的应用自动进、卸载的自动出；你手工加进去的条目不会被抹掉，你手工删掉的也不会被自动加回来（除非那个应用卸载过又重新安装）。首次同步会把谷歌三件套种进去一次 —— 它们是系统应用，`pm list packages -3` 看不到。
+  名单**只有目标文件本身**（`config.json` 的 `profiles.default.apps` / `target.txt` / `injector.toml` 的 `scoop`）：装上的应用自动进、卸载的自动出；你手工加进去的条目不会被抹掉，你手工删掉的也不会被自动加回来（除非那个应用卸载过又重新安装）。其它后端首次同步会把谷歌三件套种进去一次 —— 它们是系统应用，`pm list packages -3` 看不到；OhMyKeymint 首次接入沿用现有 `scoop`（见上）。
 
 - **事件驱动实时监听**  
   自动探测 `inotifywait` 或 `inotifyd`，只监听 `/data/system/packages.list`（安装/卸载的唯一信号）。内置 2 秒防抖与内容指纹比对，避免系统频繁改写该文件造成无谓同步。
@@ -70,7 +73,9 @@ module/
 ├─ backends/
 │  ├─ tricky.sh           # Tricky Store 后端实现：写 target.txt
 │  ├─ teesim.awk          # TEE Simulator 后端实现：定点替换 default.apps
-│  └─ teesim_list.awk     # TEE Simulator 只读提取：取出 default.apps 供界面展示
+│  ├─ teesim_list.awk     # TEE Simulator 只读提取：取出 default.apps 供界面展示
+│  ├─ omk.awk             # OhMyKeymint 后端实现：定点替换 scoop 数组
+│  └─ omk_list.awk        # OhMyKeymint 只读提取：取出 scoop 供界面展示
 ├─ webroot/
 │  └─ index.html          # WebUI 界面（单文件，内联样式与脚本）
 │                         # 运行时会多出 webroot/icons/*.png —— 由 webui.sh icons 从桌面
@@ -97,9 +102,10 @@ tools/icondump/            # 图标 dex 的源码与编译命令
 ### 前置条件
 - 已安装以下**任一**后端模块：
   - **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** 或 **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)**（模块 id `tricky_store`），`/data/adb/tricky_store/target.txt` 存在（可为空）；
-  - **TEE Simulator**（模块 id `teesim`），`/data/adb/teesim/config.json` 存在。
+  - **TEE Simulator**（模块 id `teesim`），`/data/adb/teesim/config.json` 存在；
+  - **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)**（模块 id `oh_my_keymint`），`/data/misc/keystore/omk/injector.toml` 存在（先打开一次 OMK 让它生成配置）。
 - 系统具备 `inotifywait` 或 `inotifyd` 其中之一（绝大多数 Android 系统已内置；Magisk / KernelSU / APatch 自带的 busybox 亦可）。
-- **两个后端不要同时启用**：同时启用时模块会停止运行，并在模块描述中提示。
+- **三个后端不要同时启用**：同时启用多于一个时模块会停止运行，并在模块描述中提示。
 
 ### 安装步骤
 1. 在 Magisk 管理器中刷入本模块 ZIP 包。
@@ -200,9 +206,11 @@ sh /data/adb/modules/ts-auto-add/action.sh
 |------|------|--------|
 | TEE Simulator | `/data/adb/teesim/config.json` 的 `profiles.default.apps` | 直接改数组；其它字段与其它 profile 原样保留 |
 | Tricky Store / OSS | `/data/adb/tricky_store/target.txt` | 每行一个包名 |
+| OhMyKeymint | `/data/misc/keystore/omk/injector.toml` 的 `scoop` | 直接改数组；`config.toml` 与本文件的其它段不碰 |
 
 - **装上自动进、卸载自动出**；你手动加的条目会保留，手动删掉的不会被自动加回来。
 - 算法是**快照差分**：`加入 = 本轮已装 − 上次已装`，`删除 = 上次已装 − 本轮已装`，其余（目标文件里的现有条目）原样保留。手动删掉的包仍然装着、但不在"新装"里，所以结构上就不会被回填 —— 没有墓碑文件。想恢复就把它加回文件；应用页里「已排除」的行尾有一个 **+**，点它等价于写回文件；卸载后再装一次也会重新加入。
+- **OhMyKeymint 首次接入**：`scoop` 已有内容时沿用现有名单（不批量加入已装），只把当前已装记成基线；之后的新装照常加入。`scoop` 为空时才按其它后端一样加入全部已装 + 三件套。
 - **空列表保护**：后台自动同步读到「已装为空、但基线非空」时会放弃这次写入（这更像一次 `pm` 读取失败，而不是真把应用全卸了），并把失败写进模块描述；点界面「立即同步」或用管理器的「操作」按钮会强制按当前已装处理。
 - 首次安装后的第一次同步会把谷歌三件套（`com.android.vending` / `com.google.android.gms` / `com.google.android.gsf`）种进去**一次** —— 它们是系统应用，不会被"已装第三方"覆盖到。之后你把它们从名单里删掉，也不会再被加回来。
 - 改完文件不用重启：守护进程监听 `packages.list`，下一次应用装卸时会顺带按最新内容重算；想立刻生效就点界面上的「立即同步」。
@@ -210,15 +218,17 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 ## 📂 数据与配置路径
 
-运行时文件位于**当前后端目录**（`/data/adb/teesim/` 或 `/data/adb/tricky_store/`）：
+运行时文件位于**当前后端目录**（TEE Simulator：`/data/adb/teesim/`；Tricky Store：`/data/adb/tricky_store/`；OhMyKeymint：状态在 `/data/adb/ts_auto.omk/`，配置本身在 `/data/misc/keystore/omk/`）：
 
 | 文件 | 说明 |
 |------|------|
 | `config.json` | TEE Simulator 配置（模块仅维护 `profiles.default.apps`） |
 | `target.txt` | Tricky Store / OSS 的应用列表（模块按增量维护：只加新装、只删卸掉的，你手动加的条目保留） |
+| `injector.toml` | OhMyKeymint 的名单（模块仅维护 `scoop`；`config.toml` 不碰） |
 | `.ts_daemon_pids.list` | 所有后台子进程 PID 列表 |
 | `.ts_fingerprint` | 源数据指纹缓存（变更检测用） |
-| `.ts_installed_last` | 上次同步看到的「已装第三方」，快照差分唯一的基线 |
+| `.ts_installed_last` | 上次同步看到的「已装第三方」，快照差分的基线 |
+| `.ts_ever` | 历次纳入过名单的并集（判断「已排除」用；OhMyKeymint 首次沿用现有 scoop 时不能拿基线当这个集合） |
 | `.ts_lock` / `.ts_debounce` / `.ts_tmp` | 运行时锁与临时文件 |
 
 > 日志缓冲不放在后端目录，而是固定在 `/data/adb/ts_auto.log`（权限 `600`，仅 root 可读；超过 64KB 自动只保留末尾 200 行；卸载时自动删除）。
@@ -294,13 +304,16 @@ A：日志同时写 `logcat`（tag `TS-AUTO`）与本地缓冲 `/data/adb/ts_aut
 A：请确认系统是否包含 `inotifywait` 或 `inotifyd`。部分精简 ROM 可能缺失，可尝试安装 Busybox 或更换 ROM（Magisk / KernelSU / APatch 自带的 busybox 会被自动识别）。
 
 **Q：模块描述显示“模块已停止”？**  
-A：说明 Tricky Store 与 TEE Simulator 同时启用。停用或卸载其中一个后重启即可恢复。
+A：说明 Tricky Store / TEE Simulator / OhMyKeymint 中有多于一个同时启用。停用或卸载多余的，只留一个后重启即可恢复。
 
 **Q：模块描述显示“写入失败”？**  
-A：目标文件不可写（目录只读、文件被占用等）。检查对应后端目录的权限后重试（执行 `action.sh` 或等待下次事件触发）。
+A：目标文件不可写（目录只读、文件被占用等），或 OhMyKeymint 的 `injector.toml` 还没生成。检查对应后端目录的权限、先打开一次 OMK 后重试（执行 `action.sh` 或等待下次事件触发）。
 
 **Q：`target.txt` 未按预期更新？**  
 A：先看本地缓冲 `tail -n 50 /data/adb/ts_auto.log`（或 `logcat -d -s TS-AUTO`）里的错误信息；确认 `pm` 命令可用；尝试手动执行 `action.sh` 测试。
+
+**Q：OhMyKeymint 的 `injector.toml` 被改动了？**  
+A：模块只改 `scoop` 数组，写入前备份到 `/data/adb/ts_auto.omk/injector.toml.bak`；其它段与 `config.toml` 不碰。写入后会写 `/data/adb/omk/restart.injector`，让 OMK 自己重载 injector。
 
 **Q：如何临时禁用后台监听？**  
 A：可删除后端目录下的 `.ts_daemon_pids.list` 并重启，或直接卸载模块。

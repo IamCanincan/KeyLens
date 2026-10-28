@@ -49,11 +49,13 @@ is_pkg_name() {
 # 说明：was = 上一次成功同步时见到的已装集合（.ts_installed_last）。
 #   首次运行（没有基线）时 was 为空，等于把所有已装应用都当"新装"加一遍；
 #   只有"目标文件为空 + 没有基线"时才加种子。
+#   **OhMyKeymint 例外**：首次接入且 scoop 已有内容时沿用现有名单（不批量加入
+#   已装应用），只把当前已装记成基线，之后的新装照常加入。
 #   基线只在写成功后提交，失败不推进 —— 那次卸载事件下次仍会被看见。
 # 用法：build_app_list <输出文件>
 build_app_list() {
     local tmp="$1"
-    local apps_raw user_list cur base seed
+    local apps_raw user_list cur base seed adopt
 
     mkdir -p "$TAA_DIR" 2>/dev/null
 
@@ -78,6 +80,13 @@ build_app_list() {
 " $SEED_PKGS)
     fi
 
+    # OhMyKeymint 首次接入：scoop 已有内容时沿用现有名单，不把已装应用灌进去；
+    # 以后的新装照常加入。其它后端维持原来的"首次全部加入"。
+    adopt=0
+    if [ "${TAA_BACKEND:-}" = "omk" ] && [ ! -f "$ST_INSTALLED" ] && [ -n "$cur" ]; then
+        adopt=1
+    fi
+
     base="${tmp}.state"
     mkdir -p "$base" 2>/dev/null
     write_set() { if [ -n "$2" ]; then printf '%s\n' "$2" | sed '/^$/d' | sort -u > "$1"; else : > "$1"; fi; }
@@ -89,7 +98,7 @@ build_app_list() {
     # 一次 awk 做完全部集合运算。配置解析不了时 cur 为空，这里会算出
     # "删掉所有卸载过的"；但那样 teesim.awk 也定位不到 apps 数组、写入直接
     # 返回 2，基线不会提交 —— 由写入器兜底，不在这里靠读取命令的退码猜
-    awk '
+    awk -v adopt="$adopt" '
         FILENAME == ARGV[1] { inst[$0] = 1; next }
         FILENAME == ARGV[2] { cur[$0] = 1; next }
         FILENAME == ARGV[3] { seed[$0] = 1; next }
@@ -97,7 +106,9 @@ build_app_list() {
         END {
             for (p in was) if (!(p in inst)) gone[p] = 1   # 这一轮之前卸载的
             for (p in cur)  keep[p] = 1                     # 手工加的、手工删的，原样
-            for (p in inst) if (!(p in was)) keep[p] = 1    # 新装
+            if (adopt != 1) {
+                for (p in inst) if (!(p in was)) keep[p] = 1    # 新装
+            }
             for (p in seed) keep[p] = 1
             for (p in gone) delete keep[p]
             for (p in keep) if (p != "") print p
@@ -112,12 +123,20 @@ build_app_list() {
     # WebUI 经管理器 exec 出来的 umask 可能是 000（实测生成过 666 的状态文件）。
     printf '%s\n' "$user_list" > "$ST_INSTALLED_NEW" 2>/dev/null
     chmod 600 "$ST_INSTALLED_NEW" 2>/dev/null
+
+    # 「曾经纳入过」的并集：排除判定用它。OhMyKeymint 首次接入时基线是全部
+    # 已装、但 scoop 可能只有几条，用基线会把从未纳入的应用误标成"已排除"。
+    { cat "$ST_EVER" 2>/dev/null; cat "$tmp" 2>/dev/null; } \
+        | sed '/^[[:space:]]*$/d' | sort -u > "${ST_EVER_NEW}.tmp" 2>/dev/null \
+        && mv -f "${ST_EVER_NEW}.tmp" "$ST_EVER_NEW" 2>/dev/null
+    chmod 600 "$ST_EVER_NEW" 2>/dev/null
     return 0
 }
 
-# ---------- 「已排除」= 已装、有基线、但目标文件里没有 ----------
-# 说明：同步过一次之后，已装应用不在文件里就只可能是你手动删的。
-#       基线之前从未纳入的包不算（那时 was 里还没有它）。
+# ---------- 「已排除」= 已装、曾经在名单里、但现在文件里没有 ----------
+# 说明：用 ever（.ts_ever，历次写进去的并集）判断"曾经纳入"，而不是已装基线：
+#       OhMyKeymint 首次接入沿用现有 scoop 时，基线包含全部已装，用基线会把
+#       从未纳入的应用误标成"已排除"。
 #       三份集合都落临时文件再交给 awk：toybox awk 的 -v 不接受换行，
 #       把多行字符串当参数传会直接报 "newline in string"（设备上实测）。
 # 用法：excluded_apps
@@ -128,22 +147,22 @@ excluded_apps() {
     inst=$(printf '%s\n' "$inst" | sed -n 's/^package://p' | sed '/^$/d')
     cur=$(current_target_apps 2>/dev/null)
 
-    # 只读命令不创建后端目录：目录不存在时不会有基线，排除表就是空
+    # 只读命令不创建状态目录；没有 ever 时排除表就是空
     [ -d "$TAA_DIR" ] || return 0
     base="${TAA_DIR}/.ts_excl.$$"
     mkdir -p "$base" 2>/dev/null || return 0
     printf '%s\n' "$inst" | sed '/^[[:space:]]*$/d' | sort -u > "$base/inst" 2>/dev/null
     printf '%s\n' "$cur"  | sed '/^[[:space:]]*$/d' | sort -u > "$base/cur" 2>/dev/null
-    sed '/^[[:space:]]*$/d' "$ST_INSTALLED" > "$base/was" 2>/dev/null || : > "$base/was"
+    sed '/^[[:space:]]*$/d' "$ST_EVER" > "$base/ever" 2>/dev/null || : > "$base/ever"
 
     awk '
         FILENAME == ARGV[1] { cur[$0] = 1; next }
-        FILENAME == ARGV[2] { was[$0] = 1; next }
+        FILENAME == ARGV[2] { ever[$0] = 1; next }
         {
             p = $0; sub(/\r$/, "", p)
-            if (p != "" && (p in was) && !(p in cur)) print p
+            if (p != "" && (p in ever) && !(p in cur)) print p
         }
-    ' "$base/cur" "$base/was" "$base/inst" | sort -u
+    ' "$base/cur" "$base/ever" "$base/inst" | sort -u
     rm -rf "$base" 2>/dev/null
 }
 
