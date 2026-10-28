@@ -229,5 +229,27 @@ FAKE_INSTALLED="a.inst
 d.new"
 run; chk "新装的照样能进" "d.new"
 
+echo "── 17 只写进目标文件的手工条目：那个应用装了又卸，会被当成正常卸载删掉 ──"
+reset
+put "$TARGET_FILE" "x.manual"; put "$RULES_FILE" ""
+put "$ST_INSTALLED" ""; put "$ST_RULES" ""; put "$ST_WRITTEN" "x.manual"
+FAKE_INSTALLED=""
+run; chk "基线：手工条目在" "x.manual"; commit
+FAKE_INSTALLED="x.manual"
+run; chk "装上后还在" "x.manual"; commit
+FAKE_INSTALLED=""
+run; chk "卸载后被删（它只是手工条目，不是常驻）" ""
+
+echo "── 18 同样一条写进 rules.txt：装卸一轮之后仍然保留 ──"
+reset
+put "$TARGET_FILE" "x.rule"; put "$RULES_FILE" "x.rule"
+put "$ST_INSTALLED" ""; put "$ST_RULES" "x.rule"; put "$ST_WRITTEN" "x.rule"
+FAKE_INSTALLED=""
+run; chk "基线" "x.rule"; commit
+FAKE_INSTALLED="x.rule"
+run; chk "装上" "x.rule"; commit
+FAKE_INSTALLED=""
+run; chk "卸载后仍在（常驻的本义）" "x.rule"
+
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail
