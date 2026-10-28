@@ -105,10 +105,14 @@ get_source_fingerprint() {
 # 说明：指纹未变化则直接返回；失败时不记录指纹，便于下次重试。
 # 用法：do_sync
 do_sync() {
-    local fp rc
+    local fp rc old
 
     fp=$(get_source_fingerprint)
-    if [ -n "$fp" ] && [ "$fp" = "$(cat "$FP_FILE" 2>/dev/null)" ]; then
+    old=$(cat "$FP_FILE" 2>/dev/null)
+    if [ -n "$fp" ] && [ "$fp" = "$old" ]; then
+        # 这一行必须有：否则"开机执行首次同步"后面一片空白，读日志的人分不清
+        # 是卡住了、没跑、还是跑了但没变化（实测本机重启后就是这种情况）。
+        log_info "ℹ️ 源数据与上次一致（指纹 $fp），跳过同步"
         return 0
     fi
 
