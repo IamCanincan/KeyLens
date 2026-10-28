@@ -43,19 +43,9 @@ elif [ ! -f "$TARGET_FILE" ]; then
     chmod 644 "$TARGET_FILE" 2>/dev/null
 fi
 
-# 继承旧版 taa_sys.txt 或另一后端目录中的 rules.txt
-if [ ! -f "$RULES_FILE" ]; then
-    if [ -f "$TSTORE_DIR/taa_sys.txt" ]; then
-        cp -f "$TSTORE_DIR/taa_sys.txt" "$RULES_FILE" 2>/dev/null
-    elif [ -f "$TSTORE_DIR/rules.txt" ]; then
-        cp -f "$TSTORE_DIR/rules.txt" "$RULES_FILE" 2>/dev/null
-    fi
-    if [ -f "$RULES_FILE" ]; then
-        chmod 640 "$RULES_FILE" 2>/dev/null
-        chown root:root "$RULES_FILE" 2>/dev/null
-    fi
-fi
-ui_print "  📝 常驻列表：$RULES_FILE"
+# 名单只有目标文件本身。第一次同步（见下）会在目标文件还没有内容时把谷歌三件套
+# 种进去；旧版的 rules.txt 内容早就在目标文件里了，这里不需要再迁移。
+ui_print "  📝 名单：$TARGET_FILE（首次同步会种入谷歌三件套）"
 
 # ---------- [3/5] 脚本权限 ----------
 ui_print " "

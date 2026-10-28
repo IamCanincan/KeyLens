@@ -24,8 +24,7 @@ TAA_PROPS_OFF="/data/adb/ts_auto.props_off"
 # ---------- 运行期状态 ----------
 # 以下变量由 detect_backend 填充，其余为同步过程的中间结果
 TAA_BACKEND=""                # 当前后端：teesim | tricky
-TAA_DIR=""                    # 后端目录（rules.txt 与运行文件所在）
-RULES_FILE=""                 # 常驻应用列表路径
+TAA_DIR=""                    # 后端目录（目标文件与运行文件所在）
 TARGET_FILE=""                # 后端目标文件路径
 AWK_CMD=""                    # 可用的 awk 命令（可能为空）
 TAA_PATCH=""                  # TEE Simulator 定点替换脚本路径

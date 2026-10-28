@@ -47,13 +47,11 @@ use_backend() {
     if [ "$1" = "teesim" ]; then
         TAA_BACKEND="teesim"
         TAA_DIR="$TEESIM_DIR"
-        RULES_FILE="$TEESIM_DIR/rules.txt"
         TARGET_FILE="$TEESIM_CONFIG"
         AWK_CMD=$(find_awk)
     else
         TAA_BACKEND="tricky"
         TAA_DIR="$TSTORE_DIR"
-        RULES_FILE="$TSTORE_DIR/rules.txt"
         TARGET_FILE="$TSTORE_DIR/target.txt"
         AWK_CMD=""
         # 仅在选用该后端时加载其写入实现，避免无用开销
@@ -68,11 +66,9 @@ use_backend() {
     # 由 build_app_list 写到 *.new，再由 sync_* 在**写入成功后**提交；
     # 失败不推进，否则那次卸载事件会被当成"已经处理过"而永远漏掉。
     ST_INSTALLED="$TAA_DIR/.ts_installed_last"
-    ST_RULES="$TAA_DIR/.ts_rules_last"
     ST_WRITTEN="$TAA_DIR/.ts_written_last"      # 我们上次写进去的完整列表
     ST_REMOVED="$TAA_DIR/.ts_removed"             # 「手动删除=排除」的墓碑
     ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
-    ST_RULES_NEW="$TAA_DIR/.ts_rules.new"
     ST_WRITTEN_NEW="$TAA_DIR/.ts_written.new"
     ST_REMOVED_NEW="$TAA_DIR/.ts_removed.new"
 }
@@ -149,7 +145,6 @@ sync_teesim_config() {
                 # 提交状态，下次按新基线算。写失败（rc=2）不推进，否则卸载事件会漏。
                 if [ "$rc" != "2" ]; then
                     mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
-                    mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
                     mv -f "$ST_WRITTEN_NEW" "$ST_WRITTEN" 2>/dev/null
                     mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
                 fi

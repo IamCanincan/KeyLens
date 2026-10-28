@@ -186,7 +186,7 @@ button,input,textarea,select{font:inherit;color:inherit}
   box-shadow:0 1px 0 var(--card-line)}
 .appbar-row{display:flex;align-items:center;gap:var(--sp2)}
 /* 二级页的返回：顶栏最左，40 的圆钮。它是「返回」而不是「回概览」——
-   从「应用」点 + 跳到常驻列表后，返回应该回到应用列表。 */
+   从概览下钻到某一页后，返回回到上一级。 */
 .back{flex:none;width:40px;height:40px;margin-left:-10px;border:0;border-radius:var(--r-full);
   background:transparent;color:var(--on-surface);display:grid;place-items:center;cursor:pointer;
   transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
@@ -346,11 +346,6 @@ button,input,textarea,select{font:inherit;color:inherit}
    也不画分隔线：两列的格子高度天然不同（日志缓冲多一行小字），线会参差 ——
    分层交给组标题与行距。列保持两列（整行 label/value 会在中间拉出几百 px 空洞）。 */
 .grid{display:grid;gap:var(--sp3) var(--sp5);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
-/* 「当前常驻项」不跟着分列：那一格是 图标 38 + 间距 12 + 包名，
-   真机 rules.txt 里最长的 `com.google.android.gsf` 在 fs12 等宽下要 158，
-   一格就得 208；两列要 436，而本机内容宽只有 335 —— 分不开，
-   硬分只会把包名劈成两行。这条按算术留着，不是按口味。 */
-#rulesResolved .grid{--cell:240px}
 .blk{background:transparent;border-radius:0;padding:0;min-width:0}
 .blk-k{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:3px}
 .blk-v{display:flex;align-items:center;gap:8px;font-size:var(--fs16);font-weight:600;line-height:1.3;min-width:0}
@@ -387,9 +382,6 @@ button,input,textarea,select{font:inherit;color:inherit}
 .pill[data-tone=warn]::before{background:var(--secondary)}
 .pill[data-tone=bad]{padding:2px 9px 2px 8px;background:var(--error-container);color:var(--on-error-container);font-weight:700}
 .pill[data-tone=bad]::before{background:var(--error)}
-/* 应用清单在 626px 画布上排单列，每行右边会空出一大截；
-   自动分列后包名自己限宽，超长的用省略号收尾（title 给全名）。 */
-#rulesResolved{margin-top:var(--sp4)}
 /* 应用列表固定一列：行里要放 图标 + 应用名 + 包名 + 角标，两列时每列只有
    258px，包名全被截断。这条以前靠 258 这个魔法数刚好只排一列 —— 卡片内边距
    从 26 收到 24 之后内容宽度 514 → 518，越过 2×258+1 的阈值，列表自己翻成了
@@ -589,16 +581,11 @@ button,input,textarea,select{font:inherit;color:inherit}
 
   <main class="pages" id="pages">
     <section class="panel" id="p-over">
-      <!-- 二级页入口：底栏去掉之后，四个子页都从这里进；返回在顶栏最左 -->
+      <!-- 二级页入口：底栏去掉之后，三个子页都从这里进；返回在顶栏最左 -->
       <nav class="card menu" id="homeMenu" aria-label="二级页">
-        <button class="menu-row" data-go="rules">
-          <span class="menu-ic"><i class="ico" data-icon="list"></i></span>
-          <span class="menu-txt"><b>常驻列表</b><small>每行一个包名 · 保存即同步</small></span>
-          <span class="chev"><i class="ico" data-icon="chev"></i></span>
-        </button>
         <button class="menu-row" data-go="apps">
           <span class="menu-ic"><i class="ico" data-icon="apps"></i></span>
-          <span class="menu-txt"><b>应用列表</b><small>桌面图标与应用名 · 可加入常驻</small></span>
+          <span class="menu-txt"><b>应用列表</b><small>桌面图标与应用名 · 对照目标名单</small></span>
           <span class="chev"><i class="ico" data-icon="chev"></i></span>
         </button>
         <button class="menu-row" data-go="log">
@@ -626,21 +613,6 @@ button,input,textarea,select{font:inherit;color:inherit}
       </section>
     </section>
 
-    <section class="card panel" id="p-rules" hidden>
-      <div class="field">
-        <label id="rulesLabel">每行一个包名 · # 开头为注释</label>
-        <textarea id="rulesBox" spellcheck="false" autocorrect="off" autocapitalize="off" autocomplete="off" aria-labelledby="rulesLabel"></textarea>
-      </div>
-      <p class="hint" id="rulesStat">—</p>
-      <p class="hint hint-warn" id="rulesSuspect" hidden></p>
-      <div class="toolbar">
-        <button class="btn btn-filled btn-sm" id="btnSaveRules"></button>
-        <button class="btn btn-text btn-sm" id="btnRevertRules">放弃修改</button>
-        <button class="btn btn-outline btn-sm" id="btnRulesHead">补默认注释头</button>
-      </div>
-      <p class="hint">保存 = 覆盖整个 <span class="mono" id="rulesPath">rules.txt</span>，并立即同步一次；行尾 <span class="mono">CR</span> 与 <span class="mono">BOM</span> 会被自动清掉。</p>
-      <div id="rulesResolved" hidden></div>
-    </section>
 
     <section class="card panel" id="p-apps" hidden>
       <div class="toolbar" style="margin-top:0">
@@ -1109,7 +1081,7 @@ applyScheme();
 var EXPECT_API = 1;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
-var WRITE_CMDS = 'save-rules sync props-apply props-on props-off clear-log';
+var WRITE_CMDS = 'sync props-apply props-on props-off clear-log';
 
 /* 图标加载结果：包名 → ok / fail / none。
    "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
@@ -1120,9 +1092,7 @@ var S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, checked: false },
   insetSrc: 'env()',
-  rules: '', rulesBase: '', rulesEdited: false,
   targets: [], apps: [], targetSet: null,
-  rulesSet: null, rulesSetSrc: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
   log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0, homeY: 0
@@ -1130,7 +1100,8 @@ var S = {
 
 /* 数字都从列表直接数出来（见 webui.sh 里 status 不算数的原因）；
    常驻数取"已保存的那份"，编辑器里的草稿不算。调用方负责在列表没回来时显示占位。 */
-function countRules(){ return rulesStats(S.rulesBase).valid; }
+
+
 function orDash(v){ return v === null || v === undefined || v === '' ? '—' : v; }
 
 function el(tag, cls, text){
@@ -1225,7 +1196,6 @@ function renderHero(){
   }
 
   var sub = [];
-  sub.push('常驻 ' + orDash(have ? countRules() : null));
   sub.push('第三方 ' + orDash(have ? S.apps.length : null));
   if (n(st.daemon_alive)) sub.push('守护进程 ' + st.daemon_alive + ' 个');
   else if (st.daemon_alive === '0') sub.push('守护进程未运行');
@@ -1318,8 +1288,6 @@ function renderOver(){
   ]));
 
   box.appendChild(grp('配置与写入', [
-    blk('常驻 rules.txt', orDash(have ? countRules() : null) + ' 条',
-      st.rules_exists === '1' ? 'ok' : 'bad', st.rules_file, 'blk-num'),
     blk('目标文件', (st.target_exists === '1' ? '存在' : '不存在') +
       (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
       st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', st.target_file),
@@ -1331,93 +1299,16 @@ function renderOver(){
 }
 
 /* ---------- 常驻列表 ---------- */
-function rulesStats(text){
-  var lines = String(text).split('\n'), valid = 0, comment = 0, blank = 0, suspect = [];
-  /* 不像包名的行不会报错，只会静默地永远匹配不上任何应用 —— 数上去却是"有效 1 条"。
-     所以单独挑出来报数，让人当场能看见，而不是等"为什么这个应用没进来"。 */
-  lines.forEach(function (raw, i){
-    var l = raw.replace(/^\s+|\s+$/g, '');
-    if (!l) blank++;
-    else if (l.charAt(0) === '#') comment++;
-    else {
-      valid++;
-      if (!/^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)*$/.test(l)) {
-        suspect.push('第 ' + (i + 1) + ' 行「' + l.slice(0, 40) + '」');
-      }
-    }
-  });
-  return { valid: valid, comment: comment, blank: blank, suspect: suspect, total: lines.length };
-}
+
+
 /* 常驻项摊开：编辑器里只有裸包名，看不见"这一条到底进没进目标列表"。
    下面这份用同一批数据（targets + 图标缓存）把它列出来，
    图标和显示名回来后再重画一次。 */
-function renderRulesResolved(){
-  var box = document.getElementById('rulesResolved');
-  if (!box) return;
-  var list = Object.keys(rulesSetOf()).sort();
-  box.textContent = '';
-  if (!list.length) { box.hidden = true; return; }
-  box.hidden = false;
-  box.appendChild(el('h3', 'grp-t', '当前常驻项 · ' + list.length));
-  var g = el('div', 'grid');
-  var inTarget = targetSetOf();
-  list.forEach(function (p){
-    var ic = S.icons[p];
-    var row = el('div', 'app-row');
-    row.appendChild(appAvatar(p, ic));
-    var txt = el('span', 'app-txt');
-    if (ic && ic.label) {
-      txt.appendChild(el('span', 'app-name', ic.label));
-      var pk = el('span', 'app-pkg', p);
-      pk.title = p;
-      txt.appendChild(pk);
-    } else {
-      var nm = el('span', 'app-name is-mono', p);
-      nm.title = p;
-      txt.appendChild(nm);
-    }
-    row.appendChild(txt);
-    if (!inTarget[p]) {
-      var tg = el('span', 'app-tag', S.excluded[p] ? '已排除' : '未生效');
-      tg.setAttribute('data-tone', S.excluded[p] ? 'na' : 'miss');
-      tg.title = S.excluded[p]
-        ? '你手动把它从目标名单里删过，所以不再自动加回来；删掉后端的 .ts_removed，或把它从常驻删掉再加回，即可恢复'
-        : '写在 rules.txt 里，但当前目标列表没有它（多半是还没同步，或该后端跳过了不可见应用）';
-      row.appendChild(tg);
-    }
-    g.appendChild(row);
-  });
-  box.appendChild(g);
-  ensureIcons(list);
-}
 
-function renderRules(){
-  rulesPath.textContent = S.status.rules_file || 'rules.txt';
-  /* 只有用户真的动过编辑器才保留草稿；首次进入时编辑器是空的，
-     拿「内容等于基线」当判据会让它永远填不进去（实测过：显示 0 条且标成未保存）。 */
-  if (!S.rulesEdited || rulesBox.value === S.rulesBase) rulesBox.value = S.rules;
-  updateRulesStat();
-  renderRulesResolved();
-}
-function updateRulesStat(){
-  var s = rulesStats(rulesBox.value);
-  var dirty = rulesBox.value !== S.rulesBase;
-  var parts = ['有效包名 ' + s.valid, '注释 ' + s.comment, '空行 ' + s.blank];
-  var nexc = Object.keys(S.excluded || {}).length;
-  if (nexc) parts.push('已排除 ' + nexc + ' 条');
-  if (/\r/.test(rulesBox.value)) parts.push('含 CR（保存时会清掉）');
-  if (dirty) parts.push('未保存');
-  rulesStat.textContent = parts.join(' · ');
-  rulesStat.style.color = dirty ? 'var(--primary)' : 'var(--on-variant)';
-  var sus = document.getElementById('rulesSuspect');
-  if (s.suspect.length) {
-    sus.hidden = false;
-    sus.textContent = '有 ' + s.suspect.length + ' 行不像包名，会一直匹配不到任何应用：' +
-      s.suspect.slice(0, 5).join('、') + (s.suspect.length > 5 ? ' 等' : '');
-  } else sus.hidden = true;
-  btnSaveRules.disabled = !dirty || busyCount > 0;
-  btnRevertRules.disabled = !dirty;
-}
+
+
+
+
 
 /* ---------- 应用列表 ---------- */
 /* 生效集合建一次用到底：以前每次搜索、每敲一个字符都要重建一遍两百多项的表 */
@@ -1431,17 +1322,8 @@ function targetSetOf(){
 /* 常驻集合：分清某个包是「因为写在 rules.txt 才生效」还是「因为装着才生效」。
    这两种在生效列表里原先混在一起看不出来，而它正是这个模块的核心语义。
    以磁盘上的基线为准，不用编辑器里的草稿 —— 草稿没保存就不算数。 */
-function rulesSetOf(){
-  if (S.rulesSetSrc !== S.rulesBase) {
-    S.rulesSetSrc = S.rulesBase;
-    S.rulesSet = {};
-    String(S.rulesBase || '').split('\n').forEach(function (l){
-      l = l.replace(/^\s+|\s+$/g, '');
-      if (l && l.charAt(0) !== '#') S.rulesSet[l] = 1;
-    });
-  }
-  return S.rulesSet;
-}
+
+
 function monogram(s){
   var t = String(s || '');
   /* 包名取最后一段的首字母：com.google.android.gsf 与 com.termux 都以 com 开头，
@@ -1491,7 +1373,7 @@ function renderApps(){
      sig 把会影响这张列表的东西全串进来（两份名单、筛选、草稿基线、图标数），
      少一项就会画出旧内容。 */
   var sig = [S.appsSrc, S.onlyMissing ? 1 : 0, S.search, S.targets.join(','), S.apps.join(','),
-    S.rulesBase, Object.keys(S.icons).length].join('\u0001');
+    Object.keys(S.excluded).length, Object.keys(S.icons).length].join('\u0001');
   if (sig === S.appsSig) return;
   S.appsSig = sig;
   appsStat.textContent = (S.appsSrc === 'targets' ? '生效 ' + S.targets.length : '已安装第三方 ' + S.apps.length) +
@@ -1534,23 +1416,13 @@ function renderApps(){
     }
     row.appendChild(txt);
     if (S.appsSrc === 'apps' && !inTarget[pkg]) {
-      var tg = el('span', 'app-tag', '未纳入');
+      /* 装着却不在名单里 —— 只有一种原因：你手动删过它（墓碑）。 */
+      var tg = el('span', 'app-tag', S.excluded[pkg] ? '已排除' : '未纳入');
       tg.setAttribute('data-tone', 'miss');
+      tg.title = S.excluded[pkg]
+        ? '你手动把它从目标名单里删过，所以不再自动加回来；卸载后再装一次、或删掉后端的 .ts_removed，即可恢复'
+        : '已安装，但目标名单里没有它（多半是还没同步）';
       row.appendChild(tg);
-    } else if (S.appsSrc === 'targets' && rulesSetOf()[pkg]) {
-      var pt = el('span', 'app-tag', '常驻');
-      pt.title = '写在 rules.txt 里：不管装没装都会进目标列表';
-      row.appendChild(pt);
-    }
-    if (S.appsSrc === 'apps') {
-      var add = el('button', 'icon-add');
-      add.appendChild(addIcon.cloneNode(true));
-      add.title = '加入常驻列表';
-      add.setAttribute('aria-label', '把 ' + pkg + ' 加入常驻列表');
-      add.addEventListener('click', (function (p){
-        return function (){ addRule(p); };
-      })(pkg));
-      row.appendChild(add);
     }
     frag.appendChild(row);
   }
@@ -1567,19 +1439,7 @@ function renderApps(){
   if (window.requestIdleCallback) requestIdleCallback(kick, { timeout: 800 });
   else setTimeout(kick, 60);
 }
-function addRule(pkg){
-  /* 编辑器可能还没渲染过（从「应用」页直接点 +）：那时必须以磁盘内容为准，
-     否则草稿只有这一行，保存就会把整个常驻列表清掉。 */
-  var base = S.rulesEdited ? rulesBox.value : S.rules;
-  var cur = base.replace(/\s+$/, '');
-  var has = cur.split('\n').some(function (l){ return l.replace(/^\s+|\s+$/g, '') === pkg; });
-  if (has) { snackbar(pkg + ' 已在常驻列表里'); return; }
-  rulesBox.value = (cur ? cur + '\n' : '') + pkg + '\n';
-  S.rulesEdited = true;
-  updateRulesStat();
-  goTab('rules');
-  snackbar('已加入常驻列表，记得点「保存并同步」', 'ok');
-}
+
 
 /* ---------- 日志 ---------- */
 function logLevel(line){
@@ -1771,7 +1631,7 @@ function renderAbout(){
 
 }
 
-/* 三份列表一起取：概览的三个数字、常驻编辑器、应用页的对照全靠它们，取一次三页共用 */
+/* 两份列表一起取：概览的数字、应用页的对照全靠它们，取一次各页共用 */
 /* 「手动排除」的包名（墓碑）。它和「未生效」在界面上长得一样、原因完全相反：
    前者是你自己删的，后者是还没同步或后端跳过了。命令层没有这条能力就不问 ——
    契约里的 commands 就是给这种"新界面 + 旧命令层"的组合用的。 */
@@ -1786,14 +1646,10 @@ function loadExcluded(){
 }
 
 function loadLists(){
-  return Promise.all([call('targets'), call('apps'), call('rules')]).then(function (rs){
+  return Promise.all([call('targets'), call('apps')]).then(function (rs){
     S.targets = rs[0].ok ? split(rs[0].text) : [];
     S.apps = rs[1].ok ? split(rs[1].text) : [];
-    S.targetSet = null;                                   // 生效集合要重算
-    /* 基线由取数这一层负责：以前它只在渲染常驻页时顺手赋值，
-       结果概览页的「常驻 N」在没进过常驻页时数的是空串 */
-    if (rs[2].ok) { S.rules = rs[2].text; S.rulesBase = rs[2].text; }
-    else if (rs[2].code !== 1) snackbar(failText(rs[2]), 'bad');
+    S.targetSet = null;                                   // 目标集合要重算
     if (!rs[0].ok && rs[0].code !== 1) snackbar(failText(rs[0]), 'bad');
     /* 排除名单跟列表一起取；取不到就当空（界面退化成只显示「未生效」） */
     return loadExcluded().then(function (){ return rs; });
@@ -1831,8 +1687,7 @@ function ensureIcons(pkgs){
   return loadIcons(pkgs).then(function (got){
     if (!got) return;
     if (S.tab === 'apps') renderApps();
-    else if (S.tab === 'rules') renderRulesResolved();
-  });
+    });
 }
 function loadLog(){
   return call('log', String(S.tail)).then(function (r){
@@ -1876,7 +1731,6 @@ function ensure(tab){
 function renderAll(){
   renderHero();
   if (S.tab === 'over') renderOver();
-  else if (S.tab === 'rules') renderRules();
   else if (S.tab === 'apps') renderApps();
   else if (S.tab === 'log') renderLog();
   else if (S.tab === 'props') renderProps();
@@ -1966,30 +1820,7 @@ function doSync(){
     .then(function (){ finishWrite(note); });
 }
 
-function saveRules(){
-  var text = rulesBox.value;
-  if (text.length > 65536) { snackbar('常驻列表超过 64KB，请先精简', 'bad'); return; }
-  var payload;
-  try { payload = b64(text); } catch (e){ snackbar('内容编码失败', 'bad'); return; }
-  if (!/^[A-Za-z0-9+/=]*$/.test(payload)) { snackbar('内容编码异常', 'bad'); return; }
 
-  busy(true, '保存中');
-  var note = { text: '', tone: 'info' };
-  call('save-rules', payload).then(function (r){
-    if (r.ok) {
-      var kv = parseKV(r.text);
-      note.text = kv.rc === '1' ? '已保存（生效列表内容未变化）' : '已保存并写入：' + kv.count + ' 个应用';
-      note.tone = 'ok';
-    } else { note.text = failText(r); note.tone = 'bad'; }
-    return reloadAll();
-  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
-    .then(function (){
-      /* 编辑器对齐到磁盘上那份：shell 会清 CR/BOM 并补末行换行，显示归一后的结果才算诚实 */
-      if (note.tone === 'ok') { rulesBox.value = S.rules; S.rulesEdited = false; }
-      finishWrite(note);
-      updateRulesStat();
-    });
-}
 
 function setPropsMasking(want){
   busy(true, '写入开关');
@@ -2059,8 +1890,8 @@ function confirm(title, text, okLabel){
    ========================================================= */
 var homeMenu = document.getElementById('homeMenu');
 var btnBack = document.getElementById('btnBack');
-var PAGES = ['over', 'rules', 'apps', 'log', 'props', 'about'];
-var TAB_LABEL = { over: '概览', rules: '常驻列表', apps: '应用列表', log: '运行日志',
+var PAGES = ['over', 'apps', 'log', 'props', 'about'];
+var TAB_LABEL = { over: '概览', apps: '应用列表', log: '运行日志',
   props: '系统属性伪装', about: '关于与自检' };
 /* 只切状态：显隐目标页、标题、返回箭头、概览的英雄卡。
    底栏没有了，这一层不再需要维护任何选中态。 */
@@ -2126,7 +1957,7 @@ function showTab(name, back){
 try { history.scrollRestoration = 'manual'; } catch (e) {}
 var navDepth = 0, navSelf = false;
 function pageFromHash(){
-  var m = /^#\/(over|rules|apps|log|props|about)$/.exec(location.hash || '');
+  var m = /^#\/(over|apps|log|props|about)$/.exec(location.hash || '');
   return m ? m[1] : null;
 }
 function navTo(name){
@@ -2169,30 +2000,6 @@ function setAuto(on){
 function wire(){
   btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
   btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
-  btnSaveRules.innerHTML = svg('save') + '<span>保存并同步</span>';
-  /* 入口行的图标：ICON 表在脚本里，标记里写不了，统一在这里填 */
-  Array.prototype.forEach.call(homeMenu.querySelectorAll('.ico[data-icon]'), function (n){
-    n.innerHTML = svg(n.dataset.icon);
-  });
-  btnBack.innerHTML = svg('back');
-  btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
-  btnLogClear.innerHTML = svg('trash') + '<span>清空</span>';
-  btnPropsApply.innerHTML = svg('check') + '<span>立即应用一次</span>';
-  applyPalette();                         // env 回来前先用保存过的偏好/默认值
-  applyScheme();
-
-  btnSync.addEventListener('click', doSync);
-  btnReload.addEventListener('click', refresh);
-  btnSaveRules.addEventListener('click', saveRules);
-  btnRevertRules.addEventListener('click', function (){ rulesBox.value = S.rulesBase; S.rulesEdited = false; updateRulesStat(); });
-  btnRulesHead.addEventListener('click', function (){
-    var head = '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\n';
-    if (rulesBox.value.indexOf('# TS-AUTO-ADD') === 0) return;
-    rulesBox.value = head + rulesBox.value;
-    S.rulesEdited = true;
-    updateRulesStat();
-  });
-  rulesBox.addEventListener('input', function (){ S.rulesEdited = true; updateRulesStat(); });
 
   homeMenu.addEventListener('click', function (e){
     var b = e.target.closest ? e.target.closest('.menu-row') : null;
@@ -2401,7 +2208,7 @@ function demoResult(cmd, arg){
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || '1'),
       'commands=status env rules targets apps icons log clear-log props props-apply' +
-      ' props-on props-off save-rules sync help contract excluded'].join('\n'),
+      ' props-on props-off sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
@@ -2411,9 +2218,6 @@ function demoResult(cmd, arg){
       'sys_dark_src=' + (QUERY.get('dark') ? 'demo' : 'none'),
       'sys_seed_raw=' + (QUERY.get('seed') || ''),
       'sys_seed_src=' + (QUERY.get('seed') ? 'demo' : 'none')].join('\n'),
-    rules: '# TS-AUTO-ADD 常驻应用列表\n# 每行一个包名；以 # 开头的行是注释，空行会被忽略。\n' +
-      '# 这里列出的包名会始终并入目标列表（即使应用当前未安装）。\n\ncom.android.vending\n' +
-      'com.google.android.gms\ncom.google.android.gsf\n',
     targets: ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
       'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'].join('\n'),
     apps: ['ai.x.grok', 'app.mihon', 'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria',
@@ -2430,7 +2234,6 @@ function demoResult(cmd, arg){
       'ro.warranty_bit\t\t0\tmissing', 'ro.bootloader\tunknown\t不含 engineering（则改写为 release）\tok',
       'ro.build.description\tXQ-DQ72-user 15 67.2.A.3.178 release-keys\t不含 test-keys（则改写为 release-keys）\tok'].join('\n'),
     sync: 'rc=0\ncount=125\ndescription=✅ [TEE Simulator | 应用: 125 | 更新: 18:02]',
-    'save-rules': 'saved=1\nrc=0\ncount=126\ndescription=✅ [TEE Simulator | 应用: 126 | 更新: 18:02]',
     'props-apply': 'applied=1\nmismatch=1',
     'props-off': 'props_masking=off', 'props-on': 'props_masking=on', 'clear-log': 'cleared=1'
   };

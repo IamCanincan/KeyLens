@@ -4,7 +4,7 @@
 #
 # 职责：
 #   1. 开机后执行一次同步并刷新模块描述
-#   2. 单进程监听 /data/system/packages.list 与 rules.txt
+#   2. 单进程监听 /data/system/packages.list
 #   3. 仅在源数据真正变化时同步（指纹比对 + 防抖）
 #
 # 说明：入口脚本由框架固定调用，必须位于模块根目录。
@@ -58,16 +58,10 @@ INOTIFY_CMD="${INOTIFY_INFO#*:}"
 log_info "👀 监听方式：$INOTIFY_MODE（${INOTIFY_CMD%% *}）"
 
 # ---------- 监听目标与掩码 ----------
-# 说明：监视要挂在「目录」上，不能只挂在 rules.txt 这个文件上。
-#       inotify 的监视点绑的是 inode；用「写临时文件再改名覆盖」的方式替换
-#       rules.txt（vim、sed -i，以及本模块 WebUI 的原子保存都是这么干的）之后，
-#       旧 inode 已被 unlink，挂在它上面的监视从此不再上报任何事件 ——
-#       表现是改了常驻列表却不再自动同步，而且只有重启才恢复。
-#       挂目录时，「改名进来」本身就是目录事件，监视不会随文件被替换而失效。
-RULES_DIR="${RULES_FILE%/*}"
-
-# 文件级掩码：修改 + 可写关闭（就地追加/改写用）
-MASK_FILE="wc"
+# 说明：现在只监听一个东西 —— /data/system/packages.list（安装/卸载的唯一信号）。
+#       常驻那一层已经去掉，名单只有目标文件本身，不需要第二个监视点。
+#       监视挂在**目录**上：这个文件是「写临时文件再改名」替换的，而 inotify 的
+#       监视点绑 inode，挂文件会随旧 inode 一起失效。
 # 目录级掩码：修改 + 可写关闭 + 移入。
 # 「移入」这个字母两家是反的：toybox 的 --help 写 m 移入 / y 移出，busybox 相反；
 # 但实测两家在「临时文件改名覆盖」时上报的都是 y —— _help 文本不可信，
@@ -79,26 +73,13 @@ MASK_DIR="cwmy"
 # 事件名不被接受时 inotifywait 会直接报错退出，那就退回旧的事件集，
 # 绝不能让监听进程因为参数不认而起不来（外层是 3 秒一轮的重启循环，会空转）。
 WATCH_EVENTS="-e modify -e create -e delete"
-if [ "$INOTIFY_MODE" = "inotifywait" ]; then
-    mkdir -p "$RULES_DIR" 2>/dev/null
-    if $INOTIFY_CMD -q -t 1 -e close_write -e moveto "$RULES_DIR" >/dev/null 2>&1; then
-        WATCH_EVENTS="$WATCH_EVENTS -e close_write -e moveto"
-    else
-        log_warn "⚠️ 该 inotifywait 不支持 close_write/moveto，退回旧事件集（改名替换可能不触发）"
-    fi
-fi
 
 # ---------- 变更检测 ----------
-# 说明：以 packages.list 的包名集合 + rules.txt 的有效包名生成指纹，用于过滤系统
-#       频繁改写 packages.list 造成的无谓同步；只改注释或空行不会触发同步。
+# 说明：以 packages.list 的包名集合生成指纹，用于过滤系统频繁改写这个文件造成的
+#       无谓同步。名单只有目标文件，这里不再掺别的输入。
 # 用法：get_source_fingerprint
 get_source_fingerprint() {
-    local pkgs rules
-
-    pkgs=$(cut -d' ' -f1 "$WATCH_DIR/packages.list" 2>/dev/null | sort -u)
-    rules=$(read_rules | sort -u)
-
-    printf '%s\n%s\n' "$pkgs" "$rules" | cksum 2>/dev/null | cut -d' ' -f1
+    cut -d' ' -f1 "$WATCH_DIR/packages.list" 2>/dev/null | sort -u | cksum 2>/dev/null | cut -d' ' -f1
 }
 
 # ---------- 同步核心 ----------
@@ -148,18 +129,20 @@ dispatch_sync() {
 # ---------- 状态清理 ----------
 # 结束上次遗留的守护进程，并清理运行文件。
 # 记在名单里的是那个 while 子壳；管道左边的 inotifyd / inotifywait 不在名单里，
-# 只按 PID 收会留下一个还在往管道里写的孤儿监视。所以再按**我们自己的监视规格**
-# 收一次：匹配串里带上 RULES_FILE 的绝对路径，只可能命中本模块起的那一条
-# （uninstall.sh 里以前用的是通名 "inotifyd.*rules.txt"，那会连带杀掉别的模块
-# 监听它自己 rules.txt 的监视 —— 已一并收窄，见该文件说明）。
+# 只按 PID 收会留下一个还在往管道里写的孤儿监视。所以下面再按旧版的监视规格收一次。
 if [ -f "$PIDS_FILE" ]; then
     while read -r pid; do
         [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
     done < "$PIDS_FILE"
     rm -f "$PIDS_FILE" 2>/dev/null
 fi
-pkill -f "inotifyd.*$RULES_FILE" 2>/dev/null
-pkill -f "inotifywait.*$RULES_FILE" 2>/dev/null
+# 旧版（还有 rules.txt 那一层时）起的监视挂着 rules.txt，升级后必须收掉，
+# 否则会有两个守护同时触发同步。这里写死旧路径 —— RULES_FILE 已经删了，
+# 用空变量会变成 "inotifyd.*" 而把系统里所有 inotifyd 都杀掉。
+pkill -f "inotifyd.*/data/adb/teesim/rules.txt" 2>/dev/null
+pkill -f "inotifywait.*/data/adb/teesim/rules.txt" 2>/dev/null
+pkill -f "inotifyd.*/data/adb/tricky_store/rules.txt" 2>/dev/null
+pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 rm -rf "$TMP" "$LOCK_DIR" "$DEBOUNCE_LOCK" 2>/dev/null
 
 # ---------- 启动 ----------
@@ -195,8 +178,6 @@ watch_fails=0
 (
     while true; do
         [ -d "$WATCH_DIR" ] || { sleep 5; continue; }
-        mkdir -p "$RULES_DIR" 2>/dev/null
-        ensure_rules_file "$RULES_FILE"
         watch_started=$(date +%s 2>/dev/null)
 
         # 事件按名字过滤：目录里其它文件（config.json / target.txt / .ts_tmp /
@@ -204,29 +185,20 @@ watch_fails=0
         # 不会触发同步；本模块自己的写入也就多一次 echo 进程，不成环。
         case "$INOTIFY_MODE" in
             inotifywait)
-                # 挂目录：改名替换 rules.txt 时上报的是目录事件，挂文件会随旧 inode 一起失效
-                $INOTIFY_CMD -m $WATCH_EVENTS "$WATCH_DIR" "$RULES_DIR" 2>/dev/null
+                $INOTIFY_CMD -m $WATCH_EVENTS "$WATCH_DIR" 2>/dev/null
                 ;;
             *)
                 # busybox/toybox 的 inotifyd 把 PROG 当程序执行，事件作为参数传入；
                 # 这里用 echo 把「事件 + 路径」打到 stdout，再由本管道读取并匹配。
-                # （旧写法传 "-" 不会产生任何输出，等于监听失效）
-                # 文件与目录同时挂：就地改写走文件那条，改名替换走目录那条。
-                $INOTIFY_CMD echo \
-                    "$WATCH_DIR:$MASK_DIR" \
-                    "$RULES_DIR:$MASK_DIR" \
-                    "$RULES_FILE:$MASK_FILE" 2>/dev/null
+                $INOTIFY_CMD echo "$WATCH_DIR:$MASK_DIR" 2>/dev/null
                 ;;
         esac |
             while read -r line; do
-                # 只认「最后一个字段正好是这两个文件名」：
-                #   目录事件行如 "y /data/adb/teesim rules.txt"（名字在行尾）
-                #   文件事件行如 "x /data/adb/teesim/rules.txt"（路径在行尾）
-                # 不能用裸子串匹配 —— sed -i 的临时文件叫 rules.txtXXXXXX，
-                # 子串会把同目录里跟本次变更无关的临时文件也算成一次触发。
+                # 只认「最后一个字段正好是 packages.list」（目录事件行把名字放在行尾）。
+                # 不能用裸子串匹配 —— /data/system 里还有别的文件在频繁写。
                 last="${line##* }"
                 case "$last" in
-                    packages.list|rules.txt|*/packages.list|*/rules.txt) dispatch_sync ;;
+                    packages.list|*/packages.list) dispatch_sync ;;
                 esac
             done
 

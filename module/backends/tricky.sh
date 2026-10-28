@@ -24,7 +24,6 @@ sync_target_list() {
     if cmp -s "$tmp" "$target" 2>/dev/null; then
         rm -f "$tmp" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
-        mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
         cp -f "$target" "$ST_WRITTEN" 2>/dev/null
         mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
         return 1
@@ -34,7 +33,6 @@ sync_target_list() {
     if mv -f "$tmp" "$target" 2>/dev/null; then
         chmod 644 "$target" 2>/dev/null
         mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
-        mv -f "$ST_RULES_NEW" "$ST_RULES" 2>/dev/null
         cp -f "$target" "$ST_WRITTEN" 2>/dev/null
         mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
         return 0
