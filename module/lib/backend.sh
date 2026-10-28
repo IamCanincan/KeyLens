@@ -62,15 +62,11 @@ use_backend() {
         fi
     fi
 
-    # 增量同步的状态：上次见到的「已装第三方」、上次写进去的列表、以及墓碑。
-    # 由 build_app_list 写到 *.new，再由 sync_* 在**写入成功后**提交；
+    # 增量同步只需要一份状态：上次成功同步时见到的「已装第三方」。
+    # 由 build_app_list 写到 .ts_installed.new，再由 sync_* 在**写入成功后**提交；
     # 失败不推进，否则那次卸载事件会被当成"已经处理过"而永远漏掉。
     ST_INSTALLED="$TAA_DIR/.ts_installed_last"
-    ST_WRITTEN="$TAA_DIR/.ts_written_last"      # 我们上次写进去的完整列表
-    ST_REMOVED="$TAA_DIR/.ts_removed"             # 「手动删除=排除」的墓碑
     ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
-    ST_WRITTEN_NEW="$TAA_DIR/.ts_written.new"
-    ST_REMOVED_NEW="$TAA_DIR/.ts_removed.new"
 }
 
 # ---------- 当前目标文件里有哪些包名 ----------
@@ -142,11 +138,11 @@ sync_teesim_config() {
                     mv -f "$out" "$config" 2>/dev/null && rc=0
                 fi
                 # 内容与目标文件一致（刚写进去或本来就一样），这一趟的增量就算生效了：
-                # 提交状态，下次按新基线算。写失败（rc=2）不推进，否则卸载事件会漏。
+                # 提交基线，下次按新基线算。写失败（rc=2）不推进，否则卸载事件会漏。
                 if [ "$rc" != "2" ]; then
                     mv -f "$ST_INSTALLED_NEW" "$ST_INSTALLED" 2>/dev/null
-                    mv -f "$ST_WRITTEN_NEW" "$ST_WRITTEN" 2>/dev/null
-                    mv -f "$ST_REMOVED_NEW" "$ST_REMOVED" 2>/dev/null
+                    chmod 600 "$ST_INSTALLED" 2>/dev/null
+                    drop_legacy_state
                 fi
             fi
         }

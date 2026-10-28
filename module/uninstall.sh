@@ -44,8 +44,8 @@ rm -f "$TS/.last_month" "$TS/security_patch.txt.bak" 2>/dev/null
 rm -f "$TS/rules.txt" "$SIM/rules.txt" "$TS/taa_sys.txt" 2>/dev/null
 rm -f "/data/adb/service.d/taa_resetprop.sh" 2>/dev/null
 
-# ---------- 删除日志缓冲与伪装开关（含旧版本遗留路径） ----------
+# ---------- 删除日志缓冲、伪装开关与 boot hash ----------
 rm -f "/data/adb/ts_auto.log" "/data/adb/ts_auto.log.tmp" "/data/local/tmp/ts_auto.log" 2>/dev/null
-rm -f "/data/adb/ts_auto.props_off" 2>/dev/null
+rm -f "/data/adb/ts_auto.props_off" "/data/adb/ts_auto.boot_hash" 2>/dev/null
 
 exit 0

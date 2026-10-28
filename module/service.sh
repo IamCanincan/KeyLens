@@ -160,10 +160,23 @@ if [ "$(getprop sys.boot_completed 2>/dev/null)" = "1" ]; then
 else
     log_info "⚠️ 等了 $((tries * 2)) 秒 sys.boot_completed 仍不为 1，仍继续首次同步：结果可能不完整"
 fi
+
+# ---------- 开机后复核属性 ----------
+# 说明：有些机型在 post-fs-data 之后才落锁状态 / AVB 元数据，早段写进去的值
+#       会被系统覆盖。这里再幂等跑一遍（已经符合的不会重复写）；digest 与伪装
+#       开关无关，配置了就应用。
+if [ -n "$(boot_hash_get)" ]; then
+    apply_boot_hash || log_warn "⚠️ 开机后复核：Verified Boot 哈希读回不一致"
+fi
+if ! props_disabled; then
+    apply_resetprop
+fi
+log_info "🧩 开机后属性复核完成"
+
 dispatch_sync
 
 # ---------- 事件监听 ----------
-# 说明：单进程同时监听两个目录与常驻列表文件本身；进程异常退出后自动重启。
+# 说明：单进程监听 packages.list 所在的目录；进程异常退出后自动重启。
 #       packages.list 也是被 PackageManager 以「临时文件 + 改名」方式重写的，
 #       所以 /data/system 同样要按目录掩码监听，光看文件会漏掉改名。
 #

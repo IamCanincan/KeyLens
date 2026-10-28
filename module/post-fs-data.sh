@@ -21,6 +21,17 @@ if backends_conflict; then
     exit 0
 fi
 
+# ---------- Verified Boot 哈希 ----------
+# 说明：digest 是修复项，不属于伪装开关：只要配置了，开关关着也应用。
+#       失败不阻断开机（下一阶段还会复核一次），但要在日志里留下证据。
+if [ -n "$(boot_hash_get)" ]; then
+    if apply_boot_hash; then
+        log_info "🧩 已按配置写入 ro.boot.vbmeta.digest"
+    else
+        log_warn "⚠️ Verified Boot 哈希写入后读回不一致（见 $TAA_BOOT_HASH）"
+    fi
+fi
+
 # ---------- 属性伪装 ----------
 # 说明：用户可在模块 WebUI 里关闭伪装（开关文件为 $TAA_PROPS_OFF），
 #       关闭后本阶段跳过写入，其余功能（应用列表维护）不受影响。

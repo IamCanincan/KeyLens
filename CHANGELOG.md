@@ -6,6 +6,24 @@
 
 #### 新增
 
+* **同步模型换成快照差分，墓碑文件整个拿掉**：加入的来源从「已装但文件里没有」改成「上一轮之后新装的」（`inst − was`），删除只删「上一轮之后卸载的」（`was − inst`），文件里其余条目原样保留。手动删掉的包仍然装着、但不在"新装"里，所以**结构上就不可能被回填** —— 不再需要 `.ts_removed` 与那份"上次写了什么"的 `.ts_written_last`；状态只剩 `.ts_installed_last` 一份基线。
+  * `excluded` 命令改成按基线现算（`已装 ∩ 基线 ∩ ¬目标文件`）：同步过一次之后，已装却不在文件里的就只可能是你手动删的；升级后第一次成功同步会顺手清掉旧的墓碑文件（失败不删，便于回退）。
+  * `tests/sync-incremental.sh` 按新模型重写：**14 个场景 / 31 条断言**（首次种子、目标非空不种、新装进/卸载出、手加保留、手删不回、卸载后重装回来、手加回、已装为空、清空不回填、种子只种一次、状态只写已装、旧状态清理、首次运行不误报排除）。本机 mksh + toybox awk 跑同一份全绿。
+  * 真机端到端（本机 config.json）：换算法后跑 `sync`，内容一致（125 条），文件 sha 与测试前**逐位相同**。
+
+* **属性页新增 Verified Boot 哈希**：粘贴 `verifiedBootHash`（64 位 = sha256 / 128 位 = sha512）后写进 `ro.boot.vbmeta.digest`，只补空的 `ro.boot.vbmeta.hash_alg`。写后读回校验，不一致会如实报失败而不是"已应用"。它和伪装开关互相独立 —— 保存了就应用；只用 `resetprop -n`，重启回系统原值；配置文件 `/data/adb/ts_auto.boot_hash`（`600`）。
+  * 命令层新增 `boot-hash`（读配置 / 当前 digest / 状态）与 `props-boot-hash <值|->`（保存 / 清除并立即应用）。只加命令、不改既有输出形状，`api` 仍为 2；界面按 `commands` 能力门显示，旧命令层上整块隐藏。
+  * `tests/props-boot-hash.sh`（接进 CI）：格式校验、去空白转小写、原子写、非法值不覆盖、只在不同时写 digest、`hash_alg` 只补空、读回不一致报失败、无 `resetprop` 明确失败。**33 条断言**（Windows 本机跳过权限位那一条，其余 32 条通过；Linux CI 全跑）。
+  * 界面：哈希块放在属性页应用按钮下方（当前 / 已保存 / 输入 / 保存并应用 / 清除），长哈希自动换行；保存与清除都走 `confirm`/提示，非法输入在本地先挡一次。
+
+* **开机完成后第二遍复核属性**：`service.sh` 等到 `sys.boot_completed` 后把属性表再幂等跑一遍（已符合的不重复写）。有些机型在 post-fs-data 之后才落锁状态 / AVB 元数据，早段写入会被覆盖；这一遍兜住它，digest 同样按配置复核。
+
+* **修：属性页的「立即应用」按钮一直是个空胶囊**：`btnPropsApply` 从未设置过标签，实测 24×36 的空白按钮。现在补上 `tune` 图标 + 「立即应用」。
+
+* **命令参数统一做 shell 转义**：`run()` 以前把参数原样拼进命令串；boot hash 是用户输入，现在一律走单引号转义（值本身另有 64/128 位十六进制校验）。
+
+* **CI 增加两项静态自检**：`tests/contract-pair.sh`（对账 `TAA_API`/`EXPECT_API`、写命令清单、界面调用的命令名与能力门）与 `tests/props-boot-hash.sh`。契约对账来自上一轮真机横幅事故（界面停在 api=1、命令层已是 2），两种单边改动都验过会红。
+
 * **没有启动器入口的应用也有图标与显示名了**：桌面缓存（`app_icons.db`）只有**有启动器入口**的应用，GMS / GSF / WebView / AR Core / SafetyCore / 开发者身份验证工具 这类后台组件在里面一行都没有，界面只能退成首字块（实测本机 122 个第三方应用里 12 个属于这一类）。它们的图标在 APK 里，而 Google 的包资源名被混淆过（WebView 的 `base.apk` 是 260MB、图标在 `res/j_` 这种名字下），按文件名抠图不可行、解析 `resources.arsc` 又不划算。
   * 做法：带一个 **3.6KB 的 dex**（源与编译命令在 `tools/icondump/`，源码只调公开 API、隐藏 API 走反射），在 `app_process` 里调 `PackageManager.loadIcon / loadLabel` —— 自适应图标由系统渲染好，顺带拿到中文显示名。
   * 踩到并修掉的两个坑：① 这台机器的 `app_process` 跑内置 `com.android.commands.pm.Pm` 会 SIGABRT —— tombstone 里写的是 `ClassNotFoundException`，也就是说 app_process 本身没问题，只是那个类在 API 37 上没了；② `ActivityThread.systemMain()` 报 `Can't create handler ... that has not called Looper.prepare()`，补一次反射的 `Looper.prepareMainLooper()` 才通。

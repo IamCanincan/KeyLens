@@ -7,6 +7,8 @@
 # 输出约定（供 webroot/index.html 解析，不面向人阅读）：
 #   status / env / sync / props-apply / props-on / props-off / clear-log
 #          key=value，每行一项
+#   boot-hash
+#          key=value（configured / current / status=ok|mismatch|unset|invalid）
 #   props  「属性名<TAB>当前值<TAB>期望值<TAB>状态」，状态为 ok|diff|missing
 #   icons  「包名<TAB>显示名<TAB>相对路径」，同时把 PNG 写进 webroot/icons/
 #   targets / apps / log
@@ -17,7 +19,7 @@
 # 退出码：0=成功；1=参数非法、模块已停止、环境异常或写入失败
 #
 # 安全：命令名与参数只参与比较，不拼进任何 shell 命令；数字参数先夹取范围，
-#       文本内容一律以 base64 传入并先校验字符集，避免包名与注释被 shell 解析。
+#       boot hash 先按 64/128 位十六进制校验；界面侧对参数统一做单引号转义。
 #
 # 性能：界面上每次刷新都对应一次本脚本调用，而本机每次 fork 要 20~90ms
 #       （实测 17 次 getprop 共 397ms）。因此所有批量读取都遵循
@@ -49,7 +51,7 @@ ICONS_SUBDIR="icons"
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
 TAA_API=2
 TAA_COMMANDS="status env targets apps icons log clear-log props props-apply \
-props-on props-off sync help contract excluded"
+props-on props-off boot-hash props-boot-hash sync help contract excluded"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -139,12 +141,12 @@ webui_lock() {
 
 # ---------- 状态 ----------
 # 说明：一次返回界面所需的全部状态；只读，不创建文件、不触发同步。
-# 说明：列出被人为排除（墓碑）的包名，一行一个。界面用它把「未生效」和
-#       「你手动删过」分开 —— 两者都不在目标列表里，但原因完全相反。
+# 说明：列出「已装、有基线、但目标文件里没有」的包名，一行一个。界面用它把
+#       「未生效」和「你手动删过」分开 —— 两者都不在目标列表里，但原因相反。
+#       同步过一次之后，已装却不在文件里的就只可能是手动删除；不需要墓碑文件。
 cmd_excluded() {
-  detect_backend "$MODDIR"     # 状态文件路径是探测后端时才定的
-  [ -n "$ST_REMOVED" ] && [ -f "$ST_REMOVED" ] || return 0
-  sed '/^[[:space:]]*$/d' "$ST_REMOVED" 2>/dev/null
+  detect_backend "$MODDIR"     # 基线路径是探测后端时才定的
+  excluded_apps
 }
 
 cmd_contract() {
@@ -462,6 +464,60 @@ $(props_expect_rules)
 RULES
 }
 
+# ---------- Verified Boot 哈希（ro.boot.vbmeta.digest） ----------
+# 说明：这是修复项，不属于上面的伪装开关：只要配置了，开关关着也应用。
+#       值由用户从 KeyAttestation 等可信来源取到后填进来；只接受 64/128 位
+#       十六进制（sha256/sha512），避免把错串写进属性。
+cmd_boot_hash() {
+    local raw="" current status
+
+    [ -f "$TAA_BOOT_HASH" ] && raw=$(tr -d '[:space:]' < "$TAA_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
+    prop_now ro.boot.vbmeta.digest; current="$PROP_NOW"
+    if [ -z "$raw" ]; then
+        status=unset
+    elif ! boot_hash_valid "$raw"; then
+        status=invalid
+    elif [ "$current" = "$raw" ]; then
+        status=ok
+    else
+        status=mismatch
+    fi
+    kv configured "$raw"
+    kv current "$current"
+    kv status "$status"
+}
+
+# 说明：保存/- 清除并立即应用到本次运行；清除只影响下次开机，本次运行里的
+#       digest 要重启才回系统原值（我们只用 resetprop -n，不落持久化）。
+cmd_set_boot_hash() {
+    local v="$1" applied=0
+
+    require_runnable || return 1
+    if [ -z "$v" ] || [ "$v" = "-" ]; then
+        set_boot_hash "" || { echo "清除失败：$TAA_BOOT_HASH" >&2; return 1; }
+        log_info "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）"
+        prop_now ro.boot.vbmeta.digest
+        kv saved 0
+        kv applied 0
+        kv current "$PROP_NOW"
+        return 0
+    fi
+
+    v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+    boot_hash_valid "$v" || { echo "哈希必须是 64 或 128 位十六进制" >&2; return 1; }
+    set_boot_hash "$v" || { echo "写入失败：$TAA_BOOT_HASH" >&2; return 1; }
+    apply_boot_hash && applied=1
+    if [ "$applied" = 1 ]; then
+        log_info "🧩 WebUI 设置 Verified Boot 哈希（${#v} 位）并已应用"
+    else
+        log_warn "⚠️ WebUI 保存 Verified Boot 哈希，但写入后读回不一致"
+    fi
+    prop_now ro.boot.vbmeta.digest
+    kv saved 1
+    kv applied "$applied"
+    kv current "$PROP_NOW"
+}
+
 # 说明：立刻按期望表写一次属性。
 #       注意：ro.build.type 等字段已被 Zygote 读进 Java 静态字段的，运行期改写不会
 #       回头刷新 —— 界面上要如实提示，彻底生效仍需重启。
@@ -477,6 +533,7 @@ cmd_props_apply() {
     fi
 
     apply_resetprop
+    apply_boot_hash || echo "Verified Boot 哈希写入后读回不一致" >&2
     log_info "🛠 WebUI 触发一次属性伪装（运行期写入；已被应用读取的静态字段不会刷新）"
 
     # 重新起一次进程读，确保拿到的是写入后的值（本进程的属性快照已经过期）
@@ -691,6 +748,8 @@ cmd_help() {
   props                  属性名/当前值/期望值/状态（TAB 分隔）
   props-apply            立刻按期望表写一次属性
   props-on|props-off     开关开机属性伪装
+  boot-hash              读取 Verified Boot 哈希配置与当前 digest
+  props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
@@ -711,6 +770,8 @@ case "$CMD" in
     props-apply) cmd_props_apply ;;
     props-on)    cmd_props_switch on ;;
     props-off)   cmd_props_switch off ;;
+    boot-hash)   cmd_boot_hash ;;
+    props-boot-hash) cmd_set_boot_hash "$ARG" ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;
