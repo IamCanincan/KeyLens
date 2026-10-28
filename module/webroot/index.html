@@ -41,7 +41,7 @@
   /* 板块底色：默认"比卡面抬一档"。必须定义在 :root 而不是 .grp 上 ——
      写在 .grp 上会盖掉浮层里那条覆盖（自定义属性也是元素自己的声明赢过继承），
      实测那样色块和浮层同色、等于没加。 */
-  --block: var(--surface-high);
+  --block: var(--surface-highest);
   --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 24px; --sp7: 32px;
   /* 内容列宽上限：真机 WebView 是 **417 CSS px** 宽（1644px @630dpi，
      低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，见 CHANGELOG）。
@@ -303,8 +303,10 @@ button,input,textarea,select{font:inherit;color:inherit}
   color:var(--on-surface);text-align:left;cursor:pointer;
   transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
 .menu-row:active{transform:scale(.985);background:var(--surface-mid)}
+.menu-row::after{content:"›";margin-left:auto;flex:none;font-size:22px;line-height:1;
+  color:var(--on-variant);opacity:.6}
 .menu-txt{flex:1;min-width:0;display:block}
-.menu-txt b{display:block;font-size:var(--fs14);font-weight:600;line-height:1.4}
+.menu-txt b{display:block;font-size:var(--fs16);font-weight:600;line-height:1.4}
 /* 概览里是两张卡：入口在上、状态明细在下 */
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
    它们自己的内容还亲，版面立刻显得局促。 */
@@ -324,8 +326,9 @@ button,input,textarea,select{font:inherit;color:inherit}
 .grp{background:var(--block);border-radius:var(--r-m);
   margin:0 calc(var(--sp4) * -1);padding:var(--sp4)}
 .grp+.grp{margin-top:var(--sp6)}
-.grp-t{font-size:var(--fs12);font-weight:600;letter-spacing:.1px;color:var(--on-variant);
-  margin-bottom:var(--sp2)}
+.grp-t{display:flex;align-items:center;gap:8px;font-size:var(--fs13);font-weight:700;
+  letter-spacing:.2px;color:var(--on-surface);margin-bottom:var(--sp3)}
+.grp-t::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--primary);flex:none}
 /* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
    容器比 260px 还窄（320px 视口下卡片内容只有 254px）轨道不会退让，
    格子就会捅出网格右边界。实测过这一处。 */
@@ -334,7 +337,7 @@ button,input,textarea,select{font:inherit;color:inherit}
    分层交给组标题与行距。列保持两列（整行 label/value 会在中间拉出几百 px 空洞）。 */
 .grid{display:grid;gap:var(--sp4) var(--sp5);grid-template-columns:repeat(auto-fit,minmax(min(var(--cell,240px),100%),1fr))}
 .blk{background:transparent;border-radius:0;padding:0;min-width:0}
-.blk-k{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:5px}
+.blk-k{display:block;font-size:var(--fs12);font-weight:500;color:var(--on-variant);margin-bottom:5px}
 .blk-v{display:flex;align-items:center;gap:8px;font-size:var(--fs16);font-weight:600;line-height:1.4;min-width:0}
 .blk-v>span{min-width:0}
 .blk-v .pill{font-weight:inherit}
