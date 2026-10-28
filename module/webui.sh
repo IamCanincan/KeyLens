@@ -49,7 +49,7 @@ ICONS_SUBDIR="icons"
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
 TAA_API=1
 TAA_COMMANDS="status env rules targets apps icons log clear-log props props-apply \
-props-on props-off save-rules sync help contract"
+props-on props-off save-rules sync help contract excluded"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -149,6 +149,14 @@ webui_lock() {
 
 # ---------- 状态 ----------
 # 说明：一次返回界面所需的全部状态；只读，不创建文件、不触发同步。
+# 说明：列出被人为排除（墓碑）的包名，一行一个。界面用它把「未生效」和
+#       「你手动删过」分开 —— 两者都不在目标列表里，但原因完全相反。
+cmd_excluded() {
+  detect_backend "$MODDIR"     # 状态文件路径是探测后端时才定的
+  [ -n "$ST_REMOVED" ] && [ -f "$ST_REMOVED" ] || return 0
+  sed '/^[[:space:]]*$/d' "$ST_REMOVED" 2>/dev/null
+}
+
 cmd_contract() {
   kv api "$TAA_API"
   kv commands "$TAA_COMMANDS"
@@ -777,11 +785,13 @@ cmd_help() {
   save-rules <base64>    覆盖常驻列表并同步
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
+  excluded               列出被人为排除（手动删除）的包名
 EOF
 }
 
 case "$CMD" in
     contract)    cmd_contract ;;
+    excluded)    cmd_excluded ;;
     status)      cmd_status ;;
     env)         cmd_env ;;
     rules)       cmd_rules ;;

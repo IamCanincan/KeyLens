@@ -1124,7 +1124,7 @@ var S = {
   targets: [], apps: [], targetSet: null,
   rulesSet: null, rulesSetSrc: null,
   appsSrc: 'targets', onlyMissing: false, search: '',
-  icons: {}, iconAsked: {},
+  icons: {}, iconAsked: {}, excluded: {},
   log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], loaded: {}, seq: 0, homeY: 0
 };
 
@@ -1378,9 +1378,11 @@ function renderRulesResolved(){
     }
     row.appendChild(txt);
     if (!inTarget[p]) {
-      var tg = el('span', 'app-tag', '未生效');
-      tg.setAttribute('data-tone', 'miss');
-      tg.title = '写在 rules.txt 里，但当前目标列表没有它（多半是还没同步，或该后端跳过了不可见应用）';
+      var tg = el('span', 'app-tag', S.excluded[p] ? '已排除' : '未生效');
+      tg.setAttribute('data-tone', S.excluded[p] ? 'na' : 'miss');
+      tg.title = S.excluded[p]
+        ? '你手动把它从目标名单里删过，所以不再自动加回来；删掉后端的 .ts_removed，或把它从常驻删掉再加回，即可恢复'
+        : '写在 rules.txt 里，但当前目标列表没有它（多半是还没同步，或该后端跳过了不可见应用）';
       row.appendChild(tg);
     }
     g.appendChild(row);
@@ -1401,6 +1403,8 @@ function updateRulesStat(){
   var s = rulesStats(rulesBox.value);
   var dirty = rulesBox.value !== S.rulesBase;
   var parts = ['有效包名 ' + s.valid, '注释 ' + s.comment, '空行 ' + s.blank];
+  var nexc = Object.keys(S.excluded || {}).length;
+  if (nexc) parts.push('已排除 ' + nexc + ' 条');
   if (/\r/.test(rulesBox.value)) parts.push('含 CR（保存时会清掉）');
   if (dirty) parts.push('未保存');
   rulesStat.textContent = parts.join(' · ');
@@ -1768,6 +1772,19 @@ function renderAbout(){
 }
 
 /* 三份列表一起取：概览的三个数字、常驻编辑器、应用页的对照全靠它们，取一次三页共用 */
+/* 「手动排除」的包名（墓碑）。它和「未生效」在界面上长得一样、原因完全相反：
+   前者是你自己删的，后者是还没同步或后端跳过了。命令层没有这条能力就不问 ——
+   契约里的 commands 就是给这种"新界面 + 旧命令层"的组合用的。 */
+function loadExcluded(){
+  if ((' ' + S.contract.commands + ' ').indexOf(' excluded ') < 0) return Promise.resolve(false);
+  return call('excluded').then(function (r){
+    var m = {};
+    if (r.ok) split(r.text).forEach(function (p){ if (p) m[p] = 1; });
+    S.excluded = m;
+    return true;
+  }, function (){ return false; });
+}
+
 function loadLists(){
   return Promise.all([call('targets'), call('apps'), call('rules')]).then(function (rs){
     S.targets = rs[0].ok ? split(rs[0].text) : [];
@@ -1778,7 +1795,8 @@ function loadLists(){
     if (rs[2].ok) { S.rules = rs[2].text; S.rulesBase = rs[2].text; }
     else if (rs[2].code !== 1) snackbar(failText(rs[2]), 'bad');
     if (!rs[0].ok && rs[0].code !== 1) snackbar(failText(rs[0]), 'bad');
-    return rs;
+    /* 排除名单跟列表一起取；取不到就当空（界面退化成只显示「未生效」） */
+    return loadExcluded().then(function (){ return rs; });
   });
 }
 
@@ -2383,7 +2401,7 @@ function demoResult(cmd, arg){
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || '1'),
       'commands=status env rules targets apps icons log clear-log props props-apply' +
-      ' props-on props-off save-rules sync help contract'].join('\n'),
+      ' props-on props-off save-rules sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
