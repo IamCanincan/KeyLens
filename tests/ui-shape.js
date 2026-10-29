@@ -191,7 +191,11 @@ chk('短页内容垂直居中（主页除外）',
   /\.wrap\.center\{justify-content:safe center\}/.test(html)
   && /classList\.toggle\('center', !home\)/.test(fnBody('applyPage')));
 /* 同心圆：卡片 20 − 1px 边框 − 8px 间距 = 11 */
-chk('板块圆角与外卡同心', /\.grp\{background:var\(--block\);border-radius:11px/.test(html));
+chk('板块圆角与外卡同心', /\.grp\{border:1px solid var\(--outline-variant\);border-radius:11px/.test(html));
+/* 描边取代底色之后 --block 就是死令牌；加了 1px 边框必须从内边距里扣掉，
+   否则整块文字右移 1px，全站那条 41 的对齐线断掉。 */
+chk('板块不再吃底色', !/--block/.test(html) && !/\.grp\{[^}]*background:/.test(html));
+chk('板块内边距扣掉边框 1px', /padding:calc\(var\(--sp4\) - 1px\)/.test(html));
 /* 字阶只准用 @material/web 自带 md-sys-typescale 的档：13 与 38 是表外值，
    同一屏里 12 与 13 并排只会读成"没对齐" */
 chk('字号只用官方 typescale 档', !/--fs13|--fs38/.test(html)

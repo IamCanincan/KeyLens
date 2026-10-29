@@ -45,10 +45,6 @@
      字重跟 M3 一样只留 400 / 500 / 600（600 只给页名、板块标题与英雄数字）。 */
   --fs11: 11px; --fs12: 12px; --fs14: 14px; --fs16: 16px;
   --fs22: 22px; --fs24: 24px; --fs36: 36px; --fs45: 45px;
-  /* 板块底色：默认"比卡面抬一档"。必须定义在 :root 而不是 .grp 上 ——
-     写在 .grp 上会盖掉浮层里那条覆盖（自定义属性也是元素自己的声明赢过继承），
-     实测那样色块和浮层同色、等于没加。 */
-  --block: var(--surface-highest);
   --sp1: 4px; --sp2: 8px; --sp3: 12px; --sp4: 16px; --sp5: 20px; --sp6: 24px; --sp7: 32px;
   /* 内容列宽上限：真机 WebView 是 **417 CSS px** 宽（1644px @630dpi，
      低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，见 CHANGELOG）。
@@ -393,25 +389,24 @@ body.is-selecting .tabs{display:none}
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
    它们自己的内容还亲，版面立刻显得局促。 */
 .home-card{margin-top:var(--sp6)}
-/* 主页那张卡里只有一个板块：再上一层底色就是盒中盒，
+/* 主页那张卡里只有一个板块：给它描边就是盒中盒，
    多组时才需要的分层在这里只会多一个"面"。 */
-.home-card .grp{background:transparent;margin:0;padding:0}
+.home-card .grp{border:0;margin:0;padding:0}
 
 /* ================= 概览分组 ================= */
 /* 「标签贴左、数值贴右」的整行布局会在中间拉出一大片空洞（本机内容宽 335，
    一行里两端之间能空 200 以上），整页像一张被拉宽的收据。改成自适应网格：
    每格自己限宽（下限 --cell，本机 150 → 两列），窄到放不下自动降列，
    不需要断点，也不会有行横跨整个画布。 */
-/* 板块各一块底：分列之后一个板块里挤了 8 个键值，只靠间距分组读不出边界。
-   底色取"比卡面再抬一档"（--surface-high：与卡面比 1.143 深 / 1.116 浅，
-   和页底 vs 卡面那档 1.118/1.11 同量级 —— 他验收过的步进），浮层本身已经是
-   surface-high，所以里面改用 surface-highest，两处都是同一档落差。
-   负外边距 + 等值内边距：色块向外铺到卡内边距的中点，文字左缘仍然精确落在 41
-   （全站那一条内容左缘不能因为加底色而挪位置）。 */
+/* 板块分组用 1px 描边，不用底色：底色那档压在卡面上，里面的 outlined 文本域
+   描边就跟灰底糊在一起，整块读起来像禁用态。描边取 --outline-variant（浅），
+   卡线取 --card-line（深），一深一浅才不会看成双线。
+   负外边距让边框铺到卡内边距的中点（离卡边 8），文字左缘仍精确落在 41：
+   加了 1px 边框就要从内边距里扣掉 1px，否则整块内容右移 1px，那条线就断了。 */
 /* 圆角与外卡同心：卡 20 是边框外沿，减 1px 边框、再减 8（卡内边距 24 − 外扩 16）
    = 11。别再改回 --r-m（16）—— 那样两个圆角不同心。 */
-.grp{background:var(--block);border-radius:11px;
-  margin:0 calc(var(--sp4) * -1);padding:var(--sp4)}
+.grp{border:1px solid var(--outline-variant);border-radius:11px;
+  margin:0 calc(var(--sp4) * -1);padding:calc(var(--sp4) - 1px)}
 .grp+.grp{margin-top:var(--sp6)}
 .grp-t{display:flex;align-items:center;gap:8px;font-size:var(--fs14);font-weight:600;letter-spacing:.2px;color:var(--on-surface);margin-bottom:var(--sp3)}
 .grp-t::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--primary);flex:none}
