@@ -145,6 +145,52 @@ async function main() {
     fs.writeFileSync(path.join(SHOT_DIR, 'new-' + want.id + '.png'), Buffer.from(shot.data, 'base64'));
   }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
+
+  /* ── 逐后端驱动：三家各自的能力面只在 backend=<家> 时才画得出来 ──────
+     上一版只跑默认那一家（omk），Tricky 分支里 `t.teeBroken` 读错键名
+     一路绿到上线前都没人看见 —— 假数据与代码互相自证，两边一起错。
+     must 里除了区块标题，还钉了**只有真读了那个键才会出现的值**。 */
+  const BACKENDS = [
+    { id: 'tricky', q: 'tricky', must: ['TEE 探测结果', '补丁级别', 'keystore2_unavailable',
+      '自动条目现在走', '不匹配', '上次探测：TEE 不可用', 'target.txt',
+      /* 这一句只有从 tee_broken 这个键读到值才会出现：键名一读回上游的
+         小驼峰，这一家就画不出它 —— 静态闸抓键名，这条抓"真的画到屏上了"。 */
+      '上游没给出探测结论'] },
+    { id: 'teesim', q: 'teesim', must: ['Profile 表', '编辑 profile · default',
+      'overrides.json · 安全等级与版本', 'config.json'] },
+    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml'] },
+  ];
+  console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');
+  for (const b of BACKENDS) {
+    await send('Page.navigate', { url: URL0 + '&backend=' + b.q });
+    await sleep(1400);
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+    await sleep(900);
+    const p = await ev(PROBE);
+    const miss = b.must.filter(s => p.text.indexOf(s) < 0);
+    const ok = miss.length === 0 && p.scrollW - p.vw <= 0 && p.items >= 4;
+    if (!ok) bad++;
+    console.log(`${ok ? 'ok  ' : '✗   '} 后端 ${b.id}  列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
+      + (miss.length ? '  没画出来: ' + miss.join('、') : ''));
+    const shot = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '.png'), Buffer.from(shot.data, 'base64'));
+  }
+
+  /* 读失败与"真的是空的"必须长得不一样 */
+  await send('Page.navigate', { url: URL0 + '&backend=tricky&fail=targets' });
+  await sleep(1400);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+  await sleep(900);
+  const pf = await ev(PROBE);
+  const hasErr = pf.text.indexOf('名单读不到') >= 0;
+  const hasEmpty = pf.text.indexOf('这一类现在是空的') >= 0;
+  chk('目标文件缺失报成错误，不是"这一类是空的"', hasErr && !hasEmpty,
+    '错误行 ' + (hasErr ? '在' : '缺') + ' · 空态文案 ' + (hasEmpty ? '还在（等于自相矛盾）' : '已让位'));
+  const shotF = await send('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(SHOT_DIR, 'new-readfail.png'), Buffer.from(shotF.data, 'base64'));
+
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

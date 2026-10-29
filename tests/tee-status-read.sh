@@ -37,6 +37,14 @@ printf '%s' "$out" | grep -q '^tee_broken=unknown$' \
 printf '%s' "$out" | grep -q '^category=not_run$' \
     && printf '  ok   category 原样透传（它是开放集合，不能当封闭枚举校验）\n' \
     || { printf '  ✗    category 没读到\n'; fail=1; }
+# 正对照：上游文件里是 serviceErrorCode（小驼峰），命令层输出的是 service_error_code。
+# 界面读的是后者 —— 只断言"读到了某行"的话，把键名改回小驼峰也不会响。
+printf '%s' "$out" | grep -q '^service_error_code=none$' \
+    && printf '  ok   serviceErrorCode → service_error_code（命令层键名与界面一致）\n' \
+    || { printf '  ✗    service_error_code 没按命令层键名输出：\n%s\n' "$out"; fail=1; }
+printf '%s' "$out" | grep -q '^serviceErrorCode=' \
+    && { printf '  ✗    输出里混进了上游的小驼峰键，界面读不到\n'; fail=1; } \
+    || printf '  ok   输出不含上游小驼峰键\n'
 
 # ② 带尾换行也要正常（别把修好变成只对一半）
 printf 'status=AVAILABLE\ncategory=none\nserviceErrorCode=13\nteeBroken=false\n' > "$dir/tee_status"

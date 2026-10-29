@@ -195,9 +195,18 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 ```sh
 sh tools/deploy-webui.sh          # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
-node tools/ui-cdp-check.mjs       # 417/360/320 × 浅/深 × 八页 + 主页三条退路
-node tests/ui-shape.js            # 79 条静态断言
+node tools/md3e-build/icon-gate.mjs      # 图标名必须在 257 连字子集内（越界直接拒绝出产物）
+node tools/md3e-build/build.mjs          # 源码 → 候选产物 webui/dist/index.html（加 --ship 才写进 module/webroot/）
+node tools/md3e-build/verify.mjs         # 417 钉视口，逐页驱动 + 逐后端驱动 + "读不到 ≠ 是空的"
+node tools/md3e-build/check-artifact.mjs # 占位符/字体内联/源码可达/字节数下限
+node tools/kv-shape-check.mjs            # 界面读的键、KV_REQUIRED 要的键、假数据里的键 ⊆ 命令层实际输出的键
+node tests/ui-next-shape.js              # 表单字段 ↔ webui.sh 的 case 逐条对账
+node tools/ui-cdp-check.mjs       # 417/360/320 × 浅/深 × 八页 + 主页三条退路（旧版产物）
+node tests/ui-shape.js            # 79 条静态断言（旧版产物）
 ```
+
+- **新版（`webui/src/`）的验收线是"逐后端各跑一遍"**：`verify.mjs` 用 `?backend=tricky|teesim|omk` 切假数据，每家的块要画出**只有真读到那个键才会出现的值**才算过；`?fail=targets` 那一趟专门钉"读不到"与"是空的"是两种画面。理由是一次真事故：界面按上游文件的小驼峰键名（`teeBroken`）去读命令层下划线风格的输出（`tee_broken`），而假数据是照着这段错代码写的，两边互相自证，逐页驱动一路全绿。
+- **键名不再靠眼看**：`node tools/kv-shape-check.mjs` 把 `webui.sh` 的 `kv <键>` 与 `backends/*.awk` 的 `print "键="` 汇成"命令层实际会输出"的集合，再拿界面读取、`KV_REQUIRED`、假数据三边去对；它自己由 `node tools/mutate-kv-shape.cjs` 变异验过三处都会响。
 
 - **`adb push` 默认把文件落成 0666**，而这个 `index.html` 由管理器以 root 加载、里面的命令以 root 执行 —— 世界可写等于任何应用都能改写一个 root 界面。所以"模式不是 644/444 就退非 0"是部署脚本的硬闸门，不靠人记得 `chmod`。脚本还会拒绝"工作区有未提交改动"（否则设备上跑的版本对不上仓库，回头说不清），并要求 `adb shell` 是 root。
 - **量布局别用 `--headless --screenshot --window-size=417`**：那样起出来的布局视口是 **491**，截图仍旧 834 宽，看着像 417 —— 溢出检查会静默地在一台不存在的手机上通过。台架用 CDP `Emulation.setDeviceMetricsOverride` 钉死，并且第一步就断言"量到的宽度确实等于要的宽度"。

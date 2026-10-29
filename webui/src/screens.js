@@ -77,45 +77,6 @@ export function toneOfState(st) {
   return ['none', '状态未知'];
 }
 
-/* ── 主页 ─────────────────────────────────────────────────────────── */
-export function renderOver() {
-  const st = S.status, env = S.env;
-  const box = h('div', 'stack');
-
-  const hero = card('hero');
-  const [tone, label] = toneOfState(st.state);
-  const top = h('div', 'hero-top');
-  top.appendChild(h('span', 'chip chip-' + tone, label));
-  top.appendChild(h('span', 'ver', st.mod_version || '—'));
-  hero.appendChild(top);
-  const big = h('div', 'hero-count');
-  big.appendChild(h('span', 'num', S.loaded.lists ? String(S.targets.length) : '—'));
-  big.appendChild(h('span', 'unit', '生效应用数'));
-  hero.appendChild(big);
-  const acts = h('div', 'acts');
-  acts.appendChild(button('立即同步', { variant: 'filled', icon: ICON.sync, on: () => write('sync', '已请求同步') }));
-  acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: () => reload() }));
-  hero.appendChild(acts);
-  box.appendChild(hero);
-
-  const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
-  const run = card();
-  const rs = section('运行', ICON.backend);
-  rs.appendChild(list([
-    item({ headline: '后端', trailing: st.backend_name || '—', tone: st.conflict === '1' ? 'bad' : 'ok' }),
-    item({ headline: '事件监听', trailing: ino, tone: !env.inotify_mode ? 'none' : (env.inotify_mode === 'none' ? 'bad' : 'ok') }),
-    item({ headline: '守护进程', trailing: st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个', tone: st.daemon_alive === '0' ? 'bad' : 'ok' }),
-    item({ headline: '目标文件', trailing: (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写'), tone: st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', supporting: '上次写入 ' + timeLabel(st.target_mtime) }),
-  ]));
-  run.appendChild(rs);
-  box.appendChild(run);
-
-  box.appendChild(recentCard());
-  box.appendChild(renderTheme());
-  box.appendChild(selfCheck());
-  return box;
-}
-
 /* 界面自检：不再是独立的一格目的地 —— 它是排障材料，跟着状态页走更顺手。
    报的是"界面自己看到了什么"：桥接扫过哪些名字、契约号与命令数、当前视口。 */
 function selfCheck() {
@@ -132,21 +93,6 @@ function selfCheck() {
     item({ headline: '主题', trailing: S.theme, supporting: '视口 ' + Math.round(document.documentElement.clientWidth) + ' CSS px · 系统深色 ' + (S.env.sys_dark === '1' ? '是' : '否') }),
   ]));
   c.appendChild(s);
-  return c;
-}
-
-/* 最近动态：与日志页共用同一个行渲染器，两处不会长得不一样 */
-export function recentCard() {
-  const c = card('recent');
-  c.appendChild(section('最近动态', ICON.log));
-  const box = h('div', 'console');
-  const lines = S.log.slice(-5);
-  if (!lines.length) {
-    box.appendChild(h('p', 'empty', S.logErr ? '日志读取失败，详见日志页' : '还没有日志 —— 模块只在开机与文件变化时写。'));
-  } else {
-    lines.forEach(function (l) { box.appendChild(logRow(l)); });
-  }
-  c.appendChild(box);
   return c;
 }
 
@@ -176,80 +122,36 @@ export function tokenValidFor(backend, tok) {
   return /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(tok) ? '' : '不是合法包名';
 }
 
-export function renderTargets() {
-  const box = h('div', 'stack');
-  const bi = S.backendInfo, syn = SYNTAX[bi.backend] || SYNTAX.omk;
-  const baseSet = {};
-  S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
-
-  const head = card();
-  const hs = section('目标名单', ICON.list);
-  hs.appendChild(h('p', 'hint', '当前后端接受的写法：' + syn.label));
-  const seg = h('div', 'acts');
-  [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
-   ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
-   ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
-    seg.appendChild(button(v[1], { variant: v[0] === S.view ? 'filled' : 'text',
-      on: function () { S.view = v[0]; draw(); } }));
-  });
-  hs.appendChild(seg);
-  head.appendChild(hs);
-  box.appendChild(head);
-
-  const src = S.view === 'apps' ? S.apps
-    : S.view === 'missing' ? S.apps.filter(function (a) { return !baseSet[a]; })
-    : S.view === 'excluded' ? S.excluded : S.targets;
-  const q = (S.search || '').toLowerCase();
-  const shown = q ? src.filter(function (t) {
-    return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
-      || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
-  }) : src;
-
-  const listCard = card();
-  const ls = section((S.view === 'targets' ? '生效条目' : S.view === 'apps' ? '已装第三方'
-    : S.view === 'missing' ? '已装但未纳入' : '被手动排除') + ' · ' + shown.length + ' 条', ICON.read);
-  const l = h('md-list');
-  shown.slice(0, 200).forEach(function (tok) {
-    const b = baseOf(tok), ic = S.icons[b];
-    const meta = (S.targetMeta || {})[tok];
-    const it = item({
-      icon: ic && ic.src ? undefined : (meta && meta.kind === 'uid' ? 'label' : 'group'),
-      headline: (ic && ic.label) || b || tok,
-      supporting: (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : ''),
-      trailing: meta && meta.kind !== 'plain' ? '' : (S.view === 'targets' ? '' : '可加入'),
-      interactive: true,
-    });
-    if (ic && ic.src) {
-      const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
-      img.loading = 'lazy'; img.decoding = 'async';
-      it.appendChild(img);
-    }
-    if (S.view === 'targets' && bi.backend === 'tricky' && syn.modes) {
-      it.appendChild(modeButton(tok, meta));
-    } else {
-      it.appendChild(S.view === 'targets'
-        ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
-        : button('加入', { variant: 'text', on: function () { write('restore-apps', b || tok, '已加入：' + (b || tok)); } }));
-    }
-    l.appendChild(it);
-  });
-  if (!shown.length) l.appendChild(h('p', 'empty', '这一类现在是空的。'));
-  ls.appendChild(l);
-  listCard.appendChild(ls);
-  box.appendChild(listCard);
-  loadIconsFor(shown);
-  return box;
+/* AUTO 不是一种模式，是"照当下 TEE 探测结果现算"（Config.kt:225-229）：
+   AVAILABLE→叶证书、FAILED→证书生成、UNAVAILABLE→**不匹配**（这个包根本不会被改写）。
+   只显示"自动"等于什么也没说 —— 用户要的是"那台机器上它到底走哪条"。
+   探测结果读不到时不许猜：宁可不显示，也不能把 UNAVAILABLE 当成会走叶证书。
+   读的是上游写下的 tee_status 文件，不是此刻重新探测 —— 所以标注"上次探测"。 */
+export function resolveAuto(tee, why) {
+  if (!tee) return { to: '', tone: 'warn', note: why || S.teeWhy || '读不到 tee_status，无法判定' };
+  switch (tee.status) {
+    case 'AVAILABLE': return { to: 'leaf', tone: 'ok', note: '上次探测：TEE 可用 → 自动走叶证书' };
+    case 'FAILED': return { to: 'generate', tone: 'warn', note: '上次探测：TEE 探测失败 → 自动退到证书生成' };
+    case 'UNAVAILABLE': return { to: 'none', tone: 'bad', note: '上次探测：TEE 不可用 → 自动条目不匹配，包不会被改写' };
+    default: return { to: '', tone: 'warn', note: 'tee_status.status=' + (tee.status || '空') + '，不认识的取值，无法判定' };
+  }
 }
 
-function modeButton(tok, meta) {
-  const b = button(MODE_LABEL[(meta && meta.kind) || 'auto'] || '自动',
-    { variant: 'text', on: function () {
-        const order = ['auto', 'leaf', 'generate'];
-        const next = order[(order.indexOf((meta && meta.kind) || 'auto') + 1) % 3];
-        write('set-mode', baseOf(tok) + ' ' + next, '已切换为' + MODE_LABEL[next]);
-      } });
-  b.setAttribute('data-tone', (meta && meta.kind) === 'generate' ? 'ok' : (meta && meta.kind) === 'leaf' ? 'warn' : 'none');
-  return b;
+/* 返回 { el, note }：note 要写进条目的 supporting 行 —— 触屏上没有 tooltip，
+   藏在 title 里等于没写。 */
+function modeButton(tok, meta, tee) {
+  const kind = (meta && meta.kind) || 'auto';
+  const r = kind === 'auto' ? resolveAuto(tee) : { to: kind, tone: kind === 'generate' ? 'warn' : 'ok', note: '' };
+  const label = kind === 'auto'
+    ? '自动 → ' + (r.to === 'none' ? '不匹配' : (MODE_LABEL[r.to] || '未探测'))
+    : MODE_LABEL[kind];
+  const el = button(label, { variant: 'text', on: function () {
+      const order = ['auto', 'leaf', 'generate'];
+      const next = order[(order.indexOf(kind) + 1) % 3];
+      write('set-mode', baseOf(tok) + ' ' + next, '已切换为' + MODE_LABEL[next]);
+    } });
+  el.setAttribute('data-tone', r.tone);
+  return { el: el, note: r.note };
 }
 
 let askedIcons = {};
@@ -364,6 +266,9 @@ function listSection() {
   S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
   const c = card();
   const s = section('目标名单 · ' + (bi.target_file || '—'), ICON.list);
+  /* 读不到时不许说"是空的" —— 命令层在目标文件缺失时就是 return 1，
+     这条错误必须在名单卡的第一行，而不是滚到页尾的黄条里。 */
+  if (S.listErr) s.appendChild(h('p', 'read-err', '名单读不到：' + S.listErr));
   s.appendChild(h('p', 'hint', '这个后端接受的写法：' + syn.label));
   const seg = h('div', 'acts');
   [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
@@ -389,9 +294,12 @@ function listSection() {
   shown.slice(0, 200).forEach(function (tok) {
     const b = baseOf(tok), ic = S.icons[b];
     const meta = (S.targetMeta || {})[tok];
+    const isTrickyTargets = S.view === 'targets' && bi.backend === 'tricky' && syn.modes;
+    const m = isTrickyTargets ? modeButton(tok, meta, S.teeStatus) : null;
+    const detail = (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : '');
     const it = item({
       headline: (ic && ic.label) || b || tok,
-      supporting: (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : ''),
+      supporting: [detail, m && m.note].filter(Boolean).join(' · '),
       interactive: true,
     });
     if (ic && ic.src) {
@@ -399,8 +307,8 @@ function listSection() {
       img.loading = 'lazy'; img.decoding = 'async';
       it.appendChild(img);
     }
-    if (S.view === 'targets' && bi.backend === 'tricky' && syn.modes) {
-      it.appendChild(modeButton(tok, meta));
+    if (m) {
+      it.appendChild(m.el);
     } else {
       it.appendChild(S.view === 'targets'
         ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
@@ -408,7 +316,7 @@ function listSection() {
     }
     l.appendChild(it);
   });
-  if (!shown.length) l.appendChild(h('p', 'empty', '这一类现在是空的。'));
+  if (!shown.length) l.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
   s.appendChild(l);
   s.appendChild(h('p', 'hint', '共 ' + shown.length + ' 条' + (shown.length > 200 ? '（只画前 200 条）' : '')));
   c.appendChild(s);
@@ -674,19 +582,36 @@ function teesimProfiles() {
 }
 
 /* Tricky：全局段 + 按包段；tee_status 是只读事实 */
+/* 上游写的是 Kotlin 布尔的字面量（Config.kt:127-143）：AVAILABLE→false、
+   FAILED→true、UNAVAILABLE→unknown。命令层把键改成下划线风格输出，
+   所以这里读 tee_broken / service_error_code，不是文件里的 teeBroken。 */
+const TEE_BROKEN = {
+  'false': ['ok', 'false = 探测成功，证书来自 TEE'],
+  'true': ['warn', 'true = 探测失败，Tricky 退到自建证书'],
+  'unknown': ['bad', 'unknown = 上游没给出探测结论，自动条目不会被改写'],
+};
 function trickyBlocks() {
   const box = h('div', 'stack');
   const t = S.teeStatus;
   const c = card();
   const s = section('TEE 探测结果', ICON.tee);
-  s.appendChild(list(t ? [
-    item({ headline: 'status', trailing: t.status || '—', tone: t.status === 'AVAILABLE' ? 'ok' : 'bad' }),
-    item({ headline: 'teeBroken', trailing: t.teeBroken || '—', tone: t.teeBroken === '1' ? 'warn' : 'ok',
-      supporting: '1 = 这台机器的 TEE 不可用，Tricky 只能走叶证书改写' }),
-    item({ headline: 'category', trailing: t.category || '—' }),
-    item({ headline: 'serviceErrorCode', trailing: t.serviceErrorCode || '—' }),
-  ] : [item({ headline: 'tee_status', trailing: '读不到',
-    supporting: hasCmd('tee-status') ? '文件不存在或后端不是 Tricky' : '这一版命令层没有 tee-status' })]));
+  if (t) {
+    const [btone, bsup] = TEE_BROKEN[t.tee_broken] || ['none', '取值不在 false/true/unknown 里，按原样显示'];
+    const r = resolveAuto(t);
+    s.appendChild(list([
+      item({ headline: 'status', trailing: t.status || '—', tone: r.tone, supporting: r.note }),
+      item({ headline: 'tee_broken', trailing: t.tee_broken || '—', tone: btone, supporting: bsup }),
+      item({ headline: 'category', trailing: t.category || '—',
+        supporting: '上游用文字描述失败原因（not_run、aaid_timeout、异常名…），不是编号' }),
+      item({ headline: 'service_error_code', trailing: t.service_error_code || '—' }),
+      item({ headline: '自动条目现在走', trailing: r.to === 'none' ? '不匹配' : (MODE_LABEL[r.to] || '未探测'),
+        tone: r.tone, supporting: '这个值是按下表现算的，不是写在 target.txt 里的' }),
+    ]));
+    s.appendChild(h('p', 'hint', '来源文件：' + (t.file || '—') + '（探测之后才写，可能比此刻的探测旧）'));
+  } else {
+    s.appendChild(list([item({ headline: 'tee_status', trailing: '读不到', tone: 'warn',
+      supporting: S.teeWhy || (hasCmd('tee-status') ? '文件不存在或后端不是 Tricky' : '这一版命令层没有 tee-status') })]));
+  }
   c.appendChild(s); box.appendChild(c);
 
   const p = card();

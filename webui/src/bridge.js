@@ -12,6 +12,11 @@ export const QUERY = new URLSearchParams(location.search);
 export const MODDIR = QUERY.get('mod') || '/data/adb/modules/ts-auto-add';
 export const SH = 'sh ' + MODDIR + '/webui.sh';
 export const DEMO = QUERY.get('demo') === '1';
+/* 台架专用的两个开关，只在 demo=1 时有效：真机界面永远走不到这里。
+   backend 决定假数据是哪一家后端（三家各自的能力面只有切过去才画得出来），
+   fail 用来把某一条读取打成失败（"读不到"必须和"是空的"长得不一样）。 */
+export const DEMO_BACKEND = DEMO ? (QUERY.get('backend') || 'omk') : '';
+export const DEMO_FAIL = DEMO ? (QUERY.get('fail') || '') : '';
 
 /* 界面期望的契约号。命令层只加命令、不改输出形状时这个号不动 —— 涨号会让手机上
    正在跑的旧界面当场判"契约不符"并停写。 */
@@ -86,8 +91,8 @@ export const S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   bridge: { kind: '', label: '', seen: [] },
-  targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
-  backendInfo: {}, profiles: [], teeStatus: null, trickyPatches: [],
+  targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null, listErr: '',
+  backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   appsSrc: 'targets', view: 'targets', search: '', selectMode: false, selected: {},
   profile: 'default', scope: 'global', newPkg: '', overrides: [],
   icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
@@ -208,18 +213,30 @@ export function loadBase() {
   ]);
 }
 export function loadLists() {
+  var errs = [];
+  function note(name) {
+    return function (r) {
+      if (!r.ok) errs.push(name + '：' + failText(r));
+      return r;
+    };
+  }
   return Promise.all([
-    call('targets').then(function (r) { S.targets = r.ok ? splitLines(r.text) : []; }),
-    call('apps').then(function (r) { S.apps = r.ok ? splitLines(r.text) : []; }),
+    call('targets').then(function (r) { S.targets = r.ok ? splitLines(r.text) : []; return r; }).then(note('targets')),
+    call('apps').then(function (r) { S.apps = r.ok ? splitLines(r.text) : []; return r; }).then(note('apps')),
     call('target-meta').then(function (r) {
       S.targetMeta = {};
-      if (!r.ok) return;
+      if (!r.ok) return r;
       splitLines(r.text).forEach(function (line) {
         var f = line.split('\t');
         if (f.length >= 4) S.targetMeta[f[0]] = { base: f[1] || '', kind: f[2] || 'plain', detail: f[3] || '' };
       });
-    }),
-  ]);
+      return r;
+    }).then(note('target-meta')),
+  ]).then(function () {
+    /* "读不到"与"名单是空的"是两件事：以前三处失败都吞成空数组，界面照样
+       说"这一类现在是空的"。命令层在目标文件缺失时正是这么退的（return 1）。 */
+    S.listErr = errs.join('；');
+  });
 }
 export function loadLog() {
   return call('log', String(S.tail)).then(function (r) {
@@ -241,11 +258,18 @@ export function loadTeesimProfiles() {
   }, function () { S.profiles = []; });
 }
 export function loadTeeStatus() {
-  if (S.contract.checked && !hasCmd('tee-status')) { S.teeStatus = null; return Promise.resolve(); }
+  if (S.contract.checked && !hasCmd('tee-status')) { S.teeStatus = null; S.teeWhy = '这一版命令层没有 tee-status 命令'; return Promise.resolve(); }
   return call('tee-status').then(function (r) {
     var kv = r.ok ? parseKV(r.text) : null;
-    S.teeStatus = kv && kv.present === '1' ? kv : null;
-  }, function () { S.teeStatus = null; });
+    if (kv && kv.present === '1') {
+      S.teeStatus = kv; S.teeWhy = '';
+    } else if (kv) {
+      // 上游只在探测之后写这个文件（Config.kt:127），从没探测过就是不存在
+      S.teeStatus = null; S.teeWhy = '还没有 tee_status 文件：Tricky 守护进程没跑过探测，或后端不是 Tricky';
+    } else {
+      S.teeStatus = null; S.teeWhy = 'tee-status 命令读失败：' + failText(r);
+    }
+  }, function (e) { S.teeStatus = null; S.teeWhy = 'tee-status 命令执行失败：' + e; });
 }
 export function loadTrickyPatches() {
   if (S.contract.checked && !hasCmd('tricky-patches')) { S.trickyPatches = []; return Promise.resolve(); }
@@ -316,14 +340,60 @@ export function ensure(what) {
    互相自证一致，两边一起错，台架全绿而真机会停写。
    语料也带上三家后端各自才有的形状（profiles 表、tee_status、按包补丁块），
    否则那几条分支等于没测过。 */
+/* 路径取自 module/lib/core.sh:7-17 与 backend.sh:59-72，显示名取自 backend_name()，
+   不在这里另编一套 —— 台架用的路径一旦是想象的，它就再也证不了任何东西。 */
+function demoFiles() {
+  var o = {
+    omk: { backend: 'omk', name: 'OhMyKeymint', mod: '/data/adb/modules/oh_my_keymint',
+      dir: '/data/misc/keystore/omk', target: 'injector.toml', kb: 'keybox.xml', ver: '1.2.0-a1f3241' },
+    tricky: { backend: 'tricky', name: 'Tricky Store', mod: '/data/adb/modules/tricky_store',
+      dir: '/data/adb/tricky_store', target: 'target.txt', kb: 'keybox.xml', ver: '1.4.1' },
+    teesim: { backend: 'teesim', name: 'TEE Simulator', mod: '/data/adb/modules/teesim',
+      dir: '/data/adb/teesim', target: 'config.json', kb: 'keybox.xml', ver: '4.5.0' },
+  };
+  return o[DEMO_BACKEND] || o.omk;
+}
+
 function demoResult(cmd, arg) {
   var T = '\t';
+  if (DEMO_FAIL && cmd === DEMO_FAIL) {
+    return { errno: 1, stdout: '', stderr: '目标文件不存在：' + demoFiles().dir + '/' + demoFiles().target };
+  }
+  /* 三家各有一套路径与条目语法。台架默认 omk，切 ?backend=tricky 才会画到
+     tee_status、按包补丁块和 ?/! 后缀那一套分支 —— 上一版只跑 omk，
+     结果 Tricky 分支里的键名读错也没人看见。 */
+  var B = demoFiles();
+  var toks = {
+    omk: ['com.android.vending', 'app.mihon', 'com.tencent.mm'],
+    tricky: ['com.android.vending', 'app.mihon?', 'com.tencent.mm!'],
+    teesim: ['com.android.vending', 'com.google.android.gms@11', 'uid:10123'],
+  }[B.backend] || [];
+  var meta = toks.map(function (tok) {
+    var b = tok, kind = 'plain', detail = '', m;
+    if (B.backend === 'tricky') {
+      if (/[?!]$/.test(tok)) { kind = tok.charAt(tok.length - 1) === '?' ? 'leaf' : 'generate'; b = tok.slice(0, -1); }
+      else kind = 'auto';
+    } else if (B.backend === 'teesim') {
+      if (/^uid:/.test(tok)) { kind = 'uid'; b = ''; detail = tok.slice(4); }
+      else if ((m = tok.match(/^(.*)@(\d+)$/))) { kind = 'user'; b = m[1]; detail = m[2]; }
+    }
+    return tok + T + b + T + kind + T + detail;
+  });
+  var bi = ['backend=' + B.backend, 'backend_name=' + B.name, 'module_dir=' + B.mod,
+    'module_version=' + B.ver, 'target_file=' + B.dir + '/' + B.target, 'target_entries=' + toks.length,
+    'keybox_file=' + B.dir + '/' + B.kb, 'keybox_exists=1', 'keybox_bytes=5573',
+    'keybox_hash_algo=sha256', 'keybox_hash=4166677843448ea03fa5983c9cba5543'];
+  if (B.backend === 'omk') bi = bi.concat(['injector_version=1', 'injector_main_enabled=true',
+    'injector_log_level=debug', 'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false']);
+  if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
+    'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
     contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart',
-    status: ['state=ok', 'description=✅ [OhMyKeymint | 应用: 128 | 更新: 16:52]',
-      'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu', 'backend=omk', 'backend_name=OhMyKeymint',
-      'conflict=0', 'teesim_enabled=0', 'tricky_enabled=0',
-      'data_dir=/data/adb/omk', 'target_file=/data/misc/keystore/omk/injector.toml',
+    status: ['state=ok', 'description=✅ [' + B.name + ' | 应用: ' + toks.length + ' | 更新: 16:52]',
+      'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu', 'backend=' + B.backend, 'backend_name=' + B.name,
+      'conflict=0', 'teesim_enabled=' + (B.backend === 'teesim' ? 1 : 0),
+      'tricky_enabled=' + (B.backend === 'tricky' ? 1 : 0),
+      'data_dir=' + B.dir, 'target_file=' + B.dir + '/' + B.target,
       'target_exists=1', 'target_writable=1', 'target_mtime=1793263964',
       'props_masking=on', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
       'log_lines=492', 'log_bytes=33933'].join('\n'),
@@ -331,23 +401,14 @@ function demoResult(cmd, arg) {
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
       'vbstate=green', 'sys_dark=1', 'sys_dark_src=mComputedNightMode',
       'sys_seed_raw=', 'sys_seed_src=none'].join('\n'),
-    targets: ['com.android.vending', 'com.google.android.gms@11', 'uid:10123', 'app.mihon'].join('\n'),
+    targets: toks.join('\n'),
     apps: ['com.android.vending', 'app.mihon', 'com.tencent.mm', 'io.legado.app'].join('\n'),
-    'target-meta': ['com.android.vending' + T + 'com.android.vending' + T + 'plain' + T + '',
-      'com.google.android.gms@11' + T + 'com.google.android.gms' + T + 'user' + T + '11',
-      'uid:10123' + T + '' + T + 'uid' + T + '10123',
-      'app.mihon' + T + 'app.mihon' + T + 'plain' + T + ''].join('\n'),
+    'target-meta': meta.join('\n'),
     log: ['10-29 16:52:43 🔄 开始应用列表同步', '10-29 16:52:44 ✅ 同步完成，应用总数：128',
       '10-29 19:30:50 ℹ️ 源数据与上次一致（指纹 905773947），跳过同步',
       '10-26 17:38:02 ⚠️ 未找到 awk，暂时无法维护 TEE Simulator 配置',
       '10-26 17:55:20 ❌ 写入失败：/data/adb/teesim/config.json 不可替换'].join('\n'),
-    'backend-info': ['backend=omk', 'backend_name=OhMyKeymint',
-      'module_dir=/data/adb/modules/oh_my_keymint', 'module_version=1.2.0-a1f3241',
-      'target_file=/data/misc/keystore/omk/injector.toml', 'target_entries=128',
-      'keybox_file=/data/misc/keystore/omk/keybox.xml', 'keybox_exists=1', 'keybox_bytes=5573',
-      'keybox_hash_algo=sha256', 'keybox_hash=4166677843448ea03fa5983c9cba5543',
-      'injector_version=1', 'injector_main_enabled=true', 'injector_log_level=debug',
-      'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false'].join('\n'),
+    'backend-info': bi.join('\n'),
     /* props 是 TSV「名字<TAB>当前<TAB>期望<TAB>状态」，没有键 —— 台架必须用
        真形状，否则解析分支等于没测。 */
     props: ['ro.product.brand' + T + 'Sony' + T + 'Sony' + T + 'ok',
@@ -360,7 +421,7 @@ function demoResult(cmd, arg) {
     'teesim-profiles': ['default' + T + 'keybox.xml' + T + 'patch' + T + '10' + T + '1',
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
     'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
-      'category=3', 'serviceErrorCode=13', 'teeBroken=1'].join('\n'),
+      'category=keystore2_unavailable', 'service_error_code=none', 'tee_broken=unknown'].join('\n'),
     'teesim-overrides': [
       'attestationSecurityLevel' + T + '2' + T + '1' + T + 'required',
       'keymasterSecurityLevel' + T + '-' + T + '1' + T + 'unset',

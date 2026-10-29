@@ -11,12 +11,17 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
 const SRC = path.join(repo, 'webui', 'src');
-const OUT = path.join(repo, 'module', 'webroot', 'index.html');
+/* 默认查**候选**产物（webui/dist），因为新版还没换掉 webroot 里的旧界面；
+   换版之后按 `check-artifact.mjs module/webroot/index.html` 查真正上机的那份。 */
+const OUT = process.argv[2]
+  ? path.resolve(repo, process.argv[2])
+  : path.join(repo, 'webui', 'dist', 'index.html');
 
 let bad = 0;
 const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
 
 if (!fs.existsSync(OUT)) { console.log('✗   找不到产物 ' + OUT); process.exit(1); }
+console.log('查的是：' + path.relative(repo, OUT));
 const html = fs.readFileSync(OUT, 'utf8');
 
 chk('没有未替换的占位符', !/__TOKENS__|__APP_CSS__|__BUNDLE__/.test(html));
@@ -50,7 +55,10 @@ for (const f of fs.readdirSync(SRC)) {
 }
 
 /* 产物体积异常小 = 多半是构建被截断 */
-chk('产物不小于 400 KB（否则像被截断）', html.length > 400 * 1024, Math.round(html.length / 1024) + ' KB');
+/* 用**字节数**，不用 html.length：那是 UTF-16 码元数，中文按 3 字节存，
+   904 KB 的文件量出 347"KB"，看着像被截断。 */
+const BYTES = fs.statSync(OUT).size;
+chk('产物不小于 400 KB（否则像被截断）', BYTES > 400 * 1024, (BYTES / 1024).toFixed(1) + ' KB');
 
 console.log(bad ? '\n' + bad + ' 项不通过' : '\n全部通过');
 process.exit(bad ? 1 : 0);
