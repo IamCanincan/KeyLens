@@ -27,6 +27,22 @@ const html = fs.readFileSync(OUT, 'utf8');
 chk('没有未替换的占位符', !/__TOKENS__|__APP_CSS__|__BUNDLE__/.test(html));
 chk('产物带 MD3E 组件注册', /customElements\.define\("md-(top-app-bar|navigation-bar|card|list)/.test(html));
 chk('产物内联了符号字体（离线可用）', /@font-face[^@]{0,400}Material Symbols Rounded/.test(html) && /data:font\/woff2/.test(html));
+/* 符号字体只该有一份 @font-face：库里三个族名指向同一个 woff2，内联三遍就是
+   100 KB 纯重复。而删掉 Outlined/Sharp 那两条的**前提**是"没有组件把它们放在
+   族名链首"—— 前提要有人守，否则以后 import 一个 md-fab 就是图标静默变成字面词。 */
+const facesAll = [...html.matchAll(/@font-face\s*\{[^}]*font-family:\s*['"]?Material Symbols ([A-Za-z]+)/g)].map(m => m[1]);
+chk('Material Symbols 只内联一份（不重复落字节）',
+  facesAll.length === 1 && facesAll[0] === 'Rounded', facesAll.join('/'));
+const firstBad = [...html.matchAll(/font-family:\s*['"]?Material Symbols (Outlined|Sharp)['"]?/g)]
+  .map(m => m[1]).filter(x => x);
+/* 上面那条判得太宽：库里那两个工具类（.material-symbols-outlined / -sharp）本身
+   就把族名写在链首，而**没有任何被打包的组件用它们**（唯一用到的 md-fab 不在
+   import 列表里）。死规则不渲染，就不该判死 —— 真正会坏的是"某个画出来的元素
+   第一个族名没有对应 @font-face"，那是运行时才有的事实，交给 verify.mjs 用
+   getComputedStyle 去量。这里只守静态上确定会坏的那一条：族名变量。 */
+const iconVar = (html.match(/--md-icon-font-family:\s*['"]?Material Symbols ([A-Za-z]+)/) || [])[1];
+chk('图标族名变量指向内联了的那一份', !iconVar || iconVar === 'Rounded', iconVar || '（产物里没有这个变量，组件走自己的回退链）');
+if (firstBad.length) console.log('  ok   存在 ' + firstBad.length + ' 条 Outlined/Sharp 工具类规则（未渲染，由 verify 的量测兜）');
 chk('产物里没有指向网络的字体/脚本 URL',
   !/<script[^>]+src=["']https?:/.test(html) && !/url\(["']?https?:/i.test(html),
   (html.match(/url\(["']?https?:[^)]{0,40}/i) || [])[0] || '');

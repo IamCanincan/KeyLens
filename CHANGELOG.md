@@ -6,6 +6,15 @@
 
 #### 新增
 
+* **产物从 894 KB 降到 761 KB：同一份图标字体不再落三遍**。库里 `Outlined / Rounded / Sharp` 三个族名的 `@font-face` **指向同一个 `material-symbols-rounded.woff2`**（在 `dist/tokens.min.css` 里逐条看过），整份内联就是 50 KB 字节 ×3。现在只留 Rounded 那一条：组件内部一律写 `var(--md-icon-font-family, 'Material Symbols Rounded', …)`，Rounded 在链首；库里唯一把 Outlined 放第一位的是 `md-fab`，而它不在本界面的 import 列表里。
+  * 守这个前提的是**运行时量测**，不是静态扫：`verify.mjs` 现在逐个元素取 computed `font-family` 的第一个族名，查它有没有对应 `@font-face`。静态扫试过，会被库里那两条**没人用的工具类规则**（`.material-symbols-outlined{…}` / `-sharp{…}`）绊倒，判成假阳性 —— 死规则不渲染，就不该判死。
+  * 变异验过（`node tools/md3e-build/mutate-fontface-gate.cjs`）：把唯一那份 Rounded 也删掉 → 台架退码 1 并报「落空: Material Symbols Rounded×13」，同时正对照也塌（`home` 从 24px 变 65px）；还原后重新构建复跑回绿，并逐字节确认 `build.mjs` 回到原样。
+  * 以后真 import 了 `md-fab`，这条会在台架响，而不是等图标在手机上变成字面词才发现。
+
+* **`THIRD_PARTY_NOTICES.md` 之前整份是假的，按产物实测重写**。它写着 `@material/web 2.5.0` + `lit` + `tslib`，还说"Material Symbols 图标字体**没有**包含，界面用自己的内联 SVG" —— 换版之后这两句**正好都反了**：上机的是 `@materialwebunofficial/md3e-web` 1.0.14（`dependencies: {}`，没有 lit），而符号字体确实内联了。
+  * 现在逐条对着产物量：`@font-face` 三条→一条、每条约 50 KB、`data:font/woff2` 出现 1 次、Roboto 的 `@font-face` 全部剥掉（库带五个 Roboto 文件，SIL OFL；管理器的 WebView 里网页字体不生效，实测退回系统字体）。旧包（`@material/web` / `lit` / `tslib`）挪到"上一版产物"一段，`tools/mwc-build/` 标成历史目录。
+  * 补了 `md3e-web` 自己 `NOTICE` 的实质：它是 M3 / M3 Expressive 规范的社区非官方适配，token 与色角色源自 Google LLC（Apache-2.0），部分值派生自 AOSP AndroidX Compose Material 3。
+
 * **界面换版：`module/webroot/index.html` 现在是 `webui/src` 的 MD3E 产物**（894 KB，MD3E Web 2.5 组件 + 内联符号字体子集，零网络依赖）。同一提交里把只对旧产物有效的三个护栏退役：旧 `tests/ui-shape.js`（79 条 grep `var KV_REQUIRED` / `.grp{}` / `id="p-func"` 的断言，新产物是 ESM 压缩过的，这些锚点全不存在）、`tests/ui-font.js`、旧台架 `tools/ui-cdp-check.mjs`；并把 `tests/ui-next-shape.js` **改名成 `tests/ui-shape.js`** —— 换版之后还叫 "next" 是个谎。
   * 顺序是早就定过的："换产物的那一个提交里同时退役旧的、提升新的，不留空窗"。反过来做会留下一个**绿但什么都不测**的套件：实测把新版直接 `--ship` 到旧护栏还在的位置，`ui-shape` 在第一条抽取就中止，79 条断言一条都没跑却仍然退 0。
   * `build.mjs` 改成 `--ship` 时**两条产物一起写**（`webui/dist/index.html` 与 `module/webroot/index.html`），`--check` 两条都比。以前 `--ship` 只写 webroot，于是 dist 停在上一版，而 `verify.mjs` 默认读的正是 dist —— 台架会在一份过期产物上判"全绿"。

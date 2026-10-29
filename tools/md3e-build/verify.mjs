@@ -61,6 +61,25 @@ const PROBE = `(function(){
       if (/Material Symbols/i.test(f)) fam = f;
     });
   });
+  /* 图标字体真正的验收：把**画出来的**每个元素拿出来，看它计算样式里打头的那个
+     族名有没有对应的 @font-face。产物里留着 .material-symbols-outlined / -sharp
+     两条死规则（没有组件用它们），静态扫会被它们绊倒；运行时只看真实元素，
+     以后谁 import 了 md-fab，这里就会响，而不是图标静默变成字面词。 */
+  var declared = {};
+  try { for (const ff of document.fonts) declared[(ff.family || '').replace(/["']/g, '').trim()] = 1; } catch (e) {}
+  var missing = {};
+  function scan(root) {
+    (root || document).querySelectorAll('*').forEach(function (e) {
+      var own = e.childElementCount === 0 && (e.textContent || '').trim().length > 0;
+      if (!own) return;
+      var f = getComputedStyle(e).fontFamily || '';
+      var first = (f.split(',')[0] || '').replace(/["']/g, '').trim();
+      if (/^Material Symbols/i.test(first) && !declared[first]) missing[first] = (missing[first] || 0) + 1;
+      if (e.shadowRoot) scan(e.shadowRoot);
+    });
+  }
+  scan(document);
+  var missFam = Object.keys(missing).map(function (k) { return k + '×' + missing[k]; }).join(' ');
   /* 人眼看到的文字 = 文本节点 + 列表项的属性（headline/supporting/trailing 是画在
      shadow DOM 里的，textContent 拿不到 —— 只比 textContent 会把"关于"页自己的
      标题判成缺失）。 */
@@ -83,7 +102,8 @@ const PROBE = `(function(){
     text: txt,
     items: document.querySelectorAll('#view md-list-item').length,
     cards: document.querySelectorAll('#view md-card').length,
-    inSet: w('home'), outSet: w('security'), fam: fam };
+    inSet: w('home'), outSet: w('security'), fam: fam,
+    missFam: missFam, declared: Object.keys(declared).join(' ') };
 })()`;
 
 async function main() {
@@ -127,6 +147,8 @@ async function main() {
   chk('图标字体生效（子集内名字 = 一个字形）', p0.inSet > 0 && p0.inSet <= 34, 'home=' + p0.inSet + 'px');
   chk('负对照成立（子集外名字 = 字面词）', p0.outSet > p0.inSet * 2, 'security=' + p0.outSet + 'px，' + (p0.outSet / Math.max(p0.inSet, 1)).toFixed(1) + ' 倍');
   chk('组件内部解析到符号字体', /Material Symbols/i.test(p0.fam), p0.fam || '没找到');
+  chk('画出来的图标都有对应字体面（没有族名落空）', !p0.missFam,
+    p0.missFam ? '落空: ' + p0.missFam : '已声明: ' + p0.declared);
 
   console.log('── 逐页驱动（真的点导航）──');
   for (let i = 0; i < PAGES.length; i++) {
@@ -137,10 +159,11 @@ async function main() {
     const p = await ev(PROBE);
     const miss = want.must.filter(s => p.text.indexOf(s) < 0);
     const ok = p.title === want.title && !miss.length && p.scrollW - p.vw <= 0
-      && (!want.items || p.items > 0);
+      && !p.missFam && (!want.items || p.items > 0);
     if (!ok) bad++;
     console.log(`${ok ? 'ok  ' : '✗   '} 第 ${i} 格 → ${want.title}  标题=${p.title} 列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
-      + (miss.length ? '  缺区块: ' + miss.join('、') : ''));
+      + (miss.length ? '  缺区块: ' + miss.join('、') : '')
+      + (p.missFam ? '  字体落空: ' + p.missFam : ''));
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-' + want.id + '.png'), Buffer.from(shot.data, 'base64'));
   }
@@ -186,10 +209,11 @@ async function main() {
     await sleep(900);
     const p = await ev(PROBE);
     const miss = b.must.filter(s => p.text.indexOf(s) < 0);
-    const ok = miss.length === 0 && p.scrollW - p.vw <= 0 && p.items >= 4;
+    const ok = miss.length === 0 && p.scrollW - p.vw <= 0 && !p.missFam && p.items >= 4;
     if (!ok) bad++;
     console.log(`${ok ? 'ok  ' : '✗   '} 后端 ${b.id}  列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
-      + (miss.length ? '  没画出来: ' + miss.join('、') : ''));
+      + (miss.length ? '  没画出来: ' + miss.join('、') : '')
+      + (p.missFam ? '  字体落空: ' + p.missFam : ''));
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '.png'), Buffer.from(shot.data, 'base64'));
     /* 页尾那张卡（overrides / tee_status / config.toml）在首屏之外 —— 再滚过去截一张，

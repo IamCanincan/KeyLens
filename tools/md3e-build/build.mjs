@@ -79,6 +79,17 @@ let css = fs.readFileSync(path.join(pkg, 'dist', 'tokens.min.css'), 'utf8');
 const before = css.length;
 css = css.replace(/@font-face\s*\{[^}]*font-family:\s*['"]?Roboto['"]?[^}]*\}/g, '');
 const robotoGone = before - css.length;
+/* 库里三个符号字体族名（Outlined / Rounded / Sharp）的 @font-face **都指向同一个
+   material-symbols-rounded.woff2**（在 dist/tokens.min.css 里逐条看过）。整份内联
+   就是同一批 50 KB 字节落三遍 —— 915 KB 的产物里 100 KB 是纯重复。
+   只留 Rounded 那一条：组件内部一律写 var(--md-icon-font-family, 'Material Symbols
+   Rounded', …)，Rounded 在链首；库里唯一把 Outlined 放第一位的是 md-fab 的
+   .material-symbols-outlined，而它不在本界面的 import 列表里。
+   守这个前提的是 **verify.mjs 的运行时量测**（"画出来的图标都有对应字体面"：逐个
+   元素取 computed font-family 的第一个族名，查它有没有 @font-face），不是静态扫 ——
+   静态扫会被上面那两条**没人用的工具类规则**绊倒，判成假阳性。
+   变异验过：把唯一那份 Rounded 也删掉 → 台架报"落空: Material Symbols Rounded×13"。 */
+css = css.replace(/@font-face\s*\{[^}]*font-family:\s*['"]?Material Symbols (Outlined|Sharp)['"]?[^}]*\}/g, '');
 let faces = 0;
 css = css.replace(/url\((['"]?)\.\/fonts\/([a-z0-9-]+\.woff2)\1\)/g, (_, q, file) => {
   faces++;
