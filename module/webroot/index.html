@@ -19,14 +19,16 @@
 :root{
   --hue: 267;            /* 主色相：兜底值取平台默认强调色，见 JS 里 HUE_DEFAULT 的出处 */
   --sat: .41;            /* 彩度倍率：系统强调色偏灰就整体降下来 */
-  /* 弹簧用 linear() 写成真正的阻尼振荡：Compose 那边是 MotionScheme 给的弹簧，
-     贝塞尔永远差一口气（起步/收尾没有过冲）。不支持 linear() 的 WebView 会
-     忽略整条声明、退回默认的 ease —— 只是没那么弹，不会坏。 */
-  --e-spring: linear(0, .069, .239, .44, .626, .776, .886, .963, 1.014, 1.044, 1.057,
-    1.06, 1.057, 1.05, 1.042, 1.034, 1.027, 1.021, 1.016, 1.012, 1.009, 1.006, 1.004,
-    1.003, 1.001, 1);
+  /* 弹簧用 linear() 写成真正的阻尼振荡。参数取自 material3 的
+     MotionScheme.expressive（Opticon 用的就是这套，值是从它依赖的
+     material3 1.5.0-alpha28 字节码里读出来的）：spatial = spring(ζ0.8, k380)、
+     effects = spring(ζ1.0, k1600)。这里是 spatial 前 340ms 的采样，峰值 1.007
+     就是 ζ0.8 的过冲；340ms 是它在这块屏上的可视收尾时间（不是拍脑袋的时长，
+     是弹簧自己走完的时间）。不支持 linear() 的 WebView 会忽略整条声明、
+     退回默认的 ease —— 只是没那么弹，不会坏。 */
+  --e-spring: linear(0, .068, .217, .39, .554, .692, .801, .88, .935, .97, .991, 1.002,
+    1.006, 1.007, 1.005, 1.003, 1);
   --e-emph: cubic-bezier(.3,0,.08,1);
-  --e-spatial: cubic-bezier(.2,0,0,1);
   /* @material/web 2.5.0 labs/gb 的 Expressive 按钮：按下时圆角收缩，
      用带过冲的曲线回弹（官方 350ms） */
   --e-expressive: cubic-bezier(.42,1.67,.21,.9);
@@ -3375,10 +3377,23 @@ function applyPage(name){
 }
 /* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
    入场从切的方向滑进来（底栏往右切 +1 从右、往左切 -1 从左）：位移 24px
-   （窄屏按 5% 收，320 下 16px）、透明度 0.9→1、200ms，全在合成器上 ——
-   不碰高度、不盖遮罩，所以不会回到「闪」。切回概览时英雄卡一起滑，
-   否则它会硬蹦出来。 */
+   （窄屏按 5% 收，320 下 16px）、透明度 0.9→1，时长与曲线取 --d3 / --e-spring
+   —— 也就是 Opticon 那套 MotionScheme 弹簧，不是写死的 200ms 贝塞尔。
+   全在合成器上跑，不碰高度、不盖遮罩，所以不会回到「闪」。切回概览时英雄卡
+   一起滑，否则它会硬蹦出来。 */
 var REDUCE_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+var slideMs = 340, slideEase = 'cubic-bezier(.2,0,0,1)';
+(function readMotionTokens(){
+  try {
+    var cs = getComputedStyle(document.documentElement);
+    var ms = parseFloat(cs.getPropertyValue('--d3'));
+    var ez = String(cs.getPropertyValue('--e-spring') || '').trim();
+    if (ms > 0) slideMs = ms;
+    /* 老 WebView 不认 linear()：这里先问它会不会解析，不会就用贝塞尔兜底，
+       否则 animate() 会抛，切页直接坏掉。 */
+    if (ez && window.CSS && CSS.supports && CSS.supports('transition-timing-function', ez)) slideEase = ez;
+  } catch (e) {}
+})();
 var slideDepth = 0;
 function pageSlide(el, dir){
   if (!el || !el.animate || REDUCE_MOTION) return;
@@ -3391,7 +3406,7 @@ function pageSlide(el, dir){
   var anim = el.animate(
     [{ transform: 'translateX(' + (dir * dx) + 'px)', opacity: .9 },
      { transform: 'translateX(0)', opacity: 1 }],
-    { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
+    { duration: slideMs, easing: slideEase }
   );
   var done = function (){
     if (--slideDepth <= 0) { slideDepth = 0; wrap.classList.remove('sliding'); }

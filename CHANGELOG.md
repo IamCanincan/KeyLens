@@ -184,6 +184,8 @@
   * 顺带：当前页名仍在顶栏大标题里（`概览 / 常驻列表 / 应用列表 / 运行日志 / 系统属性伪装`），小字是 `TS-AUTO-ADD · 设备 · Android 版本`。
 #### 优化
 
+* **切页动效换成 Opticon 那套 `MotionScheme` 弹簧**：原来写死的 200ms `cubic-bezier(.2,0,0,1)` 比它快一档。现在时长与曲线取 `--d3` / `--e-spring`，弹簧参数不是凭手感编的 —— 从 Opticon 依赖的 `material3 1.5.0-alpha28` 字节码里读出 `MotionScheme.expressive`：spatial = `spring(ζ0.8, k380)`、effects = `spring(ζ1.0, k1600)`。`--e-spring` 换成前者前 340ms 的 `linear()` 采样（峰值 1.007 = 1.5% 过冲），切页的 WAAPI 直接吃这个令牌；老 WebView 用 `CSS.supports` 探一下，不认 `linear()` 就退回贝塞尔，不会因为曲线解析失败把切页弄坏。桌面 417 实测：`duration 340`、easing 是 `linear()`、药丸 top 26 帧恒 822、裁切类覆盖 22 帧后摘除。
+
 * **移除「常驻列表」：名单只有目标文件本身**。起因是上一版的结论 —— 增量同步已经接管了"新装自动进、卸载自动出、你手工改的不动"，常驻那一层只剩两件事，而两件都可以用目标文件本身表达。现在：
   * **名单 = 目标文件**（`config.json` 的 `profiles.default.apps` / `target.txt`）。界面上的「常驻列表」页、应用页的「+」加号、「常驻 N 条」、`webui.sh` 的 `rules` / `save-rules` 两条命令全部删掉；`rules.txt` 这个文件不再创建、不再读取、不再监听。
   * **首次安装种一次种子**：目标文件还没有内容、且没有任何基线时，第一次同步把谷歌三件套（`com.android.vending` / `com.google.android.gms` / `com.google.android.gsf`）写进去。它们是**系统应用**，`pm list packages -3` 看不到，不种就永远进不了名单。种完这一次之后，你从名单里删掉它们也不会再被加回来。
