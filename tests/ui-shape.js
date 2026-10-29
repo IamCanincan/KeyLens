@@ -129,24 +129,36 @@ const subMap = [...((html.match(/var SUB_OF = \{([^}]*)\}/) || [])[1] || '').mat
   .map(m => ({ child: m[1], parent: m[2] }));
 const subPages = subMap.map(s => s.child);
 const topPages = pages.filter(p => subPages.indexOf(p) < 0);
-chk('PAGES 抽到 6 项（4 个一级 + 2 个二级）', pages.length === 6, JSON.stringify(pages));
-/* 名单是后端自己的数据：它必须长在后端页里，而不是又拆回独立一页 */
-chk('名单区与配置区同在后端页', /id="p-backend"[\s\S]*id="appsBody"[\s\S]*id="backendBody"/.test(html)
-  && !/id="p-apps"/.test(html) && /<h3 class="grp-t">名单<\/h3>/.test(html) && /<h3 class="grp-t"[^>]*>配置<\/h3>/.test(html));
+chk('PAGES 抽到 8 项（4 个一级 + 4 个二级）', pages.length === 8, JSON.stringify(pages));
+/* 名单与配置是两页：名单页只有名单，配置页只有表单 */
+chk('名单页与配置页各自独立',
+  (function (){
+    const a = html.indexOf('id="p-apps"'), b = html.indexOf('id="p-backend"');
+    if (a < 0 || b < a) return false;
+    const listPage = html.slice(a, b);
+    const confPage = html.slice(b, b + 4000);
+    return listPage.indexOf('id="appsBody"') >= 0 && listPage.indexOf('id="backendBody"') < 0
+      && confPage.indexOf('id="backendBody"') >= 0 && confPage.indexOf('id="appsBody"') < 0;
+  })());
 chk('底栏 tab = 一级页（不多不少不重）',
   tabSrc.length === topPages.length && new Set(tabSrc.map(t => t[1])).size === tabSrc.length
   && topPages.every(p => tabSrc.some(t => t[1] === p)),
   'tabs=' + JSON.stringify(tabSrc.map(t => t[1])) + ' top=' + JSON.stringify(topPages));
-chk('二级页都挂在底栏存在的父级下',
-  subMap.length === 2 && subMap.every(s => pages.indexOf(s.child) >= 0
+chk('四个二级页都挂在底栏存在的父级下',
+  subMap.length === 4 && subMap.every(s => pages.indexOf(s.child) >= 0
     && topPages.indexOf(s.parent) >= 0),
   JSON.stringify(subMap));
-chk('功能页有两个菜单行，恰好指向两个二级页',
+chk('功能页菜单行恰好覆盖四个二级页',
   (function (){
     const rows = [...html.matchAll(/class="menu-row" data-go="([a-z]+)"/g)].map(m => m[1]);
-    return /id="p-func"/.test(html) && rows.length === 2
-      && subPages.every(p => rows.indexOf(p) >= 0);
+    return /id="p-func"/.test(html) && rows.length === 4
+      && subPages.every(p => rows.indexOf(p) >= 0)
+      && rows.every(p => subPages.indexOf(p) >= 0);
   })());
+chk('Verified Boot 是独立一页', /id="p-boot"[\s\S]{0,600}id="bootHashBox"/.test(html)
+  && !/id="bootHashGrp"/.test(html));
+/* .menu-row 自己设了 display:flex，[hidden] 会被盖掉 —— 少了这条，能力门就关不掉 */
+chk('菜单行支持 hidden', /\.menu-row\[hidden\]\{display:none\}/.test(html));
 chk('每个 tab 图标都在 ICON 表里',
   tabSrc.every(t => iconSrc.indexOf(t[2] + ": '") >= 0),
   tabSrc.filter(t => iconSrc.indexOf(t[2] + ": '") < 0).map(t => t[2]).join(','));
@@ -181,11 +193,17 @@ chk('applyPage 同步底栏选中态（二级页高亮父级）',
 chk('返回钮只由二级页控制', /btnBack\.hidden = !SUB_OF\[name\]/.test(fnBody('applyPage')));
 /* replaceState 不发 popstate：少了这一步，点底栏只改地址栏、屏幕不动 */
 chk('goTab 自己完成切页', /showTab\(name\);/.test(fnBody('goTab')));
-chk('goBack 回到父级', /SUB_OF\[S\.tab\]/.test(fnBody('goBack')) && /showTab\(up\)/.test(fnBody('goBack')));
+chk('goBack 退掉二级页那一层历史', /SUB_OF\[S\.tab\]/.test(fnBody('goBack')) && /history\.back\(\)/.test(fnBody('goBack')));
+/* 进二级页要压一条历史，系统返回才有东西可退（退回来就是功能菜单） */
+chk('进二级页压历史、一级页只替换',
+  /history\.pushState\(null, '', '#\/' \+ name\)/.test(fnBody('openPage'))
+  && /navTo\(name\)/.test(fnBody('openPage')));
+chk('从二级页切一级页先退掉那层历史', /pendingTab = name;\s*history\.back\(\)/.test(fnBody('goTab'))
+  && /if \(pendingTab\)/.test(html));
 chk('popstate 仍然接住真实的前进/后退', /window\.addEventListener\('popstate'/.test(html));
 chk('多选时底栏给批量条让位', /body\.is-selecting \.tabs\{display:none\}/.test(html));
 chk('切页不往历史里堆横向条目', /try \{ history\.replaceState\(null, '', '#\/' \+ name\); \}/.test(html));
-chk('菜单行都接上了切页', /row\.addEventListener\('click'/.test(html) && /row\.dataset\.go/.test(html));
+chk('菜单行都接上了切页', /row\.addEventListener\('click'/.test(html) && /row\.dataset\.go/.test(html) && /openPage\(to\)/.test(html));
 
 if (fail) {
   console.log('有断言失败');
