@@ -37,12 +37,14 @@
   --r-xs: 8px; --r-s: 12px; --r-m: 16px; --r-l: 20px;
   --r-xl: 20px; --r-2xl: 28px; --r-full: 999px;
   /* 松紧要改就改下面这一行 */
-  /* 字号只留七档，且只准从这七枚令牌里取：本机 1 CSS px = 1dp，
-     所以这些数就是物理尺寸。以前是 15 档字号 + 800 字重，同一屏里
-     12 与 12.5 并排，看不出区别、只觉得"没对齐"。
-     字重只留 400 / 500 / 600 / 700。 */
-  --fs11: 11px; --fs12: 12px; --fs13: 13px; --fs14: 14px;
-  --fs16: 16px; --fs22: 22px; --fs38: 38px;
+  /* 字号一律取 @material/web 2.5.0 的 md-sys-typescale（tokens/versions/latest，
+     34.0.21）：label-small 11 / label-medium·body-small 12 / body-medium·label-large 14 /
+     body-large·title-medium 16 / title-large 22 / headline-small 24 / display-small 36 /
+     display-medium 45。之前那套 11/12/13/14/16/22/38 里 13 与 38 不在表上，
+     同一屏里 12 与 13 并排看不出区别、只觉得"没对齐"。
+     字重跟 M3 一样只留 400 / 500 / 600（600 只给页名、板块标题与英雄数字）。 */
+  --fs11: 11px; --fs12: 12px; --fs14: 14px; --fs16: 16px;
+  --fs22: 22px; --fs24: 24px; --fs36: 36px; --fs45: 45px;
   /* 板块底色：默认"比卡面抬一档"。必须定义在 :root 而不是 .grp 上 ——
      写在 .grp 上会盖掉浮层里那条覆盖（自定义属性也是元素自己的声明赢过继承），
      实测那样色块和浮层同色、等于没加。 */
@@ -196,17 +198,7 @@
   }
 }
 
-/* ================= 按压反馈（真 ripple） ================= */
-/* Compose 的 Surface 自带 ripple：从**手指落点**向外长成一个圆，扩到覆盖整块再淡出。
-   先前那版"整块变亮"只是近似，没有起点，一眼能看出不是原生的。
-   圆由 JS 在 pointerdown 时插入（见 wire 里的 rippleAt），这里只管形状与动画。 */
-.btn,.menu-row,.back,.seg button,.icon-add{position:relative}
-/* 涟漪单独一层：它需要 overflow:hidden 才能裁成胶囊形状，而这个不能压在
-   按钮本体上 —— 本体的 ::after 要伸出盒子当可点区，会被裁掉。 */
-.rip{position:absolute;inset:0;overflow:hidden;border-radius:inherit;pointer-events:none}
-.ripple{position:absolute;border-radius:50%;pointer-events:none;background:currentColor;
-  opacity:.16;transform:scale(0);animation:ripple var(--d3) var(--e-emph) forwards}
-@keyframes ripple{to{transform:scale(1);opacity:0}}
+
 
 /* ================= 基础 ================= */
 *{box-sizing:border-box;-webkit-tap-highlight-color:transparent}
@@ -244,11 +236,8 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 按钮与分段：高度补到 48，宽度不越给自己的槽位（相邻分段会互抢）。 */
 .btn::after,.seg button::after{content:"";position:absolute;top:50%;left:0;right:0;
   height:var(--hit);transform:translateY(-50%)}
-/* 加号钮 32 见方，两个方向都要补。 */
-.icon-add::after{content:"";position:absolute;top:50%;left:50%;width:var(--hit);height:var(--hit);
-  transform:translate(-50%,-50%)}
 .back[hidden]{display:none}
-.appbar h1{font-size:var(--fs22);font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
+.appbar h1{font-size:var(--fs24);font-weight:600;letter-spacing:-.4px;line-height:1.33;color:var(--on-surface)}
 
 /* ================= 底栏 ================= */
 /* 六个目的地重新并排：下钻那一版把五个页藏在概览的一张入口列表后面，
@@ -263,7 +252,8 @@ button,input,textarea,select{font:inherit;color:inherit}
   padding:10px 12px;border:0;border-radius:var(--r-full);background:transparent;
   color:var(--on-variant);font-size:var(--fs14);font-weight:500;letter-spacing:.1px;cursor:pointer;
   transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
-.tab:active{transform:scale(.92)}
+.tab:hover{background:color-mix(in oklab, var(--on-surface) 8%, transparent)}
+.tab:active{transform:scale(.94);background:color-mix(in oklab, var(--on-surface) 12%, transparent)}
 .tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
 .tab .ico{display:flex;flex:none}
 .tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
@@ -300,8 +290,7 @@ body.is-selecting .tabs{display:none}
 .panel[hidden]{display:none}
 /* 二级页没有英雄卡，卡片离顶栏补一点气口（概览靠 .wrap 的 gap） */
 .card.panel{margin-top:var(--sp2)}
-.card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6);
-  box-shadow:var(--shadow)}
+.card{background:var(--surface-low);border:1px solid var(--card-line);border-radius:var(--r-xl);padding:var(--sp6)}
 /* 面板与英雄卡都不要 keyframes 入场：从 display:none 变回来时动画会整段重播，
    实测 opacity 0 → 0.028 → 1 就是「每切一下都闪一下」。切页的动效改由 WAAPI
    在 showTab 里按方向播一次（只动 transform + 0.9→1，不碰高度、不盖遮罩）。
@@ -316,12 +305,12 @@ body.is-selecting .tabs{display:none}
   border-radius:var(--r-2xl);padding:var(--sp4) var(--sp6) var(--sp3)}
 .hero-top{display:flex;align-items:center;gap:var(--sp2);flex-wrap:wrap}
 .hero-count{display:flex;align-items:flex-end;gap:var(--sp3);margin:var(--sp3) 0 var(--sp2);flex-wrap:wrap}
-.count-num{font-size:var(--fs38);font-weight:700;line-height:1.05;letter-spacing:-1px;color:var(--primary);
+.count-num{font-size:var(--fs45);font-weight:600;line-height:1;letter-spacing:-1.5px;color:var(--primary);
   font-variant-numeric:tabular-nums;transition:transform var(--d3) var(--e-spring)}
 .count-num.bump{transform:scale(1.06)}
 /* 不用 opacity 压层次：那样审对比度时量到的是叠色前的值，读出来是假的 */
-.count-cap{padding-bottom:2px;font-size:var(--fs13);font-weight:600;color:var(--on-surface)}
-.count-cap small{display:block;font-weight:500;font-size:var(--fs12);margin-top:1px;color:var(--on-variant)}
+.count-cap{padding-bottom:2px;font-size:var(--fs16);font-weight:500;letter-spacing:.15px;color:var(--on-surface)}
+.count-cap small{display:block;font-weight:400;font-size:var(--fs12);letter-spacing:.4px;margin-top:2px;color:var(--on-variant)}
 /* 操作行自己占一行、两个按钮等宽。以前它是 `margin-left:auto` 挂在数字那行的
    尾巴上，靠 flex-wrap 随机换行：本机 417 装不下（数字块 + 两个按钮要 386，
    内容宽只有 335），于是换行后右对齐，左边空出 98px —— 看着像没排完。
@@ -334,7 +323,7 @@ body.is-selecting .tabs{display:none}
 /* ================= 徽章 / chip ================= */
 /* 全站一套对称圆角：原先英雄卡切一角、徽章是叶子形、主按钮另一组不对称，
    三套互不呼应的不对称放一起不叫表现力，叫随机。 */
-.badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:3px 10px;font-size:var(--fs12);font-weight:700;
+.badge{display:inline-flex;align-items:center;gap:var(--sp2);padding:4px 11px;font-size:var(--fs12);font-weight:600;letter-spacing:.4px;
   border-radius:var(--r-full);background:var(--surface-lowest);color:var(--on-surface);
   transition:background var(--d2) var(--e-emph)}
 .badge .dot{width:7px;height:7px;border-radius:50%;background:var(--outline);flex:none}
@@ -371,14 +360,8 @@ body.is-selecting .tabs{display:none}
 /* 次行动不再上 secondary-container：英雄卡转中性之后，这里再放一块淡紫
    就等于把「两个按钮都很重要」画出来。它只需要读起来是「另一个动作」。 */
 .btn-tonal{background:var(--surface-high);color:var(--on-surface)}
-.btn-outline{background:transparent;color:var(--primary);border:1px solid var(--outline-variant)}
 .btn-text{background:transparent;color:var(--primary);padding:0 var(--sp3)}
-.btn-sm{min-height:36px;padding:0 var(--sp3);font-size:var(--fs13)}
-/* 主行动用 primary：它是唯一"跟着系统色相走"的实心色，别的角色要么太淡要么
-   带警告含义。静止形状与其它按钮一样是胶囊 —— 表现力留给按下那一刻的形状形变，
-   一屏里两种按钮形状并排只会读成「这俩不是一类东西」。 */
-.fab{background:var(--primary);color:var(--on-primary)}
-.fab:active{border-radius:50%;transform:scale(.9)}
+.btn-sm{min-height:36px;padding:0 var(--sp3);font-size:var(--fs14)}
 
 /* ================= 二级页入口（底栏已去掉） ================= */
 /* 一切从概览下钻：一张卡里四行，每行只有标题 —— 旧版还有副标题和图标位，
@@ -386,18 +369,22 @@ body.is-selecting .tabs{display:none}
 /* 通栏行：行自己左右留 sp6，与卡片内容左缘严格对齐。
    overflow:hidden 把行的悬停底色裁进卡片圆角。 */
 .menu{padding:var(--sp3) 0;overflow:hidden}
-.menu-row{display:flex;align-items:center;gap:var(--sp3);width:100%;min-height:56px;
-  padding:16px var(--sp6);border:0;border-radius:0;background:transparent;
-  color:var(--on-surface);text-align:left;cursor:pointer;
-  transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
-.menu-row:active{transform:scale(.985);background:var(--surface-mid)}
+.menu-row{position:relative;display:flex;align-items:center;gap:var(--sp3);width:100%;min-height:56px;
+  padding:14px var(--sp6);border:0;border-radius:0;background:transparent;
+  color:var(--on-surface);text-align:left;cursor:pointer}
+/* 行的悬停/按压是叠在内容上的一层 on-surface（M3 state layer），不是换底色：
+   底色一换，深色主题里"亮起来"会读成选中态。 */
+.menu-row::before{content:"";position:absolute;inset:0;background:var(--on-surface);
+  opacity:0;pointer-events:none;transition:opacity var(--d1) var(--e-emph)}
+.menu-row:hover::before{opacity:.08}
+.menu-row:active::before{opacity:.12}
 .menu-row::after{content:"›";margin-left:auto;flex:none;font-size:22px;line-height:1;
   color:var(--on-variant);opacity:.6}
 /* .menu-row 自己设了 display:flex，[hidden] 会被它盖掉（和 .btn 同一个坑） */
 .menu-row[hidden]{display:none}
 .menu-txt{flex:1;min-width:0;display:block}
-.menu-txt b{display:block;font-size:var(--fs16);font-weight:600;line-height:1.4}
-.menu-txt small{display:block;margin-top:2px;font-size:var(--fs12);color:var(--on-variant);line-height:1.5}
+.menu-txt b{display:block;font-size:var(--fs16);font-weight:500;line-height:1.5;letter-spacing:.15px}
+.menu-txt small{display:block;margin-top:1px;font-size:var(--fs12);color:var(--on-variant);line-height:1.33;letter-spacing:.4px}
 /* 菜单卡自己不留内边距：行的 padding 已经是 sp6，与其它卡的内容左缘对齐。
    功能菜单只有四项，比一屏短得多 —— 在内容区里垂直居中，否则整张卡贴着顶栏、
    下面空一大片。 */
@@ -406,6 +393,9 @@ body.is-selecting .tabs{display:none}
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
    它们自己的内容还亲，版面立刻显得局促。 */
 .home-card{margin-top:var(--sp6)}
+/* 主页那张卡里只有一个板块：再上一层底色就是盒中盒，
+   多组时才需要的分层在这里只会多一个"面"。 */
+.home-card .grp{background:transparent;margin:0;padding:0}
 
 /* ================= 概览分组 ================= */
 /* 「标签贴左、数值贴右」的整行布局会在中间拉出一大片空洞（本机内容宽 335，
@@ -423,8 +413,7 @@ body.is-selecting .tabs{display:none}
 .grp{background:var(--block);border-radius:11px;
   margin:0 calc(var(--sp4) * -1);padding:var(--sp4)}
 .grp+.grp{margin-top:var(--sp6)}
-.grp-t{display:flex;align-items:center;gap:8px;font-size:var(--fs13);font-weight:700;
-  letter-spacing:.2px;color:var(--on-surface);margin-bottom:var(--sp3)}
+.grp-t{display:flex;align-items:center;gap:8px;font-size:var(--fs14);font-weight:600;letter-spacing:.2px;color:var(--on-surface);margin-bottom:var(--sp3)}
 .grp-t::before{content:"";width:3px;height:12px;border-radius:2px;background:var(--primary);flex:none}
 /* 轨道下限必须写成 min(目标宽, 100%)：只写 minmax(260px,1fr) 时，
    容器比 260px 还窄（320px 视口下卡片内容只有 254px）轨道不会退让，
@@ -444,69 +433,57 @@ body.is-selecting .tabs{display:none}
    overflow-wrap 只是那种没有斜杠的长串兜底。 */
 .blk small{display:block;font-size:var(--fs12);font-weight:400;color:var(--on-variant);margin-top:5px;line-height:1.55;
   overflow-wrap:anywhere}
-.blk-num{font-size:var(--fs22);font-weight:700;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
-.blk-v .blk-num{font-size:var(--fs22);font-weight:700}
+.blk-num{font-size:var(--fs22);font-weight:600;letter-spacing:-.5px;font-variant-numeric:tabular-nums}
+.blk-v .blk-num{font-size:var(--fs22);font-weight:600}
 /* 路径是脚注不是数据：单独一组小字，别塞进网格里当第 N 行收据 */
 .paths{margin-top:var(--sp4);display:flex;flex-direction:column;gap:6px}
 .grp>.paths{margin-top:0}
 .path-row{display:flex;gap:var(--sp2);min-width:0;line-height:1.6}
 .path-k{flex:none;font-size:var(--fs12);color:var(--on-variant)}
 .path-v{min-width:0;word-break:break-all;font-size:var(--fs12);color:var(--on-variant)}
-/* 「关于」是诊断脚注，不该和运行状态抢层级：格子去掉填充、值降一档字号 */
-.card-quiet .blk{background:transparent;border-bottom:0;padding:0}
-.card-quiet .grid{gap:var(--sp4)}
-.card-quiet .blk-v{font-size:var(--fs14);font-weight:600}
-.card-quiet .blk-k{margin-bottom:5px}
 /* 状态只在「需要关注」时才着色：正常值就是普通文字，不给绿点。
    一排绿点等于什么都没说，还会把概览变成红绿灯阵列；
    只有 warn/bad/na 才画点或胶囊，眼睛第一眼落在的就是它们。 */
 .pill{display:inline-flex;align-items:center;gap:5px;padding:0;border-radius:var(--r-full);min-width:0;
-  font-size:var(--fs13);font-weight:600;background:transparent;color:var(--on-surface)}
+  font-size:var(--fs14);font-weight:600;background:transparent;color:var(--on-surface)}
 .pill::before{content:"";width:7px;height:7px;border-radius:50%;background:var(--outline);flex:none}
 .pill[data-tone=ok]::before{display:none}
 .pill[data-tone=na]::before{background:var(--outline)}
 .pill[data-tone=warn]{padding:2px 9px 2px 8px;background:var(--secondary-container);
-  color:var(--on-secondary-container);font-weight:700}
+  color:var(--on-secondary-container);font-weight:600}
 .pill[data-tone=warn]::before{background:var(--secondary)}
-.pill[data-tone=bad]{padding:2px 9px 2px 8px;background:var(--error-container);color:var(--on-error-container);font-weight:700}
+.pill[data-tone=bad]{padding:2px 9px 2px 8px;background:var(--error-container);color:var(--on-error-container);font-weight:600}
 .pill[data-tone=bad]::before{background:var(--error)}
 /* 应用列表固定一列：行里要放 图标 + 应用名 + 包名 + 角标，两列时每列只有
    258px，包名全被截断。这条以前靠 258 这个魔法数刚好只排一列 —— 卡片内边距
    从 26 收到 24 之后内容宽度 514 → 518，越过 2×258+1 的阈值，列表自己翻成了
    两列。现在显式写死。 */
 #appsBody{display:block}
-.app-row{display:flex;align-items:center;gap:var(--sp3);min-height:56px;padding:8px 0;border-radius:var(--r-m);
-  min-width:0;transition:background var(--d1) var(--e-emph)}
-.app-row:hover{background:var(--surface-mid)}
 /* 头像：有桌面缓存就用那张真图标，没有就用首字块。
    快捷方式、系统组件、以及压根没有 Launcher3 系缓存的机器都会落到后者，不是异常路径 */
 .app-ic{flex:none;width:40px;height:40px;border-radius:50%;overflow:hidden;
   background:var(--surface-high);display:grid;place-items:center;
-  color:var(--on-variant);font-size:var(--fs16);font-weight:700}
+  color:var(--on-variant);font-size:var(--fs16);font-weight:600}
 .app-ic img{width:100%;height:100%;object-fit:contain;display:block}
-.app-txt{flex:1;min-width:0}
 .app-name{display:block;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
-  font-size:var(--fs14);font-weight:600}
-.app-name.is-mono{font-family:var(--mono);font-size:var(--fs12);font-weight:400;letter-spacing:-.2px}
-.app-tag{flex:none;font-size:var(--fs11);font-weight:700;padding:1px 6px;border-radius:var(--r-full);
+  font-size:var(--fs16);font-weight:500;letter-spacing:.15px}
+.app-name.is-mono{font-family:var(--mono);font-size:var(--fs14);font-weight:400;letter-spacing:-.2px}
+.app-tag{flex:none;font-size:var(--fs11);font-weight:600;letter-spacing:.5px;padding:2px 7px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
 .app-tag[data-tone=na]{background:var(--surface-highest);color:var(--on-variant);font-weight:600}
 .app-tag[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
 .app-tag[data-tone=ok]{background:var(--primary-container);color:var(--on-primary-container)}
-/* 名单里的后端语法标签：Tricky 的 ?/! 模式与 TEESim 的用户/UID。
-   用文字而不是图标 —— ? 和 ! 只靠图标说不清各自是哪种证书模式。 */
-.blk-code{font-family:var(--mono);font-size:var(--fs12);font-weight:500;line-height:1.55;word-break:break-word}
 /* 后端配置表单：一列，字段之间松一档；每组底部一个保存按钮 */
 .form{display:flex;flex-direction:column;gap:var(--sp3)}
 .form md-outlined-text-field{width:100%}
 .form .switch-row{margin:0;padding:0}
-.field-label{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:6px}
+.field-label{display:block;font-size:var(--fs12);font-weight:500;letter-spacing:.4px;color:var(--on-variant);margin-bottom:6px}
 select.sel{appearance:none;-webkit-appearance:none;width:100%;min-height:48px;padding:0 12px;
   border:1px solid var(--outline);border-radius:var(--r-s);background:var(--surface);color:var(--on-surface);
   font:inherit;font-size:var(--fs14)}
 select.sel:focus{outline:2px solid var(--primary);outline-offset:-1px}
 .form-actions{display:flex;justify-content:flex-end;margin-top:var(--sp3)}
-.form-sub{font-size:var(--fs12);font-weight:700;color:var(--on-variant);
+.form-sub{font-size:var(--fs12);font-weight:600;letter-spacing:.4px;color:var(--on-variant);
   margin-top:var(--sp2);padding-top:var(--sp3);border-top:1px solid var(--outline-variant)}
 .keybox-meta{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--sp3)}
 #keyboxDialog [slot="content"]{width:min(80vw,360px)}
@@ -517,14 +494,6 @@ select.sel:focus{outline:2px solid var(--primary);outline-offset:-1px}
 .app-mode:active{transform:scale(.94)}
 .app-mode[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
 .app-mode[data-tone=ok]{background:var(--primary-container);color:var(--on-primary-container)}
-/* 列表里的 + 是高频动作：不加底色和边框，只在按/悬停时给一层浅底，避免 100 多行
-   变成一排按钮。命中区仍由 .icon-add::after 撑到 48。 */
-.icon-add{flex:none;width:32px;height:32px;border:0;border-radius:var(--r-s);background:transparent;
-  color:var(--on-variant);cursor:pointer;display:grid;place-items:center;
-  transition:transform var(--d2) var(--e-spring),background var(--d1) var(--e-emph)}
-.icon-add:hover{background:var(--surface-high)}
-.icon-add:active{transform:scale(.86)}
-.icon-add svg{width:16px;height:16px}
 .search-row #btnAppsRefresh{margin-left:0}
 /* 批量选择：行尾的选中圆点 + 固定在底部的操作条。 */
 .selbox{flex:none;width:22px;height:22px;border-radius:50%;border:2px solid var(--outline-variant);
@@ -532,7 +501,6 @@ select.sel:focus{outline:2px solid var(--primary);outline-offset:-1px}
   transition:background var(--d1) var(--e-emph),border-color var(--d1) var(--e-emph)}
 .selbox svg{width:14px;height:14px}
 .selbox[data-on="1"]{background:var(--primary);border-color:var(--primary);color:var(--on-primary)}
-.app-row.is-selectable{cursor:pointer}
 /* @material/web 2.5.0 labs/gb list-item 的选中/按下语义：
    选中态用 secondary-container，头像换成 primary-container。 */
 .app-row.is-selected{background:var(--secondary-container);color:var(--on-secondary-container)}
@@ -542,7 +510,7 @@ select.sel:focus{outline:2px solid var(--primary);outline-offset:-1px}
   display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) var(--sp3);
   background:var(--surface-high);border-radius:var(--r-l);box-shadow:0 6px 24px rgba(0,0,0,.28)}
 .bulkbar[hidden]{display:none}
-.bulk-count{flex:1 1 auto;min-width:0;font-size:var(--fs13);font-weight:600;color:var(--on-surface)}
+.bulk-count{flex:1 1 auto;min-width:0;font-size:var(--fs14);font-weight:600;color:var(--on-surface)}
 .bulkbar .btn{flex:none}
 body.is-selecting #appsBody{padding-bottom:96px}
 /* 属性表：名字 + 状态一行，值单独一行横跨整格。
@@ -583,25 +551,21 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .field textarea,.field input[type=text]{width:100%;padding:var(--sp3);border-radius:var(--r-m);
   background:var(--surface-lowest);border:1px solid var(--outline-variant);color:var(--on-surface);
   transition:border-color var(--d2) var(--e-emph),background var(--d2) var(--e-emph)}
-.field textarea{min-height:180px;font-family:var(--mono);font-size:var(--fs13);line-height:1.55;resize:vertical;tab-size:2}
+.field textarea{min-height:180px;font-family:var(--mono);font-size:var(--fs14);line-height:1.55;resize:vertical;tab-size:2}
 .field input[type=text]{min-height:42px}
 /* 聚焦不再动 border-width：1.5 → 2.5 会让控件长高 2px、下面的东西整体下移 2px。
    现在 border 恒 1px，聚焦时再加一圈同色 ring（视觉 2px，布局零位移）。 */
 .field:focus-within textarea,.field:focus-within input{border-color:var(--primary);
   box-shadow:0 0 0 1px var(--primary)}
-.field label{display:block;font-size:var(--fs12);font-weight:700;letter-spacing:.4px;
+.field label{display:block;font-size:var(--fs12);font-weight:600;letter-spacing:.4px;
   color:var(--on-variant);margin:0 0 var(--sp1) var(--sp1)}
 .field:focus-within label{color:var(--primary)}
 .hint{font-size:var(--fs12);color:var(--on-variant);margin-top:var(--sp1);line-height:1.55}
-/* 需要处理才着色，与全局「正常态不上色」一致 */
-.hint-warn{color:var(--on-error-container);background:var(--error-container);
-  border-radius:var(--r-s);padding:var(--sp2) var(--sp3);margin-top:var(--sp2)}
-.hint-warn[hidden]{display:none}
 .toolbar{display:flex;align-items:center;gap:var(--sp3);flex-wrap:wrap;margin-top:var(--sp3)}
 .switch-row{display:flex;align-items:center;gap:var(--sp2);padding:var(--sp2) 0}
 .switch-row .txt{flex:1;min-width:0}
-.switch-row .txt b{display:block;font-size:var(--fs14);font-weight:600}
-.switch-row .txt span{font-size:var(--fs12);color:var(--on-variant)}
+.switch-row .txt b{display:block;font-size:var(--fs16);font-weight:500;letter-spacing:.15px}
+.switch-row .txt span{font-size:var(--fs12);line-height:1.33;letter-spacing:.4px;color:var(--on-variant)}
 .switch{flex:none;width:46px;height:28px;border-radius:var(--r-full);border:2px solid var(--outline);
   background:var(--surface-highest);position:relative;cursor:pointer;
   transition:background var(--d3) var(--e-spring),border-color var(--d3) var(--e-spring)}
@@ -617,8 +581,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
 /* ================= 日志 ================= */
 .console{background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-m);
   padding:var(--sp2);max-height:52vh;overflow:auto;font-family:var(--mono);font-size:var(--fs12);line-height:1.7;-webkit-overflow-scrolling:touch}
-.log-line{white-space:pre-wrap;word-break:break-all;padding:3px 0;border-bottom:1px solid var(--outline-variant);color:var(--on-surface)}
-.log-line:last-child{border-bottom:0}
+.log-line{white-space:pre-wrap;word-break:break-all;padding:3px 6px;border-radius:6px;color:var(--on-surface)}
 .log-line[data-lvl=err]{background:var(--error-container);color:var(--on-error-container)}
 .log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
 .log-line[data-lvl=ok]{color:var(--success)}
@@ -631,27 +594,19 @@ body.is-selecting #appsBody{padding-bottom:96px}
 
 /* ================= 提示条 / 对话框 / snackbar ================= */
 .banner{display:flex;gap:var(--sp2);align-items:flex-start;padding:var(--sp3) var(--sp4);border-radius:var(--r-l);
-  background:var(--error-container);color:var(--on-error-container);font-size:var(--fs13);line-height:1.5;
+  background:var(--error-container);color:var(--on-error-container);font-size:var(--fs14);line-height:1.5;
   animation:rise var(--d4) var(--e-spring) backwards}
 /* .banner 自带 display:flex，会盖掉 hidden 属性的 display:none —— 必须显式补一条 */
 .banner[hidden]{display:none}
 .banner svg{width:18px;height:18px;flex:none;margin-top:1px}
 .banner b{display:block;margin-bottom:2px}
-.dialog{position:fixed;inset:0;z-index:60;display:grid;place-items:center;padding:var(--sp4);background:var(--scrim)}
-.dialog[hidden]{display:none}
-.sheet{width:100%;max-width:460px;max-height:86vh;overflow:auto;background:var(--surface-high);border-radius:var(--r-2xl);
-  padding:var(--sp4);box-shadow:var(--shadow);animation:pop var(--d3) var(--e-spring)}
-@keyframes pop{from{opacity:0;transform:scale(.9) translateY(16px)}}
-.sheet h3{font-size:var(--fs16);font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
-.sheet p{font-size:var(--fs14);color:var(--on-variant);line-height:1.55}
-.sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
 /* 提示条要浮在底栏之上（药丸占掉离屏 20 + 自身 58，实测停稳下沿 812、药丸上沿 822，
    中间留 10px），否则它一出现就盖住导航。
    多选时它同样落在批量条上沿之上，两种浮层不用分开算。 */
 .snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 88px);z-index:70;
   transform:translate(-50%,140%);opacity:0;max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
   padding:var(--sp2) var(--sp4);border-radius:var(--r-l);
-  background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:var(--fs13);
+  background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:var(--fs14);
   transition:transform var(--d4) var(--e-spring),opacity var(--d2) var(--e-emph);pointer-events:none}
 /* 属性选择器的值不加引号时必须是合法标识符，`1` 不是：这条原先写成 [data-show=1]，
    整条规则被解析器静默丢掉，snackbar 永远停在 translate(-50%,140%) ——
@@ -663,7 +618,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .snackbar[data-tone=bad]{background:var(--error-container);color:var(--on-error-container)}
 .snackbar[data-tone=ok]{background:var(--success-container);color:var(--on-success-container)}
 .snack-text{min-width:0}
-.snack-action{flex:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:700;
+.snack-action{flex:none;border:0;background:transparent;color:inherit;font:inherit;font-weight:600;
   padding:4px 8px;border-radius:var(--r-s);cursor:pointer}
 .snack-action:active{transform:scale(.94)}
 
@@ -674,7 +629,7 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .skeleton{height:12px;border-radius:var(--r-s);background:linear-gradient(90deg,var(--surface-mid),var(--surface-high),var(--surface-mid));
   background-size:220% 100%;animation:shimmer 1.3s infinite}
 @keyframes shimmer{from{background-position:120% 0}to{background-position:-120% 0}}
-.empty{padding:var(--sp6) var(--sp4);text-align:center;color:var(--on-variant);font-size:var(--fs13)}
+.empty{padding:var(--sp6) var(--sp4);text-align:center;color:var(--on-variant);font-size:var(--fs14)}
 .empty b{display:block;font-size:var(--fs14);color:var(--on-surface);margin-bottom:var(--sp1)}
 .busy{position:fixed;inset:0;z-index:65;display:grid;place-items:center;background:var(--scrim);gap:var(--sp3)}
 .busy[hidden]{display:none}
@@ -710,7 +665,7 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 .app-item.is-selected::part(list-item){background:var(--md-sys-color-secondary-container);
   color:var(--md-sys-color-on-secondary-container);border-radius:var(--md-sys-shape-corner-large)}
 .switch-row md-gb-switch{flex:none}
-.dlg-title{font-size:var(--fs16);font-weight:700;letter-spacing:-.2px}
+.dlg-title{font-size:var(--fs22);font-weight:600;letter-spacing:-.4px}
 .dlg-text{font-size:var(--fs14);color:var(--on-variant);line-height:1.55}
 .dlg-actions{display:flex;gap:var(--sp2);justify-content:flex-end}
 
@@ -1293,7 +1248,7 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
       <div class="toolbar" style="margin-top:var(--sp2)">
         <md-gb-button id="btnLogClear" color="text" size="sm">清空缓冲</md-gb-button>
         <div class="switch-row" style="margin-left:auto;padding:0">
-          <span class="txt" style="font-size:var(--fs13)">自动刷新</span>
+          <span class="txt" style="font-size:var(--fs14)">自动刷新</span>
           <md-gb-switch id="logAuto"></md-gb-switch>
         </div>
       </div>

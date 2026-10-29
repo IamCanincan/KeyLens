@@ -165,6 +165,15 @@ chk('短页内容垂直居中（主页除外）',
   && /classList\.toggle\('center', !home\)/.test(fnBody('applyPage')));
 /* 同心圆：卡片 20 − 1px 边框 − 8px 间距 = 11 */
 chk('板块圆角与外卡同心', /\.grp\{background:var\(--block\);border-radius:11px/.test(html));
+/* 字阶只准用 @material/web 自带 md-sys-typescale 的档：13 与 38 是表外值，
+   同一屏里 12 与 13 并排只会读成"没对齐" */
+chk('字号只用官方 typescale 档', !/--fs13|--fs38/.test(html)
+  && /--fs24: 24px/.test(html) && /--fs45: 45px/.test(html));
+/* M3 的卡是"三选一"，描边 + 投影 + 浅底同时上就不是 M3 了 */
+chk('卡片只留发丝线、不叠投影',
+  /\.card\{background:var\(--surface-low\);border:1px solid var\(--card-line\);border-radius:var\(--r-xl\);padding:var\(--sp6\)\}/.test(html));
+chk('行按压走 state layer 而不是缩放',
+  /\.menu-row:hover::before\{opacity:\.08\}/.test(html) && /\.menu-row:active::before\{opacity:\.12\}/.test(html));
 chk('每个 tab 图标都在 ICON 表里',
   tabSrc.every(t => iconSrc.indexOf(t[2] + ": '") >= 0),
   tabSrc.filter(t => iconSrc.indexOf(t[2] + ": '") < 0).map(t => t[2]).join(','));
