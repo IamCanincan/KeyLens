@@ -1,0 +1,56 @@
+import fs from 'node:fs';
+import path from 'node:path';
+import { fileURLToPath } from 'node:url';
+
+/* 产物自检（CI 可跑，不需要 npm/esbuild）。
+ *
+ * 完整的新鲜度检查要在 CI 里重建再比字节，那要装依赖；这里守的是**不需要重建也能
+ * 判死**的那几类：占位符没替换、产物比源码还小、图标越界（由 icon-gate 负责）、
+ * 以及源码里有文件没被 import（那等于有一屏代码永远不会进产物）。
+ */
+const here = path.dirname(fileURLToPath(import.meta.url));
+const repo = path.resolve(here, '../..');
+const SRC = path.join(repo, 'webui', 'src');
+const OUT = path.join(repo, 'module', 'webroot', 'index.html');
+
+let bad = 0;
+const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
+
+if (!fs.existsSync(OUT)) { console.log('✗   找不到产物 ' + OUT); process.exit(1); }
+const html = fs.readFileSync(OUT, 'utf8');
+
+chk('没有未替换的占位符', !/__TOKENS__|__APP_CSS__|__BUNDLE__/.test(html));
+chk('产物带 MD3E 组件注册', /customElements\.define\("md-(top-app-bar|navigation-bar|card|list)/.test(html));
+chk('产物内联了符号字体（离线可用）', /@font-face[^@]{0,400}Material Symbols Rounded/.test(html) && /data:font\/woff2/.test(html));
+chk('产物里没有指向网络的字体/脚本 URL',
+  !/<script[^>]+src=["']https?:/.test(html) && !/url\(["']?https?:/i.test(html),
+  (html.match(/url\(["']?https?:[^)]{0,40}/i) || [])[0] || '');
+/* 空分支正则扫描：扫源码（去掉注释与字符串），不扫产物 —— 产物是压缩过的，
+   正则字面量早就变形了，扫它只会命中库里的噪音。命中注释也会误报，所以先剥掉
+   注释：一个天天误报的闸门最后会被所有人忽略，那比没有闸门更糟。 */
+const EMPTY_ALT = /\/(?:[^/\n\\]|\\.){0,60}\|\|(?:[^/\n\\]|\\.){0,60}\//;
+for (const f of fs.readdirSync(SRC).filter(x => x.endsWith('.js'))) {
+  const raw = fs.readFileSync(path.join(SRC, f), 'utf8');
+  const code = raw.replace(/\/\*[\s\S]*?\*\//g, '').split('\n')
+    .map(l => l.replace(/(^|[^:])\/\/.*$/, '$1')).join('\n');
+  const hit = code.split('\n').find(l => EMPTY_ALT.test(l));
+  chk('源码 ' + f + ' 没有空分支正则', !hit, hit ? hit.trim().slice(0, 56) : '');
+}
+
+/* 每个源码文件都必须被入口 import —— 漏一个就是那一屏代码进不了产物，
+   而本地跑 dist 时未必看得出来（没被 import 的文件里的函数根本不存在）。 */
+const entry = fs.readFileSync(path.join(SRC, 'app.js'), 'utf8');
+const screens = fs.readFileSync(path.join(SRC, 'screens.js'), 'utf8');
+const reached = new Set(['app.js']);
+for (const m of entry.matchAll(/from '\.\/([a-z]+\.js)'/g)) reached.add(m[1]);
+for (const m of screens.matchAll(/from '\.\/([a-z]+\.js)'/g)) reached.add(m[1]);
+for (const f of fs.readdirSync(SRC)) {
+  if (!f.endsWith('.js')) continue;
+  chk('源码 ' + f + ' 被入口引用', reached.has(f), reached.has(f) ? '' : '它不会进产物');
+}
+
+/* 产物体积异常小 = 多半是构建被截断 */
+chk('产物不小于 400 KB（否则像被截断）', html.length > 400 * 1024, Math.round(html.length / 1024) + ' KB');
+
+console.log(bad ? '\n' + bad + ' 项不通过' : '\n全部通过');
+process.exit(bad ? 1 : 0);

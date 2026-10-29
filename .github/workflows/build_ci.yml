@@ -64,6 +64,12 @@ jobs:
         # 再把 @font-face / 字体探测/复制管线加回来。不需要设备。
         run: node tests/ui-font.js
 
+      - name: MD3E Icon Subset Gate
+        # 新版界面（webui/src）用的图标名必须在 MD3E 自带的 257 个连字子集内：
+        # 越界的名字会被组件当字面词画出来。只读源码与 vendor/icons.txt，
+        # 不装依赖、不需要设备。
+        run: node tools/md3e-build/icon-gate.mjs
+
       - name: Verified Boot Hash Self-Test
         # 校验/保存/应用三条路径，resetprop 换成计次桩：只接受 64/128 位
         # 十六进制、只补空 hash_alg、读回不一致要报失败。不需要设备。

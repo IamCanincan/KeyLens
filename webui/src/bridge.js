@@ -89,9 +89,10 @@ export const S = {
   targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
   backendInfo: {}, profiles: [], teeStatus: null, trickyPatches: [],
   appsSrc: 'targets', view: 'targets', search: '', selectMode: false, selected: {},
+  profile: 'default', scope: 'global', newPkg: '',
   icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
   excluded: [], theme: 'auto',
-  loaded: {}, seq: 0, theme: 'auto',
+  loaded: {}, seq: 0,
 };
 
 let BRIDGE = null;

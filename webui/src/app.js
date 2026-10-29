@@ -10,6 +10,9 @@ import '@materialwebunofficial/md3e-web/components/md-navigation-bar.js';
 import '@materialwebunofficial/md3e-web/components/md-card.js';
 import '@materialwebunofficial/md3e-web/components/md-list.js';
 import '@materialwebunofficial/md3e-web/components/md-button.js';
+import '@materialwebunofficial/md3e-web/components/md-switch.js';
+import '@materialwebunofficial/md3e-web/components/md-text-field.js';
+import '@materialwebunofficial/md3e-web/components/md-select.js';
 import '@materialwebunofficial/md3e-web/components/md-loading-indicator.js';
 import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 
@@ -18,7 +21,7 @@ import {
 } from './bridge.js';
 import {
   ICON, h, renderOver, renderTargets, renderBackend, renderProps, renderLog,
-  onToast, onReload,
+  onToast, onReload, onAuto, onApplyTheme,
 } from './screens.js';
 
 /* 五格，按"用户来这儿要办的事"分，不按上一版的"功能二级菜单"分：
@@ -37,13 +40,26 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 nav.items = PAGES.map(function (p) { return { icon: p.icon, label: p.label }; });
 
-/* 深/浅：库的 tokens 按 color-scheme 出两套角色色 */
+/* 深/浅：跟随系统时优先用管理器报的 sys_dark —— CSS 的 prefers-color-scheme
+   在部分 WebView 里不跟着系统的"深色模式"开关走，而 env.sys_dark 是它自己的真值。 */
 function applyTheme() {
   const want = S.theme === 'auto'
-    ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    ? (S.env.sys_dark === '1' || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches))
     : S.theme === 'dark';
   document.documentElement.style.setProperty('color-scheme', want ? 'dark' : 'light');
 }
+onApplyTheme(applyTheme);
+
+/* 自动刷新：只在日志页开着时才该有这一个定时器；离开页面必须收掉，
+   否则它会一直在后台 fork 命令。 */
+onAuto(function (on) {
+  if (S.autoTimer) { clearInterval(S.autoTimer); S.autoTimer = null; }
+  if (!on) return;
+  S.autoTimer = setInterval(function () {
+    if (S.tab !== 'log') { clearInterval(S.autoTimer); S.autoTimer = null; return; }
+    ensure('log').then(draw);
+  }, 5000);
+});
 
 /* ── snackbar ──────────────────────────────────────────────────────── */
 let snack = document.getElementById('snack');

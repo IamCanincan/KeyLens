@@ -88,6 +88,17 @@ tools/icondump/            # 图标 dex 的源码与编译命令
 tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）—— 当前线上版
 tools/md3e-build/         # MD3E Web 组件包 → 内联 bundle（npm + esbuild），新版用，含图标闸门
 webui/src/                # 新版界面源码（index.html / app.css / app.js），构建产物才是 webroot/index.html
+
+> **新版还没上线，且上线前有一件事必须先做**：`tests/ui-shape.js`、`tests/ui-font.js`、
+> `tests/contract-pair.sh` 是**对着 `module/webroot/index.html` 抓字符串**的（`var KV_REQUIRED =`、
+> `.grp{…}`、`id="p-func"` 这些）。新版产物是 ESM 压缩过的，这些锚点全部消失 —— 实测把新版
+> `--ship` 之后 `ui-shape` 在第一条抽取就中止（79 条断言一条都没跑），三个套子同时红。
+> 所以**换产物之前先把这三个套子改成读 `webui/src/`**，否则会留下一个"绿但什么都不测"的套件，
+> 那比红更糟。新版自己的三道闸门已经就位且不依赖旧产物：
+> `icon-gate.mjs`（图标名必须在 257 连字子集内，已进 CI）、
+> `check-artifact.mjs`（占位符/内联字体/离线/源码是否都被入口引用/空分支正则）、
+> `verify.mjs`（CDP 真点导航，逐页断言渲染出的区块与标题）。
+> 构建好的候选产物留在 `webui/dist/index.next.html`，`build.mjs --ship` 随时可换。
 tools/ui-cdp-check.mjs   # 界面验收台架：CDP 钉死视口，逐页量溢出/面板/标题（本地跑，要 Chrome）
 tools/deploy-webui.sh    # 推 WebUI 上机：入口闸门 + chmod 644 + 逐文件对 sha256
 THIRD_PARTY_NOTICES.md     # 内联 bundle 的第三方许可

@@ -13,7 +13,8 @@ import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failT
 export const ICON = {
   over: 'home', func: 'category', log: 'article', about: 'info',
   sync: 'refresh', read: 'download', backend: 'settings', list: 'group',
-  keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune',
+  keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
+  addPkg: 'add', moon: 'dark_mode',
   ok: 'check', warn: 'warning', bad: 'error', none: 'help',
 };
 
@@ -109,6 +110,7 @@ export function renderOver() {
   box.appendChild(run);
 
   box.appendChild(recentCard());
+  box.appendChild(renderTheme());
   box.appendChild(selfCheck());
   return box;
 }
@@ -293,17 +295,151 @@ export function renderProps() {
     item({ headline: '模块应用值', supporting: (bt && bt.configured) || '未设置（不写 vbmeta.digest）',
       tone: bt && bt.configured ? 'ok' : 'warn' }),
   ]));
+  /* 这个值要能改：旧版有 props-boot-hash 这条写命令，新版不给入口就是退步。
+     校验按十六进制 64 位来，与命令层一致；清空 = 不应用。 */
+  const tf = h('md-text-field');
+  tf.setAttribute('label', '要应用的 digest（64 位十六进制，留空 = 不应用）');
+  tf.value = (bt && bt.configured) || '';
+  s2.appendChild(tf);
+  const acts2 = h('div', 'acts');
+  acts2.appendChild(button('保存并应用', { variant: 'filled', icon: ICON.save, on: function () {
+    const v = String(tf.value || '').trim();
+    if (v && !/^[0-9a-fA-F]{64}$/.test(v)) { toastFn('digest 必须是 64 位十六进制（或留空取消）', true); return; }
+    write('props-boot-hash', b64(v), v ? '已写入并将在下次开机生效' : '已取消应用 vbmeta.digest');
+  } }));
+  s2.appendChild(acts2);
   c2.appendChild(s2);
   box.appendChild(c2);
   return box;
 }
 
+/* ── 编辑表单：字段规格集中一份，渲染与提交都读它 ───────────────────── */
+/* [key, 取值来源, 标签, 类型, 分组小标题?]
+   key 必须与命令层校验表逐字对上（webui.sh 的 cmd_*_save 里那个 case），
+   对不上就是"未知字段"整单被拒。 */
+const F_PROFILE = [
+  ['mode', 'default_mode', '模式', 'seg', null, [['patch', '补丁'], ['generation', '证书生成']]],
+  ['keybox', 'default_keybox', '密钥箱文件名', 'text'],
+  ['patch_system', 'default_patch_system', 'system 补丁', 'text'],
+  ['patch_vendor', 'default_patch_vendor', 'vendor 补丁', 'text'],
+  ['patch_boot', 'default_patch_boot', 'boot 补丁', 'text'],
+  ['os_version', 'default_os_version', 'OS 版本', 'text'],
+  ['auto_include', 'default_auto_include', '自动纳入新应用', 'switch'],
+];
+const F_IDENTITY = [
+  ['brand', 'default_brand', '品牌', 'text', '设备身份'],
+  ['device', 'default_device', '设备', 'text'],
+  ['product', 'default_product', '产品', 'text'],
+  ['manufacturer', 'default_manufacturer', '制造商', 'text'],
+  ['model', 'default_model', '型号', 'text'],
+  ['serial', 'default_serial', '序列号', 'text'],
+  ['imei', 'default_imei', 'IMEI', 'text'],
+  ['meid', 'default_meid', 'MEID', 'text'],
+  ['imei2', 'default_imei2', 'IMEI2', 'text'],
+];
+const F_TRICKY = [
+  ['patch_system', 'patch_system', 'system', 'text'],
+  ['patch_vendor', 'patch_vendor', 'vendor', 'text'],
+  ['patch_boot', 'patch_boot', 'boot', 'text'],
+  ['patch_all', 'patch_all', 'all（三项共用）', 'text'],
+];
+const LOG_LEVELS = [['off', 'off'], ['error', 'error'], ['warn', 'warn'], ['info', 'info'], ['debug', 'debug'], ['trace', 'trace']];
+const F_OMK_CONFIG = [
+  ['cfg_log_level', 'config_log_level', '日志级别', 'select', null, LOG_LEVELS],
+  ['cfg_force_skip_biometric', 'config_force_skip_biometric', '跳过生物识别校验（不推荐）', 'switch'],
+  ['cfg_retire_stale_keys', 'config_retire_stale_keys', '淘汰旧 keybox 绑定的密钥', 'switch'],
+  ['trust_os_version', 'trust_os_version', 'OS 版本（auto 或 0–99）', 'text', '信任链 [trust]'],
+  ['trust_security_patch', 'trust_security_patch', '安全补丁（auto|latest|YYYY-MM-DD）', 'text'],
+  ['trust_os_patchlevel', 'trust_os_patchlevel', '系统补丁级别', 'text'],
+  ['trust_vendor_patchlevel', 'trust_vendor_patchlevel', 'vendor 补丁级别', 'text'],
+  ['trust_boot_patchlevel', 'trust_boot_patchlevel', 'boot 补丁级别', 'text'],
+  ['trust_vb_key', 'trust_vb_key', 'vb_key（auto|random|64 hex）', 'text'],
+  ['trust_vb_hash', 'trust_vb_hash', 'vb_hash（auto|random|64 hex）', 'text'],
+  ['trust_verified_boot', 'trust_verified_boot', 'verified_boot_state', 'text'],
+  ['trust_device_locked', 'trust_device_locked', 'device_locked', 'switch'],
+  ['dev_brand', 'dev_brand', '品牌', 'text', '设备身份 [device]'],
+  ['dev_device', 'dev_device', '设备', 'text'],
+  ['dev_product', 'dev_product', '产品', 'text'],
+  ['dev_manufacturer', 'dev_manufacturer', '制造商', 'text'],
+  ['dev_model', 'dev_model', '型号', 'text'],
+  ['dev_serial', 'dev_serial', '序列号', 'text'],
+  ['dev_imei', 'dev_imei', 'IMEI', 'text'],
+  ['dev_meid', 'dev_meid', 'MEID', 'text'],
+  ['dev_imei2', 'dev_imei2', 'IMEI2', 'text'],
+];
+const F_OMK_INJECTOR = [
+  ['inj_main_enabled', 'injector_main_enabled', '启用 injector', 'switch'],
+  ['inj_log_level', 'injector_log_level', '日志级别（可写 warning）', 'select', null,
+    LOG_LEVELS.concat([['warning', 'warning']])],
+  ['filter_enabled', 'filter_enabled', '启用过滤器', 'switch', '过滤 [filter]'],
+  ['filter_block_android', 'filter_block_android', '拦截 android 包', 'switch'],
+  ['filter_allow_unknown', 'filter_allow_unknown', '允许未知包', 'switch'],
+  ['filter_deny', 'filter_deny_list', '拒绝包名（逗号分隔）', 'text'],
+];
+/* OMK 的 10 个拦截方法：文档说它们是各自独立的路由开关，界面就一项一开关，
+   不做"全选/常用"这种合并 —— 合并等于替用户猜他要拦哪几个。 */
+const OMK_INTERCEPTS = ['get_security_level', 'get_key_entry', 'update_subcomponent', 'list_entries',
+  'delete_key', 'grant', 'ungrant', 'get_number_of_entries', 'list_entries_batched',
+  'get_supplementary_attestation_info'];
+
+/* 通用表单渲染：值从 bi 里取，提交时只发改动过的键 */
+function form(spec, fields, cmd, extra, note) {
+  const wrap = h('div', 'form');
+  const ctrls = [];
+  fields.forEach(function (f) {
+    const key = f[0], from = f[1], label = f[2], type = f[3], sub = f[4], opts = f[5];
+    if (sub) wrap.appendChild(h('div', 'form-sub', sub));
+    const cur = biValue(spec, from);
+    if (type === 'switch') {
+      const row = h('div', 'row');
+      row.appendChild(h('span', 'row-t', label));
+      const sw = h('md-switch');
+      sw.checked = String(cur) === 'true';
+      row.appendChild(sw);
+      wrap.appendChild(row);
+      ctrls.push({ key: key, get: function () { return sw.checked ? 'true' : 'false'; }, init: sw.checked ? 'true' : 'false' });
+    } else if (type === 'select' || type === 'seg') {
+      const row = h('div', 'row');
+      row.appendChild(h('span', 'row-t', label));
+      const sel = h('md-select');
+      (opts || []).forEach(function (o) { const op = h('md-option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
+      sel.value = cur == null || cur === '' ? (opts && opts[0] ? opts[0][0] : '') : String(cur);
+      row.appendChild(sel);
+      wrap.appendChild(row);
+      ctrls.push({ key: key, get: function () { return String(sel.value || ''); }, init: String(sel.value || '') });
+    } else {
+      const tf = h('md-text-field');
+      tf.setAttribute('label', label);
+      tf.value = cur == null ? '' : String(cur);
+      wrap.appendChild(tf);
+      ctrls.push({ key: key, get: function () { return String(tf.value || ''); }, init: String(tf.value || '') });
+    }
+  });
+  const acts = h('div', 'acts');
+  const btn = button('保存', { variant: 'filled', icon: ICON.save });
+  btn.addEventListener('click', function () {
+    const payload = [];
+    if (extra) extra.forEach(function (kv) { payload.push(kv[0] + '=' + b64(kv[1])); });
+    ctrls.forEach(function (c) {
+      const v = c.get();
+      if (v !== c.init) payload.push(c.key + '=' + b64(v));
+    });
+    if (!payload.length) { toastFn('没有改动'); return; }
+    write(cmd, b64(payload.join('\n')), note || '已保存');
+  });
+  acts.appendChild(btn);
+  wrap.appendChild(acts);
+  return wrap;
+}
+function biValue(spec, from) { return spec[from]; }
+
 /* ── 日志行（时间 · 级别图标 · 正文） ───────────────────────────────── */
 const EMOJI_RE = /\p{Extended_Pictographic}(?:\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F)?)*\s?/gu;
 export function stripEmoji(s) { return String(s == null ? '' : s).replace(EMOJI_RE, ''); }
-/* 级别判据一律用 \u 转义写，不放裸 emoji：上一版在这里掉了 ⛔ 那个字符，
-   留下 `/❌||失败/` 这种**空分支** —— 空分支匹配任意字符串，于是每一行都判成
-   错误、整屏涂红，而正则本身语法完全合法，扫不出来。 */
+/* 级别判据一律用 \u 转义 + new RegExp 写，源码里不出现裸 emoji：上一版在这里掉了
+   一个字符，正则字面量就退化成"空分支"（两个竖线之间什么都没有），而空分支匹配
+   任意字符串 —— 于是每一行日志都判成错误、整屏涂红，语法检查一声不响。
+   check-artifact.mjs 会扫这一类形状。 */
 var RE_BAD = new RegExp('[\\u274C\\u26D4]|失败|超时|错误');
 var RE_WARN = new RegExp('\\u26A0|警告|未能|不存在|未找到');
 var RE_OK = new RegExp('\\u2705|完成|就绪');
@@ -347,6 +483,7 @@ export function renderBackend() {
   if (bi.backend === 'teesim') box.appendChild(teesimProfiles());
   if (bi.backend === 'tricky') box.appendChild(trickyBlocks());
   if (bi.backend === 'omk') box.appendChild(omkReload());
+  box.appendChild(keyboxCard());
 
   if (S.contract.bad) {
     const w = card('warn-card');
@@ -356,82 +493,153 @@ export function renderBackend() {
   return box;
 }
 
-/* TEESim：profiles 是一张表，不是"一个 default" */
+/* TEESim：profiles 是一张表 —— 先选哪一份，再编辑那一份 */
 function teesimProfiles() {
+  const box = h('div', 'stack');
   const c = card();
   const s = section('Profile 表', ICON.list);
   if (!S.profiles.length) {
-    s.appendChild(h('p', 'empty', hasCmd('teesim-profiles')
-      ? '读不到 profile 列表。'
-      : '这一版命令层没有 teesim-profiles —— 重装模块后可以列出全部 profile。'));
-  } else {
-    s.appendChild(list(S.profiles.map(function (p) {
-      return item({
-        icon: p.isDefault ? 'star' : 'label',
-        headline: p.name + (p.isDefault ? '（默认）' : ''),
-        supporting: 'keybox ' + p.keybox + ' · ' + (p.mode === 'generation' ? '证书生成' : '补丁') + ' · 生效代价：保存后由守护进程热重载',
-        trailing: p.apps + ' 条',
-      });
-    })));
-    s.appendChild(h('p', 'hint', '上一版界面只读写 default 这一个 profile；其余 profile 在文件里存在但界面上从来看不见。编辑其它 profile 尚未接到新版界面上。'));
+    s.appendChild(h('p', 'empty', hasCmd('teesim-profiles') ? '读不到 profile 列表。'
+      : '这一版命令层没有 teesim-profiles —— 重装模块后可以列出并编辑全部 profile。'));
+    c.appendChild(s); box.appendChild(c); return box;
   }
+  const seg = h('div', 'acts');
+  S.profiles.forEach(function (p) {
+    seg.appendChild(button(p.name + (p.isDefault ? '（默认）' : '') + ' · ' + p.apps + ' 条', {
+      variant: p.name === S.profile ? 'filled' : 'text',
+      on: function () { S.profile = p.name; draw(); },
+    }));
+  });
+  s.appendChild(seg);
+  s.appendChild(h('p', 'hint', '上一版界面只读写 default 这一份；其余 profile 在文件里存在但界面上从来看不见。'));
   c.appendChild(s);
-  return c;
+  box.appendChild(c);
+
+  const cur = S.profiles.filter(function (p) { return p.name === S.profile; })[0] || S.profiles[0];
+  const e = card();
+  const es = section('编辑 profile · ' + cur.name, ICON.patch);
+  /* 表单读的是 backend-info 里 default profile 的那批字段；非 default 的字段值
+     命令层还没逐份上报，所以这里明确说"当前值未知，留空即不改"，不假装看得见。 */
+  es.appendChild(h('p', 'hint', cur.isDefault ? '下面显示的是该 profile 的当前值。'
+    : '命令层目前只上报 default 的字段值 —— 非默认 profile 的输入框是空的，留空的字段不会被改动。'));
+  e.appendChild(es);
+  e.appendChild(form(cur.isDefault ? S.backendInfo : {}, F_PROFILE.concat(F_IDENTITY),
+    'teesim-save', [['profile', cur.name]], '已保存 profile：' + cur.name));
+  box.appendChild(e);
+  return box;
 }
 
-/* Tricky：tee_status 是只读事实，按包补丁块是可编辑面 */
+/* Tricky：全局段 + 按包段；tee_status 是只读事实 */
 function trickyBlocks() {
+  const box = h('div', 'stack');
+  const t = S.teeStatus;
   const c = card();
   const s = section('TEE 探测结果', ICON.tee);
-  const t = S.teeStatus;
-  if (!t) {
-    s.appendChild(h('p', 'empty', hasCmd('tee-status') ? '读不到 tee_status。' : '这一版命令层没有 tee-status。'));
-  } else {
-    s.appendChild(list([
-      item({ headline: 'status', trailing: t.status || '—', tone: t.status === 'AVAILABLE' ? 'ok' : 'bad' }),
-      item({ headline: 'teeBroken', trailing: t.teeBroken || '—', tone: t.teeBroken === '1' ? 'warn' : 'ok', supporting: '1 = 这台机器的 TEE 不可用，Tricky 只能走 leaf hack' }),
-      item({ headline: 'category', trailing: t.category || '—' }),
-      item({ headline: 'serviceErrorCode', trailing: t.serviceErrorCode || '—' }),
-    ]));
-  }
-  c.appendChild(s);
+  s.appendChild(list(t ? [
+    item({ headline: 'status', trailing: t.status || '—', tone: t.status === 'AVAILABLE' ? 'ok' : 'bad' }),
+    item({ headline: 'teeBroken', trailing: t.teeBroken || '—', tone: t.teeBroken === '1' ? 'warn' : 'ok',
+      supporting: '1 = 这台机器的 TEE 不可用，Tricky 只能走叶证书改写' }),
+    item({ headline: 'category', trailing: t.category || '—' }),
+    item({ headline: 'serviceErrorCode', trailing: t.serviceErrorCode || '—' }),
+  ] : [item({ headline: 'tee_status', trailing: '读不到',
+    supporting: hasCmd('tee-status') ? '文件不存在或后端不是 Tricky' : '这一版命令层没有 tee-status' })]));
+  c.appendChild(s); box.appendChild(c);
 
   const p = card();
-  const ps = section('补丁级别（全局与按包）', ICON.patch);
-  if (!S.trickyPatches.length) {
-    ps.appendChild(h('p', 'empty', 'security_patch.txt 里没有读到块。'));
-  } else {
-    ps.appendChild(list(S.trickyPatches.map(function (b) {
-      return item({
-        headline: b.scope === 'global' ? '全局' : b.scope,
-        supporting: 'system ' + b.system + ' · vendor ' + b.vendor + ' · boot ' + b.boot,
-        tone: b.scope === 'global' ? '' : 'warn',
-      });
-    })));
-    ps.appendChild(h('p', 'hint', '带包名的块覆盖全局值 —— 只改全局不等于那个包生效。编辑按包块尚未接到新版界面上。'));
-  }
+  const ps = section('补丁级别', ICON.patch);
+  const seg = h('div', 'acts');
+  const scopes = [{ scope: 'global', label: '全局' }].concat(S.trickyPatches.filter(function (b) { return b.scope !== 'global'; })
+    .map(function (b) { return { scope: b.scope, label: b.scope }; }));
+  scopes.forEach(function (o) {
+    seg.appendChild(button(o.label, { variant: o.scope === S.scope ? 'filled' : 'text',
+      on: function () { S.scope = o.scope; draw(); } }));
+  });
+  seg.appendChild(button('新按包段', { variant: 'tonal', icon: ICON.addPkg, on: function () { S.scope = S.newPkg || 'com.example'; draw(); } }));
+  ps.appendChild(seg);
+  const cur = S.trickyPatches.filter(function (b) { return b.scope === S.scope; })[0];
+  ps.appendChild(h('p', 'hint', cur ? '本段当前：system ' + cur.system + ' · vendor ' + cur.vendor + ' · boot ' + cur.boot
+    : (S.scope === 'global' ? '全局段还没有值。' : '还没有 [' + S.scope + '] 这个段 —— 保存会新建它。')));
   p.appendChild(ps);
-  c.appendChild(p);
-  return c;
+  p.appendChild(form(cur ? { patch_system: cur.system === '-' ? '' : cur.system,
+    patch_vendor: cur.vendor === '-' ? '' : cur.vendor, patch_boot: cur.boot === '-' ? '' : cur.boot } : {},
+    F_TRICKY, 'tricky-save-patch', [['scope', S.scope]], '已保存补丁段：' + S.scope));
+  box.appendChild(p);
+  return box;
 }
 
-/* OMK：字段的生效代价分三档，界面上必须说清 */
+/* OMK：两份 toml 分开编辑，因为它们的生效代价不同 */
 function omkReload() {
+  const box = h('div', 'stack');
   const c = card();
-  const s = section('生效代价与重载', ICON.restart);
+  const s = section('生效代价', ICON.restart);
   s.appendChild(list([
     item({ icon: 'check', headline: '热生效', supporting: '三档补丁级别 + os_patchlevel、跳过生物识别、回收旧 keybox 绑定的密钥' }),
-    item({ icon: 'refresh', headline: '要重启 keymint', supporting: '其余 [trust] 与 [device] 字段：保存后需触发 restart.keymint', tone: 'warn' }),
+    item({ icon: 'refresh', headline: '要重启 keymint', supporting: '其余 [trust] 与 [device] 字段：保存后触发 restart.keymint', tone: 'warn' }),
     item({ icon: 'warning', headline: '要重启手机', supporting: 'vb_key / vb_hash 从 random 改回 auto', tone: 'bad' }),
     item({ icon: 'https', headline: '界面上永不显示', supporting: '[crypto] 的五个种子是密钥材料' }),
   ]));
   if (hasCmd('omk-restart')) {
     const acts = h('div', 'acts');
     ['keymint', 'injector', 'all'].forEach(function (w) {
-      acts.appendChild(button('触发 restart.' + w, { variant: w === 'all' ? 'tonal' : 'outlined', icon: ICON.restart, on: () => write('omk-restart', w, '已请求重载：' + w) }));
+      acts.appendChild(button('触发 restart.' + w, { variant: w === 'all' ? 'tonal' : 'outlined',
+        icon: ICON.restart, on: function () { write('omk-restart', w, '已请求重载：' + w); } }));
     });
     s.appendChild(acts);
   }
+  c.appendChild(s); box.appendChild(c);
+
+  const i = card();
+  const is = section('injector.toml · 名单与路由', ICON.backend);
+  is.appendChild(h('p', 'hint', 'scoop 就是目标名单本身，只吃精确包名 —— 加/减包请在「名单」那一格做。'));
+  i.appendChild(is);
+  i.appendChild(form(S.backendInfo, F_OMK_INJECTOR, 'omk-save-injector', null, '已保存 injector.toml'));
+  const ic = h('div', 'acts');
+  ic.appendChild(h('div', 'form-sub', '拦截方法 [intercept] · 10 项独立开关'));
+  OMK_INTERCEPTS.forEach(function (m) {
+    const row = h('div', 'row');
+    row.appendChild(h('span', 'row-t', m));
+    const sw = h('md-switch');
+    sw.checked = String(S.backendInfo['intercept_' + m]) === 'true';
+    sw.addEventListener('change', function () {
+      write('omk-save-injector', b64('intercept_' + m + '=' + b64(sw.checked ? 'true' : 'false')), m + ' → ' + (sw.checked ? '拦' : '不拦'));
+    });
+    row.appendChild(sw);
+    ic.appendChild(row);
+  });
+  i.appendChild(ic);
+  box.appendChild(i);
+
+  const k = card();
+  const ks = section('config.toml · 信任链与设备身份', ICON.tune);
+  ks.appendChild(h('p', 'hint', '保存后 OMK 会重启 keymint —— 除四个补丁级别与两个开关外，其余字段都要这一步才读得到。'));
+  k.appendChild(ks);
+  k.appendChild(form(S.backendInfo, F_OMK_CONFIG, 'omk-save-config', null, '已保存 config.toml'));
+  box.appendChild(k);
+  return box;
+}
+
+/* keybox：三家都有，路径与指纹来自 backend-info */
+function keyboxCard() {
+  const bi = S.backendInfo;
+  const c = card();
+  const s = section('密钥箱 keybox', ICON.keybox);
+  s.appendChild(list([
+    item({ headline: '路径', supporting: bi.keybox_file || '—',
+      trailing: bi.keybox_exists === '1' ? '存在' : '不存在', tone: bi.keybox_exists === '1' ? 'ok' : 'bad' }),
+    item({ headline: '大小与指纹', supporting: (bi.keybox_bytes || '?') + ' 字节 · ' + (bi.keybox_hash_algo || 'sha256') }),
+    item({ headline: '指纹', supporting: bi.keybox_hash || '—' }),
+  ]));
+  const ta = h('textarea', 'kb-paste');
+  ta.placeholder = '粘贴新的 keybox.xml 全文，覆盖前会自动备份';
+  ta.spellcheck = false;
+  s.appendChild(ta);
+  const acts = h('div', 'acts');
+  acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
+    const v = ta.value || '';
+    if (v.indexOf('<Keybox') < 0 && v.indexOf('<AndroidAttestation') < 0) { toastFn('看起来不是 keybox XML', true); return; }
+    write('keybox-save', b64(v), '已替换 keybox');
+  } }));
+  s.appendChild(acts);
   c.appendChild(s);
   return c;
 }
@@ -443,11 +651,24 @@ export function renderLog() {
   const s = section('运行日志', ICON.log);
   const bar = h('div', 'acts');
   [30, 60, 120, 300].forEach(function (n) {
-    bar.appendChild(button(String(n) + ' 行', { variant: n === S.tail ? 'filled' : 'text', on: function () { S.tail = n; S.loaded.log = false; reload(); } }));
+    bar.appendChild(button(String(n) + ' 行', { variant: n === S.tail ? 'filled' : 'text',
+      on: function () { S.tail = n; S.loaded.log = false; reload(); } }));
   });
-  bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read, on: function () { S.loaded.log = false; reload(); } }));
+  bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read,
+    on: function () { S.loaded.log = false; reload(); } }));
+  bar.appendChild(button('清空缓冲', { variant: 'text',
+    on: function () { write('clear-log', '', '已清空日志缓冲'); } }));
   s.appendChild(bar);
-  s.appendChild(h('p', 'hint', '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes)));
+  /* 自动刷新：5 秒一次。开与关都要把定时器收掉，否则切走页面它还在跑。 */
+  const row = h('div', 'row');
+  row.appendChild(h('span', 'row-t', '自动刷新（5 秒）'));
+  const sw = h('md-switch');
+  sw.checked = !!S.autoTimer;
+  sw.addEventListener('change', function () { setAuto(sw.checked); });
+  row.appendChild(sw);
+  s.appendChild(row);
+  s.appendChild(h('p', 'hint', '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes)
+    + '（' + (S.status.log_lines || '?') + ' 行）· 文件 ' + (S.status.log_file || '/data/adb/ts_auto.log')));
   const console_ = h('div', 'console tall');
   if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
   else S.log.forEach(function (l) { console_.appendChild(logRow(l)); });
@@ -456,6 +677,30 @@ export function renderLog() {
   box.appendChild(c);
   return box;
 }
+let autoFn = function () {};
+export function onAuto(fn) { autoFn = fn; }
+function setAuto(on) { autoFn(!!on); }
+
+/* ── 主题与外观（旧版有，新版不能少） ─────────────────────────────── */
+export function renderTheme() {
+  const c = card();
+  const s = section('外观', ICON.moon);
+  const seg = h('div', 'acts');
+  [['auto', '跟随系统'], ['light', '浅色'], ['dark', '深色']].forEach(function (v) {
+    seg.appendChild(button(v[1], { variant: v[0] === S.theme ? 'filled' : 'text',
+      on: function () { S.theme = v[0]; applyThemeFn(); draw(); } }));
+  });
+  s.appendChild(seg);
+  s.appendChild(h('p', 'hint', '跟随系统时读 env 的 sys_dark（管理器报告的 mComputedNightMode），'
+    + '不是只看 CSS 的 prefers-color-scheme。'));
+  if (S.env.sys_seed_src && S.env.sys_seed_src !== 'none') {
+    s.appendChild(h('p', 'hint', '系统强调色来源：' + S.env.sys_seed_src));
+  }
+  c.appendChild(s);
+  return c;
+}
+let applyThemeFn = function () {};
+export function onApplyTheme(fn) { applyThemeFn = fn; }
 
 /* 写操作：统一走契约闸门，成功后重读 */
 function write(cmd, arg, note) {
