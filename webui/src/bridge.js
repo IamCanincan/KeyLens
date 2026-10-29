@@ -17,6 +17,9 @@ export const DEMO = QUERY.get('demo') === '1';
    fail 用来把某一条读取打成失败（"读不到"必须和"是空的"长得不一样）。 */
 export const DEMO_BACKEND = DEMO ? (QUERY.get('backend') || 'omk') : '';
 export const DEMO_FAIL = DEMO ? (QUERY.get('fail') || '') : '';
+/* conflict=1：三家都"启用"，用来把互斥横幅那一条画出来给台架看 —— 那是模块
+   停写的状态，平时真机上碰不到，不造就没有任何证据它渲染得对。 */
+export const DEMO_CONFLICT = DEMO && QUERY.get('conflict') === '1';
 
 /* 界面期望的契约号。命令层只加命令、不改输出形状时这个号不动 —— 涨号会让手机上
    正在跑的旧界面当场判"契约不符"并停写。 */
@@ -382,20 +385,33 @@ function demoResult(cmd, arg) {
   var bi = ['backend=' + B.backend, 'backend_name=' + B.name, 'module_dir=' + B.mod,
     'module_version=' + B.ver, 'target_file=' + B.dir + '/' + B.target, 'target_entries=' + toks.length,
     'keybox_file=' + B.dir + '/' + B.kb, 'keybox_exists=1', 'keybox_bytes=5573',
-    'keybox_hash_algo=sha256', 'keybox_hash=4166677843448ea03fa5983c9cba5543'];
+    'keybox_hash_algo=sha256',
+    /* 真机原值（QV7709NLJ7，2026-10-30 现量）：这台上的 keybox 就是 OMK 自带模板，
+       与 tests/fixtures/keybox-omk-template.xml 同一份字节。截半的哈希是最像真话的假数据。 */
+    'keybox_hash=4166677843448ea03fa5983c9cba554318c06bbaac8bd075ee18f6cedfba2dfa'];
   if (B.backend === 'omk') bi = bi.concat(['injector_version=1', 'injector_main_enabled=true',
     'injector_log_level=debug', 'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false']);
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart',
-    status: ['state=ok', 'description=✅ [' + B.name + ' | 应用: ' + toks.length + ' | 更新: 16:52]',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides',
+    status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
+      /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + TAA_CONFLICT_MSG 并 mark_module_stopped，
+         所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种
+         机器上根本不存在的状态。 */
+      'description=' + (DEMO_CONFLICT
+        ? '⛔ 检测到多个密钥库后端同时启用（Tricky Store / TEE Simulator / OhMyKeymint），模块停止运行（请只保留一个）'
+        : '✅ [' + B.name + ' | 应用: ' + toks.length + ' | 更新: 16:52]'),
       'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu', 'backend=' + B.backend, 'backend_name=' + B.name,
-      'conflict=0', 'teesim_enabled=' + (B.backend === 'teesim' ? 1 : 0),
-      'tricky_enabled=' + (B.backend === 'tricky' ? 1 : 0),
+      'conflict=' + (DEMO_CONFLICT ? 1 : 0),
+      /* 三态与三家：真机现量是 tricky=absent / teesim=absent / oh_my_keymint=active。
+         conflict=1 时三家全成 active —— 那是台架唯一能看到互斥横幅的时刻。 */
+      'teesim_state=' + (DEMO_CONFLICT || B.backend === 'teesim' ? 'active' : 'absent'),
+      'tricky_state=' + (DEMO_CONFLICT || B.backend === 'tricky' ? 'active' : 'absent'),
+      'omk_state=' + (DEMO_CONFLICT || B.backend === 'omk' ? 'active' : 'absent'),
       'data_dir=' + B.dir, 'target_file=' + B.dir + '/' + B.target,
       'target_exists=1', 'target_writable=1', 'target_mtime=1793263964',
-      'props_masking=on', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
+      'props_masking=on', 'daemon_alive=' + (DEMO_CONFLICT ? 0 : 1), 'log_file=/data/adb/ts_auto.log',
       'log_lines=492', 'log_bytes=33933'].join('\n'),
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',

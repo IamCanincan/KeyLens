@@ -54,6 +54,9 @@ cmds=$(awk '/^TAA_COMMANDS="/ {
     buf = $0
     while (buf !~ /"$/) { getline; buf = buf " " $0 }
     sub(/"$/, "", buf)
+    # 续行的反斜杠要一起去掉：留着它，末尾那句"命令 N 条"会把 3 个反斜杠数成
+    # 3 条命令（36 vs 真实的 33）。判"有没有"不受影响，但报出来的数是假的。
+    gsub(/\\/, "", buf)
     print buf
     exit
 }' "$SH_FILE")

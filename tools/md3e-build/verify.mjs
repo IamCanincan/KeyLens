@@ -155,10 +155,19 @@ async function main() {
       '自动条目现在走', '不匹配', '上次探测：TEE 不可用', 'target.txt',
       /* 这一句只有从 tee_broken 这个键读到值才会出现：键名一读回上游的
          小驼峰，这一家就画不出它 —— 静态闸抓键名，这条抓"真的画到屏上了"。 */
-      '上游没给出探测结论'] },
+      '上游没给出探测结论',
+      /* 补丁值的说明：这一句只在 Tricky 那条 hint 里，画出来才证明分叉的文案
+         真的到了对应那一家的页面上。 */
+      '整个组件标签不报'] },
     { id: 'teesim', q: 'teesim', must: ['Profile 表', '编辑 profile · default',
-      'overrides.json · 安全等级与版本', 'config.json'] },
-    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml'] },
+      'overrides.json · 安全等级与版本', 'config.json',
+      '报告 0', '模板令牌必须大写',
+      /* overrides 表真画出值才算走到了非降级分支：以前假数据的命令清单里
+         漏了 teesim-overrides，hasCmd() 恒 false，这张卡永远显示"命令层没有这条"，
+         而台架只看区块标题，照样绿。 */
+      'attestationSecurityLevel', 'synthesized'] },
+    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml',
+      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'] },
   ];
   console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');
   for (const b of BACKENDS) {
@@ -190,6 +199,28 @@ async function main() {
     '错误行 ' + (hasErr ? '在' : '缺') + ' · 空态文案 ' + (hasEmpty ? '还在（等于自相矛盾）' : '已让位'));
   const shotF = await send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(SHOT_DIR, 'new-readfail.png'), Buffer.from(shotF.data, 'base64'));
+
+  /* 互斥那一屏：真机上碰不到，只能造 —— 不造就没有任何证据它渲染得对。 */
+  await send('Page.navigate', { url: URL0 + '&backend=tricky&conflict=1' });
+  await sleep(1400);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+  await sleep(900);
+  const pc = await ev(PROBE);
+  const mustC = ['三家后端 · 同一时刻只能一家在跑', '抢同一个 keymint HAL，模块已经停在这里',
+    'Tricky Store、TEE Simulator、OhMyKeymint', '已停止'];
+  const missC = mustC.filter(s => pc.text.indexOf(s) < 0);
+  chk('三家同时启用 → 矩阵点名是哪几家', missC.length === 0 && pc.scrollW - pc.vw <= 0,
+    missC.length ? '没画出来: ' + missC.join('、') : '溢出 ' + (pc.scrollW - pc.vw) + 'px');
+  const shotC = await send('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(SHOT_DIR, 'new-conflict.png'), Buffer.from(shotC.data, 'base64'));
+  /* 矩阵在页面中段，视口只有一屏 —— 滚到那张卡再截一张，人才看得到判词的依据 */
+  await ev(`(function(){ var els=[].slice.call(document.querySelectorAll('#view md-card'));
+    var t=els.filter(function(e){return (e.textContent||'').indexOf('同一时刻只能一家在跑')>=0;})[0];
+    if (t) t.scrollIntoView(true); return t?1:0; })()`);
+  await sleep(400);
+  const shotC2 = await send('Page.captureScreenshot', { format: 'png' });
+  fs.writeFileSync(path.join(SHOT_DIR, 'new-conflict-matrix.png'), Buffer.from(shotC2.data, 'base64'));
 
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();

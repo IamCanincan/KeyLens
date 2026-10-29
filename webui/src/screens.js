@@ -231,9 +231,50 @@ export function renderBackend() {
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
   box.appendChild(keyboxCard());
+  box.appendChild(backendMatrix());
   box.appendChild(renderTheme());
   box.appendChild(selfCheck());
   return box;
+}
+
+/* 三家互斥矩阵：抢的是同一个 keymint HAL，同时启用时本模块直接停止写入。
+   状态报三态（active/disabled/absent）而不是"开/关"，因为下一步动作不一样：
+   没装是去装，被禁是把 disable 删掉。以前命令层只报 teesim/tricky 两家、
+   而 backends_conflict() 把 OMK 也数进去了 —— 于是横幅能亮却说不清是哪几家。 */
+const BACKENDS = [
+  ['tricky', 'Tricky Store', 'tricky_state', '证书改写走它自己的 target.txt 与 keybox.xml'],
+  ['teesim', 'TEE Simulator', 'teesim_state', '多 profile，配置在 config.json + overrides.json'],
+  ['omk', 'OhMyKeymint', 'omk_state', '名单在 injector.toml 的 scoop 段，另有 config.toml'],
+];
+const BSTATE = { active: ['ok', '启用'], disabled: ['warn', '已禁用（模块目录里有 disable）'], absent: ['none', '未安装'] };
+function backendMatrix() {
+  const st = S.status;
+  /* 键名先按字面量读一遍：kv-shape-check.mjs 只看得见 `st.xxx` 这种写法，
+     `st[b[2]]` 这种算出来的下标是它的盲区 —— 与其让这三条读取脱离闸门，
+     不如在这里落三个字面量，再把值发给表。 */
+  const sv = { tricky: st.tricky_state, teesim: st.teesim_state, omk: st.omk_state };
+  const on = BACKENDS.filter(function (b) { return sv[b[0]] === 'active'; });
+  const c = card();
+  const s = section('三家后端 · 同一时刻只能一家在跑', ICON.backend);
+  s.appendChild(list(BACKENDS.map(function (b) {
+    const cur = st.backend === b[0];
+    const rep = BSTATE[sv[b[0]]] || ['none', '读不到状态'];
+    return item({
+      headline: b[1],
+      supporting: cur ? '当前生效的就是这一家 · ' + b[3] : b[3],
+      trailing: (cur ? '● ' : '') + (sv[b[0]] ? rep[1] : '读不到'),
+      tone: cur ? 'ok' : rep[0],
+    });
+  })));
+  if (st.conflict === '1') {
+    s.appendChild(h('p', 'read-err', '同时启用 ' + (on.length || '?') + ' 家（'
+      + (on.length ? on.map(function (b) { return b[1]; }).join('、') : '具体哪几家读不到')
+      + '）—— 它们抢同一个 keymint HAL，模块已经停在这里。把多余的禁用或卸载，只留一家。'));
+  } else {
+    s.appendChild(h('p', 'hint', '只想换一家：先在 Manager 里把现在这家禁用（或卸载），再启用目标那家，然后回到本页重新读取。'));
+  }
+  c.appendChild(s);
+  return c;
 }
 
 /* 状态条：一行讲清"还在不在跑、写的哪一版"，不再占一整屏 */
@@ -247,9 +288,6 @@ function statusStrip() {
   row.appendChild(h('span', 'strip-k', st.mod_version || '—'));
   row.appendChild(h('span', 'strip-k', '生效 ' + (bi_entries() || '—') + ' 条'));
   c.appendChild(row);
-  if (st.conflict === '1') {
-    c.appendChild(h('p', 'warn-text', '检测到两个后端同时启用，模块已停止 —— 先只留一个。'));
-  }
   /* 契约不匹配横幅：写命令已在传输层被拦，这里只负责说清楚 */
   if (S.contract.bad) {
     c.appendChild(h('p', 'warn-text', '命令层契约不匹配（界面要 api=' + EXPECT_API + '，命令层是 '
@@ -389,6 +427,14 @@ export function renderAutoSync() {
   box.appendChild(a);
   return box;
 }
+
+/* 同一个 `no` 在两家意思相反，同一个 `yyyy` 在两家一边能认一边不认 ——
+   这套值不能共用一句说明（判据与出处见 webui.sh 的 valid_patch / valid_tricky_patch
+   与 tests/patch-keywords.sh）。 */
+const PATCH_HINT = {
+  teesim: '补丁值的写法：留空 = 用采集值 · today · no = **报告 0**（标签还在，值是 0）· system_property · YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD。关键字不分大小写；日期里的模板令牌必须大写，单独一个 YYYY/MM/DD 会被拒（替换完过不了上游自己的日期判据，等于静默不报）。',
+  tricky: '补丁值的写法：prop（默认，跟着系统安全补丁属性）· device_default = 保留设备真值 · no = **整个组件标签不报**（与 TEESim 的「no = 报 0」不同）· YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD。这一家连模板令牌都不分大小写（AndroidUtils.kt:167-171 的 replace 带 ignoreCase）。',
+};
 
 /* ── 编辑表单：字段规格集中一份，渲染与提交都读它 ───────────────────── */
 /* [key, 取值来源, 标签, 类型, 分组小标题?]
@@ -577,6 +623,7 @@ function teesimProfiles() {
   e.appendChild(es);
   e.appendChild(form(cur.isDefault ? S.backendInfo : {}, F_PROFILE.concat(F_IDENTITY),
     'teesim-save', [['profile', cur.name]], '已保存 profile：' + cur.name));
+  e.appendChild(h('p', 'hint', PATCH_HINT.teesim));
   box.appendChild(e);
   return box;
 }
@@ -632,6 +679,7 @@ function trickyBlocks() {
   p.appendChild(form(cur ? { patch_system: cur.system === '-' ? '' : cur.system,
     patch_vendor: cur.vendor === '-' ? '' : cur.vendor, patch_boot: cur.boot === '-' ? '' : cur.boot } : {},
     F_TRICKY, 'tricky-save-patch', [['scope', S.scope]], '已保存补丁段：' + S.scope));
+  p.appendChild(h('p', 'hint', PATCH_HINT.tricky));
   box.appendChild(p);
   return box;
 }
@@ -680,7 +728,10 @@ function omkReload() {
 
   const k = card();
   const ks = section('config.toml · 信任链与设备身份', ICON.tune);
-  ks.appendChild(h('p', 'hint', '保存后 OMK 会重启 keymint —— 除四个补丁级别与两个开关外，其余字段都要这一步才读得到。'));
+  ks.appendChild(h('p', 'hint', '生效代价按**这一单里动了哪些字段**算，不是固定重启（CONFIGURATION.md:415-425）：'
+    + '只动 security_patch / os_patchlevel / vendor_patchlevel / boot_patchlevel 这四个 → keymint 运行中整组热生效，'
+    + '已有 TA 原地更新、在途操作与 per-boot 计数不丢；掺进任何别的字段 → 重启 keymint；'
+    + 'vb_key 或 vb_hash 从 random 改成 auto → 要重启【整机】。保存后的真实结果以提示条为准。'));
   k.appendChild(ks);
   k.appendChild(form(S.backendInfo, F_OMK_CONFIG, 'omk-save-config', null, '已保存 config.toml'));
   box.appendChild(k);
@@ -688,16 +739,26 @@ function omkReload() {
 }
 
 /* keybox：三家都有，路径与指纹来自 backend-info */
+/* 三家的 keybox 判据互不相同，共用一句校验必然在其中一家是错的
+   （判据与出处见 module/backends/keybox_check.awk 抬头）。 */
+const KEYBOX_HINT = {
+  tricky: 'Tricky 的解析器要求根元素是 <AndroidAttestation>，里面要有 <Keybox>、<Key algorithm>、<PrivateKey> 与 <CertificateChain>。解析不过会留用上一份，不会覆盖。',
+  teesim: 'TEESim 运行时不看根元素名，只认 <Key algorithm="rsa"|"ecdsa">（小写）、<PrivateKey> 与至少两张 <Certificate>；读不懂就跳过这个 profile，名单里的应用退回真硬件。',
+  omk: 'OMK 按整块正则取每个 <Key algorithm="…">…</Key>：必须有 EC 密钥，且每块自带 <NumberOfCertificates>N</NumberOfCertificates>、本块证书数正好等于 N。解析不过时守护进程会把自带模板【覆盖回这个文件】（本模块覆盖前留 keybox.xml.bak，可还原）。',
+};
 function keyboxCard() {
   const bi = S.backendInfo;
   const c = card();
   const s = section('密钥箱 keybox', ICON.keybox);
+  const kbNote = bi.backend === 'teesim' && S.profile && S.profile !== 'default'
+    ? '这份属于 default profile；当前选中的是 ' + S.profile + '，它的 keybox 是另一个文件。' : '';
   s.appendChild(list([
-    item({ headline: '路径', supporting: bi.keybox_file || '—',
+    item({ headline: '路径', supporting: (bi.keybox_file || '—') + (kbNote ? ' · ' + kbNote : ''),
       trailing: bi.keybox_exists === '1' ? '存在' : '不存在', tone: bi.keybox_exists === '1' ? 'ok' : 'bad' }),
     item({ headline: '大小与指纹', supporting: (bi.keybox_bytes || '?') + ' 字节 · ' + (bi.keybox_hash_algo || 'sha256') }),
     item({ headline: '指纹', supporting: bi.keybox_hash || '—' }),
   ]));
+  s.appendChild(h('p', 'hint', KEYBOX_HINT[bi.backend] || KEYBOX_HINT.tricky));
   const ta = h('textarea', 'kb-paste');
   ta.placeholder = '粘贴新的 keybox.xml 全文，覆盖前会自动备份';
   ta.spellcheck = false;
@@ -705,7 +766,9 @@ function keyboxCard() {
   const acts = h('div', 'acts');
   acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
     const v = ta.value || '';
-    if (v.indexOf('<Keybox') < 0 && v.indexOf('<AndroidAttestation') < 0) { toastFn('看起来不是 keybox XML', true); return; }
+    /* 只拦"三家都必定不收"的形状（少了 <Key 块），判据比命令层宽；
+       具体结构由 keybox_check.awk 按当前后端判，理由用 toast 原样报出来。 */
+    if (v.indexOf('<Key') < 0) { toast('三家都要求至少一个 <Key algorithm="…"> 块，这段里一个也没有', true); return; }
     write('keybox-save', b64(v), '已替换 keybox');
   } }));
   s.appendChild(acts);
@@ -774,7 +837,11 @@ export function onApplyTheme(fn) { applyThemeFn = fn; }
 /* 写操作：统一走契约闸门，成功后重读 */
 function write(cmd, arg, note) {
   return call(cmd, arg).then(function (r) {
-    if (r.ok) { toast(note || '已完成'); reload(); }
+    /* 命令层可以改口：写了 apply_note 就以它为准。OMK 的生效代价是算出来的
+       （只动 [trust] 那四个补丁字段 = 整组热生效、不重启），
+       界面这边写死一句"已保存"就会说错话。 */
+    var kv = r.ok ? parseKV(r.text || '') : null;
+    if (r.ok) { toast((kv && kv.apply_note) || note || '已完成'); reload(); }
     else toast(failText(r), true);
   }, function (e) { toast(String((e && e.message) || e), true); });
 }

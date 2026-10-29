@@ -12,6 +12,11 @@
  *   3) webui/src/screens.js →  从 parseKV 对象上读出来的 `.key`
  *
  * 跑法：node tools/kv-shape-check.mjs   （有偏差就退 1）
+ *
+ * 它的盲区（判词必须自己说清看不见什么）：**算出来的下标看不见**。
+ * `st.tee_broken` 能被扫到，`obj[table[i]]` 扫不到 —— 所以界面里凡是按表取 KV 键的
+ * 地方，都要先落一个字面量读数（见 screens.js 的 backendMatrix：
+ * `{ tricky: st.tricky_state, ... }`），否则那条读取就脱离了这道闸。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -43,12 +48,16 @@ if (fs.existsSync(awkDir)) {
 const KNOWN = new Set([...emitted, ...awkKeys]);
 
 /* ── 2. 界面从 KV 对象上读了哪些键 ───────────────────────────────── */
+/* 注释要先剔掉：这道闸自己写在注释里的例子（`st.xxx`）会被它自己当成一次读取 ——
+   第一版就这么被自己判了一次假警。 */
+const stripComments = (t) => t.replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
 /* parseKV 出来的对象在 screens.js 里的变量名有限，逐个追：
      const x = S.<stateField>          → x.<key>
      S.<stateField>.<key>              → 直接读
    stateField 只要最终来自 parseKV 就纳入（backendInfo/status/env/teeStatus/boot）。 */
 const KV_STATE = ['status', 'env', 'backendInfo', 'teeStatus', 'boot', 'contract', 'bridge'];
-const screens = read('webui/src/screens.js') + '\n' + read('webui/src/app.js');
+const screensRaw = read('webui/src/screens.js');
+const screens = stripComments(screensRaw + '\n' + read('webui/src/app.js'));
 const reads = [];
 const esc = (s) => s.replace(/[$]/g, '\\$');
 /* 别名只在自己那个函数里有效：screens.js 里 `t`、`s`、`bi` 这类短名反复用作
@@ -119,6 +128,16 @@ for (const k of fixtureKeys) {
     console.log(`✗   台架假数据里有 "${k}"，命令层从来不输出它 —— 假数据在替我背书`);
     bad++;
   }
+}
+
+/* 算出来的下标（obj[变量]）看不见，这一句把"看不见"量化出来：数字变大就说明
+   有新的 KV 读取从字面量退成了动态下标，那部分就不再受这道闸保护。 */
+const bracketKeys = new Set();
+for (const m of screens.matchAll(/\w+\['([A-Za-z_][A-Za-z0-9_]*)'\]/g)) bracketKeys.add(m[1]);
+const dyn = [...screens.matchAll(/\b\w+\[\w+(\.\w+|\[[^\]]*\])\]/g)];
+console.log(`（字面量下标读到 ${bracketKeys.size} 个键名；算出来的下标 ${dyn.length} 处 —— 后者这道闸看不见）`);
+for (const k of bracketKeys) {
+  if (!KNOWN.has(k)) { console.log(`✗   界面按 st['${k}'] 读，命令层没有输出过这个键名`); bad++; }
 }
 
 /* 命令层的输出键有没有被界面用到（只报数量，不要求全用：help/restore 等本来就只读一次） */

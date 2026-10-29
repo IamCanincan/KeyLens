@@ -171,6 +171,95 @@ chk('模板有安全区样式表与 viewport-fit', /\/internal\/insets\.css/.tes
 chk('文本字体是 system-ui，不引网页文本字体', /--md-sys-typescale-font-family: system-ui/.test(css));
 chk('图标字体族名保留（组件画连字要用）', !/--md-icon-font-family\s*:/.test(css));
 
+/* 假数据的命令清单必须与 webui.sh 的 case 标签**一模一样**。
+   上一版这里少了 teesim-overrides —— 于是 hasCmd() 在台架上一直是 false，
+   overrides 那张卡永远走的是"命令层没有这条"的降级分支，而台架报的是全绿。 */
+{
+  const sec = sh.slice(sh.indexOf('case "$CMD" in'));
+  const body = sec.slice(0, sec.indexOf('\nesac'));
+  const real = [...body.matchAll(/^\s{2,4}([a-z][a-z0-9-]*)\)/gm)].map(m => m[1]);
+  const fx = (bridge.match(/commands=([^\n']+)/) || ['', ''])[1].trim().split(/\s+/).filter(Boolean);
+  const missing = real.filter(c => !fx.includes(c));
+  const extra = fx.filter(c => !real.includes(c));
+  chk('假数据的命令清单 = 命令层实际有的命令',
+    missing.length === 0 && extra.length === 0 && real.length > 20,
+    '命令层 ' + real.length + ' 条 · 假数据 ' + fx.length + ' 条'
+    + (missing.length ? ' · 假数据缺: ' + missing.join(' ') : '')
+    + (extra.length ? ' · 假数据多: ' + extra.join(' ') : ''));
+}
+
+/* 命令层的两份清单自己也要对得上：`case "$CMD"` 的标签是**真实现**，
+   TAA_COMMANDS 是**对外声明**（界面靠 hasCmd() 读它决定要不要摆控件）。
+   声明里有而 case 里没有 → 界面摆出一个点了就报"未知命令"的按钮；
+   case 里有而声明里没有 → 那条能力永远不露出（teesim-overrides 就这么被埋过一次，
+   当时设备上部署的还是 32 条的旧声明）。 */
+{
+  const sec = sh.slice(sh.indexOf('case "$CMD" in'));
+  const body = sec.slice(0, sec.indexOf('\nesac'));
+  const real = [...body.matchAll(/^\s{2,4}([a-z][a-z0-9-]*)\)/gm)].map(m => m[1]);
+  const dq = String.fromCharCode(34);
+  const start = sh.indexOf('TAA_COMMANDS=' + dq);
+  let declRaw = '';
+  for (const line of sh.slice(start).split('\n')) {
+    declRaw += line.replace(/\\\$/g, '') + '\n';
+    if (!/\\\s*$/.test(line)) break;
+  }
+  const declared = declRaw.replace(/\\\s*/g, ' ').split(/[\s"=]+/)
+    .filter(x => /^[a-z][a-z0-9-]*$/.test(x) && x !== 'TAA_COMMANDS');
+  const unimpl = declared.filter(c => !real.includes(c));
+  const undeclared = real.filter(c => !declared.includes(c));
+  chk('TAA_COMMANDS 声明 = case 实际实现',
+    unimpl.length === 0 && undeclared.length === 0 && declared.length > 20,
+    '声明 ' + declared.length + ' · 实现 ' + real.length
+    + (unimpl.length ? ' · 声明了没实现: ' + unimpl.join(' ') : '')
+    + (undeclared.length ? ' · 实现了没声明: ' + undeclared.join(' ') : ''));
+}
+
+/* ── ⑦′ keybox 判据按后端分叉（三家共用一句必然在其中一家是错的） ───── */
+console.log('── keybox 判据 ──');
+const kbBlock = (screens.match(/const KEYBOX_HINT = \{([\s\S]*?)\n\};/) || [])[1] || '';
+['tricky', 'teesim', 'omk'].forEach(b => chk('KEYBOX_HINT 有 ' + b + ' 这条', new RegExp(b + ':').test(kbBlock)));
+const kbLines = [...kbBlock.matchAll(/: '([^']+)'/g)].map(m => m[1]);
+chk('三条文案互不相同（共用一条等于没分叉）', new Set(kbLines).size === kbLines.length && kbLines.length >= 3, kbLines.length + ' 条');
+chk('OMK 那条写明"解析不过会被模板覆盖回去"', /覆盖/.test((kbBlock.match(/omk: '([^']+)'/) || [])[1] || ''));
+/* 客户端只拦"三家都必定不收"的形状；按根元素名判死的那句是错的（TEESim 不看根元素名） */
+chk('界面不再按根元素名拦 keybox', !/<Keybox'|<AndroidAttestation'/.test(screens.replace(/KEYBOX_HINT[\s\S]*?\n\};/, '')));
+chk('界面留了一条三家都成立的宽判据（<Key）', /v\.indexOf\('<Key'\) < 0/.test(screens));
+/* 命令层：判据只活在 awk 里，webui.sh 不得自带根元素名判据（注释行除外） */
+const shCode = sh.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
+chk('webui.sh 代码里没有 AndroidAttestation 字面量', !/AndroidAttestation/.test(shCode));
+chk('cmd_keybox_save 调用 keybox_check.awk', /keybox_check\.awk/.test(sh));
+chk('awk 校验脚本在仓库里', fs.existsSync(SRC('module/backends/keybox_check.awk')));
+/* 假数据里的哈希必须是完整 sha256：截半的哈希是最像真话的假数据 */
+const kbHash = (bridge.match(/keybox_hash=([0-9a-f]+)/) || [])[1] || '';
+chk('假数据的 keybox_hash 是完整 64 位十六进制', /^[0-9a-f]{64}$/.test(kbHash), kbHash.length + ' 位');
+
+/* 补丁值的说明也必须分叉：同一个 no 一家是"报 0"、一家是"整个标签不报" */
+const phBlock = (screens.match(/const PATCH_HINT = \{([\s\S]*?)\n\};/) || [])[1] || '';
+chk('PATCH_HINT 两家各一条', /teesim:/.test(phBlock) && /tricky:/.test(phBlock));
+const phLines = [...phBlock.matchAll(/: '([^']+)'/g)].map(m => m[1]);
+chk('两条说明互不相同', new Set(phLines).size === phLines.length && phLines.length === 2, phLines.length + ' 条');
+chk('TEESim 那条写明 no = 报告 0', /teesim: '[^']*报告 0/.test(phBlock));
+chk('Tricky 那条写明 no = 标签不报', /tricky: '[^']*标签不报/.test(phBlock));
+chk('两个 PATCH_HINT 都真的挂到了对应表单上',
+  /form\(cur\.isDefault[\s\S]{0,220}PATCH_HINT\.teesim/.test(screens) && /PATCH_HINT\.tricky/.test(screens));
+
+/* 三家互斥矩阵：状态必须是三态、三家齐全，并且以字面量读出来（动态下标会脱离 kv-shape 闸） */
+chk('矩阵三家齐全', /BACKENDS = \[[\s\S]*?'tricky'[\s\S]*?'teesim'[\s\S]*?'omk'/.test(screens));
+['tricky_state', 'teesim_state', 'omk_state'].forEach(k =>
+  chk('界面按字面量读 ' + k, new RegExp('st\\.' + k).test(screens)));
+chk('三态各有说法（没装 / 已禁用 / 启用）', /active: \['ok', '启用'\]/.test(screens)
+  && /disabled:/.test(screens) && /absent: \['none', '未安装'\]/.test(screens));
+chk('命令层输出这三态', /kv (teesim|tricky|omk)_state/.test(sh));
+chk('冲突横幅点名是哪几家', /on\.map\(function \(b\) \{ return b\[1\]; \}\)\.join/.test(screens));
+
+/* 生效代价：命令层算出来的 apply_note 必须真的被界面读走（kv-shape 那道闸看不见
+   局部 parseKV 结果上的读取，所以这里单独钉一条） */
+chk('write() 优先采用命令层的 apply_note', /kv && kv\.apply_note/.test(screens));
+chk('命令层会报 apply_scope / apply_note', /kv apply_scope "\$scope"/.test(sh) && /kv apply_note/.test(sh));
+chk('[trust] 那一单的生效代价写进了界面说明',
+  /整组热生效/.test(screens) && /重启【整机】/.test(screens));
+
 /* ── ⑧ 不许有半成品 ─────────────────────────────────────────────── */
 console.log('── 完成度（不许留空壳）──');
 const todo = [...screens.matchAll(/TODO|FIXME|待接入|尚未接|还没接/g)];

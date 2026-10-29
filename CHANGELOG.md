@@ -16,6 +16,26 @@
   * 台架自身的两条变异由 `tools/md3e-build/mutate-verify.mjs` 代跑（改源码 → 重新构建 → 跑 verify → 逐字节还原 → 再构建再跑一遍确认回绿），不用手动备份。
   * `check-artifact.mjs` 顺手改两处：默认查**候选**产物 `webui/dist/index.html`（新版还没换掉 `webroot/` 里的旧界面，之前它一直拿旧产物报"3 项不通过"），字节门槛用 `statSync().size` 而不是 `html.length` —— 后者是 UTF-16 码元数，904 KB 的文件量出 347"KB"，看着像被截断。
 
+#### 新增
+
+* **OMK 的"生效代价"改成分档算，不再一律重启 keymint**：`cmd_omk_save_config` 以前写完就 `omk_restart keymint`。上游把代价写得很清楚（`docs/CONFIGURATION.md:415-425`）：**同一次保存里只动** `security_patch` / `os_patchlevel` / `vendor_patchlevel` / `boot_patchlevel` 这四个字段时，keymint 在运行中整组热生效，已有 TA 原地更新、在途操作与 per-boot 计数器都不丢；掺进任何别的字段才重启；`vb_key`/`vb_hash` 从 `random` 改成 `auto` 要重启**整机**。现在抽出 `omk_apply_scope`（按这一单提交的字段集判 hot/restart）与 `omk_reboot_needed`（只认 random→auto 这一条），结果用 `apply_scope` / `apply_note` 报给界面，`write()` 优先采用命令层那句而不是自己写死的"已保存"。
+  * `tests/omk-apply-scope.sh` 22 条：抽的是 webui.sh 里的**真函数**；分类表把"四个全动 / 只动一个 / 四个+os_version / 四个+日志级别 / 四个+[device] / 四个+vb_key / 空参数"各钉一档；重启那 7 条含反向（auto→random 不算）与"vb_key 没变但 vb_hash 变了"；最后三条钉写路径确实接上了（函数里 `omk_restart` 只许出现一次，多于一次就是又退回无条件重启）。
+  * 界面 `[trust]` 那一单的说明改写成同一套规则 —— 生效代价是**算出来的**，界面写死一句话就会说错。
+
+* **三家后端互斥矩阵：三态、三家齐全**：命令层 `status` 新增 `omk_state`，并把 `teesim_enabled`/`tricky_enabled` 换成 `teesim_state`/`tricky_state`（`active` / `disabled` / `absent`）。原来的两态旗标有个说不通的洞：`backends_conflict()` 是把 OMK 一起数的，可状态表里**没有 OMK 那一位** —— 于是"多家冲突"的横幅能亮，却答不出是哪几家；而"没装"与"装了但被禁用"给的下一步动作完全不同（去装 / 删 `disable`），两态旗标把这两件事压成一样。
+  * 界面在 keybox 卡下面加一格矩阵：三行、当前那家打 `●`，冲突时红底点名"同时启用 N 家（具体哪几家）"，并复述模块自己写进 `description` 的那句停写原因。
+  * 台架新增一趟 `?demo=1&backend=tricky&conflict=1`：真机上碰不到的停写画面，不造就没有任何证据它渲染得对。假数据在冲突时连 `state=stopped`、`⛔ + TAA_CONFLICT_MSG`、`daemon_alive=0` 一起改（`service.sh:30-34` 就是这么做的），不然台架看到的是"停写但还在跑"这种机器上不存在的状态。
+
+* **keybox 结构校验按后端分叉**：新增 `module/backends/keybox_check.awk`，`cmd_keybox_save` 改成 `-v backend=$TAA_BACKEND` 调它。三家判据互不相同（逐家对着源码核过）：Tricky 要求根元素 `AndroidAttestation`（`KeyBoxUtils.kt:67` 在深度 1 就判死）；TEESim 的运行时**不看根元素名**，只要小写 `algorithm="rsa"|"ecdsa"`、`<PrivateKey>` 与 ≥2 张 `<Certificate>`（`attest.rs:63-124`）；OMK 根本不是 XML 而是四条正则，必须有 EC 密钥、每个 `<Key>` 块自带 `<NumberOfCertificates>N>` 且**本块**证书数正好等于 N（`keybox.rs:35-42,286-314`）。
+  * 语料用上游真实发布的两份：`tests/fixtures/keybox-tricky-aosp.xml`（Tricky 装机时自己刷的那份 AOSP 软件密钥箱）与 `keybox-omk-template.xml`（OMK 覆盖用的模板）。**正对照必须由真文件担任**：OMK 那份模板写着 `NumberOfKeyboxes=2` 却只有一个 `<Keybox>` —— 判据若去查这个数，就会把上游自己装的东西判成不合格，这是"不许严于上游"的具体形状。
+  * `tests/keybox-shape.sh` 26 条，重心是**差异对照**：同一份内容在两家必须得出不同结论（去掉根元素 → TEESim 收 / Tricky 拒；证书数声明 3 实际 2 → Tricky 与 TEESim 照收、OMK 拒），共用一套判据的话这几条必红。另有"整份压成一行"两条，钉住计数按出现次数而不是按行。本地 gawk 与**设备 toybox awk** 输出逐字节相同（把两份完整输出拉回来 diff 过）。
+  * 界面那条"看起来不是 keybox XML"的猜测式前端校验删了：它按根元素名拦，会误拒 TEESim 合法的文件。改成只拦三家都必定不收的形状（连 `<Key` 都没有），其余交给命令层，理由用 toast 原样报出来。OMK 那条说明写明了**解析不过会被自带模板覆盖回去**（本模块覆盖前留 `keybox.xml.bak`）。
+
+* **补丁值的大小写规则也按后端分叉**：`valid_patch`（TEESim）与 `valid_tricky_patch`（Tricky）改成关键字一律不分大小写（两家上游都是 `ignoreCase` 比较），但**日期模板令牌一边认小写一边不认**：TEESim 只替换大写 `YYYY/MM/DD`（`DeviceProps.kt:156` 用 `v.contains("YYYY")`），Tricky 三个 `replace` 全带 `ignoreCase = true`（`AndroidUtils.kt:167-171`）。裸令牌（单独一个 `YYYY`/`MM`/`DD`）两家都判死：替换完剩下的数字过不了上游自己的日期式子，等于静默不报，收下来就是骗用户"设好了"。
+  * `tests/patch-keywords.sh` 41 条（本地 + 设备 toybox 各跑一遍，41 ok / 0 失败），最后单列一组差异对照：`yyyy-mm-dd` 必须 TEESim 拒、Tricky 收；`today` 只有 TEESim 认；`prop`/`device_default` 只有 Tricky 认。
+  * 两处报错文案以前只报字段名（TEESim 那句连被拒的值都不给），现在都点名 `$k = $v` 并把可写的式子列全。
+  * 界面 `PATCH_HINT` 两家各一条：同一个 `no` 在 TEESim 是"报告 0"（标签还在，值是 0），在 Tricky 是"整个组件标签不报"（`CertificateHack.kt:55`）—— 这句话以前两边都没有，用户按另一家的意思填就得到相反的现场。
+
 * **部署 WebUI 收成一条带闸门的命令**：`sh tools/deploy-webui.sh`。起因是这次推完顺手 `ls -l` 才发现 `adb push` 把 `/data/adb/modules/ts-auto-add/webroot/index.html` 落成了 **0666** —— 这个文件由管理器以 root 加载、里面的命令以 root 执行，世界可写等于任何应用都能改写一个 root 界面。模块里其它文件都是 644/755，只有我推的那一个是洞。
   * 闸门四道，任何一道不对就退非 0 并说清原因：工作区有未提交改动就拒推（否则设备上跑的版本对不上仓库，回头说不清是哪版）；`adb get-state` 不通；`adb shell id -u` 不是 0；远端目录不存在。推完 `chmod 644` + `chown root:root`，再**逐文件比本地与远端的 sha256**，最后核模式（不是 644/444 就红）。
   * 四条闸门各造了一次"真的该响"的场景验过：改脏工作区、把 `REMOTE` 指到不存在的目录、把脚本里的 `chmod 644` 改成 666、推完再往设备文件尾部追加一个字节 —— 每次都退非 0 且点名对应那条，跑完逐字节还原，并再真部署一次把设备留在好的那一版（收尾核到 `644 root:root 386671`）。
@@ -443,6 +463,13 @@
 
 * **名单"读不到"被界面报成"是空的"**：`loadLists` 把三条读取的失败全吞成空数组，而命令层在目标文件缺失时正是 `return 1`（`cmd_target_meta` 报"目标文件不存在"）。于是文件没了 → 界面说"这一类现在是空的"，还把"移出"按钮照原样摆出来。现在 `S.listErr` 记下失败原因，画在「目标名单」卡的第一行，空态文案让位给"读不到，所以这一类画不出来"。
   * 这条有专门的变异：删掉错误行那一句 → 台架退码 1 并点名"错误行 缺"（`node tools/md3e-build/mutate-verify.mjs`，两处变异都被抓住）。
+
+#### 修复
+
+* **台架的假命令清单漏了一条，于是 overrides 那张卡一直走的是降级分支**：假数据里的 `commands=` 少了 `teesim-overrides` —— `hasCmd()` 在台架上恒为 false，那张卡永远显示"这一版命令层没有 teesim-overrides"，而逐后端驱动只看区块标题，照样报绿。同一条链上还有第二处漂移：`contract-pair.sh` 报"命令 36 条"，而 `case "$CMD"` 实际 33 条 —— 它抽取 `TAA_COMMANDS` 时没去掉续行的反斜杠，3 个 `\` 被 `wc -l` 数成了 3 条命令。
+  * 两处都补了静态对账（`tests/ui-next-shape.js`）：**假数据的命令清单 = case 标签**、**`TAA_COMMANDS` 声明 = case 实际实现**，两个方向都查。前者漏一条 = 能力永远不露出；后者多一条 = 界面摆一个点了就报"未知命令"的按钮。
+  * 台架的 teesim 那一趟从此要求画出 `attestationSecurityLevel` 与 `synthesized` 两个**值**，只看标题的判据被换掉；这条变异验过（把假数据里那条命令删掉 → 台架退码 1 并点名"没画出来: attestationSecurityLevel、synthesized"）。
+  * `kv-shape-check.mjs` 顺手补两件事：① 扫描前先剔注释（它自己写在注释里的例子 `st.xxx` 被当成一次真读取，报了一条假警）；② **自报盲区** —— 算出来的下标 `obj[变量]` 它看不见，现在会把这种站点数打印出来。`backendMatrix` 因此改成先落 `st.tricky_state` 这类字面量再把值发给表，否则那三条读取就脱离了这道闸。
 
 * **保存配置时最后一个字段被静默丢掉（既没写入、也没过校验）**：`parse_payload` 用 `while IFS= read -r line` 逐行解 payload，而 `read` 在**最后一行没有换行符**时会直接结束循环 —— 界面的 payload 是 `payload.join('\n')` 拼的，本来就没有尾换行，所以最后一个字段永远进不去。实测（修前）：两个字段、第二个故意放非法值 → 命令层回 `saved=1 fields=1`、退码 0，也就是"改 N 个存进 N−1 个"，而且被丢那个连校验都没跑。单字段时更幸运：直接报"没有字段"，所以这个洞以前只在多字段保存时出现，从来没被撞到过。
   * 修法是一个字符级的 `|| [ -n "$line" ]`。回归测试 `tests/payload-last-field.sh` 抽的是 webui.sh 里的**真函数**（不抄一份），四条断言分别钉：无尾换行的两字段、无尾换行的单字段、带尾换行不重复计数、含怪字符的第二条要进 pairs 交给上层校验。

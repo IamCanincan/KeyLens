@@ -160,10 +160,31 @@ valid_text() {
 
 valid_bool() { [ "${1:-}" = "true" ] || [ "${1:-}" = "false" ]; }
 
+# 说明：三家的启用状态报成三态，不是"开/关"两态 —— 界面上"没装"与"装了但被你
+#       禁了"要给不同的下一步（去下载 / 把 disable 删掉）。以前的
+#       teesim_enabled/tricky_enabled 只有 0/1，而且**根本没有 OMK 那一位**，
+#       可 backends_conflict() 是把 OMK 一起数的 —— 于是"两家冲突"的横幅能亮，
+#       却说不清是哪两家。没有任何界面读过那两个旧键（机上那版只在假数据里写它们），
+#       所以直接换成 *_state。
+backend_state() {
+    [ -d "$1" ] || { printf 'absent'; return 0; }
+    if [ -f "$1/disable" ]; then printf 'disabled'; else printf 'active'; fi
+}
+
 valid_log_level() {
     case "${1:-}" in off|error|warn|info|debug|trace) return 0 ;; esac
     return 1
 }
+
+# 说明：把关键字折成小写再比。两家上游的关键字比较都是 ignoreCase
+#       （TEESimulator DeviceProps.kt:116-131 / TrickyStoreOSS AndroidUtils.kt:148-156），
+#       这里再按大小写敏感判就会把上游合法的值误拒 —— 与 keybox 那轮"闸门严于上游"
+#       是同一类错。但**日期模板令牌的大小写两家不一样**：
+#         · TEESim 只替换大写的 YYYY/MM/DD（DeviceProps.kt:156 用 v.contains("YYYY")），
+#           小写 yyyy 不会被替换，随后解析失败 → 该标签静默省略；
+#         · Tricky 三个 replace 全带 ignoreCase = true（AndroidUtils.kt:167-171），
+#           所以 yyyy-mm-dd 在 Tricky 那边是真能用的。
+lower() { printf '%s' "${1:-}" | tr '[:upper:]' '[:lower:]'; }
 
 # TEE Simulator 的补丁占位与日期
 valid_patch() {
@@ -171,12 +192,20 @@ valid_patch() {
     # 没有对应分支（DeviceProps.resolvePatch / Resolver 都没有 equals("harvested")），
     # 写进去等于"该标签省略"，而它真正的"用采集值"写法是**空串**。
     # 与其静默收下让用户以为设好了，不如明确拒绝并给出正确写法。
-    if [ "${1:-}" = "harvested" ]; then
+    if [ "$(lower "${1:-}")" = "harvested" ]; then
         echo "harvested 这个写法上游守护进程并没有实现（写进去等于省略该标签）；要用采集值请留空" >&2
         return 1
     fi
+    # 关键字（大小写不敏感）。no 在 TEESim 里是"报告 0"，不是"不报告" —— 与 Tricky 相反。
+    case "$(lower "${1:-}")" in
+        ''|today|no|system_property) return 0 ;;
+    esac
+    # 裸令牌：substituteDateTemplates 把它替换成"今天"的某一段之后，剩下的数字
+    # 过不了上游自己的 \\d{6}|\\d{8}|\\d{4}-\\d{2}… 判据 → 标签被**静默省略**。
     case "${1:-}" in
-        ''|today|no|system_property|YYYY|MM|DD) return 0 ;;
+        YYYY|MM|DD|yyyy|mm|dd) return 1 ;;
+    esac
+    case "${1:-}" in
         [0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9]|\
         [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) return 0 ;;
     esac
@@ -184,12 +213,18 @@ valid_patch() {
 }
 
 # Tricky 的补丁值与 TEESim 那套 mini 语言不同：它另有 device_default / prop 两个
-# 关键字（Config.kt），以前复用 valid_patch 会把这两个合法值拒掉。
+# 关键字（AndroidUtils.kt:148-156），以前复用 valid_patch 会把这两个合法值拒掉。
 valid_tricky_patch() {
-    case "${1:-}" in
-        no|device_default|prop|YYYY|MM|DD|YYYY-MM|YYYY-MM-DD) return 0 ;;
+    case "$(lower "${1:-}")" in
+        no|device_default|prop) return 0 ;;
     esac
-    printf '%s' "${1:-}" | grep -Eq '^[0-9]{6}$|^[0-9]{8}$|^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$|^(YYYY|[0-9]{4})-(MM|0[1-9]|1[0-2])(-(DD|[0-3][0-9]))?$'
+    # 裸令牌在这里同样过不了 parsePatchLevelValue（AndroidUtils.kt:176），
+    # 结果是不匹配 = 该组件不带补丁标签；与 TEESim 的 no=0 是两回事。
+    case "$(lower "${1:-}")" in
+        yyyy|mm|dd) return 1 ;;
+    esac
+    # Tricky 的令牌替换不分大小写，所以整串折小写后按同一套日期式子判
+    printf '%s' "$(lower "${1:-}")" | grep -Eq '^[0-9]{6}$|^[0-9]{8}$|^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$|^(yyyy|[0-9]{4})-(mm|0[1-9]|1[0-2])(-(dd|[0-3][0-9]))?$'
 }
 
 valid_os_version() {
@@ -509,7 +544,7 @@ cmd_teesim_save() {
         case "$k" in
             mode) [ "$v" = "patch" ] || [ "$v" = "generation" ] || { echo "模式只能是 patch / generation" >&2; rm -rf "$dir"; return 1; } ;;
             keybox) valid_keybox_name "$v" && [ -f "$TEESIM_DIR/$v" ] || { echo "keybox 文件不存在：$v" >&2; rm -rf "$dir"; return 1; } ;;
-            patch_system|patch_vendor|patch_boot) valid_patch "$v" || { echo "补丁值不合法：$k" >&2; rm -rf "$dir"; return 1; } ;;
+            patch_system|patch_vendor|patch_boot) valid_patch "$v" || { echo "补丁值不合法：$k = $v（留空=用采集值 / today / no=报 0 / system_property / YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD；关键字不分大小写，日期里的 YYYY、MM、DD 必须大写且不能单独出现）" >&2; rm -rf "$dir"; return 1; } ;;
             os_version) valid_os_version "$v" || { echo "OS 版本不合法" >&2; rm -rf "$dir"; return 1; } ;;
             auto_include) valid_bool "$v" || { echo "auto_include 只能是 true/false" >&2; rm -rf "$dir"; return 1; } ;;
             brand|device|product|manufacturer|model|serial|imei|meid|imei2)
@@ -629,8 +664,36 @@ cmd_omk_save_injector() {
 }
 
 # 用法：omk-save-config <payload_b64>
+# 说明：OMK 的生效代价不是一句"重启 keymint"。上游文档（docs/CONFIGURATION.md:415-425）
+#       把 [trust] 的四个补丁字段单列一档：**同一次保存里只动这四个**时，keymint 在运行中
+#       整组热生效，已有的 TA 原地更新、在途操作与 per-boot 计数器都不丢；只要掺进任何
+#       别的字段，就退回"重启 keymint"。以前这里无条件重启，等于每次改一个日期就把
+#       用户在途的密钥操作打断一次。
+# 用法：omk_apply_scope <提交的字段...>   → hot | restart
+omk_apply_scope() {
+    local k
+    [ "$#" -gt 0 ] || { echo restart; return 0; }
+    for k in "$@"; do
+        case "$k" in
+            trust_security_patch|trust_os_patchlevel|trust_vendor_patchlevel|trust_boot_patchlevel) ;;
+            *) echo restart; return 0 ;;
+        esac
+    done
+    echo hot
+}
+
+# 说明：vb_key / vb_hash 从 "random" 改成 "auto" 要**重启整机**（要重新读启动元数据），
+#       光重启 keymint 不够。这条只能提示，绝不能替用户重启。
+# 用法：omk_reboot_needed <旧 vb_key> <新 vb_key> <旧 vb_hash> <新 vb_hash>  → 0 = 需要重启整机
+omk_reboot_needed() {
+    [ "$1" = "random" ] && [ "$2" = "auto" ] && return 0
+    [ "$3" = "random" ] && [ "$4" = "auto" ] && return 0
+    return 1
+}
+
 cmd_omk_save_config() {
     local payload="$1" dir pairs out status st saved=0 n=0 k v cfg
+    local old_vbk old_vbh new_vbk new_vbh keys scope note
 
     require_runnable || return 1
     detect_backend "$MODDIR"
@@ -644,6 +707,11 @@ cmd_omk_save_config() {
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
+
+    # 旧值要在写之前取：判 vb_key / vb_hash 是不是从 random 切到 auto（那要重启整机）
+    old_vbk=$(sed -n 's/^[[:space:]]*vb_key[[:space:]]*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' "$cfg" | head -n 1)
+    old_vbh=$(sed -n 's/^[[:space:]]*vb_hash[[:space:]]*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' "$cfg" | head -n 1)
+    new_vbk="" new_vbh="" keys=""
 
     while IFS=$TAB read -r k v; do
         case "$k" in
@@ -662,6 +730,9 @@ cmd_omk_save_config() {
                 valid_text "$v" 128 || { echo "字段不合法：$k" >&2; rm -rf "$dir"; return 1; } ;;
             *) echo "未知字段：$k" >&2; rm -rf "$dir"; return 1 ;;
         esac
+        keys="$keys $k"
+        [ "$k" = "trust_vb_key" ] && new_vbk="$v"
+        [ "$k" = "trust_vb_hash" ] && new_vbh="$v"
         n=$((n + 1))
     done < "$pairs"
 
@@ -696,9 +767,27 @@ cmd_omk_save_config() {
     esac
     release_lock "${TAA_DIR}/.ts_lock"
     rm -rf "$dir" 2>/dev/null
-    [ "$saved" = 1 ] && { omk_restart keymint; log_info "🧩 WebUI 更新 OMK config.toml（$n 项）并请求重启 keymint"; }
+    scope=restart
+    note=""
+    if [ "$saved" = 1 ]; then
+        scope=$(omk_apply_scope $keys)
+        if [ "$scope" = hot ]; then
+            # 四个补丁字段整组热生效：不重启，TA 原地更新，在途操作与 per-boot 计数不丢
+            note="四个补丁字段整组热生效，没有重启 keymint"
+        else
+            omk_restart keymint
+            note="已请求重启 keymint"
+        fi
+        if omk_reboot_needed "$old_vbk" "$new_vbk" "$old_vbh" "$new_vbh"; then
+            scope=reboot
+            note="vb_key/vb_hash 从 random 切到 auto：要重启【整机】才读得到启动元数据，重启 keymint 不够"
+        fi
+        log_info "🧩 WebUI 更新 OMK config.toml（$n 项，生效代价 $scope）"
+    fi
     kv saved "$saved"
     kv fields "$n"
+    kv apply_scope "$scope"
+    [ -n "$note" ] && kv apply_note "$note"
 }
 
 # 用法：tricky-save-patch <payload_b64>（只改 security_patch.txt 的全局段）
@@ -776,7 +865,7 @@ cmd_tricky_save_patch() {
 
 # 用法：keybox-save <base64(xml)>；写到当前后端的活动 keybox
 cmd_keybox_save() {
-    local enc="${1:-}" bcmd dir target tmp bytes st
+    local enc="${1:-}" bcmd dir target tmp bytes st ac kbc kbmsg
 
     require_runnable || return 1
     detect_backend "$MODDIR"
@@ -795,9 +884,26 @@ cmd_keybox_save() {
     [ "${bytes:-0}" -ge 64 ] && [ "${bytes:-0}" -le 131072 ] || {
         rm -rf "$dir"; rm -f "$tmp"; echo "keybox 大小不合法" >&2; return 1;
     }
-    if ! grep -q '<AndroidAttestation' "$tmp" 2>/dev/null || ! grep -q '</AndroidAttestation>' "$tmp" 2>/dev/null; then
+    # 结构校验按后端分叉（判据与理由见 backends/keybox_check.awk 抬头）。
+    # 以前这里是共用一句 grep '<AndroidAttestation'：对 TEESim 严于上游（它不看根
+    # 元素名，合法的会被误拒），对 OMK 宽于上游（它要求每个 <Key> 块自带
+    # <NumberOfCertificates> 且与本块证书数相等；不符时 OMK 不是"不生效"，而是把
+    # 自带模板覆盖回这个文件，用户看到的却是"我明明换过了"）。
+    ac="$AWK_CMD"
+    [ -n "$ac" ] || ac=$(find_awk)
+    kbc="${TAA_PATCH%/*}/keybox_check.awk"
+    if [ -z "$ac" ] || [ ! -f "$kbc" ]; then
         rm -rf "$dir"; rm -f "$tmp"
-        echo "不是有效的 AndroidAttestation keybox.xml" >&2
+        echo "缺少 awk 或 backends/keybox_check.awk，无法校验 keybox 结构" >&2
+        return 1
+    fi
+    if ! kbmsg=$($ac -v backend="$TAA_BACKEND" -f "$kbc" "$tmp" 2>&1); then
+        rm -rf "$dir"; rm -f "$tmp"
+        case "$kbmsg" in
+            # 制表符在 case 里是分隔符，必须引起来，否则 `err` 与 `*)` 被当成两个词
+            "err	"*) echo "keybox 结构不合格（$(backend_name)）：${kbmsg#err	}" >&2 ;;
+            *)   echo "keybox 校验失败（$(backend_name)）：${kbmsg:-awk 没有给出原因}" >&2 ;;
+        esac
         return 1
     fi
 
@@ -1084,7 +1190,7 @@ cmd_backend_info() {
 
 cmd_status() {
     local desc state masking ino p alive lines bytes mtime bname conflict
-    local teesim_en tricky_en target_exists target_writable
+    local teesim_st tricky_st omk_st target_exists target_writable
 
     detect_backend "$MODDIR"
 
@@ -1098,9 +1204,10 @@ cmd_status() {
         *)   state=unknown ;;
     esac
 
-    teesim_en=0; tricky_en=0
-    teesim_active && teesim_en=1
-    tricky_active && tricky_en=1
+    # 三态与 OMK 那一位：conflict 是三家里数出来的，状态表也必须是三家
+    teesim_st=$(backend_state "$TEESIM_MODULE")
+    tricky_st=$(backend_state "$TRICKY_MODULE")
+    omk_st=$(backend_state "$OMK_MODULE")
 
     target_exists=0; target_writable=0
     if [ -f "$TARGET_FILE" ]; then
@@ -1128,8 +1235,9 @@ cmd_status() {
     kv backend "$TAA_BACKEND"
     kv backend_name "$bname"
     kv conflict "$conflict"
-    kv teesim_enabled "$teesim_en"
-    kv tricky_enabled "$tricky_en"
+    kv teesim_state "$teesim_st"
+    kv tricky_state "$tricky_st"
+    kv omk_state "$omk_st"
     kv data_dir "$TAA_DIR"
     kv target_file "$TARGET_FILE"
     kv target_exists "$target_exists"
