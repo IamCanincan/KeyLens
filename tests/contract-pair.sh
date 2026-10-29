@@ -38,9 +38,24 @@ chk_has() {   # chk_has <标签> <清单(空格分隔)> <名字>
 }
 
 # 双写法抽取：先问源码（可读、带 export），再退回产物（旧版 var）
-grab() {   # grab <名字> <正则号=1>
+# 源码里的值可能**跨行续写**（WRITE_CMDS 就是三行），所以不能按"一行到分号"截 ——
+# 换版那一刻 WRITE_CMDS 抽成空，这个套子把"读不到"当成"对不上"报了一次假漂移。
+grab() {   # grab <名字>
     local name="$1" v=""
-    [ -f "$UI_SRC" ] && v=$(sed -n "s/.*export const ${name} *= *\([^;]*\);.*/\1/p" "$UI_SRC" | head -1)
+    [ -f "$UI_SRC" ] && v=$(awk -v n="export const $name" '
+        index($0, n) == 1 && $0 ~ /=/ {
+            sub(/^[^=]*=[ \t]*/, "")
+            buf = $0
+            if (buf ~ /\\$/) { while (getline line > 0) { buf = buf " " line; if (line !~ /\\$/) break } }
+            gsub(/\\[ \t]*\n?/, "", buf)
+            # 首尾的引号与结尾的分号要一起剥掉：只剥一个字符的话，结尾那个分号
+            # 会留下一个孤零零的引号，那条写命令就查无此人。
+            # 程序里的单引号一律写成 \047 —— 整个 awk 程序在 shell 的单引号里，
+            # 直接放一个单引号会把引号截断（第一次就是这么炸的）。
+            gsub(/^[ \t\047"]+/, "", buf)
+            gsub(/[ ;\047"]+$/, "", buf)
+            print buf; exit
+        }' "$UI_SRC")
     [ -n "$v" ] || v=$(sed -n "s/.*var ${name} *= *'\{0,1\}\([^';]*\)'\{0,1\};.*/\1/p" "$HTML" | head -1)
     printf '%s' "$v"
 }
@@ -76,21 +91,38 @@ for w in $writes; do
 done
 
 # 界面真正 call() 出去的命令名（call(cmd, arg) 这种转发不算）
-used=$(grep -o "call('[a-z-][a-z-]*'" "$HTML" | sed "s/call('//; s/'//" | sort -u)
+# 从**源码**抓：产物是 ESM 压缩过的，`call('targets')` 这种字面量在产物里可能已经
+# 变成双引号或被改名 —— 从产物抓会抓成空，而"抓成空"在这里等于全过（假绿）。
+# 所以先源码、后产物，并且**抽干就判失败**。
+grab_used() {   # grab_used <文件> <正则> <sed 脚本>
+    grep -o "$2" "$1" 2>/dev/null | sed "$3" | sort -u
+}
+used=$(grab_used "$UI_SRC" "call('[a-z][a-z-]*'" "s/call('//; s/'//")
+[ -n "$used" ] || used=$(grab_used "$HTML" "call('[a-z-][a-z-]*'" "s/call('//; s/'//")
+if [ -z "$used" ]; then
+    printf '  ✗    %-30s 一条都没抽到（抽取器坏了，不是没问题）\n' "界面调用的命令"
+    fail=1
+fi
+n_used=$(printf '%s\n' $used | grep -c . )
+printf '  ok   %-30s 抽到 %s 条\n' "界面调用的命令" "$n_used"
 for u in $used; do
     chk_has "界面调用 $u" "$cmds" "$u"
 done
 
 # 界面按 contract.commands 逐条放行的能力门（如 excluded）
-gated=$(grep "S.contract.commands" "$HTML" | grep -o "indexOf(' [a-z-][a-z-]* ')" \
-    | sed "s/indexOf(' //; s/ ')//" | sort -u)
+gated=$(grep "S.contract.commands" "$UI_SRC" "$HTML" 2>/dev/null | grep -o "hasCmd('[a-z][a-z-]*')" \
+    | sed "s/hasCmd('//; s/')//" | sort -u)
 for g in $gated; do
     chk_has "能力门 $g" "$cmds" "$g"
 done
 
 # 演示数据里的契约号不能再写死：写死就会与 EXPECT_API 漂开，
 # 桌面预览于是永远"匹配"，横幅永远演不出来（这次就是这么漏的）
-if grep -q "QUERY.get('badapi') || String(EXPECT_API)" "$HTML"; then
+# 旧产物用 `QUERY.get('badapi') || String(EXPECT_API)`，新源码直接 `'api=' + EXPECT_API`
+# —— 两种都算数，判的是"有没有跟着常量"，不是哪一种写法。
+if grep -q "QUERY.get('badapi') || String(EXPECT_API)" "$HTML" \
+   || grep -q "'api=' + EXPECT_API" "$HTML" \
+   || grep -q "'api=' + EXPECT_API" "$UI_SRC"; then
     printf '  ok   %-30s 跟随 EXPECT_API\n' "演示数据 api="
 else
     printf '  ✗    %-30s 演示数据把 api 写死了\n' "演示数据 api="

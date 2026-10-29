@@ -4,11 +4,17 @@ on:
   push:
     branches: [ "main" ]
     paths:
-      - 'module/**' # 触发条件：仅在 module 目录下的文件发生变动时执行
+      - 'module/**' # 命令层与上机界面（webui/src 的产物就落在这里）
+      - 'webui/**'  # 界面源码：改了源码却没重新构建，产物自检要能响
+      - 'tools/**'  # 构建、部署与闸门脚本
+      - 'tests/**'  # 自检套本身
   pull_request:
     branches: [ "main" ]
     paths:
       - 'module/**'
+      - 'webui/**'
+      - 'tools/**'
+      - 'tests/**'
   workflow_dispatch: # 触发条件：允许手动触发工作流
 
 concurrency:
@@ -16,6 +22,71 @@ concurrency:
   cancel-in-progress: true
 
 jobs:
+  # ── 自检：全部 tests/*.sh 与全部静态闸门，逐个跑、最后汇总退码 ──────────
+  # 为什么改成"循环跑全套"而不是一个套子一个 step：step 清单是手抄的，于是
+  # 后来新增的套子（keybox-shape / patch-keywords / omk-apply-scope /
+  # teesim-overrides-write / tee-status-read / payload-last-field /
+  # omk-validation / teesim-profiles / backend-edit-scope / config-write …）
+  # 写完没人再往里加 —— 本地全绿、CI 只跑其中一半，这种"绿"最坏。
+  # 单独成 job 的理由：runner 上的 awk 是 mawk，与本机 gawk、设备 toybox awk
+  # 三家可能有差异；真差异要看得见，但不该因此把刷机包也卡住不发。
+  self-tests:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Check out code
+        uses: actions/checkout@v4
+
+      - name: Shell self-tests（tests/*.sh 全跑）
+        # 每个套子自己会打"全部通过 / 有断言失败"并给退码，这里只负责
+        # 一个都不漏、并且把失败的套子点名。
+        run: |
+          fail=0
+          for t in tests/*.sh; do
+            printf '\n══ %s\n' "$t"
+            if sh "$t"; then
+              printf 'OK   %s\n' "$t"
+            else
+              printf 'FAIL %s\n' "$t"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: Static gates（界面源码 ↔ 命令层对账）
+        # 全是纯静态、不装依赖、不需要设备：
+        #   tests/ui-shape.js                     表单字段 ↔ webui.sh 的 case、结构底线
+        #   tools/kv-shape-check.mjs              界面读的键 ⊆ 命令层输出的键（含假数据）
+        #   tools/md3e-build/icon-gate.mjs        图标名必须在 257 连字子集内
+        #   tools/md3e-build/check-artifact.mjs   产物无占位符 / 字体已内联 / 源码可达
+        #   tools/json-flat-set-check.cjs         扁平 JSON 定点改写 19 例（含删除）
+        run: |
+          fail=0
+          for g in tests/ui-shape.js tools/kv-shape-check.mjs \
+                   tools/md3e-build/icon-gate.mjs tools/md3e-build/check-artifact.mjs \
+                   tools/json-flat-set-check.cjs; do
+            printf '\n══ %s\n' "$g"
+            if node "$g"; then
+              printf 'OK   %s\n' "$g"
+            else
+              printf 'FAIL %s\n' "$g"
+              fail=1
+            fi
+          done
+          exit $fail
+
+      - name: 已知缺口（自报，不算失败）
+        # CI 不重建产物：构建要 npm install（esbuild + MD3E 包）。所以"产物与源码
+        # 是否同版"只能靠本地 `node tools/md3e-build/build.mjs --check`
+        # （webui/dist 与 module/webroot 两条都比）加 check-artifact 的
+        # "每个源码文件都从入口可达"来兜。这里把它印出来，免得以后以为 CI 查过了。
+        run: |
+          echo "::notice title=CI 不重建界面产物::新鲜度靠本地 build.mjs --check；CI 只查产物自身的形状"
+          echo "上机产物：$(wc -c < module/webroot/index.html) 字节"
+          grep -o 'EXPECT_API *= *[0-9]*' webui/src/bridge.js | head -1
+          grep -o '^TAA_API=[0-9]*' module/webui.sh | head -1
+
+  # ── 打包：语法检查 + 版本号注入 + 上传 Artifact ─────────────────────────
   build:
     runs-on: ubuntu-latest
     
@@ -38,72 +109,6 @@ jobs:
             fi
           done
           exit $fail
-
-      - name: Watcher Backoff Self-Test
-        # 监听退避的自检：source 的就是守护进程用的那份 lib/watch.sh，
-        # 并断言 service.sh 里没有第二份内联公式。不需要设备。
-        run: sh tests/watch-backoff.sh
-
-      - name: Incremental Sync Self-Test
-        # 快照差分模型的语义（新装/卸载/手删不回/重装回来/种子/空列表保护），
-        # 测的是 lib/applist.sh 里真实的 build_app_list，只桩外部依赖。不需要设备。
-        run: sh tests/sync-incremental.sh
-
-      - name: UI / Command Contract Pairing
-        # TAA_API 与 EXPECT_API 是一对手写的号；只改一边时真机上表现为一条
-        # "不是同一版"的横幅。这里静态对账两侧的号与命令清单。不需要设备。
-        run: sh tests/contract-pair.sh
-
-      - name: WebUI Shape & Syntax Self-Test
-        # 从 index.html 原样抽出关键键校验逻辑执行，并检查 call() 已接上它、
-        # 超时标记已带到 call()、内联脚本可解析。不需要设备。
-        run: node tests/ui-shape.js
-
-      - name: WebUI System Font Self-Test
-        # 字体交给 WebView 的 system-ui（与机上其它 WebUI 一致）；这里防止
-        # 再把 @font-face / 字体探测/复制管线加回来。不需要设备。
-        run: node tests/ui-font.js
-
-      - name: MD3E Icon Subset Gate
-        # 新版界面（webui/src）用的图标名必须在 MD3E 自带的 257 个连字子集内：
-        # 越界的名字会被组件当字面词画出来。只读源码与 vendor/icons.txt，
-        # 不装依赖、不需要设备。
-        run: node tools/md3e-build/icon-gate.mjs
-
-      - name: Verified Boot Hash Self-Test
-        # 校验/保存/应用三条路径，resetprop 换成计次桩：只接受 64/128 位
-        # 十六进制、只补空 hash_alg、读回不一致要报失败。不需要设备。
-        run: sh tests/props-boot-hash.sh
-
-      - name: Restore App Self-Test
-        # 「把已排除的应用加回名单」：两个后端的写回、已存在不落盘、
-        # 结尾换行、TEESim 其它字段保留。用真实 add_target_app。不需要设备。
-        run: sh tests/restore-app.sh
-
-      - name: Remove App Self-Test
-        # 「从名单里移出」：三个后端的写入、注释/其它字段保留、本来不在返回 1、
-        # 会清空返回 3、读取失败返回 2、移出前并入 ever。不需要设备。
-        run: sh tests/remove-app.sh
-
-      - name: Target Entry Grammar Self-Test
-        # 三个后端的条目语法：Tricky 的 #/?/!、TEESim 的 pkg@用户/uid:、
-        # 快照差分按基础包名清理变体，以及 backend-info 的三个只读解析器。
-        run: sh tests/target-tokens.sh
-
-      - name: Backend Config Write Self-Test
-        # 后端配置写回：TEESim JSON 标量/嵌套 patchLevel、OMK TOML 标量/多行
-        # deny_packages/新段、Tricky 补丁表全局值；保留其它字段与注释、幂等。
-        run: sh tests/config-write.sh
-
-      - name: Sync Empty-List Guard Self-Test
-        # 已装读空但基线非空：自动同步必须放弃（rc=2、文件不动、基线不推进）；
-        # 手动同步（TAA_EMPTY_OK=1）按当前已装处理。跑两个后端真实的 sync_*。
-        run: sh tests/sync-guard.sh
-
-      - name: OhMyKeymint Backend Self-Test
-        # scoop 读取/定点替换/其它字段保留/内容一致不落盘/恢复单条/三方冲突矩阵。
-        # 用真实的 backend.sh + omk*.awk。不需要设备。
-        run: sh tests/omk.sh
 
       - name: Dynamic Properties Injection
         id: version_info
@@ -136,8 +141,6 @@ jobs:
           # 配置 versionCode 属性：字段存在则替换，不存在则追加
           if grep -q '^versionCode=' "$PROP_FILE"; then
             sed -i "s/^versionCode=.*/versionCode=${NEW_VERSION_CODE}/" "$PROP_FILE"
-          else
-            echo "versionCode=${NEW_VERSION_CODE}" >> "$PROP_FILE"
           fi
 
           # 将输出写入步骤变量，供后续步骤引用

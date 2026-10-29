@@ -6,6 +6,13 @@
 
 #### 新增
 
+* **界面换版：`module/webroot/index.html` 现在是 `webui/src` 的 MD3E 产物**（894 KB，MD3E Web 2.5 组件 + 内联符号字体子集，零网络依赖）。同一提交里把只对旧产物有效的三个护栏退役：旧 `tests/ui-shape.js`（79 条 grep `var KV_REQUIRED` / `.grp{}` / `id="p-func"` 的断言，新产物是 ESM 压缩过的，这些锚点全不存在）、`tests/ui-font.js`、旧台架 `tools/ui-cdp-check.mjs`；并把 `tests/ui-next-shape.js` **改名成 `tests/ui-shape.js`** —— 换版之后还叫 "next" 是个谎。
+  * 顺序是早就定过的："换产物的那一个提交里同时退役旧的、提升新的，不留空窗"。反过来做会留下一个**绿但什么都不测**的套件：实测把新版直接 `--ship` 到旧护栏还在的位置，`ui-shape` 在第一条抽取就中止，79 条断言一条都没跑却仍然退 0。
+  * `build.mjs` 改成 `--ship` 时**两条产物一起写**（`webui/dist/index.html` 与 `module/webroot/index.html`），`--check` 两条都比。以前 `--ship` 只写 webroot，于是 dist 停在上一版，而 `verify.mjs` 默认读的正是 dist —— 台架会在一份过期产物上判"全绿"。
+  * CI 改成**循环跑全套**：`tests/*.sh` 一个不漏、五个静态闸门一个不漏。以前的 step 清单是手抄的，后来新增的十个套子（keybox-shape / patch-keywords / omk-apply-scope / teesim-overrides-write / tee-status-read / payload-last-field / omk-validation / teesim-profiles / backend-edit-scope / config-write）根本没进 CI —— 本地全绿、CI 只跑其中一半，这种"绿"最坏。自检单独成 job：runner 的 awk 是 mawk，与本机 gawk、设备 toybox awk 三家可能有差异，真差异要看得见，但不该因此把刷机包卡住不发。
+  * CI 触发路径从 `module/**` 扩到 `module/** webui/** tools/** tests/**` —— 改了界面源码却不动 webroot 的情况，旧配置压根不会跑。
+  * 自报缺口：CI **不重建产物**（要装 npm 依赖），所以"产物与源码同版"这条只能靠本地 `build.mjs --check` 加 `check-artifact` 的"每个源码文件都从入口可达"来兜。CI 里加了一个 step 把这句话印出来，免得以后误以为 CI 查过。
+
 * **KV 形状对账闸：界面读的那个键，命令层真的会输出吗** —— `node tools/kv-shape-check.mjs`（纯静态，CI 可跑，不需要设备）。三份真源交叉比：`webui.sh` 里 `kv <键>` 的字面量 + `backends/*.awk` 里 `print "键="` 的字面量 = 命令层实际会输出的键集；再拿①界面从 parseKV 对象上读的每个 `x.<键>`（别名只在该变量声明所在的那段函数里有效）、②`KV_REQUIRED` 要求的每个键、③**台架假数据里的每个键**去对。任何一方出现命令层从没输出过的名字就退非 0。
   * 为什么要这么绕：`tee_status` 那次是**假数据与代码互相自证** —— 我按想象的键名写了 fixture，代码也按同一个想象读，两边一起错，逐页驱动看不出来。"假数据里有、命令层从不输出"这一条就是专门用来打断自证的。
   * 三处变异各验一次（界面键名改回小驼峰 / 假数据跟着改 / `KV_REQUIRED` 编一个不存在的键）→ 三次都退非 0 且点名对应那条：`node tools/mutate-kv-shape.cjs`。

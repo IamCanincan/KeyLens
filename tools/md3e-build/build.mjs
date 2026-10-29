@@ -28,9 +28,11 @@ const repo = path.resolve(here, '../..');
 const src = path.join(repo, 'webui', 'src');
 const pkg = path.join(here, 'node_modules/@materialwebunofficial/md3e-web');
 const OUT_DEV = path.join(repo, 'webui', 'dist', 'index.html');
-/* 默认**不**碰 module/webroot/index.html —— 那是手机上正在用的那一版。
-   新版没到可交付之前，构建只写到 webui/dist/；确认要替换才带 --ship。 */
-const OUT = process.argv.includes('--ship') ? path.join(repo, 'module', 'webroot', 'index.html') : OUT_DEV;
+/* 换版之后（2026-10-30）：候选产物与上机产物**每次都一起写**。
+   以前 --ship 只写 webroot，于是 dist 停在上一版，而 verify.mjs 默认读的正是 dist
+   —— 台架会在一份过期产物上判"全绿"。现在两条路都写，--check 也两条都比。 */
+const OUT_SHIP = path.join(repo, 'module', 'webroot', 'index.html');
+const SHIP = process.argv.includes('--ship');
 const CHECK = process.argv.includes('--check');
 
 function die(msg) { console.error('✗ ' + msg); process.exit(1); }
@@ -99,16 +101,19 @@ if (html.includes('__TOKENS__') || html.includes('__APP_CSS__') || html.includes
 /* ── 5. 写出，或只做新鲜度比对 ─────────────────────────────────────── */
 const kb = n => (n / 1024).toFixed(0) + ' KB';
 if (CHECK) {
-  const cur = fs.existsSync(OUT) ? fs.readFileSync(OUT, 'utf8') : '';
-  if (cur !== html) {
-    console.error('✗ module/webroot/index.html 与 webui/ 源码不一致（差了 '
-      + kb(Math.abs(html.length - cur.length)) + '）。\n  跑：node tools/md3e-build/build.mjs 然后把产物一起提交。');
-    process.exit(1);
+  let stale = 0;
+  for (const [label, f] of [['webui/dist/index.html', OUT_DEV], ['module/webroot/index.html', OUT_SHIP]]) {
+    const cur = fs.existsSync(f) ? fs.readFileSync(f, 'utf8') : '';
+    if (cur === html) { console.log('ok   ' + label + ' 与 webui/ 源码一致'); continue; }
+    console.error('✗ ' + label + (cur ? ' 与源码不一致（差了 ' + kb(Math.abs(html.length - cur.length)) + '）' : ' 不存在')
+      + '\n  跑：node tools/md3e-build/build.mjs --ship 然后把产物一起提交。');
+    stale = 1;
   }
-  console.log('ok 产物与源码一致（' + kb(html.length) + '）');
-  process.exit(0);
+  process.exit(stale);
 }
-fs.mkdirSync(path.dirname(OUT), { recursive: true });
-fs.writeFileSync(OUT, html);
-console.log('已构建 ' + path.relative(repo, OUT) + '：' + kb(html.length)
-  + '（JS ' + kb(js.length) + ' · tokens ' + kb(css.length) + ' · 内联字体 ' + faces + ' 个 · 省掉 Roboto ' + kb(robotoGone) + '）');
+for (const f of SHIP ? [OUT_DEV, OUT_SHIP] : [OUT_DEV]) {
+  fs.mkdirSync(path.dirname(f), { recursive: true });
+  fs.writeFileSync(f, html);
+  console.log('已构建 ' + path.relative(repo, f) + '：' + kb(html.length));
+}
+console.log('  （JS ' + kb(js.length) + ' · tokens ' + kb(css.length) + ' · 内联字体 ' + faces + ' 个 · 省掉 Roboto ' + kb(robotoGone) + '）');

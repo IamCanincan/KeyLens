@@ -85,23 +85,27 @@ module/
 tools/                     # 不进刷机包：构建与自检
 tests/                     # 静态自检（CI 跑）
 tools/icondump/            # 图标 dex 的源码与编译命令
-tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）—— 当前线上版
-tools/md3e-build/         # MD3E Web 组件包 → 内联 bundle（npm + esbuild），新版用，含图标闸门
-webui/src/                # 新版界面源码（index.html / app.css / app.js），构建产物才是 webroot/index.html
+tools/mwc-build/          # 生成旧版 index.html 里的 Material Web bundle —— 已不再使用，留作历史
+tools/md3e-build/         # MD3E Web 组件包 → 内联 bundle（npm + esbuild），含图标闸门与验收台架
+webui/src/                # 界面源码（index.html / app.css / bridge.js / screens.js / app.js）
+webui/dist/index.html     # 候选产物（build.mjs 每次都写，verify.mjs 默认读它）
 
-> **新版还没上线，且上线前有一件事必须先做**：`tests/ui-shape.js`、`tests/ui-font.js`、
-> `tests/contract-pair.sh` 是**对着 `module/webroot/index.html` 抓字符串**的（`var KV_REQUIRED =`、
-> `.grp{…}`、`id="p-func"` 这些）。新版产物是 ESM 压缩过的，这些锚点全部消失 —— 实测把新版
-> `--ship` 之后 `ui-shape` 在第一条抽取就中止（79 条断言一条都没跑），三个套子同时红。
-> 所以**换产物之前先把这三个套子改成读 `webui/src/`**，否则会留下一个"绿但什么都不测"的套件，
-> 那比红更糟。新版自己的三道闸门已经就位且不依赖旧产物：
-> `icon-gate.mjs`（图标名必须在 257 连字子集内，已进 CI）、
-> `check-artifact.mjs`（占位符/内联字体/离线/源码是否都被入口引用/空分支正则）、
-> `verify.mjs`（CDP 真点导航，逐页断言渲染出的区块与标题）。
-> 构建好的候选产物留在 `webui/dist/index.next.html`，`build.mjs --ship` 随时可换。
-tools/ui-cdp-check.mjs   # 界面验收台架：CDP 钉死视口，逐页量溢出/面板/标题（本地跑，要 Chrome）
-tools/deploy-webui.sh    # 推 WebUI 上机：入口闸门 + chmod 644 + 逐文件对 sha256
-THIRD_PARTY_NOTICES.md     # 内联 bundle 的第三方许可
+> **2026-10-30 换版已完成**：`module/webroot/index.html` 现在就是 `webui/src` 的产物
+> （894 KB，MD3E Web 2.5 + 内联符号字体子集）。同一次提交里退役了三个只对旧产物有效的
+> 护栏 —— 旧 `tests/ui-shape.js`（79 条 grep `var KV_REQUIRED` / `.grp{}` / `id="p-func"`
+> 的断言）、`tests/ui-font.js`、旧台架 `tools/ui-cdp-check.mjs` —— 并把新套子
+> `ui-next-shape.js` **改名成 `tests/ui-shape.js`**：换版之后"next"是个谎。
+> 现在守界面的是：`tests/ui-shape.js`（表单字段 ↔ 命令层 case 对账 + 结构底线）、
+> `tools/kv-shape-check.mjs`（界面读的键 ⊆ 命令层输出的键，含假数据那一侧）、
+> `tools/md3e-build/icon-gate.mjs`（图标名必须在 257 连字子集内）、
+> `tools/md3e-build/check-artifact.mjs`（占位符 / 内联字体 / 离线 / 源码可达 / 字节下限）、
+> `tools/md3e-build/verify.mjs`（CDP 真点导航 + 逐后端驱动 + 读失败与互斥两屏）。
+> 构建：`node tools/md3e-build/build.mjs --ship`（不带 `--ship` 只出候选，不碰上机产物）；
+> 新鲜度：`node tools/md3e-build/build.mjs --check` 同时比 `webui/dist` 与 `module/webroot`
+> 两条 —— CI 不装 npm 依赖、重建不了，这条只能本地跑。
+tools/md3e-build/verify.mjs  # 界面验收台架：CDP 钉死 417 视口，逐页 + 逐后端驱动，截图到系统临时目录
+tools/deploy-webui.sh        # 推 WebUI / 命令层上机：入口闸门 + chmod 644 + 逐文件对 sha256
+THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 ```
 
 - **入口脚本必须留在根目录**：Magisk / KernelSU / APatch 按固定路径调用 `customize.sh` / `post-fs-data.sh` / `service.sh` / `uninstall.sh`，管理器“操作”按钮调用 `action.sh`。
@@ -171,7 +175,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - **导航状态写在地址栏的 hash 上**（`#/over`、`#/func`、`#/apps`…），一级页之间用 `replaceState`、**进二级页 `pushState` 一条**：宿主是「`doUpdateVisitedHistory` 里读 `webView.canGoBack()` 写进状态 → 返回回调执行 `webView.goBack()`」（dex 实测），所以从二级页按系统返回会先退掉这一条、回到功能菜单，**从一级页返回则直接退出界面**。从二级页点底栏切走时会把那条历史先退掉（`pendingTab`），避免一级页上多出可退记录。`popstate` 接住这两条路。⚠ **页内没有安卓的可预测返回预览**：预览要宿主实现 `OnBackAnimationCallback` 并驱动 `startBackProgress`，全 dex 里 `startBackProgress` / `getBackProgress` 各 **0 次** —— 系统只会为**跨 Activity**（WebUI → 管理器）那一下自己截图。主页的滚动位置在切走前记下、切回时还原（`history.scrollRestoration = 'manual'`，否则浏览器默认恢复会把它抹成 0）。
 - 视觉只有一套语言，且**数值全部取自 `@material/web` 2.5.0 自己带的令牌**：**字阶**是 `md-sys-typescale`（11 / 12 / 14 / 16 / 22 / 24 / 36 / 45，不再有 13 与 38 这种表外档），**字重上限 600**（页名 24/600、英雄数字 45/600、板块标题 14/600、列表行 16/500 + 说明 12/400），**形状**是 expressive 的 `large-increased 20 / extra-large 28`。静止形状全部对称（按钮默认胶囊、卡片单一圆角，切角与「叶子形」已收掉），**主色只出现在两处**——生效数字与主行动按钮；正常状态不上色（一个点即可），只有需要处理的才着色。界面控件由 `labs/gb` Expressive 组件驱动：`md-gb-button` / `md-gb-icon-button` / `md-gb-list(-item)` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`；卡片、分组、日志台和提示条仍是模块自己的布局。**卡片走 M3 的"三选一"**：只留 1px 发丝线，不叠投影。**行的按压是 state layer**（`on-surface` 8% 悬停 / 12% 按压），不换底色、不缩放。按钮按下时圆角收缩使用组件自带的 350ms 过冲曲线；列表行 56px、头像 40px，选中用 `secondary-container`。这需要 **Chromium 111+ 的 WebView**（本机 WebView 156）。
 - **板块分组用 1px 描边，不用底色**（`.grp`）：原先是"比卡面抬一档"的一块底，但底色压在卡面上，里面的 outlined 文本域描边就跟灰底糊在一起，整块读起来像禁用态。现在描边取 `--outline-variant`（浅）、卡线取 `--card-line`（深），一深一浅才不会看成双线。边框往外铺到卡内边距的中点（离卡边 8），内边距 `16 − 1px 边框 = 15`，所以文字左缘仍旧精确落在 41 —— 实测板块标题与正文左缘都是 41.00、偏移 0px（浅深两联）。圆角 11 = 卡 20 − 1px 边框 − 8px 间距（**同心**）。格子内部与图标仍然不着色。主页那张卡里只有一个板块，`.home-card .grp` 把边框撤了 —— 一层卡里再套一个框就是"盒中盒"。
-- 布局按**自适应网格**排，不写断点：本机 WebView 是 **417 CSS px** 宽（1644px @630dpi；低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，两套模式都是 417）。概览与「关于」的四个板块在这台机器上各排 **两列**（格子下限 `--cell:150`，列宽 158）—— 值按真机字符串最宽的 142 定，注释行改成换行而不是裁字。改布局后跑 `node tools/ui-cdp-check.mjs`（417 / 360 / 320 × 浅 / 深 × 八页，外加主页「最近动态」的三条退路）。**别用 `--headless --screenshot --window-size=417` 量宽度**：那样起出来的布局视口其实是 **491**（截图仍旧 834 宽，看着就像 417），溢出检查会静默地在一台不存在的手机上通过。台架里唯一可信的做法是 CDP `Emulation.setDeviceMetricsOverride`，而且它第一步就断言"量到的宽度确实等于要的宽度"。
+- 布局按**自适应网格**排，不写断点：本机 WebView 是 **417 CSS px** 宽（1644px @630dpi；低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，两套模式都是 417）。改布局后跑 `node tools/md3e-build/verify.mjs`（逐页驱动 + 逐后端驱动，每页断"视口确实钉住、横向溢出 0、渲染出来的区块与标题对得上"）。**别用 `--headless --screenshot --window-size=417` 量宽度**：那样起出来的布局视口其实是 **491**（截图仍旧 834 宽，看着就像 417），溢出检查会静默地在一台不存在的手机上通过。台架里唯一可信的做法是 CDP `Emulation.setDeviceMetricsOverride`，而且它第一步就断言"量到的宽度确实等于要的宽度"。
 - **图形语言只有一套**：界面里的图标全是内联 SVG（`ICON` 表），所以脚本写进日志与状态描述里的 emoji 前缀（`ℹ️ ✅ ⚠️ ❌ 🔄 👀 …`，实测 23 种）在渲染时一律剥掉、换成四个级别图标之一。这一步只能在界面做：缓冲里已有的行早就带着 emoji 落盘了，改脚本只影响新行。
 - **短页垂直居中**：内容比一屏短的页（功能菜单、Verified Boot、日志…）在内容区里居中，主页保持顶部对齐（英雄卡是锚点）—— 它不靠居中解决空白，而是补一块「最近动态」，把最后一张卡下面那 412 CSS px（视口的 42%）填到只剩 56；`justify-content:safe center` 让长页自动退回从顶部开始。**圆角要同心**：板块色块的 11 = 卡片 20（边框外沿）− 1px 边框 − 8px 间距；底栏 28 + 6 间距 = 胶囊 22；改圆角时按这条算，别各自取档位。
 - 界面**不联网、不加载任何外部资源**（单文件；样式、脚本与内联的 Material Web bundle 都在 `index.html` 里，字体直接交给 WebView 的 `system-ui`），断网、无 Play 服务的机器一样能开。WebView 需要 **Chromium 111+** 才能解析 Material Web 2.5；更旧的 WebView 会在顶部直接提示升级，而不是空白页。
@@ -194,15 +198,16 @@ sh /data/adb/modules/ts-auto-add/action.sh
 三条命令，各自退非 0：
 
 ```sh
-sh tools/deploy-webui.sh          # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
 node tools/md3e-build/icon-gate.mjs      # 图标名必须在 257 连字子集内（越界直接拒绝出产物）
-node tools/md3e-build/build.mjs          # 源码 → 候选产物 webui/dist/index.html（加 --ship 才写进 module/webroot/）
-node tools/md3e-build/verify.mjs         # 417 钉视口，逐页驱动 + 逐后端驱动 + "读不到 ≠ 是空的"
-node tools/md3e-build/check-artifact.mjs # 占位符/字体内联/源码可达/字节数下限
+node tools/md3e-build/build.mjs --ship   # webui/src → webui/dist + module/webroot/index.html（不带 --ship 只出候选）
+node tools/md3e-build/build.mjs --check  # 两条产物是否都由当前源码构建（CI 不重建，靠这条兜）
+node tools/md3e-build/verify.mjs         # 417 钉视口：逐页驱动 + 逐后端驱动 + "读不到 ≠ 是空的" + 互斥那一屏
+node tools/md3e-build/check-artifact.mjs # 占位符 / 字体内联 / 源码可达 / 字节数下限
 node tools/kv-shape-check.mjs            # 界面读的键、KV_REQUIRED 要的键、假数据里的键 ⊆ 命令层实际输出的键
-node tests/ui-next-shape.js              # 表单字段 ↔ webui.sh 的 case 逐条对账
-node tools/ui-cdp-check.mjs       # 417/360/320 × 浅/深 × 八页 + 主页三条退路（旧版产物）
-node tests/ui-shape.js            # 79 条静态断言（旧版产物）
+node tests/ui-shape.js                   # 表单字段 ↔ webui.sh 的 case 逐条对账 + 结构底线
+node tools/json-flat-set-check.cjs       # 扁平 JSON 定点改写（含"留空即删除"的四种位置）
+sh tests/*.sh                            # 19 个 shell 套子（CI 里循环全跑，一个都不漏）
+sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
 ```
 
 - **新版（`webui/src/`）的验收线是"逐后端各跑一遍"**：`verify.mjs` 用 `?backend=tricky|teesim|omk` 切假数据，每家的块要画出**只有真读到那个键才会出现的值**才算过；`?fail=targets` 那一趟专门钉"读不到"与"是空的"是两种画面。理由是一次真事故：界面按上游文件的小驼峰键名（`teeBroken`）去读命令层下划线风格的输出（`tee_broken`），而假数据是照着这段错代码写的，两边互相自证，逐页驱动一路全绿。
