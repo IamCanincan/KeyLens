@@ -1,49 +1,84 @@
 /*=============================================================================
  * webui/src/app.css — 我们自己的布局层
  *
- * 只管"壳"与排版：组件的颜色、圆角、动效全部来自 MD3E 的 tokens 与组件自身，
- * 这里不复制一份数值（复制了就会有两套，改一处漏一处）。
+ * 只管"壳"与排版。组件的颜色、圆角、动效全部来自 MD3E 的 tokens 与组件自身，
+ * 这里不复制一份数值 —— 复制了就会有两套，改一处漏一处。
  *===========================================================================*/
 
 /* 文本走系统字体：管理器的 WebView 里网页字体不生效（实测 @font-face 落地后
-   仍旧退回系统字体），所以把库的 Roboto 让位给 system-ui。图标族名不动 ——
-   组件内部画的是连字串（expand_more / arrow_back），Material Symbols 没落地
-   就会把字面词画在界面上，那种失败肉眼可查。 */
+   仍旧退回系统字体）。图标族名不动 —— 组件把图标名当连字文本画，字体没落地
+   就会把 "expand_more" 这种字面词画在界面上，那种失败肉眼可查。 */
 :root{
   --md-sys-typescale-font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
-  /* 安全区：/internal/insets.css 由管理器注入，取不到时按 0 处理而不是拍脑袋给值 */
   --inset-top: env(safe-area-inset-top, 0px);
   --inset-bottom: env(safe-area-inset-bottom, 0px);
   --bar-h: 64px;
-  --nav-h: 88px;
+  --nav-h: 80px;
+  --gap: var(--md-sys-spacing-l, 16px);
+  --line: var(--md-sys-color-outline-variant, #cac4d0);
 }
 
 html,body{margin:0;padding:0;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)}
-body{
-  min-height:100dvh;
-  font-family:var(--md-sys-typescale-font-family);
-  -webkit-font-smoothing:antialiased;
-}
+body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-font-smoothing:antialiased}
 
-/* 壳：顶栏与底栏各自贴边，中间是可滚动的 view。
-   用 dvh 而不是 vh —— WebView 的工具栏收展时 vh 会把底栏顶到屏幕外。 */
-md-top-app-bar{position:sticky;top:0;z-index:20}
+/* 壳：顶栏贴顶、底栏贴底，中间可滚动。
+   用 dvh 不用 vh —— WebView 工具栏收展时 vh 会把底栏顶到屏幕外。 */
+md-top-app-bar{position:sticky;top:0;z-index:20;padding-top:var(--inset-top)}
 .view{
-  min-height:calc(100dvh - var(--bar-h) - var(--nav-h));
-  padding:var(--md-sys-spacing-m, 12px) var(--md-sys-spacing-l, 16px)
-    calc(var(--nav-h) + var(--inset-bottom));
-  box-sizing:border-box;
-  display:flex;flex-direction:column;gap:var(--md-sys-spacing-l, 16px);
-  max-width:600px;margin:0 auto;width:100%;
+  box-sizing:border-box;width:100%;max-width:600px;margin:0 auto;
+  padding:var(--gap) var(--gap) calc(var(--nav-h) + var(--inset-bottom) + 16px);
+  min-height:calc(100dvh - var(--bar-h));
 }
-md-navigation-bar{
-  position:fixed;left:0;right:0;bottom:0;z-index:30;
-  padding-bottom:var(--inset-bottom);
-  background:var(--md-sys-color-surface-container);
-}
+md-navigation-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding-bottom:var(--inset-bottom)}
+md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
-/* 骨架屏：首屏在等 status/env 回来时不能是白板 */
+.stack{display:flex;flex-direction:column;gap:var(--gap)}
+.card{display:block;padding:var(--md-sys-spacing-l, 16px)}
+.sec{display:block}
+.sec-h{display:flex;align-items:center;gap:8px;margin:0 0 10px}
+.sec-h b{font-size:var(--md-sys-typescale-size-title-medium, 16px);font-weight:600;letter-spacing:-.1px}
+.sec-i{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-primary)}
+
+/* 英雄区：一屏只有一个大数字，主色只给它和主行动按钮 */
+.hero .hero-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hero .ver{font-size:12px;color:var(--md-sys-color-on-surface-variant);font-variant-numeric:tabular-nums}
+.hero-count{display:flex;align-items:flex-end;gap:10px;margin:10px 0 14px}
+.hero-count .num{font-size:var(--md-sys-typescale-size-display-large, 57px);line-height:1;font-weight:600;
+  letter-spacing:-2px;color:var(--md-sys-color-primary);font-variant-numeric:tabular-nums}
+.hero-count .unit{font-size:14px;padding-bottom:8px}
+.chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
+  background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant)}
+.chip-ok{background:var(--md-sys-color-surface-container-high)}
+.chip-warn{background:var(--md-sys-color-warning-container, var(--md-sys-color-secondary-container));color:var(--md-sys-color-on-warning-container, inherit)}
+.chip-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
+
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+md-list{display:block}
+md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
+md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
+.hint{font-size:12px;line-height:1.55;color:var(--md-sys-color-on-surface-variant);margin:10px 0 0}
+.empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
+.warn-card{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.warn-text{margin:0;font-size:14px;line-height:1.5}
+
+/* 日志台：三列网格，图标列恒占宽 —— 没有级别的行也要把正文对齐到同一条竖线 */
+.console{
+  margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:12px;
+  background:var(--md-sys-color-surface-container-lowest);
+  font-family:ui-monospace, SFMono-Regular, Cutive Mono, Menlo, monospace;font-size:12px;line-height:1.7;
+  max-height:46vh;overflow:auto;-webkit-overflow-scrolling:touch}
+.console.tall{max-height:62vh}
+.recent .console{min-height:150px;max-height:none}
+.log-line{display:grid;grid-template-columns:auto 16px minmax(0,1fr);column-gap:8px;
+  align-items:baseline;padding:3px 4px;border-radius:6px}
+.log-time{color:var(--md-sys-color-on-surface-variant);white-space:nowrap}
+.log-lvl{text-align:center;font-weight:700}
+.log-msg{min-width:0;white-space:pre-wrap;word-break:break-all}
+.log-line.t-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.log-line.t-warn{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+.log-line.t-ok .log-msg{color:var(--md-sys-color-primary)}
+
 .sk{height:14px;border-radius:8px;background:var(--md-sys-color-surface-container-high);
-  animation:pulse 1.2s var(--md-sys-motion-easing-standard, ease-in-out) infinite alternate}
-.sk.w70{width:70%}.sk.w90{width:90%}.sk.h40{height:40px}
+  animation:pulse 1.2s ease-in-out infinite alternate}
 @keyframes pulse{from{opacity:.45}to{opacity:1}}

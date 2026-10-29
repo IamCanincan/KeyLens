@@ -1,0 +1,301 @@
+/*=============================================================================
+ * webui/src/bridge.js — 传输层与数据层
+ *
+ * 这一份是从线上跑着的那版里搬过来的判据，不是重新发明的：
+ *  - 桥接探测要把**看到的全部**记下来（连不上时界面要能自证扫了哪些名字）；
+ *  - 契约号对不上就停写，而不是拿旧解析画新数据；
+ *  - 每条命令的返回形状要校验（缺键 = 版本不匹配），停在传输层这一处，
+ *    以后多加一个写入口就少漏一个。
+ *===========================================================================*/
+
+export const QUERY = new URLSearchParams(location.search);
+export const MODDIR = QUERY.get('mod') || '/data/adb/modules/ts-auto-add';
+export const SH = 'sh ' + MODDIR + '/webui.sh';
+export const DEMO = QUERY.get('demo') === '1';
+
+/* 界面期望的契约号。命令层只加命令、不改输出形状时这个号不动 —— 涨号会让手机上
+   正在跑的旧界面当场判"契约不符"并停写。 */
+export const EXPECT_API = 4;
+
+/* 写命令：契约不符时全部拒绝。新增写入口必须同时加进这里。 */
+export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restore-app restore-apps \
+remove-apps set-mode teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
+sync clear-log omk-restart';
+
+/* 每条命令必须出现的键。缺一个就说明两边不是同一版。 */
+export const KV_REQUIRED = {
+  status: 'state mod_version target_file target_exists target_writable target_entries daemon_alive log_bytes conflict',
+  env: 'inotify_mode awk_present magisk_ver ksu_ver apatch_ver android_ver sdk_ver',
+  contract: 'api commands',
+  'backend-info': 'backend backend_name target_file target_entries keybox_file keybox_exists',
+  props: 'rows',
+  'teesim-profiles': '',
+  'tee-status': 'present',
+  'tricky-patches': '',
+  'omk-restart': 'restarted trigger',
+};
+
+export const BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
+
+function ownKeys(o) {
+  var a = [];
+  try { a = Object.getOwnPropertyNames(o) || []; } catch (e) {}
+  return a;
+}
+export function methodsOf(o) {
+  return ownKeys(o).filter(function (k) {
+    try { return typeof o[k] === 'function'; } catch (e) { return false; }
+  });
+}
+
+/* 找桥：不只"找一个能用的"，把看到的全部留下 —— 排查时"扫了哪些名字、各自有
+   什么方法"比"失败了"有用。 */
+export function findBridge() {
+  var seen = [];
+  for (var i = 0; i < BRIDGE_CANDIDATES.length; i++) {
+    var name = BRIDGE_CANDIDATES[i];
+    var obj = null;
+    try { obj = window[name]; } catch (e) { obj = null; }
+    if (!obj || typeof obj !== 'object') continue;
+    var ms = methodsOf(obj);
+    seen.push(name + '[' + ms.join(',') + ']');
+    if (typeof obj.exec === 'function') return { obj: obj, kind: name, label: name, seen: seen };
+  }
+  return { obj: null, kind: '', label: '', seen: seen };
+}
+
+export const S = {
+  status: {}, env: {}, tab: 'over',
+  contract: { api: null, commands: '', bad: false, shape: '', checked: false },
+  bridge: { kind: '', label: '', seen: [] },
+  targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
+  backendInfo: {}, profiles: [], teeStatus: null, trickyPatches: [],
+  icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
+  loaded: {}, seq: 0, theme: 'auto',
+};
+
+let BRIDGE = null;
+const inflight = {};
+
+export function hasCmd(name) {
+  return (' ' + S.contract.commands + ' ').indexOf(' ' + name + ' ') >= 0;
+}
+
+export function parseKV(text) {
+  var out = {};
+  String(text == null ? '' : text).split('\n').forEach(function (line) {
+    var i = line.indexOf('=');
+    if (i <= 0) return;
+    var k = line.slice(0, i);
+    if (!(k in out)) out[k] = line.slice(i + 1);   // 重复键取第一条
+  });
+  return out;
+}
+export function splitLines(text) {
+  return String(text == null ? '' : text).split('\n').filter(function (l) { return l.length > 0; });
+}
+export function b64(str) {
+  var s = String(str), out = '';
+  for (var i = 0; i < s.length; i++) out += '%' + ('00' + s.charCodeAt(i).toString(16)).slice(-2);
+  return btoa(unescape(decodeURIComponent(escape(out))));
+}
+export function bytesLabel(n) {
+  n = Number(n) || 0;
+  if (n < 1024) return n + ' B';
+  if (n < 1048576) return (n / 1024).toFixed(1) + ' KB';
+  return (n / 1048576).toFixed(1) + ' MB';
+}
+export function timeLabel(epoch) {
+  var e = Number(epoch) || 0;
+  if (!e) return '从未';
+  var d = new Date(e * 1000);
+  var p = function (x) { return ('0' + x).slice(-2); };
+  return d.getFullYear() + '-' + p(d.getMonth() + 1) + '-' + p(d.getDate())
+    + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
+}
+export function failText(r) {
+  if (r && r.timeout) return '命令超时，结果未知；已重新读取当前状态';
+  var t = String((r && r.text) || '').trim().split('\n').filter(Boolean).slice(-2).join(' ');
+  return t || ('命令失败（退出码 ' + ((r && r.code) || '?') + '）');
+}
+
+function run(cmd, arg) {
+  if (DEMO) return Promise.resolve(demoResult(cmd, arg));
+  if (!BRIDGE) return Promise.resolve({ errno: 1, stdout: '', stderr: '桥接未就绪' });
+  return new Promise(function (resolve) {
+    var done = false;
+    var finish = function (r) { if (done) return; done = true; resolve(r); };
+    var timer = setTimeout(function () {
+      finish({ errno: 124, stdout: '', stderr: 'timeout', timeout: true });
+    }, 30000);
+    try {
+      BRIDGE.exec(SH + ' ' + cmd + (arg != null && arg !== '' ? " '" + String(arg).replace(/'/g, "'\\''") + "'" : ''),
+        '{}', function (out) {
+          clearTimeout(timer);
+          finish({ errno: (out && out.errno) | 0, stdout: (out && out.stdout) || '', stderr: (out && out.stderr) || '' });
+        });
+    } catch (e) { clearTimeout(timer); finish({ errno: 1, stdout: '', stderr: String(e && e.message || e) }); }
+  });
+}
+
+function kvMissing(cmd, text) {
+  var need = KV_REQUIRED[cmd];
+  if (!need) return null;
+  var kv = parseKV(text), miss = [];
+  need.split(' ').forEach(function (k) { if (k && !(k in kv)) miss.push(k); });
+  return miss.length ? miss : null;
+}
+
+export function call(cmd, arg) {
+  if (S.contract.bad && (' ' + WRITE_CMDS + ' ').indexOf(' ' + cmd + ' ') >= 0) {
+    return Promise.reject(new Error(S.contract.shape
+      ? (S.contract.shape + '，已拒绝写入')
+      : '命令层契约不匹配（界面要 api=' + EXPECT_API + '，命令层是 '
+        + (S.contract.api === null ? '读不到' : S.contract.api) + '），已拒绝写入'));
+  }
+  return run(cmd, arg).then(function (r) {
+    var res = { ok: r.errno === 0, code: r.errno, text: r.stdout, timeout: !!r.timeout };
+    if (res.ok) {
+      var miss = kvMissing(cmd, res.text);
+      if (miss) {
+        res.ok = false; res.shape = true;
+        res.text = '命令层返回格式不一致（' + cmd + ' 缺少 ' + miss.join('、') + '），可能界面与命令层不是同一版';
+        S.contract.bad = true; S.contract.shape = res.text;
+      }
+    }
+    return res;
+  });
+}
+
+export function checkContract() {
+  return call('contract').then(function (r) {
+    S.contract.checked = true;
+    if (!r.ok) { S.contract.api = null; S.contract.bad = true; if (r.shape) S.contract.shape = r.text; return; }
+    var kv = parseKV(r.text);
+    S.contract.api = kv.api || null;
+    S.contract.commands = kv.commands || '';
+    S.contract.shape = '';
+    S.contract.bad = (S.contract.api !== String(EXPECT_API));
+  }, function () { S.contract.checked = true; });
+}
+
+/* ── 数据装载 ─────────────────────────────────────────────────────── */
+export function loadBase() {
+  return Promise.all([
+    call('status').then(function (r) { if (r.ok) S.status = parseKV(r.text); }),
+    call('env').then(function (r) { if (r.ok) S.env = parseKV(r.text); }),
+  ]);
+}
+export function loadLists() {
+  return Promise.all([
+    call('targets').then(function (r) { S.targets = r.ok ? splitLines(r.text) : []; }),
+    call('apps').then(function (r) { S.apps = r.ok ? splitLines(r.text) : []; }),
+    call('target-meta').then(function (r) {
+      S.targetMeta = {};
+      if (!r.ok) return;
+      splitLines(r.text).forEach(function (line) {
+        var f = line.split('\t');
+        if (f.length >= 4) S.targetMeta[f[0]] = { base: f[1] || '', kind: f[2] || 'plain', detail: f[3] || '' };
+      });
+    }),
+  ]);
+}
+export function loadLog() {
+  return call('log', String(S.tail)).then(function (r) {
+    S.log = r.ok ? splitLines(r.text) : [];
+    S.logErr = !r.ok;
+  });
+}
+export function loadBackend() {
+  return call('backend-info').then(function (r) { if (r.ok) S.backendInfo = parseKV(r.text); });
+}
+/* 三家各自的能力面：命令层没有就不问（问了会拿到"未知命令"，白白红一次） */
+export function loadTeesimProfiles() {
+  if (S.contract.checked && !hasCmd('teesim-profiles')) { S.profiles = []; return Promise.resolve(); }
+  return call('teesim-profiles').then(function (r) {
+    S.profiles = r.ok ? splitLines(r.text).map(function (line) {
+      var f = line.split('\t');
+      return { name: f[0] || '', keybox: f[1] || '', mode: f[2] || '', apps: Number(f[3] || 0) || 0, isDefault: f[4] === '1' };
+    }) : [];
+  }, function () { S.profiles = []; });
+}
+export function loadTeeStatus() {
+  if (S.contract.checked && !hasCmd('tee-status')) { S.teeStatus = null; return Promise.resolve(); }
+  return call('tee-status').then(function (r) {
+    var kv = r.ok ? parseKV(r.text) : null;
+    S.teeStatus = kv && kv.present === '1' ? kv : null;
+  }, function () { S.teeStatus = null; });
+}
+export function loadTrickyPatches() {
+  if (S.contract.checked && !hasCmd('tricky-patches')) { S.trickyPatches = []; return Promise.resolve(); }
+  return call('tricky-patches').then(function (r) {
+    S.trickyPatches = r.ok ? splitLines(r.text).map(function (line) {
+      var f = line.split('\t');
+      return { scope: f[0] || '', system: f[1] || '-', vendor: f[2] || '-', boot: f[3] || '-' };
+    }) : [];
+  }, function () { S.trickyPatches = []; });
+}
+
+export function ensure(what) {
+  if (S.loaded[what]) return Promise.resolve(false);
+  if (inflight[what]) return inflight[what];
+  var fn = {
+    base: loadBase, lists: loadLists, log: loadLog, backend: loadBackend,
+    teesim: function () { return Promise.all([loadBackend(), loadTeesimProfiles()]); },
+    tricky: function () { return Promise.all([loadBackend(), loadTeeStatus(), loadTrickyPatches()]); },
+    omk: loadBackend,
+  }[what];
+  if (!fn) return Promise.resolve(false);
+  inflight[what] = fn().then(function () { S.loaded[what] = true; inflight[what] = null; return true; },
+    function (e) { inflight[what] = null; throw e; });
+  return inflight[what];
+}
+
+/* ── 演示数据：让台架在没有 root 的桌面 Chrome 上也能跑完全部路径 ─────── */
+/* 说明：这份语料必须带上 profiles / tee_status 这些"新版才有"的形状 ——
+   上一轮的教训就是台架语料缺显示名，我据此把产品误诊成"只有包名"。 */
+function demoResult(cmd, arg) {
+  var T = '\t';
+  var body = {
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart',
+    status: ['state=ok', 'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator',
+      'target_file=/data/adb/teesim/config.json',
+      'target_exists=1', 'target_writable=1', 'target_entries=12', 'daemon_alive=1',
+      'log_bytes=64104', 'conflict=0', 'target_mtime=1764000000'].join('\n'),
+    env: ['inotify_mode=inotifyd', 'awk_present=1', 'magisk_ver=-', 'ksu_ver=v3.3.1',
+      'apatch_ver=-', 'android_ver=16', 'sdk_ver=36'].join('\n'),
+    targets: ['com.android.vending', 'com.google.android.gms@11', 'uid:10123', 'app.mihon'].join('\n'),
+    apps: ['com.android.vending', 'app.mihon', 'com.tencent.mm', 'io.legado.app'].join('\n'),
+    'target-meta': ['com.android.vending' + T + 'com.android.vending' + T + 'plain' + T + '',
+      'com.google.android.gms@11' + T + 'com.google.android.gms' + T + 'user' + T + '11',
+      'uid:10123' + T + '' + T + 'uid' + T + '10123',
+      'app.mihon' + T + 'app.mihon' + T + 'plain' + T + ''].join('\n'),
+    log: ['10-29 16:52:43 🔄 开始应用列表同步', '10-29 16:52:44 ✅ 同步完成，应用总数：128',
+      '10-29 19:30:50 ℹ️ 源数据与上次一致（指纹 905773947），跳过同步',
+      '10-26 17:38:02 ⚠️ 未找到 awk，暂时无法维护 TEE Simulator 配置',
+      '10-26 17:55:20 ❌ 写入失败：/data/adb/teesim/config.json 不可替换'].join('\n'),
+    'backend-info': ['backend=teesim', 'backend_name=TEE Simulator', 'target_file=/data/adb/teesim/config.json',
+      'target_entries=12', 'keybox_file=/data/adb/teesim/keybox.xml', 'keybox_exists=1'].join('\n'),
+    'teesim-profiles': ['default' + T + 'keybox.xml' + T + 'patch' + T + '10' + T + '1',
+      'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
+    'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
+      'category=3', 'serviceErrorCode=13', 'teeBroken=1'].join('\n'),
+    'tricky-patches': ['global' + T + 'today' + T + 'YYYY-MM-05' + T + 'YYYY-MM-05',
+      'com.android.vending' + T + '2024-01-05' + T + '-' + T + '-'].join('\n'),
+    'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),
+    icons: ['app.mihon' + T + 'Mihon' + T + 'icons/app.mihon.png',
+      'com.android.vending' + T + 'Google Play 商店' + T + 'icons/com.android.vending.png'].join('\n'),
+  }[cmd];
+  return body === undefined
+    ? { errno: 1, stdout: '', stderr: '未知命令：' + cmd }
+    : { errno: 0, stdout: body, stderr: '' };
+}
+
+export function attachBridge(hit) {
+  BRIDGE = hit.obj;
+  S.bridge = { kind: hit.kind, label: hit.label, seen: hit.seen };
+  /* 边到边 + 藏掉管理器自己的标题栏：安全区由 /internal/insets.css 给 */
+  try { if (BRIDGE && typeof BRIDGE.hideTitle === 'function') BRIDGE.hideTitle(); } catch (e) {}
+  try { if (BRIDGE && typeof BRIDGE.enableEdgeToEdge === 'function') BRIDGE.enableEdgeToEdge(true); } catch (e) {}
+}
+export function bridgeOf() { return BRIDGE; }

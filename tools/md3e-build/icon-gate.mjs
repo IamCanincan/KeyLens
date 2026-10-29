@@ -42,6 +42,13 @@ for (const f of fs.readdirSync(SRC)) {
   const p = path.join(SRC, f);
   const text = fs.readFileSync(p, 'utf8');
   const rel = 'webui/src/' + f;
+  /* 图标名表（export const ICON = { … }）里的每个值都是图标名 —— 这里的键叫
+     sync/over/backend，不匹配下面那三种"icon"写法。上一版就是因为只认
+     icon="x" / icon:'x' / setAttribute('icon','x')，7 个名字只看到 4 个。 */
+  const tbl = text.match(/export const ICON = \{([\s\S]*?)\n\};/);
+  if (tbl) {
+    for (const m of tbl[1].matchAll(/:\s*'([a-z0-9_]+)'/g)) add(m[1], rel + ' ICON 表');
+  }
   text.split('\n').forEach((line, i) => {
     const at = rel + ':' + (i + 1);
     /* 三种写法都要盖住，漏一种就是闸门有个静默的洞：

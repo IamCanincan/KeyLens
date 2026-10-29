@@ -1,91 +1,121 @@
 /*=============================================================================
- * webui/src/app.js — 界面入口（构建时与 MD3E 组件一起打成一个 IIFE）
+ * webui/src/app.js — 入口：注册组件、装壳、路由
  *
- * 组件必须在这里 import：注册是副作用，少一行就会有一个标签静默降级成
- * 未知元素（什么都不画）。所以这份 import 清单同时是"用了哪些组件"的答案。
+ * import 清单就是"这版用了哪些组件"的唯一答案 —— 少一行，那个标签会静默降级成
+ * 未知元素（什么都不画）。刻意不引 barrel：库的 index 会把 46 个组件全拖进来，
+ * 实测 2962 KB，单文件页面扛不住。
  *===========================================================================*/
 import '@materialwebunofficial/md3e-web/components/md-top-app-bar.js';
 import '@materialwebunofficial/md3e-web/components/md-navigation-bar.js';
 import '@materialwebunofficial/md3e-web/components/md-card.js';
 import '@materialwebunofficial/md3e-web/components/md-list.js';
 import '@materialwebunofficial/md3e-web/components/md-button.js';
-import '@materialwebunofficial/md3e-web/components/md-icon-button.js';
-import '@materialwebunofficial/md3e-web/components/md-switch.js';
-import '@materialwebunofficial/md3e-web/components/md-divider.js';
-import '@materialwebunofficial/md3e-web/components/md-chip.js';
 import '@materialwebunofficial/md3e-web/components/md-loading-indicator.js';
+import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 
-/* 深/浅：库的 tokens 已经按 color-scheme 出了两套角色色，这里只把系统偏好接上 */
-const dark = window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches;
-document.documentElement.classList.toggle('md3e-dark', !!dark);
+import {
+  S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
+} from './bridge.js';
+import {
+  ICON, h, renderOver, renderBackend, renderLog, renderAbout, recentCard,
+  onToast, onReload,
+} from './screens.js';
 
-const NAV = [
-  { icon: 'home', label: '主页' },
-  { icon: 'category', label: '功能' },
-  { icon: 'article', label: '日志' },
-  { icon: 'info', label: '关于' },
+const PAGES = [
+  { id: 'over', label: '主页', icon: ICON.over },
+  { id: 'func', label: '功能', icon: ICON.func },
+  { id: 'log', label: '日志', icon: ICON.log },
+  { id: 'about', label: '关于', icon: ICON.about },
 ];
 
+const bar = document.getElementById('bar');
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
-const bar = document.getElementById('bar');
-nav.items = NAV;
-nav.addEventListener('selected-change', () => render(Number(nav.selected || 0)));
+nav.items = PAGES.map(function (p) { return { icon: p.icon, label: p.label }; });
 
-function h(tag, cls, text) {
-  const e = document.createElement(tag);
-  if (cls) e.className = cls;
-  if (text != null) e.textContent = text;
-  return e;
+/* 深/浅：库的 tokens 按 color-scheme 出两套角色色 */
+function applyTheme() {
+  const want = S.theme === 'auto'
+    ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches)
+    : S.theme === 'dark';
+  document.documentElement.style.setProperty('color-scheme', want ? 'dark' : 'light');
 }
 
-/* 骨架屏先占位：首屏在等命令回来的那 200~400ms 里不该是白板 */
-function skeleton() {
-  const card = h('md-card', null);
-  card.append(h('div', 'sk w70'), h('div', 'sk w90'), h('div', 'sk h40'));
-  return card;
+/* ── snackbar ──────────────────────────────────────────────────────── */
+let snack = document.getElementById('snack');
+if (!snack) {
+  snack = h('md-snackbar');
+  snack.id = 'snack';
+  document.body.appendChild(snack);
 }
-
-function render(i) {
-  const page = NAV[i] || NAV[0];
-  bar.title = page.label;
-  view.textContent = '';
-  view.appendChild(skeleton());
-  load().then(status => { view.textContent = ''; view.appendChild(home(status)); });
-}
-
-/* ---------- 数据 ---------- */
-let cache = null;
-function load() {
-  if (cache) return Promise.resolve(cache);
-  const q = new URLSearchParams(location.search);
-  if (q.get('demo') === '1') {
-    cache = { version: '—', state: 'demo', apps: 0, backend: '—' };
-    return Promise.resolve(cache);
+onToast(function (text, bad) {
+  try {
+    snack.show({ message: (bad ? '✕ ' : '') + text, timeout: bad ? 5200 : 2600 });
+  } catch (e) { /* 组件没提供该方法时退回 DOM，不让提示把主流程带崩 */
+    snack.textContent = text;
+    snack.setAttribute('open', '');
+    setTimeout(function () { snack.removeAttribute('open'); }, 2600);
   }
-  return Promise.resolve({ version: '—', state: 'unknown', apps: 0, backend: '—' });
-}
+});
 
-function home(st) {
-  const card = h('md-card');
-  const list = h('md-list');
-  const first = h('md-list-item');
-  first.setAttribute('icon', 'https');
-  first.setAttribute('headline', '后端');
-  first.setAttribute('supporting-text', st.backend);
-  const second = h('md-list-item');
-  second.setAttribute('icon', 'group');
-  second.setAttribute('headline', '生效应用');
-  second.setAttribute('trailing-text', String(st.apps));
-  second.setAttribute('interactive', '');
-  list.append(first, second);
-  card.appendChild(list);
-  const btn = h('md-button');
-  btn.setAttribute('variant', 'filled');
-  btn.setAttribute('icon', 'refresh');
-  btn.label = '立即同步';
-  card.appendChild(btn);
-  return card;
+/* ── 路由 ──────────────────────────────────────────────────────────── */
+function show(name) {
+  S.tab = name;
+  const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'over';
+  /* 顶栏标题走 headline 属性 —— `bar.title = x` 设的是原生 tooltip，界面上
+     什么都不画（上一版就是这么错的，而台架读 .title 读得到值，跟着一起被骗）。 */
+  const label = (PAGES.filter(function (x) { return x.id === p; })[0] || PAGES[0]).label;
+  bar.setAttribute('headline', label);
+  nav.selected = String(PAGES.findIndex(function (x) { return x.id === p; }));
+  try { history.replaceState(null, '', '#/' + p); } catch (e) { location.hash = '#/' + p; }
+  draw();
+  load(p);
 }
+function draw() {
+  view.textContent = '';
+  const body = {
+    over: renderOver, func: renderBackend, log: renderLog, about: renderAbout,
+  }[S.tab] || renderOver;
+  view.appendChild(body());
+}
+function load(name) {
+  const need = { over: ['base', 'lists', 'log'], func: [S.backendInfo.backend === 'teesim' ? 'teesim' : (S.backendInfo.backend === 'tricky' ? 'tricky' : 'backend')], log: ['log'], about: ['base'] }[name] || [];
+  return Promise.all(need.map(ensure)).then(draw, function () { draw(); });
+}
+function reloadAll() {
+  S.loaded = {};
+  return loadBase().then(function () { return checkContract(); }).then(function () {
+    return Promise.all([ensure('lists'), ensure('log'), ensure(backendNeed())]);
+  }).then(draw, draw);
+}
+function backendNeed() {
+  const b = S.backendInfo.backend;
+  return b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : b === 'omk' ? 'omk' : 'backend';
+}
+onReload(reloadAll);
 
-render(0);
+/* 库的事件是 change + detail.index（不是 selected-change —— 上一版骨架按后者接，
+   点了不会切页而台架没抓到，因为台架只数了 items.length）。 */
+nav.addEventListener('change', function (e) {
+  const i = (e && e.detail && typeof e.detail.index === 'number') ? e.detail.index : Number(nav.selected);
+  if (!isNaN(i) && PAGES[i]) show(PAGES[i].id);
+});
+
+/* ── 启动 ──────────────────────────────────────────────────────────── */
+function boot() {
+  applyTheme();
+  const hit = findBridge();
+  attachBridge(hit);
+  const start = (location.hash || '').replace(/^#\//, '');
+  view.appendChild(h('md-loading-indicator'));
+  Promise.resolve(checkContract()).then(loadBase).then(function () {
+    return Promise.all([ensure('lists'), ensure('log'), ensure(backendNeed())]);
+  }).then(function () {
+    show(PAGES.some(function (p) { return p.id === start; }) ? start : 'over');
+  }, function () {
+    show('over');
+    onToast('基础状态读取失败，界面显示的是空值', true);
+  });
+}
+boot();
+export { reloadAll, show, draw, S, DEMO };
