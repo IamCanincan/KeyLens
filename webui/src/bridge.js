@@ -149,22 +149,47 @@ export function failText(r) {
   return t || ('命令失败（退出码 ' + ((r && r.code) || '?') + '）');
 }
 
+/* 桥接的调用形状按管理器分叉，这里踩过一次大的：
+ *   · KernelSU 主线（me.weishu.kernelsu）的 exec(cmd, optionsJson, **回调函数名字符串**)
+ *     —— 第三个参数给函数对象的话，它不认，回调永远不触发，界面就停在"只有框架"，
+ *     30 秒后才报超时。这是从**机上能用的那一版**里抠出来的形状。
+ *   · 其余（APatch / Magisk）：exec(cmd, callback)，或同步直接返回 {errno, stdout}。
+ * 台架以前走 ?demo=1，压根不经过这条路 —— 所以这个 bug 台架永远看不见。
+ * 现在由 tools/replay-check.mjs 用真机数据 + 真形状（函数名回调）驱动整页。 */
+var cbSeq = 0;
+
 function run(cmd, arg) {
   if (DEMO) return Promise.resolve(demoResult(cmd, arg));
   if (!BRIDGE) return Promise.resolve({ errno: 1, stdout: '', stderr: '桥接未就绪' });
+  var full = SH + ' ' + cmd + (arg != null && arg !== '' ? " '" + String(arg).replace(/'/g, "'\\''") + "'" : '');
   return new Promise(function (resolve) {
-    var done = false;
-    var finish = function (r) { if (done) return; done = true; resolve(r); };
-    var timer = setTimeout(function () {
-      finish({ errno: 124, stdout: '', stderr: 'timeout', timeout: true });
-    }, 30000);
-    try {
-      BRIDGE.exec(SH + ' ' + cmd + (arg != null && arg !== '' ? " '" + String(arg).replace(/'/g, "'\\''") + "'" : ''),
-        '{}', function (out) {
-          clearTimeout(timer);
-          finish({ errno: (out && out.errno) | 0, stdout: (out && out.stdout) || '', stderr: (out && out.stderr) || '' });
-        });
-    } catch (e) { clearTimeout(timer); finish({ errno: 1, stdout: '', stderr: String(e && e.message || e) }); }
+    var done = false, timer = null, sync;
+    function finish(v) {
+      if (done) return;
+      done = true;
+      if (timer) { clearTimeout(timer); timer = null; }
+      v = v || {};
+      resolve({ errno: Number(v.errno) | 0, stdout: String(v.stdout == null ? '' : v.stdout),
+        stderr: String(v.stderr == null ? '' : v.stderr), timeout: !!v.timeout });
+    }
+    timer = setTimeout(function () { finish({ errno: 124, stdout: '', stderr: '命令超时（30 秒未返回）', timeout: true }); }, 30000);
+
+    if (S.bridge.kind === 'ksu') {
+      var name = 'tsaa_cb_' + (cbSeq++) + '_' + Date.now();
+      window[name] = function (errno, stdout, stderr) {
+        delete window[name];
+        var out = String(stdout == null ? '' : stdout);
+        if (stderr) out += String(stderr);          // 命令侧已 2>&1，这里兜一手
+        finish({ errno: errno, stdout: out });
+      };
+      try { BRIDGE.exec(full, '{}', name); }
+      catch (e) { delete window[name]; finish({ errno: 1, stderr: String((e && e.message) || e) }); }
+      return;
+    }
+
+    try { sync = BRIDGE.exec(full, function (v) { finish(v); }); }
+    catch (e) { finish({ errno: 1, stderr: String((e && e.message) || e) }); return; }
+    if (sync !== undefined) finish(sync);
   });
 }
 
