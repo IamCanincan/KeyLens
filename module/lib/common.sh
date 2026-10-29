@@ -15,10 +15,10 @@
 #   watch.sh    监听重启退避（纯函数，可被测试单独 source）
 #=============================================================================
 
-_taa_lib="${MODDIR:-$MODPATH}/lib"
+_kl_lib="${MODDIR:-$MODPATH}/lib"
 
-for _taa_part in core lock tools applist backend props watch; do
-    . "$_taa_lib/$_taa_part.sh" || return 1
+for _kl_part in core lock tools applist backend props watch; do
+    . "$_kl_lib/$_kl_part.sh" || return 1
 done
 
-unset _taa_lib _taa_part
+unset _kl_lib _kl_part

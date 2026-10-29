@@ -3,7 +3,8 @@
    改完一律还原，且还原后先验"文件和改前逐字节相同"再说下一条。 */
 const fs = require('fs');
 const { execSync } = require('child_process');
-const R = 'D:/Github Repositories/TS-AUTO-ADD/';
+const path=require('path');
+const R = path.resolve(__dirname, '..') + '/';   // 别写死绝对路径：仓库目录一挪这台子就废
 const files = { screens: R + 'webui/src/screens.js', bridge: R + 'webui/src/bridge.js' };
 const orig = {};
 for (const k in files) orig[k] = fs.readFileSync(files[k], 'utf8');

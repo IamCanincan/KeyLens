@@ -43,7 +43,7 @@ backends_conflict() {
 }
 
 # 冲突时的统一提示文案（各入口共用）
-TAA_CONFLICT_MSG="检测到多个密钥库后端同时启用（Tricky Store / TEE Simulator / OhMyKeymint），模块停止运行（请只保留一个）"
+KL_CONFLICT_MSG="检测到多个密钥库后端同时启用（Tricky Store / TEE Simulator / OhMyKeymint），模块停止运行（请只保留一个）"
 
 # ---------- 后端装载 ----------
 # 说明：把运行期变量指向指定后端，并按需加载其写入实现。
@@ -51,24 +51,24 @@ TAA_CONFLICT_MSG="检测到多个密钥库后端同时启用（Tricky Store / TE
 use_backend() {
     local mdir="$2"
 
-    TAA_PATCH="$mdir/backends/teesim.awk"
+    KL_PATCH="$mdir/backends/teesim.awk"
 
     if [ "$1" = "teesim" ]; then
-        TAA_BACKEND="teesim"
-        TAA_DIR="$TEESIM_DIR"
+        KL_BACKEND="teesim"
+        KL_DIR="$TEESIM_DIR"
         TARGET_FILE="$TEESIM_CONFIG"
         AWK_CMD=$(find_awk)
     elif [ "$1" = "omk" ]; then
-        TAA_BACKEND="omk"
-        # 状态寄生在 OMK 自己的状态目录（.ts_* 前缀不会和它的 pid/restart 撞名）
-        TAA_DIR="$OMK_STATE_DIR"
+        KL_BACKEND="omk"
+        # 状态寄生在 OMK 自己的状态目录（.kl_* 前缀不会和它的 pid/restart 撞名）
+        KL_DIR="$OMK_STATE_DIR"
         TARGET_FILE="$OMK_INJECTOR"
-        TAA_PATCH="$mdir/backends/omk.awk"
+        KL_PATCH="$mdir/backends/omk.awk"
         AWK_CMD=$(find_awk)
-        mkdir -p "$TAA_DIR" 2>/dev/null
+        mkdir -p "$KL_DIR" 2>/dev/null
     else
-        TAA_BACKEND="tricky"
-        TAA_DIR="$TSTORE_DIR"
+        KL_BACKEND="tricky"
+        KL_DIR="$TSTORE_DIR"
         TARGET_FILE="$TSTORE_DIR/target.txt"
         # target.txt 现在要解析注释与 ?/! 后缀，和另外两个后端一样需要 awk
         AWK_CMD=$(find_awk)
@@ -83,10 +83,10 @@ use_backend() {
     # 状态：上次成功同步时见到的「已装第三方」+ 历次写进去的并集（ever）。
     # 由 build_app_list 写到 *.new，再由 sync_* 在**写入成功后**提交；
     # 失败不推进，否则那次卸载事件会被当成"已经处理过"而永远漏掉。
-    ST_INSTALLED="$TAA_DIR/.ts_installed_last"
-    ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
-    ST_EVER="$TAA_DIR/.ts_ever"
-    ST_EVER_NEW="$TAA_DIR/.ts_ever.new"
+    ST_INSTALLED="$KL_DIR/.kl__installed_last"
+    ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"
+    ST_EVER="$KL_DIR/.kl__ever"
+    ST_EVER_NEW="$KL_DIR/.kl__ever.new"
 }
 
 # ---------- 当前目标文件里有哪些包名 ----------
@@ -94,18 +94,18 @@ use_backend() {
 # 用法：current_target_apps
 current_target_apps() {
     [ -f "$TARGET_FILE" ] || return 0
-    if [ "$TAA_BACKEND" = "teesim" ]; then
+    if [ "$KL_BACKEND" = "teesim" ]; then
         [ -n "$AWK_CMD" ] || return 0
-        $AWK_CMD -f "${TAA_PATCH%/*}/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
-    elif [ "$TAA_BACKEND" = "omk" ]; then
+        $AWK_CMD -f "${KL_PATCH%/*}/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
+    elif [ "$KL_BACKEND" = "omk" ]; then
         [ -n "$AWK_CMD" ] || return 0
-        $AWK_CMD -f "${TAA_PATCH%/*}/omk_list.awk" "$TARGET_FILE" 2>/dev/null
+        $AWK_CMD -f "${KL_PATCH%/*}/omk_list.awk" "$TARGET_FILE" 2>/dev/null
     else
         # Tricky Store OSS：行内 # 注释、?/! 模式后缀都按它自己的解析规则处理；
         # 同一个包名出现多次时后出现的模式生效（与它的 Map 一致）。
         [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
         [ -n "$AWK_CMD" ] || return 0
-        $AWK_CMD -f "${TAA_PATCH%/*}/tricky_list.awk" "$TARGET_FILE" 2>/dev/null
+        $AWK_CMD -f "${KL_PATCH%/*}/tricky_list.awk" "$TARGET_FILE" 2>/dev/null
     fi
 }
 
@@ -154,7 +154,7 @@ add_target_apps() {
     [ -f "$list" ] || return 2
 
     cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d')
-    dir="${TAA_DIR}/.ts_restore.$$"
+    dir="${KL_DIR}/.kl__restore.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' | sort -u > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
@@ -162,7 +162,7 @@ add_target_apps() {
     # 不能再追加一条裸 pkg（Tricky 会变成同包两个模式，TEESim 会重复覆盖）。
     # 用 FILENAME 而不是 NR==FNR：cur 为空时，第二个文件的第一条记录会让
     # NR==FNR 仍为真，把新包名当成"已在名单"吞掉（实测：文件不存在时返回 1）。
-    awk -v backend="${TAA_BACKEND:-tricky}" '
+    awk -v backend="${KL_BACKEND:-tricky}" '
         FILENAME == ARGV[1] {
             tok = $0; b = tok
             if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
@@ -192,16 +192,16 @@ add_target_apps() {
     fi
     { cat "$dir/cur"; cat "$dir/new"; } | sort -u > "$dir/combo" 2>/dev/null
 
-    if [ "$TAA_BACKEND" = "omk" ]; then
+    if [ "$KL_BACKEND" = "omk" ]; then
         [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-        if [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ] && [ -f "$TARGET_FILE" ]; then
+        if [ -n "$AWK_CMD" ] && [ -f "$KL_PATCH" ] && [ -f "$TARGET_FILE" ]; then
             omk_write_list "$dir/combo"; rc=$?
         fi
-    elif [ "$TAA_BACKEND" = "teesim" ]; then
+    elif [ "$KL_BACKEND" = "teesim" ]; then
         [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-        if [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ] && [ -f "$TARGET_FILE" ]; then
+        if [ -n "$AWK_CMD" ] && [ -f "$KL_PATCH" ] && [ -f "$TARGET_FILE" ]; then
             $AWK_CMD -v listfile="$dir/combo" -v statusfile="$dir/status" \
-                -f "$TAA_PATCH" "$TARGET_FILE" > "$dir/out" 2>/dev/null
+                -f "$KL_PATCH" "$TARGET_FILE" > "$dir/out" 2>/dev/null
             if [ "$(cat "$dir/status" 2>/dev/null)" = "ok" ] && [ -s "$dir/out" ]; then
                 chmod 600 "$dir/out" 2>/dev/null
                 chown root:root "$dir/out" 2>/dev/null
@@ -232,7 +232,7 @@ add_target_apps() {
 # 用法：add_target_app <包名>
 # 返回：0=已加入 1=本来就在 2=失败
 add_target_app() {
-    local f="${TAA_DIR}/.ts_restore.one.$$" rc
+    local f="${KL_DIR}/.kl__restore.one.$$" rc
 
     mkdir -p "${f%/*}" 2>/dev/null
     printf '%s\n' "$1" > "$f" 2>/dev/null || { rm -f "$f" 2>/dev/null; return 2; }
@@ -250,7 +250,7 @@ add_target_app() {
 remove_target_apps() {
     local list="$1" cur dir removed rc=2
 
-    TAA_REMOVED_LIST=""
+    KL_REMOVED_LIST=""
     [ -f "$list" ] || return 2
     [ -f "$TARGET_FILE" ] || return 2
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
@@ -263,7 +263,7 @@ remove_target_apps() {
     fi
     cur=$(printf '%s\n' "$cur" | sed 's/\r$//' | sed '/^[[:space:]]*$/d')
 
-    dir="${TAA_DIR}/.ts_remove.$$"
+    dir="${KL_DIR}/.kl__remove.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
@@ -272,7 +272,7 @@ remove_target_apps() {
     # 不能用界面勾选的那一份：列表可能已经刷新过，勾选里可能夹着已不在文件里的包。
     # Tricky 的模式同属一个应用（它内部按包名存 Map），所以按基础包名匹配；
     # TEESim 的 pkg@10 是一个独立作用域，按 token 精确匹配，避免误删同包的其他用户。
-    if ! $AWK_CMD -v backend="${TAA_BACKEND:-tricky}" -v removedfile="$dir/removed" '
+    if ! $AWK_CMD -v backend="${KL_BACKEND:-tricky}" -v removedfile="$dir/removed" '
         FILENAME == ARGV[1] {
             tok = $0; b = tok
             if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
@@ -299,24 +299,24 @@ remove_target_apps() {
         rm -rf "$dir" 2>/dev/null
         return 1
     fi
-    TAA_REMOVED_LIST=$(tr '\n' ',' < "$dir/removed" 2>/dev/null | sed 's/,$//')
+    KL_REMOVED_LIST=$(tr '\n' ',' < "$dir/removed" 2>/dev/null | sed 's/,$//')
 
     if [ ! -s "$dir/combo" ]; then
         rm -rf "$dir" 2>/dev/null
         return 3
     fi
 
-    if [ "$TAA_BACKEND" = "omk" ]; then
-        if [ -f "$TAA_PATCH" ]; then
+    if [ "$KL_BACKEND" = "omk" ]; then
+        if [ -f "$KL_PATCH" ]; then
             omk_write_list "$dir/combo"; rc=$?
             # 请求里明明有可移出的条目，writer 却说内容一致：按失败处理，
             # 不能让调用方以为删掉了。
             [ "$rc" = 1 ] && rc=2
         fi
-    elif [ "$TAA_BACKEND" = "teesim" ]; then
-        if [ -f "$TAA_PATCH" ]; then
+    elif [ "$KL_BACKEND" = "teesim" ]; then
+        if [ -f "$KL_PATCH" ]; then
             $AWK_CMD -v listfile="$dir/combo" -v statusfile="$dir/status" \
-                -f "$TAA_PATCH" "$TARGET_FILE" > "$dir/out" 2>/dev/null
+                -f "$KL_PATCH" "$TARGET_FILE" > "$dir/out" 2>/dev/null
             if [ "$(cat "$dir/status" 2>/dev/null)" = "ok" ] && [ -s "$dir/out" ]; then
                 chmod 600 "$dir/out" 2>/dev/null
                 chown root:root "$dir/out" 2>/dev/null
@@ -372,18 +372,18 @@ remove_target_apps() {
 set_tricky_mode() {
     local pkg="$1" mode="$2" dir out status rc=2
 
-    [ "${TAA_BACKEND:-}" = "tricky" ] || return 2
+    [ "${KL_BACKEND:-}" = "tricky" ] || return 2
     is_pkg_token "$pkg" || return 2
     case "$mode" in auto|leaf|generate) ;; *) return 2 ;; esac
     [ -f "$TARGET_FILE" ] || return 2
     [ -n "${AWK_CMD:-}" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/tricky_mode.awk" ] || return 2
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_mode.awk" ] || return 2
 
-    dir="${TAA_DIR}/.ts_mode.$$"
+    dir="${KL_DIR}/.kl__mode.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     out="$dir/out"; status="$dir/status"
     $AWK_CMD -v pkg="$pkg" -v mode="$mode" -v statusfile="$status" \
-        -f "${TAA_PATCH%/*}/tricky_mode.awk" "$TARGET_FILE" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/tricky_mode.awk" "$TARGET_FILE" > "$out" 2>/dev/null
 
     case "$(cat "$status" 2>/dev/null)" in
         ok)
@@ -433,7 +433,7 @@ write_atomic_preserve() {
 # 说明：用于日志与模块描述展示
 # 用法：backend_name
 backend_name() {
-    case "$TAA_BACKEND" in
+    case "$KL_BACKEND" in
         teesim) echo "TEE Simulator" ;;
         omk)    echo "OhMyKeymint" ;;
         *)      echo "Tricky Store" ;;
@@ -451,9 +451,9 @@ omk_write_list() {
 
     [ -f "$TARGET_FILE" ] || return 2
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ] || return 2
+    [ -n "$AWK_CMD" ] && [ -f "$KL_PATCH" ] || return 2
 
-    out="$(dirname "$TARGET_FILE")/.injector.toml.ts_auto.$$"
+    out="$(dirname "$TARGET_FILE")/.injector.toml.keylens.$$"
     status="${out}.status"
     uid=$(stat -c %u "$TARGET_FILE" 2>/dev/null)
     gid=$(stat -c %g "$TARGET_FILE" 2>/dev/null)
@@ -461,7 +461,7 @@ omk_write_list() {
     ctx=$(ls -Zd "$TARGET_FILE" 2>/dev/null | awk '{print $1}')
 
     rm -f "$out" "$status" 2>/dev/null
-    $AWK_CMD -v listfile="$list" -v statusfile="$status" -f "$TAA_PATCH" "$TARGET_FILE" > "$out" 2>/dev/null
+    $AWK_CMD -v listfile="$list" -v statusfile="$status" -f "$KL_PATCH" "$TARGET_FILE" > "$out" 2>/dev/null
     if [ "$(cat "$status" 2>/dev/null)" = "ok" ] && [ -s "$out" ]; then
         if cmp -s "$out" "$TARGET_FILE" 2>/dev/null; then
             rc=1
@@ -471,7 +471,7 @@ omk_write_list() {
             if [ -n "$ctx" ] && command -v chcon >/dev/null 2>&1; then
                 chcon "$ctx" "$out" 2>/dev/null
             fi
-            cp -p "$TARGET_FILE" "$TAA_DIR/injector.toml.bak" 2>/dev/null
+            cp -p "$TARGET_FILE" "$KL_DIR/injector.toml.bak" 2>/dev/null
             mv -f "$out" "$TARGET_FILE" 2>/dev/null && rc=0
         fi
     fi
@@ -497,11 +497,11 @@ sync_teesim_config() {
     local out="${tmp}.json" status="${tmp}.status"
     local rc=2
 
-    TAA_COUNT=0
+    KL_COUNT=0
     # awk 可能在上次探测之后才可用（例如后装了 busybox），此处按需重探
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
 
-    if [ -f "$config" ] && [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ]; then
+    if [ -f "$config" ] && [ -n "$AWK_CMD" ] && [ -f "$KL_PATCH" ]; then
         if ! build_app_list "$tmp"; then
             log_warn "⚠️ 已装列表为空但基线非空：跳过本次写入，避免误清名单（手动同步可强制）"
             rm -f "$tmp" 2>/dev/null
@@ -510,7 +510,7 @@ sync_teesim_config() {
         [ -s "$tmp" ] && {
             # 生成替换后的内容；状态文件不是 "ok" 说明未定位到 apps 数组，保持原配置
             rm -f "$out" "$status" 2>/dev/null
-            $AWK_CMD -v listfile="$tmp" -v statusfile="$status" -f "$TAA_PATCH" "$config" > "$out" 2>/dev/null
+            $AWK_CMD -v listfile="$tmp" -v statusfile="$status" -f "$KL_PATCH" "$config" > "$out" 2>/dev/null
 
             if [ "$(cat "$status" 2>/dev/null)" = "ok" ] && [ -s "$out" ]; then
                 if cmp -s "$out" "$config" 2>/dev/null; then
@@ -544,10 +544,10 @@ sync_teesim_config() {
 sync_omk_injector() {
     local config="$1" tmp="$2" rc cur_now new_now
 
-    TAA_COUNT=0
+    KL_COUNT=0
     [ -f "$config" ] || return 2
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "$TAA_PATCH" ] || return 2
+    [ -n "$AWK_CMD" ] && [ -f "$KL_PATCH" ] || return 2
 
     if ! build_app_list "$tmp"; then
         log_warn "⚠️ 已装列表为空但基线非空：跳过本次写入，避免误清名单（手动同步可强制）"
@@ -628,23 +628,23 @@ run_sync() {
     local prop_file="$1" tmp="$2"
     local rc=2
 
-    if [ "$TAA_BACKEND" = "teesim" ]; then
+    if [ "$KL_BACKEND" = "teesim" ]; then
         sync_teesim_config "$TARGET_FILE" "$tmp"
         rc=$?
-    elif [ "$TAA_BACKEND" = "omk" ]; then
+    elif [ "$KL_BACKEND" = "omk" ]; then
         sync_omk_injector "$TARGET_FILE" "$tmp"
         rc=$?
     elif command -v sync_target_list >/dev/null 2>&1; then
         sync_target_list "$TARGET_FILE" "$tmp"
         rc=$?
     else
-        TAA_COUNT=0
+        KL_COUNT=0
     fi
 
     if [ "$rc" = "2" ]; then
         mark_module_failed "$prop_file"
     else
-        update_module_desc "$prop_file" "$TAA_COUNT"
+        update_module_desc "$prop_file" "$KL_COUNT"
     fi
     return "$rc"
 }

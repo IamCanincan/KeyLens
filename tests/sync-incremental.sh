@@ -32,12 +32,12 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-TAA_DIR="$T"
+KL_DIR="$T"
 TARGET_FILE="$T/target.txt"
-ST_INSTALLED="$T/.ts_installed_last"
-ST_INSTALLED_NEW="$T/.ts_installed.new"
-ST_EVER="$T/.ts_ever"
-ST_EVER_NEW="$T/.ts_ever.new"
+ST_INSTALLED="$T/.kl__installed_last"
+ST_INSTALLED_NEW="$T/.kl__installed.new"
+ST_EVER="$T/.kl__ever"
+ST_EVER_NEW="$T/.kl__ever.new"
 
 FAKE_INSTALLED=""
 cmd() { printf '%s\n' "$FAKE_INSTALLED" | sed 's/^/package:/'; }
@@ -47,8 +47,8 @@ current_target_apps() { [ -f "$TARGET_FILE" ] && sed '/^[[:space:]]*$/d' "$TARGE
 reset() {
     : > "$TARGET_FILE"
     rm -f "$ST_INSTALLED" "$ST_INSTALLED_NEW" "$ST_EVER" "$ST_EVER_NEW"
-    rm -f "$TAA_DIR/.ts_written_last" "$TAA_DIR/.ts_written.new" \
-          "$TAA_DIR/.ts_removed" "$TAA_DIR/.ts_removed.new"
+    rm -f "$KL_DIR/.kl__written_last" "$KL_DIR/.kl__written.new" \
+          "$KL_DIR/.kl__removed" "$KL_DIR/.kl__removed.new"
 }
 put() { f="$1"; shift; printf '%s\n' "$@" > "$f"; }
 run() { build_app_list "$T/out"; }
@@ -141,8 +141,8 @@ FAKE_INSTALLED=""
 run; rc=$?
 if [ "$rc" = 1 ]; then printf '  ok   自动同步返回 1（放弃）\n'; else printf '  ✗   自动同步返回 %s，期望 1\n' "$rc"; fail=1; fi
 [ ! -e "$T/out" ] && printf '  ok   没有生成待写列表\n' || { printf '  ✗   仍生成了待写列表\n'; fail=1; }
-TAA_EMPTY_OK=1
-run; unset TAA_EMPTY_OK
+KL_EMPTY_OK=1
+run; unset KL_EMPTY_OK
 chk "手动强制后只剩手工项" "a.manual"
 
 echo "── 10 目标文件被清空：算你把它们都删了 ──"
@@ -164,15 +164,15 @@ si=$(sed '/^$/d' "$ST_INSTALLED_NEW" | sort | tr '\n' ' ')
 [ "$si" = "b.inst " ] && printf '  ok   状态-已装 = b.inst\n' || { printf '  ✗   状态-已装 = %s\n' "$si"; fail=1; }
 grep -qx "a.manual" "$ST_INSTALLED_NEW" && { printf '  ✗   手工项混进了「已装」状态\n'; fail=1; } \
     || printf '  ok   手工项没有混进「已装」状态\n'
-[ ! -f "$TAA_DIR/.ts_written.new" ] && [ ! -f "$TAA_DIR/.ts_removed.new" ] \
+[ ! -f "$KL_DIR/.kl__written.new" ] && [ ! -f "$KL_DIR/.kl__removed.new" ] \
     && printf '  ok   不再产生写入清单/墓碑\n' \
     || { printf '  ✗   仍然产生了写入清单或墓碑\n'; fail=1; }
 
 echo "── 13 旧版本遗留状态在成功同步后清掉 ──"
-put "$TAA_DIR/.ts_written_last" "x"; put "$TAA_DIR/.ts_removed" "y"
+put "$KL_DIR/.kl__written_last" "x"; put "$KL_DIR/.kl__removed" "y"
 put "$TARGET_FILE" "a.inst"; put "$ST_INSTALLED" "a.inst"; FAKE_INSTALLED="a.inst"
 run; commit
-if [ ! -f "$TAA_DIR/.ts_written_last" ] && [ ! -f "$TAA_DIR/.ts_removed" ]; then
+if [ ! -f "$KL_DIR/.kl__written_last" ] && [ ! -f "$KL_DIR/.kl__removed" ]; then
     printf '  ok   墓碑与写入清单已清掉\n'
 else
     printf '  ✗   旧状态文件还在\n'; fail=1
@@ -187,14 +187,14 @@ reset; put "$TARGET_FILE" "x.keep"; FAKE_INSTALLED=""
 run; chk "手工项保留，不被保护拦下" "x.keep"
 
 echo "── 16 OhMyKeymint 首次接入：沿用现有 scoop，不批量加入 ──"
-reset; TAA_BACKEND=omk; put "$TARGET_FILE" "a.manual"; FAKE_INSTALLED="a.manual
+reset; KL_BACKEND=omk; put "$TARGET_FILE" "a.manual"; FAKE_INSTALLED="a.manual
 b.inst"
 run; chk "只保留现有条目" "a.manual"; chk_excl "从未纳入的不算排除" ""
 commit; FAKE_INSTALLED="a.manual
 b.inst
 c.new"
 run; chk "之后的新装照常加入" "a.manual c.new"
-unset TAA_BACKEND
+unset KL_BACKEND
 
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

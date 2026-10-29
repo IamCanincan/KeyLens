@@ -8,7 +8,7 @@
 
 # 说明：列表有变化时原子替换 target.txt；内容一致则不落盘。
 # 用法：sync_target_list <target.txt> <临时文件>
-# 依赖：build_app_list（lib/common.sh）生成列表并设置 TAA_COUNT
+# 依赖：build_app_list（lib/common.sh）生成列表并设置 KL_COUNT
 # 返回：0=已写入 1=内容一致未写入 2=结果为空或写入失败
 sync_target_list() {
     local target="$1"

@@ -25,10 +25,15 @@ umask 077
 export PATH="/system/bin:/system/xbin:/odm/bin:/vendor/bin:/product/bin:$PATH"
 . "$MODDIR/lib/common.sh" || exit 1
 
+# ---------- 改名迁移 ----------
+# post-fs-data.sh 已经搬过一次，这里再调一次是幂等的（新名存在就不动），
+# 保证单独跑 service.sh 调试时也不会读不到用户原来的开关。
+migrate_legacy_paths
+
 # ---------- 后端互斥检查 ----------
 # 两者同时启用时不做任何处理，直接停止守护，并把停止状态写进模块描述
 if backends_conflict; then
-    log_err "⛔ $TAA_CONFLICT_MSG"
+    log_err "⛔ $KL_CONFLICT_MSG"
     mark_module_stopped "$PROP_FILE"
     exit 0
 fi
@@ -36,14 +41,14 @@ fi
 # ---------- 后端探测 ----------
 detect_backend "$MODDIR"
 
-TMP="${TAA_DIR}/.ts_tmp"
-LOCK_DIR="${TAA_DIR}/.ts_lock"
-DEBOUNCE_LOCK="${TAA_DIR}/.ts_debounce"
-PIDS_FILE="${TAA_DIR}/.ts_daemon_pids.list"
-FP_FILE="${TAA_DIR}/.ts_fingerprint"
+TMP="${KL_DIR}/.kl__tmp"
+LOCK_DIR="${KL_DIR}/.kl__lock"
+DEBOUNCE_LOCK="${KL_DIR}/.kl__debounce"
+PIDS_FILE="${KL_DIR}/.kl__daemon_pids.list"
+FP_FILE="${KL_DIR}/.kl__fingerprint"
 
-log_info "🔍 后端：$(backend_name)（配置：$TARGET_FILE，状态：$TAA_DIR）"
-if [ "$TAA_BACKEND" != "tricky" ] && [ -z "$AWK_CMD" ]; then
+log_info "🔍 后端：$(backend_name)（配置：$TARGET_FILE，状态：$KL_DIR）"
+if [ "$KL_BACKEND" != "tricky" ] && [ -z "$AWK_CMD" ]; then
     log_warn "⚠️ 未找到 awk，暂时无法维护 $(backend_name) 配置"
 fi
 
@@ -101,7 +106,7 @@ do_sync() {
     run_sync "$PROP_FILE" "$TMP"
     rc=$?
     case "$rc" in
-        0) log_info "✅ 同步完成，应用总数：$TAA_COUNT" ;;
+        0) log_info "✅ 同步完成，应用总数：$KL_COUNT" ;;
         1) log_info "ℹ️ 列表内容一致，本次未落盘" ;;
         2) log_warn "⚠️ 同步失败：未能生成或写入应用列表（已记入模块描述）" ;;
     esac
@@ -193,7 +198,7 @@ watch_fails=0
         [ -d "$WATCH_DIR" ] || { sleep 5; continue; }
         watch_started=$(date +%s 2>/dev/null)
 
-        # 事件按名字过滤：目录里其它文件（config.json / target.txt / .ts_tmp /
+        # 事件按名字过滤：目录里其它文件（config.json / target.txt / .kl__tmp /
         # 各框架自己的 usage.json 等）的写入会落到 case 的默认分支被丢掉，
         # 不会触发同步；本模块自己的写入也就多一次 echo 进程，不成环。
         case "$INOTIFY_MODE" in
@@ -231,5 +236,5 @@ watch_fails=0
 ) &
 echo $! >> "$PIDS_FILE"
 
-log_info "✅ 守护进程就绪（日志：$TAA_LOG）"
+log_info "✅ 守护进程就绪（日志：$KL_LOG）"
 exit 0

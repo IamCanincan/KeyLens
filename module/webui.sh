@@ -2,7 +2,7 @@
 #=============================================================================
 # webui.sh - WebUI 命令层（由管理器 WebView 经 root shell 调用）
 #
-# 用法：sh /data/adb/modules/ts-auto-add/webui.sh <命令> [参数]
+# 用法：sh /data/adb/modules/keylens/webui.sh <命令> [参数]
 #
 # 输出约定（供 webroot/index.html 解析，不面向人阅读）：
 #   status / env / sync / props-apply / props-on / props-off / clear-log
@@ -35,6 +35,10 @@ export PATH="/system/bin:/system/xbin:/odm/bin:/vendor/bin:/product/bin:/data/ad
 
 . "$MODDIR/lib/common.sh" || { echo "无法加载 lib/common.sh" >&2; exit 1; }
 
+# 改名迁移：刷完没重启就打开界面时，界面读的启动哈希与伪装开关得是新路径上的那份。
+# 幂等（新名已存在就不动），所以每次调用只是几次 stat。
+migrate_legacy_paths
+
 [ "$(id -u)" -eq 0 ] || { echo "需要 root 权限" >&2; exit 1; }
 
 CMD="${1:-help}"
@@ -49,8 +53,8 @@ ICONS_SUBDIR="icons"
 #       在界面上表现为"某个值怪怪的"，没有任何一处会明说自己读错了格式。
 #       所以命令层自报一个号，界面拿自己期望的号比：对不上就横幅 + 停写，
 #       而不是拿旧解析去画新数据。改任何命令的**输出形状**都要 +1。
-TAA_API=4
-TAA_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
+KL_API=4
+KL_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
@@ -118,7 +122,7 @@ clamp_int() {
 # 用法：require_runnable
 require_runnable() {
     if backends_conflict; then
-        echo "$TAA_CONFLICT_MSG" >&2
+        echo "$KL_CONFLICT_MSG" >&2
         return 1
     fi
     return 0
@@ -132,7 +136,7 @@ webui_lock() {
     local timeout="$LOCK_TIMEOUT" lock_rc
 
     LOCK_TIMEOUT=6
-    acquire_lock "${TAA_DIR}/.ts_lock"
+    acquire_lock "${KL_DIR}/.kl__lock"
     lock_rc=$?
     LOCK_TIMEOUT="$timeout"
     if [ "$lock_rc" != 0 ]; then
@@ -331,10 +335,10 @@ backend_keybox_path() {
     local kb=""
 
     KEYBOX_PATH=""
-    case "$TAA_BACKEND" in
+    case "$KL_BACKEND" in
         teesim)
-            if [ -f "$TEESIM_CONFIG" ] && [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/teesim_info.awk" ]; then
-                kb=$($AWK_CMD -f "${TAA_PATCH%/*}/teesim_info.awk" "$TEESIM_CONFIG" 2>/dev/null \
+            if [ -f "$TEESIM_CONFIG" ] && [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_info.awk" ]; then
+                kb=$($AWK_CMD -f "${KL_PATCH%/*}/teesim_info.awk" "$TEESIM_CONFIG" 2>/dev/null \
                      | sed -n 's/^default_keybox=//p')
             fi
             [ -n "$kb" ] || kb="keybox.xml"
@@ -345,11 +349,11 @@ backend_keybox_path() {
     esac
 }
 
-# 说明：把刚生成的 temp 落到 target；backup 放在后端的 TAA_DIR
+# 说明：把刚生成的 temp 落到 target；backup 放在后端的 KL_DIR
 # 用法：commit_backend_file <target> <temp> <备份名>
 commit_backend_file() {
     local target="$1" temp="$2" name="$3"
-    write_atomic_preserve "$target" "$temp" "${TAA_DIR}/${name}"
+    write_atomic_preserve "$target" "$temp" "${KL_DIR}/${name}"
 }
 
 # 说明：写完后让 OMK 自己重载对应组件
@@ -380,13 +384,13 @@ cmd_restore_app() {
   webui_lock || return 1
   add_target_app "$pkg"
   rc=$?
-  release_lock "${TAA_DIR}/.ts_lock"
+  release_lock "${KL_DIR}/.kl__lock"
 
   case "$rc" in
     0)
       # 恢复后顺手把模块描述里的条数刷新，管理器里不用等下一轮同步
-      TAA_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-      [ "${TAA_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$TAA_COUNT"
+      KL_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      [ "${KL_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$KL_COUNT"
       log_info "🧩 WebUI 把 $pkg 加回目标名单"
       kv restored 1
       ;;
@@ -407,7 +411,7 @@ cmd_restore_apps() {
   [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
 
   detect_backend "$MODDIR"
-  file="${TAA_DIR}/.ts_restore.req.$$"
+  file="${KL_DIR}/.kl__restore.req.$$"
   : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
 
   oldifs=$IFS
@@ -433,13 +437,13 @@ cmd_restore_apps() {
   webui_lock || { rm -f "$file" 2>/dev/null; return 1; }
   add_target_apps "$file"
   rc=$?
-  release_lock "${TAA_DIR}/.ts_lock"
+  release_lock "${KL_DIR}/.kl__lock"
   rm -f "$file" 2>/dev/null
 
   case "$rc" in
     0)
-      TAA_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-      [ "${TAA_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$TAA_COUNT"
+      KL_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      [ "${KL_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$KL_COUNT"
       log_info "🧩 WebUI 批量加入目标名单（$n 个包名）"
       kv restored 1
       ;;
@@ -460,7 +464,7 @@ cmd_remove_apps() {
   [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
 
   detect_backend "$MODDIR"
-  file="${TAA_DIR}/.ts_remove.req.$$"
+  file="${KL_DIR}/.kl__remove.req.$$"
   : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
 
   oldifs=$IFS
@@ -487,18 +491,18 @@ cmd_remove_apps() {
   remove_target_apps "$file"
   rc=$?
   after=$(current_target_apps 2>/dev/null | sed 's/\r$//' | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-  release_lock "${TAA_DIR}/.ts_lock"
+  release_lock "${KL_DIR}/.kl__lock"
   rm -f "$file" 2>/dev/null
 
   case "$rc" in
     0)
       # 以命令层实际移出的 token 数为准：同名条目可能只留一个有效项，
       # 用 before-after 在重复行/模式合并时会算成 0。
-      removed=$(printf '%s' "$TAA_REMOVED_LIST" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+      removed=$(printf '%s' "$KL_REMOVED_LIST" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
       update_module_desc "$PROP_FILE" "${after:-0}"
       log_info "🧩 WebUI 从目标名单移出 $removed 个应用"
       kv removed "$removed"
-      kv removed_list "${TAA_REMOVED_LIST:-}"
+      kv removed_list "${KL_REMOVED_LIST:-}"
       ;;
     1) kv removed 0; kv removed_list "" ;;
     3)
@@ -520,12 +524,12 @@ cmd_teesim_save() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
     [ -f "$TEESIM_CONFIG" ] || { echo "配置不存在：$TEESIM_CONFIG" >&2; return 1; }
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/teesim_set.awk" ] || { echo "缺少 teesim_set.awk" >&2; return 1; }
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_set.awk" ] || { echo "缺少 teesim_set.awk" >&2; return 1; }
 
-    dir="${TAA_DIR}/.ts_save.$$"
+    dir="${KL_DIR}/.kl__save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -556,10 +560,10 @@ cmd_teesim_save() {
     done < "$pairs"
 
     webui_lock || { rm -rf "$dir"; return 1; }
-    out="$TEESIM_DIR/.config.json.ts_auto.$$"
+    out="$TEESIM_DIR/.config.json.keylens.$$"
     status="$dir/status"
     $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" -v profile="$prof" \
-        -f "${TAA_PATCH%/*}/teesim_set.awk" "$TEESIM_CONFIG" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/teesim_set.awk" "$TEESIM_CONFIG" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
         ok)
@@ -569,7 +573,7 @@ cmd_teesim_save() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${TAA_DIR}/.ts_lock"
+                release_lock "${KL_DIR}/.kl__lock"
                 rm -rf "$dir"
                 echo "写入失败：$TEESIM_CONFIG" >&2
                 return 1
@@ -578,13 +582,13 @@ cmd_teesim_save() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${TAA_DIR}/.ts_lock"
+            release_lock "${KL_DIR}/.kl__lock"
             rm -rf "$dir"
             echo "配置定位失败：$TEESIM_CONFIG" >&2
             return 1
             ;;
     esac
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
 
     [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 TEE Simulator 配置（profile=$prof，$n 项）"
@@ -599,12 +603,12 @@ cmd_omk_save_injector() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
     [ -f "$OMK_INJECTOR" ] || { echo "injector.toml 不存在" >&2; return 1; }
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
 
-    dir="${TAA_DIR}/.ts_save.$$"
+    dir="${KL_DIR}/.kl__save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"; norm="$dir/pairs.norm"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -629,10 +633,10 @@ cmd_omk_save_injector() {
     done < "$pairs"
 
     webui_lock || { rm -rf "$dir"; return 1; }
-    out="$OMK_DIR/.injector.toml.ts_auto.$$"
+    out="$OMK_DIR/.injector.toml.keylens.$$"
     status="$dir/status"
     $AWK_CMD -v pairsfile="$norm" -v target=injector -v statusfile="$status" \
-        -f "${TAA_PATCH%/*}/omk_set.awk" "$OMK_INJECTOR" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/omk_set.awk" "$OMK_INJECTOR" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
         ok)
@@ -642,7 +646,7 @@ cmd_omk_save_injector() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${TAA_DIR}/.ts_lock"
+                release_lock "${KL_DIR}/.kl__lock"
                 rm -rf "$dir"
                 echo "写入失败：$OMK_INJECTOR" >&2
                 return 1
@@ -651,13 +655,13 @@ cmd_omk_save_injector() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${TAA_DIR}/.ts_lock"
+            release_lock "${KL_DIR}/.kl__lock"
             rm -rf "$dir"
             echo "配置定位失败：$OMK_INJECTOR" >&2
             return 1
             ;;
     esac
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
     [ "$saved" = 1 ] && { omk_restart injector; log_info "🧩 WebUI 更新 OMK injector.toml（$n 项）"; }
     kv saved "$saved"
@@ -698,13 +702,13 @@ cmd_omk_save_config() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
     cfg="$OMK_DIR/config.toml"
     [ -f "$cfg" ] || { echo "config.toml 不存在" >&2; return 1; }
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
 
-    dir="${TAA_DIR}/.ts_save.$$"
+    dir="${KL_DIR}/.kl__save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -738,10 +742,10 @@ cmd_omk_save_config() {
     done < "$pairs"
 
     webui_lock || { rm -rf "$dir"; return 1; }
-    out="$OMK_DIR/.config.toml.ts_auto.$$"
+    out="$OMK_DIR/.config.toml.keylens.$$"
     status="$dir/status"
     $AWK_CMD -v pairsfile="$pairs" -v target=config -v statusfile="$status" \
-        -f "${TAA_PATCH%/*}/omk_set.awk" "$cfg" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/omk_set.awk" "$cfg" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
         ok)
@@ -751,7 +755,7 @@ cmd_omk_save_config() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${TAA_DIR}/.ts_lock"
+                release_lock "${KL_DIR}/.kl__lock"
                 rm -rf "$dir"
                 echo "写入失败：$cfg" >&2
                 return 1
@@ -760,13 +764,13 @@ cmd_omk_save_config() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${TAA_DIR}/.ts_lock"
+            release_lock "${KL_DIR}/.kl__lock"
             rm -rf "$dir"
             echo "配置定位失败：$cfg" >&2
             return 1
             ;;
     esac
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
     scope=restart
     note=""
@@ -797,11 +801,11 @@ cmd_tricky_save_patch() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "tricky" ]; then echo "当前后端不是 Tricky Store" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "tricky" ]; then echo "当前后端不是 Tricky Store" >&2; return 1; fi
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/tricky_patch_set.awk" ] || { echo "缺少 tricky_patch_set.awk" >&2; return 1; }
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_patch_set.awk" ] || { echo "缺少 tricky_patch_set.awk" >&2; return 1; }
 
-    dir="${TAA_DIR}/.ts_save.$$"
+    dir="${KL_DIR}/.kl__save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -828,10 +832,10 @@ cmd_tricky_save_patch() {
 
     target="$TSTORE_DIR/security_patch.txt"
     webui_lock || { rm -rf "$dir"; return 1; }
-    out="$TSTORE_DIR/.security_patch.txt.ts_auto.$$"
+    out="$TSTORE_DIR/.security_patch.txt.keylens.$$"
     status="$dir/status"
     $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" -v scope="$sc" \
-        -f "${TAA_PATCH%/*}/tricky_patch_set.awk" "$target" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/tricky_patch_set.awk" "$target" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
         ok)
@@ -841,7 +845,7 @@ cmd_tricky_save_patch() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${TAA_DIR}/.ts_lock"
+                release_lock "${KL_DIR}/.kl__lock"
                 rm -rf "$dir"
                 echo "写入失败：$target" >&2
                 return 1
@@ -850,13 +854,13 @@ cmd_tricky_save_patch() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${TAA_DIR}/.ts_lock"
+            release_lock "${KL_DIR}/.kl__lock"
             rm -rf "$dir"
             echo "补丁表写入失败" >&2
             return 1
             ;;
     esac
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
     [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 Tricky 补丁表（scope=$sc，$n 项）"
     kv saved "$saved"
@@ -876,9 +880,9 @@ cmd_keybox_save() {
 
     backend_keybox_path
     target="$KEYBOX_PATH"
-    dir="${TAA_DIR}/.ts_keybox.$$"
+    dir="${KL_DIR}/.kl__keybox.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
-    tmp="${target%/*}/.${target##*/}.ts_auto.$$"
+    tmp="${target%/*}/.${target##*/}.keylens.$$"
     printf '%s' "$enc" | $bcmd -d > "$tmp" 2>/dev/null || { rm -rf "$dir"; rm -f "$tmp"; echo "keybox 解码失败" >&2; return 1; }
 
     bytes=$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')
@@ -892,13 +896,13 @@ cmd_keybox_save() {
     # 自带模板覆盖回这个文件，用户看到的却是"我明明换过了"）。
     ac="$AWK_CMD"
     [ -n "$ac" ] || ac=$(find_awk)
-    kbc="${TAA_PATCH%/*}/keybox_check.awk"
+    kbc="${KL_PATCH%/*}/keybox_check.awk"
     if [ -z "$ac" ] || [ ! -f "$kbc" ]; then
         rm -rf "$dir"; rm -f "$tmp"
         echo "缺少 awk 或 backends/keybox_check.awk，无法校验 keybox 结构" >&2
         return 1
     fi
-    if ! kbmsg=$($ac -v backend="$TAA_BACKEND" -f "$kbc" "$tmp" 2>&1); then
+    if ! kbmsg=$($ac -v backend="$KL_BACKEND" -f "$kbc" "$tmp" 2>&1); then
         rm -rf "$dir"; rm -f "$tmp"
         case "$kbmsg" in
             # 制表符在 case 里是分隔符，必须引起来，否则 `err` 与 `*)` 被当成两个词
@@ -916,7 +920,7 @@ cmd_keybox_save() {
         rm -f "$tmp" 2>/dev/null
         st=0
     fi
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
 
     [ "$st" = 1 ] || { echo "写入失败：$target" >&2; return 1; }
@@ -939,12 +943,12 @@ cmd_keybox_save() {
 cmd_teesim_profiles() {
     local ac
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
     [ -f "$TEESIM_CONFIG" ] || { echo "配置不存在：$TEESIM_CONFIG" >&2; return 1; }
     ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || { echo "未找到 awk，读不了 profile 列表" >&2; return 1; }
-    [ -f "${TAA_PATCH%/*}/teesim_profiles.awk" ] || { echo "缺少 teesim_profiles.awk" >&2; return 1; }
-    $ac -f "${TAA_PATCH%/*}/teesim_profiles.awk" "$TEESIM_CONFIG"
+    [ -f "${KL_PATCH%/*}/teesim_profiles.awk" ] || { echo "缺少 teesim_profiles.awk" >&2; return 1; }
+    $ac -f "${KL_PATCH%/*}/teesim_profiles.awk" "$TEESIM_CONFIG"
 }
 
 # 输出：present=0|1，另有 status / category / service_error_code / tee_broken。
@@ -976,8 +980,8 @@ cmd_tricky_patches() {
     [ -f "$f" ] || { echo "文件不存在：$f" >&2; return 1; }
     ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || { echo "未找到 awk，读不了补丁表" >&2; return 1; }
-    [ -f "${TAA_PATCH%/*}/tricky_patches.awk" ] || { echo "缺少 tricky_patches.awk" >&2; return 1; }
-    $ac -f "${TAA_PATCH%/*}/tricky_patches.awk" "$f"
+    [ -f "${KL_PATCH%/*}/tricky_patches.awk" ] || { echo "缺少 tricky_patches.awk" >&2; return 1; }
+    $ac -f "${KL_PATCH%/*}/tricky_patches.awk" "$f"
 }
 
 # 用法：omk-restart <keymint|injector|all>
@@ -989,7 +993,7 @@ cmd_omk_restart() {
     local which="$1" f
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
     case "$which" in
         keymint|injector|all) ;;
         *) echo "只能触发 keymint / injector / all（收到：$which）" >&2; return 1 ;;
@@ -1009,12 +1013,12 @@ cmd_omk_restart() {
 cmd_teesim_overrides() {
     local ac
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
     ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || { echo "未找到 awk，读不了 overrides" >&2; return 1; }
-    [ -f "${TAA_PATCH%/*}/teesim_overrides.awk" ] || { echo "缺少 teesim_overrides.awk" >&2; return 1; }
+    [ -f "${KL_PATCH%/*}/teesim_overrides.awk" ] || { echo "缺少 teesim_overrides.awk" >&2; return 1; }
     $ac -v ov="$TEESIM_DIR/overrides.json" -v ha="$TEESIM_DIR/harvested.json" \
-        -f "${TAA_PATCH%/*}/teesim_overrides.awk"
+        -f "${KL_PATCH%/*}/teesim_overrides.awk"
 }
 
 # 说明：overrides.json 的取值范围照抄上游的 validOverride（Harvester.kt:423-432）。
@@ -1055,13 +1059,13 @@ cmd_teesim_save_overrides() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
     ov="$TEESIM_DIR/overrides.json"; ha="$TEESIM_DIR/harvested.json"
     ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || { echo "未找到 awk，写不了 overrides.json" >&2; return 1; }
-    [ -f "${TAA_PATCH%/*}/json_flat_set.awk" ] || { echo "缺少 json_flat_set.awk" >&2; return 1; }
+    [ -f "${KL_PATCH%/*}/json_flat_set.awk" ] || { echo "缺少 json_flat_set.awk" >&2; return 1; }
 
-    dir="${TAA_DIR}/.ts_ov.$$"
+    dir="${KL_DIR}/.kl__ov.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -1078,7 +1082,7 @@ cmd_teesim_save_overrides() {
                 # 数据决定的可编辑性：只有守护进程自己那份是合成兜底值时才可改
                 # （Harvester.kt:183-189）。问自家那条只读汇总，不在这里另判一套。
                 if [ -z "$badf" ] && [ -n "$v" ] && [ -f "$ha" ]; then
-                    ed=$($ac -v ov="$ov" -v ha="$ha" -f "${TAA_PATCH%/*}/teesim_overrides.awk" 2>/dev/null \
+                    ed=$($ac -v ov="$ov" -v ha="$ha" -f "${KL_PATCH%/*}/teesim_overrides.awk" 2>/dev/null \
                         | $ac -F"$TAB" -v key="$k" '$1 == key { print $3; exit }')
                     if [ -n "$ed" ] && [ "$ed" != "1" ]; then
                         echo "$k 现在不可改：harvested.json 判它的来源不是合成兜底值（上游规则，不是本模块的限制）" >&2
@@ -1100,23 +1104,23 @@ cmd_teesim_save_overrides() {
     [ -f "$ov" ] || { printf '{}\n' > "$dir/base.json"; src="$dir/base.json"; }
 
     webui_lock || { rm -rf "$dir"; return 1; }
-    out="$TEESIM_DIR/.overrides.json.ts_auto.$$"
+    out="$TEESIM_DIR/.overrides.json.keylens.$$"
     status="$dir/status"
     $ac -v pairsfile="$pairs" -v statusfile="$status" \
-        -f "${TAA_PATCH%/*}/json_flat_set.awk" "$src" > "$out" 2>/dev/null
+        -f "${KL_PATCH%/*}/json_flat_set.awk" "$src" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
         ok)
             if cmp -s "$out" "$ov" 2>/dev/null; then
                 rm -f "$out" 2>/dev/null
-            elif commit_backend_file "$ov" "$out" "${TAA_DIR}/overrides.json.bak"; then
+            elif commit_backend_file "$ov" "$out" "${KL_DIR}/overrides.json.bak"; then
                 saved=1
                 # 上游的写入器就是 0644（overrides-io.js:34-39）：守护进程以 keystore
                 # 身份读这个文件，新建时留 0600 会直接读不到。私钥在 keybox.xml，不在这儿。
                 chmod 644 "$ov" 2>/dev/null
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${TAA_DIR}/.ts_lock"
+                release_lock "${KL_DIR}/.kl__lock"
                 rm -rf "$dir"
                 echo "写入失败：$ov" >&2
                 return 1
@@ -1125,13 +1129,13 @@ cmd_teesim_save_overrides() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${TAA_DIR}/.ts_lock"
+            release_lock "${KL_DIR}/.kl__lock"
             rm -rf "$dir"
             echo "overrides.json 定位失败（不是可写的扁平对象？）：$ov" >&2
             return 1
             ;;
     esac
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
     rm -rf "$dir" 2>/dev/null
     # 上游是 FileObserver 监听 overrides.json → resolveAndPush，不需要重启任何进程
     # （ConfigStore.kt:204-214）。它自家界面也是等 600ms 再回读 /status。
@@ -1142,8 +1146,8 @@ cmd_teesim_save_overrides() {
 }
 
 cmd_contract() {
-  kv api "$TAA_API"
-  kv commands "$TAA_COMMANDS"
+  kv api "$KL_API"
+  kv commands "$KL_COMMANDS"
 }
 
 # ---------- 目标条目元数据 ----------
@@ -1163,7 +1167,7 @@ cmd_target_meta() {
     [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || return 1
 
-    current_target_apps | $ac -v backend="$TAA_BACKEND" '
+    current_target_apps | $ac -v backend="$KL_BACKEND" '
         {
             tok = $0; b = tok; kind = "plain"; detail = ""
             if (backend == "tricky") {
@@ -1188,7 +1192,7 @@ cmd_set_mode() {
 
     require_runnable || return 1
     detect_backend "$MODDIR"
-    if [ "$TAA_BACKEND" != "tricky" ]; then
+    if [ "$KL_BACKEND" != "tricky" ]; then
         echo "只有 Tricky Store 后端支持条目模式" >&2
         return 1
     fi
@@ -1201,7 +1205,7 @@ cmd_set_mode() {
     webui_lock || return 1
     set_tricky_mode "$pkg" "$mode"
     rc=$?
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
 
     case "$rc" in
         0) log_info "🧩 WebUI 把 $pkg 的模式改为 $mode"; kv changed 1 ;;
@@ -1219,12 +1223,12 @@ cmd_backend_info() {
 
     detect_backend "$MODDIR"
 
-    case "$TAA_BACKEND" in
+    case "$KL_BACKEND" in
         teesim)
             mdir="$TEESIM_MODULE"
             keybox="$TEESIM_DIR/keybox.xml"
-            if [ -f "$TEESIM_CONFIG" ] && [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/teesim_info.awk" ]; then
-                info=$($AWK_CMD -f "${TAA_PATCH%/*}/teesim_info.awk" "$TEESIM_CONFIG" 2>/dev/null)
+            if [ -f "$TEESIM_CONFIG" ] && [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_info.awk" ]; then
+                info=$($AWK_CMD -f "${KL_PATCH%/*}/teesim_info.awk" "$TEESIM_CONFIG" 2>/dev/null)
                 kb=$(printf '%s\n' "$info" | sed -n 's/^default_keybox=//p')
                 [ -n "$kb" ] && case "$kb" in /*) keybox="$kb" ;; *) keybox="$TEESIM_DIR/$kb" ;; esac
             fi
@@ -1232,14 +1236,14 @@ cmd_backend_info() {
         omk)
             mdir="$OMK_MODULE"
             keybox="$OMK_DIR/keybox.xml"
-            if [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/omk_info.awk" ]; then
+            if [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/omk_info.awk" ]; then
                 local inj cfg
                 inj="$OMK_INJECTOR"; cfg="$OMK_DIR/config.toml"
                 [ -f "$inj" ] || inj=/dev/null
                 [ -f "$cfg" ] || cfg=/dev/null
                 if [ -f "$OMK_INJECTOR" ] || [ -f "$OMK_DIR/config.toml" ]; then
                     info=$($AWK_CMD -v injector="$OMK_INJECTOR" -v config="$OMK_DIR/config.toml" \
-                        -f "${TAA_PATCH%/*}/omk_info.awk" "$inj" "$cfg" 2>/dev/null)
+                        -f "${KL_PATCH%/*}/omk_info.awk" "$inj" "$cfg" 2>/dev/null)
                 fi
             fi
             ;;
@@ -1250,8 +1254,8 @@ cmd_backend_info() {
             kv patch_file "$patch"
             if [ -f "$patch" ]; then
                 kv patch_exists 1
-                if [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/tricky_info.awk" ]; then
-                    $AWK_CMD -f "${TAA_PATCH%/*}/tricky_info.awk" "$patch" 2>/dev/null
+                if [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_info.awk" ]; then
+                    $AWK_CMD -f "${KL_PATCH%/*}/tricky_info.awk" "$patch" 2>/dev/null
                 fi
             else
                 kv patch_exists 0
@@ -1259,7 +1263,7 @@ cmd_backend_info() {
             ;;
     esac
 
-    kv backend "$TAA_BACKEND"
+    kv backend "$KL_BACKEND"
     kv backend_name "$(backend_name)"
     kv module_dir "$mdir"
 
@@ -1298,7 +1302,7 @@ cmd_backend_info() {
     kv keybox_hash "$kb_sha"
 
     # TEE Simulator 允许在目录里放多份 keybox，config 里选文件名
-    if [ "$TAA_BACKEND" = "teesim" ]; then
+    if [ "$KL_BACKEND" = "teesim" ]; then
         kb_list=""
         for f in "$TEESIM_DIR"/*.xml; do
             [ -f "$f" ] || continue
@@ -1338,7 +1342,7 @@ cmd_status() {
     if [ -f "$TARGET_FILE" ]; then
         target_exists=1
         test -w "$TARGET_FILE" && target_writable=1
-    elif [ -d "$TAA_DIR" ] && test -w "$TAA_DIR"; then
+    elif [ -d "$KL_DIR" ] && test -w "$KL_DIR"; then
         target_writable=1
     fi
 
@@ -1357,13 +1361,13 @@ cmd_status() {
     kv description "$desc"
     mod_prop id;    kv mod_id "$MOD_PROP_VALUE"
     mod_prop version; kv mod_version "$MOD_PROP_VALUE"
-    kv backend "$TAA_BACKEND"
+    kv backend "$KL_BACKEND"
     kv backend_name "$bname"
     kv conflict "$conflict"
     kv teesim_state "$teesim_st"
     kv tricky_state "$tricky_st"
     kv omk_state "$omk_st"
-    kv data_dir "$TAA_DIR"
+    kv data_dir "$KL_DIR"
     kv target_file "$TARGET_FILE"
     kv target_exists "$target_exists"
     kv target_writable "$target_writable"
@@ -1371,24 +1375,24 @@ cmd_status() {
 
     if props_disabled; then masking=off; else masking=on; fi
     kv props_masking "$masking"
-    kv props_off_file "$TAA_PROPS_OFF"
+    kv props_off_file "$KL_PROPS_OFF"
 
     # 守护进程：pids 文件里仍存活的进程数
     alive=0; p=""
-    if [ -f "${TAA_DIR}/.ts_daemon_pids.list" ]; then
+    if [ -f "${KL_DIR}/.kl__daemon_pids.list" ]; then
         while read -r p; do
             [ -n "$p" ] && kill -0 "$p" 2>/dev/null && alive=$((alive + 1))
-        done < "${TAA_DIR}/.ts_daemon_pids.list"
+        done < "${KL_DIR}/.kl__daemon_pids.list"
     fi
     kv daemon_alive "$alive"
 
     # 行数与字节数一次 wc 拿到（-lc 的输出顺序为「行 字节」）
     lines=""; bytes=""
-    if [ -f "$TAA_LOG" ]; then
-        set -- $(wc -lc < "$TAA_LOG" 2>/dev/null)
+    if [ -f "$KL_LOG" ]; then
+        set -- $(wc -lc < "$KL_LOG" 2>/dev/null)
         lines="${1:-}"; bytes="${2:-}"
     fi
-    kv log_file "$TAA_LOG"
+    kv log_file "$KL_LOG"
     kv log_lines "${lines:-}"
     kv log_bytes "${bytes:-}"
     return 0
@@ -1506,16 +1510,16 @@ cmd_log() {
     local n
 
     n=$(clamp_int "$ARG" 60 1 400)
-    if [ -f "$TAA_LOG" ]; then
-        tail -n "$n" "$TAA_LOG" 2>/dev/null
+    if [ -f "$KL_LOG" ]; then
+        tail -n "$n" "$KL_LOG" 2>/dev/null
         return 0
     fi
     # 缓冲不存在时回退 logcat（重启即清空，仅作兜底）
-    logcat -d -s TS-AUTO 2>/dev/null | tail -n "$n"
+    logcat -d -s KeyLens 2>/dev/null | tail -n "$n"
 }
 
 cmd_clear_log() {
-    rm -f "$TAA_LOG" "${TAA_LOG}.tmp" 2>/dev/null
+    rm -f "$KL_LOG" "${KL_LOG}.tmp" 2>/dev/null
     log_info "🧹 WebUI 已清空运行日志缓冲"
     kv cleared 1
 }
@@ -1558,7 +1562,7 @@ RULES
 cmd_boot_hash() {
     local raw="" current status
 
-    [ -f "$TAA_BOOT_HASH" ] && raw=$(tr -d '[:space:]' < "$TAA_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
+    [ -f "$KL_BOOT_HASH" ] && raw=$(tr -d '[:space:]' < "$KL_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
     prop_now ro.boot.vbmeta.digest; current="$PROP_NOW"
     if [ -z "$raw" ]; then
         status=unset
@@ -1581,7 +1585,7 @@ cmd_set_boot_hash() {
 
     require_runnable || return 1
     if [ -z "$v" ] || [ "$v" = "-" ]; then
-        set_boot_hash "" || { echo "清除失败：$TAA_BOOT_HASH" >&2; return 1; }
+        set_boot_hash "" || { echo "清除失败：$KL_BOOT_HASH" >&2; return 1; }
         log_info "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）"
         prop_now ro.boot.vbmeta.digest
         kv saved 0
@@ -1592,7 +1596,7 @@ cmd_set_boot_hash() {
 
     v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
     boot_hash_valid "$v" || { echo "哈希必须是 64 或 128 位十六进制" >&2; return 1; }
-    set_boot_hash "$v" || { echo "写入失败：$TAA_BOOT_HASH" >&2; return 1; }
+    set_boot_hash "$v" || { echo "写入失败：$KL_BOOT_HASH" >&2; return 1; }
     apply_boot_hash && applied=1
     if [ "$applied" = 1 ]; then
         log_info "🧩 WebUI 设置 Verified Boot 哈希（${#v} 位）并已应用"
@@ -1642,7 +1646,7 @@ cmd_props_switch() {
         echo "参数只能是 on 或 off" >&2
         return 1
     fi
-    set_props_masking "$want" || { echo "开关文件写入失败：$TAA_PROPS_OFF" >&2; return 1; }
+    set_props_masking "$want" || { echo "开关文件写入失败：$KL_PROPS_OFF" >&2; return 1; }
 
     if [ "$want" = off ]; then
         log_info "🛠 WebUI 关闭属性伪装（下次开机起不再写入期望值）"
@@ -1661,13 +1665,13 @@ cmd_sync() {
     webui_lock || return 1
     # 用户显式点了「立即同步」：允许把"读到空已装列表"当成真的清空处理；
     # 后台守护进程不加这个标记（读取失败时宁可不写）。
-    TAA_EMPTY_OK=1
-    run_sync "$PROP_FILE" "${TAA_DIR}/.ts_tmp"
+    KL_EMPTY_OK=1
+    run_sync "$PROP_FILE" "${KL_DIR}/.kl__tmp"
     rc=$?
-    release_lock "${TAA_DIR}/.ts_lock"
+    release_lock "${KL_DIR}/.kl__lock"
 
     kv rc "$rc"
-    kv count "$TAA_COUNT"
+    kv count "$KL_COUNT"
     # 同步后的新描述（模块详情页与界面共用同一份状态）
     MODULE_PROP_CACHE=""
     mod_prop description; kv description "$MOD_PROP_VALUE"

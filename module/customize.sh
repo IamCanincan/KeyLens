@@ -7,7 +7,7 @@
 SKIPUNZIP=0
 
 ui_print "================================================"
-ui_print "   🚀 TS-AUTO-ADD 安装程序"
+ui_print "   🚀 KeyLens 安装程序"
 ui_print "================================================"
 
 MODDIR="$MODPATH"          # 供 lib/common.sh 定位模块目录
@@ -16,7 +16,7 @@ MODDIR="$MODPATH"          # 供 lib/common.sh 定位模块目录
 # ---------- 后端互斥检查 ----------
 # 两者同时启用时直接终止安装，避免装上后模块处于停止状态
 if backends_conflict; then
-    abort "  ⛔ $TAA_CONFLICT_MSG"
+    abort "  ⛔ $KL_CONFLICT_MSG"
 fi
 
 # ---------- [1/5] 依赖检查 ----------
@@ -32,23 +32,23 @@ ui_print "  👀 监听方式：$INOTIFY_MODE（${INOTIFY_CMD%% *}）"
 ui_print " "
 ui_print "🧩 [2/5] 探测后端并初始化目录"
 detect_backend "$MODPATH"
-mkdir -p "$TAA_DIR" 2>/dev/null || abort "  ❌ 无法创建目录 $TAA_DIR"
+mkdir -p "$KL_DIR" 2>/dev/null || abort "  ❌ 无法创建目录 $KL_DIR"
 ui_print "  🔌 后端：$(backend_name)"
-ui_print "  📁 目录：$TAA_DIR"
+ui_print "  📁 目录：$KL_DIR"
 
-if [ "$TAA_BACKEND" = "teesim" ] || [ "$TAA_BACKEND" = "omk" ]; then
+if [ "$KL_BACKEND" = "teesim" ] || [ "$KL_BACKEND" = "omk" ]; then
     [ -n "$AWK_CMD" ] || ui_print "  ⚠️ 未找到 awk，$(backend_name) 配置将无法维护"
 elif [ ! -f "$TARGET_FILE" ]; then
     touch "$TARGET_FILE" 2>/dev/null
     chmod 644 "$TARGET_FILE" 2>/dev/null
 fi
-if [ "$TAA_BACKEND" = "omk" ] && [ ! -f "$TARGET_FILE" ]; then
+if [ "$KL_BACKEND" = "omk" ] && [ ! -f "$TARGET_FILE" ]; then
     ui_print "  ⚠️ 未找到 $TARGET_FILE；先打开一次 OhMyKeymint 生成配置，再点「立即同步」"
 fi
 
 # 名单只有目标文件本身。第一次同步（见下）会在目标文件还没有内容时把谷歌三件套
 # 种进去；OhMyKeymint 首次接入则沿用现有 scoop，只把当前已装记成基线。
-if [ "$TAA_BACKEND" = "omk" ]; then
+if [ "$KL_BACKEND" = "omk" ]; then
     ui_print "  📝 名单：$TARGET_FILE（首次沿用现有 scoop，之后新装自动加入）"
 else
     ui_print "  📝 名单：$TARGET_FILE（首次同步会种入谷歌三件套）"
@@ -65,20 +65,20 @@ chmod 0755 "$MODPATH/action.sh" 2>/dev/null
 # ---------- [4/5] 清理旧版残留 ----------
 ui_print " "
 ui_print "🧹 [4/5] 清理旧版文件"
-rm -rf "$TSTORE_DIR/.ts_lock" "$TSTORE_DIR/.ts_debounce" "$TSTORE_DIR/.ts_tmp" \
-       "$TEESIM_DIR/.ts_lock" "$TEESIM_DIR/.ts_debounce" "$TEESIM_DIR/.ts_tmp" \
-       "$OMK_STATE_DIR/.ts_lock" "$OMK_STATE_DIR/.ts_debounce" "$OMK_STATE_DIR/.ts_tmp" \
-       "$TSTORE_DIR"/.ts_daemon*.pid "$TEESIM_DIR"/.ts_daemon*.pid "$OMK_STATE_DIR"/.ts_daemon*.pid 2>/dev/null
-rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.ts_fingerprint" "$TEESIM_DIR/.ts_fingerprint" "$OMK_STATE_DIR/.ts_fingerprint" 2>/dev/null
+rm -rf "$TSTORE_DIR/.kl__lock" "$TSTORE_DIR/.kl__debounce" "$TSTORE_DIR/.kl__tmp" \
+       "$TEESIM_DIR/.kl__lock" "$TEESIM_DIR/.kl__debounce" "$TEESIM_DIR/.kl__tmp" \
+       "$OMK_STATE_DIR/.kl__lock" "$OMK_STATE_DIR/.kl__debounce" "$OMK_STATE_DIR/.kl__tmp" \
+       "$TSTORE_DIR"/.kl__daemon*.pid "$TEESIM_DIR"/.kl__daemon*.pid "$OMK_STATE_DIR"/.kl__daemon*.pid 2>/dev/null
+rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.kl__fingerprint" "$TEESIM_DIR/.kl__fingerprint" "$OMK_STATE_DIR/.kl__fingerprint" 2>/dev/null
 rm -f "$TSTORE_DIR/taa_sys.txt" 2>/dev/null
 rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 
 # ---------- [5/5] 初始同步 ----------
 ui_print " "
 ui_print "🔄 [5/5] 运行初始同步"
-run_sync "$MODPATH/module.prop" "${TAA_DIR}/.ts_tmp"
+run_sync "$MODPATH/module.prop" "${KL_DIR}/.kl__tmp"
 rc=$?
-ui_print "  📦 应用总数：$TAA_COUNT"
+ui_print "  📦 应用总数：$KL_COUNT"
 case "$rc" in
     0) ui_print "  ✅ 写入完成" ;;
     1) ui_print "  ℹ️ 数据与现有配置一致" ;;
@@ -87,5 +87,5 @@ esac
 
 ui_print "================================================"
 ui_print "  ✅ 安装完成，重启后生效"
-ui_print "  📝 运行日志：$TAA_LOG"
+ui_print "  📝 运行日志：$KL_LOG"
 ui_print "================================================"

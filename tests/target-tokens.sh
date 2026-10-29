@@ -31,12 +31,12 @@ chk_has() { grep -q -- "$2" "$1" && printf '  ok   %s\n' "$3" || { printf '  ✗
 chk_no() { grep -q -- "$2" "$1" && { printf '  ✗    %s\n' "$3"; fail=1; } || printf '  ok   %s\n' "$3"; }
 list() { current_target_apps | tr '\n' ' ' | sed 's/ $//'; }
 req() { printf '%s\n' "$@" > "$T/req"; }
-state() { TAA_DIR="$T/state"; mkdir -p "$TAA_DIR"; ST_INSTALLED="$TAA_DIR/.ts_installed_last"; ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"; ST_EVER="$TAA_DIR/.ts_ever"; ST_EVER_NEW="$TAA_DIR/.ts_ever.new"; : > "$ST_EVER"; }
+state() { KL_DIR="$T/state"; mkdir -p "$KL_DIR"; ST_INSTALLED="$KL_DIR/.kl__installed_last"; ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"; ST_EVER="$KL_DIR/.kl__ever"; ST_EVER_NEW="$KL_DIR/.kl__ever.new"; : > "$ST_EVER"; }
 state
 
 echo "── 1 Tricky target.txt：注释 / 后缀 / 非法行 ──"
-TAA_BACKEND="tricky"
-TAA_PATCH="$ROOT/module/backends/teesim.awk"    # 只作为 backends/ 目录锚点
+KL_BACKEND="tricky"
+KL_PATCH="$ROOT/module/backends/teesim.awk"    # 只作为 backends/ 目录锚点
 TARGET_FILE="$T/target.txt"
 cat > "$TARGET_FILE" <<'EOF'
 # google
@@ -57,7 +57,7 @@ chk "名单内容" "com.a com.b! com.c com.d?" "$(list)"
 req com.b
 remove_target_apps "$T/req"; chk_rc "移出 com.b 会连模式行一起删" 0 "$?"
 chk "b 已不在名单" "com.a com.c com.d?" "$(list)"
-chk "removed_list 报的是实际 token" "com.b!" "$TAA_REMOVED_LIST"
+chk "removed_list 报的是实际 token" "com.b!" "$KL_REMOVED_LIST"
 chk_has "$TARGET_FILE" '^com\.c # trailing comment$' "其它行内注释原样保留"
 chk_has "$ST_EVER" '^com\.b$' "ever 记基础包名 b"
 
@@ -74,9 +74,9 @@ set_tricky_mode com.s generate; chk_rc "后缀前有空格的写法也能改" 0 
 chk_has "$TARGET_FILE" '^com\.s! # spaced$' "改成规范写法，注释保留"
 
 echo "── 4 TEESim：@用户 / uid: 原样 ──"
-TAA_BACKEND="teesim"
+KL_BACKEND="teesim"
 TARGET_FILE="$T/config.json"
-TAA_PATCH="$ROOT/module/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10","uid:10123"]},"work":{"apps":["x"]}}}' > "$TARGET_FILE"
 chk "读取原样 token" "com.a com.b@10 uid:10123" "$(list)"
 req com.b com.c
@@ -94,24 +94,24 @@ add_target_apps "$T/req"; chk_rc "@用户 与同包裸条目并存" 0 "$?"
 chk "并存后的 apps" "com.a com.a@10 com.b@10 com.c uid:10123" "$(list)"
 
 echo "── 5 快照差分：卸载清变体、uid 保留、新装不重复 ──"
-TAA_BACKEND="teesim"
+KL_BACKEND="teesim"
 TARGET_FILE="$T/config2.json"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10","uid:10123"]}}}' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$TAA_DIR/.ts_installed_last"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
 FAKE_INSTALLED="com.a"
 build_app_list "$T/out"; chk "卸载 b 后 @10 一起消失，uid 保留" "com.a uid:10123" "$(sed '/^$/d' "$T/out" | tr '\n' ' ' | sed 's/ $//')"
 chk_has "$ST_EVER_NEW" '^com\.b$' "ever 记的是 b（不是 b@10）"
 
-TAA_BACKEND="tricky"
+KL_BACKEND="tricky"
 TARGET_FILE="$T/target2.txt"
 printf 'com.a\ncom.b?\n' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$TAA_DIR/.ts_installed_last"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
 FAKE_INSTALLED="com.a"
 build_app_list "$T/out"; chk "卸载 b 后 b? 一起消失" "com.a" "$(sed '/^$/d' "$T/out")"
 
 printf 'com.a\ncom.b@10\n' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$TAA_DIR/.ts_installed_last"
-TAA_BACKEND="teesim"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
+KL_BACKEND="teesim"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10"]}}}' > "$TARGET_FILE"
 FAKE_INSTALLED="com.a
 com.b"
@@ -119,7 +119,7 @@ build_app_list "$T/out"; chk_no "$T/out" '^com\.b$' "已有 @10 变体时不再�
 
 echo "── 6 excluded：只按基础包名 ──"
 TARGET_FILE="$T/target3.txt"
-TAA_BACKEND="tricky"
+KL_BACKEND="tricky"
 printf 'com.a\n' > "$TARGET_FILE"
 printf 'com.b\n' > "$ST_EVER"
 FAKE_INSTALLED="com.a
@@ -198,14 +198,14 @@ got=$(awk -v backend=teesim -f "$ROOT/module/backends/entry_base.awk" "$T/toks" 
 chk "teesim 变体（uid 丢弃）" "com.a com.b? com.c! com.d" "$got"
 
 echo "── 9 is_target_entry：按后端校验 ──"
-TAA_BACKEND=tricky
+KL_BACKEND=tricky
 is_target_entry 'com.a?' && ok=1 || ok=0; chk "tricky 接受 ?" 1 "$ok"
 is_target_entry 'com.a@10' && ok=1 || ok=0; chk "tricky 拒绝 @用户" 0 "$ok"
-TAA_BACKEND=teesim
+KL_BACKEND=teesim
 is_target_entry 'com.a@10' && ok=1 || ok=0; chk "teesim 接受 @用户" 1 "$ok"
 is_target_entry 'uid:10123' && ok=1 || ok=0; chk "teesim 接受 uid:" 1 "$ok"
 is_target_entry 'com.a?' && ok=1 || ok=0; chk "teesim 拒绝模式后缀" 0 "$ok"
-TAA_BACKEND=omk
+KL_BACKEND=omk
 is_target_entry 'com.a' && ok=1 || ok=0; chk "omk 接受包名" 1 "$ok"
 is_target_entry 'com.a?' && ok=1 || ok=0; chk "omk 拒绝后缀" 0 "$ok"
 

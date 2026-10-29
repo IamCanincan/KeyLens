@@ -42,7 +42,7 @@ props_expect_rules() {
 # 用法：props_disabled
 # 返回：0=已关闭 1=未关闭
 props_disabled() {
-    [ -f "$TAA_PROPS_OFF" ]
+    [ -f "$KL_PROPS_OFF" ]
 }
 
 # 说明：开关属性伪装（供 webui.sh 调用）；关闭只影响下一次开机的伪装。
@@ -51,12 +51,12 @@ props_disabled() {
 set_props_masking() {
     case "$1" in
         on)
-            rm -f "$TAA_PROPS_OFF" 2>/dev/null
+            rm -f "$KL_PROPS_OFF" 2>/dev/null
             ! props_disabled
             ;;
         off)
-            : > "$TAA_PROPS_OFF" 2>/dev/null
-            chmod 600 "$TAA_PROPS_OFF" 2>/dev/null
+            : > "$KL_PROPS_OFF" 2>/dev/null
+            chmod 600 "$KL_PROPS_OFF" 2>/dev/null
             props_disabled
             ;;
         *)  return 1 ;;
@@ -84,8 +84,8 @@ boot_hash_valid() {
 boot_hash_get() {
     local v
 
-    [ -f "$TAA_BOOT_HASH" ] || return 0
-    v=$(tr -d '[:space:]' < "$TAA_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
+    [ -f "$KL_BOOT_HASH" ] || return 0
+    v=$(tr -d '[:space:]' < "$KL_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
     boot_hash_valid "$v" || return 0
     printf '%s\n' "$v"
 }
@@ -97,18 +97,18 @@ set_boot_hash() {
     local v="${1:-}" tmp
 
     if [ -z "$v" ] || [ "$v" = "-" ]; then
-        rm -f "$TAA_BOOT_HASH" 2>/dev/null
-        [ ! -f "$TAA_BOOT_HASH" ]
+        rm -f "$KL_BOOT_HASH" 2>/dev/null
+        [ ! -f "$KL_BOOT_HASH" ]
         return
     fi
 
     v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
     boot_hash_valid "$v" || return 1
-    tmp="${TAA_BOOT_HASH}.tmp.$$"
+    tmp="${KL_BOOT_HASH}.tmp.$$"
     printf '%s\n' "$v" > "$tmp" 2>/dev/null || return 1
     chmod 600 "$tmp" 2>/dev/null
-    mv -f "$tmp" "$TAA_BOOT_HASH" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
-    [ -f "$TAA_BOOT_HASH" ]
+    mv -f "$tmp" "$KL_BOOT_HASH" 2>/dev/null || { rm -f "$tmp" 2>/dev/null; return 1; }
+    [ -f "$KL_BOOT_HASH" ]
 }
 
 # 说明：把配置写进 ro.boot.vbmeta.digest 并读回校验；hash_alg 只在为空时补，

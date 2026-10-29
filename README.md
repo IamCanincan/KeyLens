@@ -1,12 +1,12 @@
-# TS-AUTO-ADD (v2.2.19.5-yuzu)
+# KeyLens (v2.2.19.5-yuzu)
 
 [![Build CI Module](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml/badge.svg)](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml)
 [![Latest Release](https://img.shields.io/github/v/release/IamCanincan/TS-AUTO-ADD?label=release&color=blue)](https://github.com/IamCanincan/TS-AUTO-ADD/releases/latest)
 [![License](https://img.shields.io/github/license/IamCanincan/TS-AUTO-ADD?color=green)](LICENSE)
 
-TS-AUTO-ADD 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** / **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)** / **TEE Simulator** / **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)** 的 Magisk 辅助模块，通过后台守护进程自动维护应用包名列表，并可在开机时重置关键系统属性，有效提升 Play Integrity 通过率。
+KeyLens 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** / **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)** / **TEE Simulator** / **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)** 的 Magisk 辅助模块：主体是这四家的**统一控制面板**（名单、补丁级别、keybox、系统属性伪装都在界面里读写），附加功能是通过后台守护进程自动维护应用包名列表。
 
-> 本模块**不再修改安全补丁**（`security_patch.txt`），仅维护应用列表与系统属性。
+> 安全补丁级别**可以**在界面里改（Tricky 写 `security_patch.txt`、TEESim 写 profile 的 `patchLevel`、OMK 写 `config.toml` 的 `[trust]`）—— 早期版本"不再修改安全补丁"的说法已经过期。三家后端同时启用时模块自动停止。
 
 ### 🔌 三后端自动探测
 
@@ -36,10 +36,10 @@ TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段
   开机早期（Zygote 启动前，`post-fs-data.sh`）执行属性重置，模拟设备处于锁定、绿标状态（如 `ro.build.type`、`ro.boot.verifiedbootstate`、`ro.debuggable` 等），确保 `Build.TYPE` 等静态字段在应用启动前即为干净值；开机完成后再幂等复核一次。WebUI 的「属性」页还可以填写 **verifiedBootHash**（64/128 位十六进制），开机时写进 `ro.boot.vbmeta.digest`。
 
 - **统一进程管理**  
-  所有后台子进程 PID 记录于 `.ts_daemon_pids.list`，卸载时可一次性全部终止，无残留。
+  所有后台子进程 PID 记录于 `.kl_daemon_pids.list`，卸载时可一次性全部终止，无残留。
 
 - **运行日志（logcat + 本地缓冲）**  
-  日志同时写入系统日志（`logcat`，tag 为 `TS-AUTO`）与本地缓冲文件 `/data/adb/ts_auto.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
+  日志同时写入系统日志（`logcat`，tag 为 `KeyLens`）与本地缓冲文件 `/data/adb/keylens.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
 
 - **WebUI 控制台（Material 3 Expressive）**  
   模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、对照目标名单与已装应用、翻日志、手动同步，以及一键开关开机属性伪装。「后端与格式」页按当前后端分别适配并可**手动配置**：TEE Simulator 的 default profile（模式、keybox 文件名、补丁级别、OS 版本、自动纳入、设备身份）、Tricky Store OSS 的全局补丁表（`system / vendor / boot / all`）、OhMyKeymint 的 injector（过滤、拒绝包、10 个拦截方法）与 config.toml（日志、trust、设备身份）；三家都支持粘贴替换 keybox.xml。保存只提交改动过的字段，写前备份，Tricky/TEE Simulator 由各自的 watcher 重载，OMK 通过自己的 `restart.injector / restart.keymint` 生效。名单里 Tricky 的条目带 `自动 / 叶证书 / 证书生成` 选择，TEE Simulator 的 `pkg@用户` 与 `uid:数字` 会显示成对应标签。界面是单文件、不联网；`@material/web 2.5.0` 已打成内联 bundle（不需要联网加载任何库或字体）。
@@ -120,7 +120,16 @@ THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 - **发行版（推荐）**：到 [Releases](https://github.com/IamCanincan/TS-AUTO-ADD/releases) 下载 `TS-AUTO-ADD-<版本>.zip`（文件名与 `update.json` 中的 `zipUrl` 一致，管理器内更新也走这一份）。
 - **CI 构建**：每次推送到 `main` 会自动构建，版本号附带时间戳后缀（`-ci`）。到 [Actions](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml) 打开最近一次运行，在页面底部 Artifacts 下载 —— 仅供测试，不要当作正式版本。
 
+### 从旧版 TS-AUTO-ADD 升级（模块改名 KeyLens，id 也变了）
+
+模块 id 从旧名 `ts-auto-add` 改成 `keylens`，管理器是按 **id（也就是模块目录名）** 认模块的，所以：
+
+- **先卸载旧模块，再刷 KeyLens 的 zip**。两个目录并存 = 两套 `service.sh`/`post-fs-data.sh` 同时跑：两份守护进程各自监听、各自写同一份后端配置，行为不可预期。
+- 卸载旧模块**不会**丢设置：属性伪装开关、启动哈希、基线名单这些不在模块目录里，改名后由 `migrate_legacy_paths` 一次性搬到新名字（`/data/adb/ts_auto.*` → `/data/adb/keylens.*`，后端目录里 `.ts_*` → `.kl_*`），迁移只在新名字不存在时动，反复调用是 no-op。
+- `update.json` 的更新通道按 id 走，**旧 id 的装机收不到 KeyLens 的自动更新** —— 这一版要靠手动刷入。GitHub 仓库名仍是 `TS-AUTO-ADD`（改名要在仓库设置里做，`zipUrl`/徽章 URL 等它改完再一起动）。
+
 ### 前置条件
+
 - 已安装以下**任一**后端模块：
   - **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** 或 **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)**（模块 id `tricky_store`），`/data/adb/tricky_store/target.txt` 存在（可为空）；
   - **TEE Simulator**（模块 id `teesim`），`/data/adb/teesim/config.json` 存在；
@@ -144,7 +153,7 @@ THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 若需立即触发一次完整同步（应用列表），执行：
 
 ```bash
-sh /data/adb/modules/ts-auto-add/action.sh
+sh /data/adb/modules/keylens/action.sh
 ```
 
 ### 🖥 WebUI 控制台
@@ -161,7 +170,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 | ↳ **后端配置** | 条目语法说明 + 按当前后端渲染的可编辑字段（见下面「后端配置」）；名单本身在「应用名单」页 | 改当前后端的配置字段与 keybox |
 | ↳ **系统属性伪装** | 17 项属性按「构建 / 调试与安全 / 启动与验证 / 保修位」分组，只在不符/未定义时标出期望值与状态 | 开关开机伪装、立即应用一次 |
 | ↳ **Verified Boot 哈希** | 当前值与已保存值、保存后的状态提示（只写本次运行，不受上面开关影响） | 保存并应用 / 清除 verifiedBootHash |
-| **日志** | `ts_auto.log` 末尾 30/60/120/300 行。每行拆成「时间 · 级别图标 · 正文」三列对齐，级别只有四个统一图标（信息 / 完成 / 警告 / 错误），正文里的 emoji 前缀在渲染时剥掉；按级别着色，可清空缓冲、可开 5 秒自动刷新（默认关） | 清空日志 |
+| **日志** | `keylens.log` 末尾 30/60/120/300 行。每行拆成「时间 · 级别图标 · 正文」三列对齐，级别只有四个统一图标（信息 / 完成 / 警告 / 错误），正文里的 emoji 前缀在渲染时剥掉；按级别着色，可清空缓冲、可开 5 秒自动刷新（默认关） | 清空日志 |
 | **关于** | 两块：「界面」（桥接与契约、应用图标加载统计、执行身份、工具、取色/字体/深浅、生效值）与「设备与路径」（设备、模块/命令/数据/目标/日志路径）；只列值与来源 | 只读 |
 
 几点需要知道：
@@ -179,7 +188,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - **图形语言只有一套**：界面里的图标全是内联 SVG（`ICON` 表），所以脚本写进日志与状态描述里的 emoji 前缀（`ℹ️ ✅ ⚠️ ❌ 🔄 👀 …`，实测 23 种）在渲染时一律剥掉、换成四个级别图标之一。这一步只能在界面做：缓冲里已有的行早就带着 emoji 落盘了，改脚本只影响新行。
 - **短页垂直居中**：内容比一屏短的页（功能菜单、Verified Boot、日志…）在内容区里居中，主页保持顶部对齐（英雄卡是锚点）—— 它不靠居中解决空白，而是补一块「最近动态」，把最后一张卡下面那 412 CSS px（视口的 42%）填到只剩 56；`justify-content:safe center` 让长页自动退回从顶部开始。**圆角要同心**：板块色块的 11 = 卡片 20（边框外沿）− 1px 边框 − 8px 间距；底栏 28 + 6 间距 = 胶囊 22；改圆角时按这条算，别各自取档位。
 - 界面**不联网、不加载任何外部资源**（单文件；样式、脚本与内联的 Material Web bundle 都在 `index.html` 里，字体直接交给 WebView 的 `system-ui`），断网、无 Play 服务的机器一样能开。WebView 需要 **Chromium 111+** 才能解析 Material Web 2.5；更旧的 WebView 会在顶部直接提示升级，而不是空白页。
-- 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
+- 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/keylens/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
 - 界面开机先问一次 `contract`（命令层自报契约号与命令清单）：**号对不上就横幅明说「界面与命令层不是同一版」，并把写命令挡在传输层外**（读命令仍放行，好让人看到现场）。另外每次调用会校验界面真正要读的关键键（`status` / `env` / `boot-hash` / `sync` / `restore-*` / `remove-apps` 等）：字段名变了会横幅「命令层返回格式不认识」并停写，不会静默画成空值。需要这条是因为迭代时可以只推 `index.html` 或只推 `webui.sh`，不同版以前只会表现为"某个值怪怪的"。改任何命令的输出形状仍要两侧同时把号 +1；电脑上预览可用 `?badapi=99` 验契约号，形状检查可在演示数据里临时改坏一个键验证。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
 - **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。Material Web 组件通过 `:root` 里未分层的 `--md-sys-color-*` 别名映射到这套 token（`m3.css` 在 `@layer` 里，不会盖掉）。
@@ -225,7 +234,7 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
   ```
   写入失败时显示 `⚠️ [… 写入失败 …]`，后端冲突停止时显示 `⛔ [模块已停止 …]`。
 
-- **运行日志**：日志同时写 `logcat`（tag `TS-AUTO`）与本地缓冲 `/data/adb/ts_auto.log`（超过 64KB 自动只保留末尾 200 行）。
+- **运行日志**：日志同时写 `logcat`（tag `KeyLens`）与本地缓冲 `/data/adb/keylens.log`（超过 64KB 自动只保留末尾 200 行）。
   最省事的方式是在管理器里点模块的“操作”按钮：`action.sh` 会同步一次并附带打印最近 15 条日志，无需自己 `su`。
 
   以下命令供手动排查使用。
@@ -233,9 +242,9 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
   设备上读日志**需要 root**（`/data/adb` 为 `0700`；在终端 App 里先 `su`，或用 `su -c '...'` 包裹）：
 
   ```bash
-  tail -n 50 /data/adb/ts_auto.log                     # 本地缓冲，跨重启保留（推荐）
-  grep -E '后端|同步|失败|停止' /data/adb/ts_auto.log   # 只看关键行
-  logcat -d -s TS-AUTO | tail -n 30                    # 系统日志（重启即清空）
+  tail -n 50 /data/adb/keylens.log                     # 本地缓冲，跨重启保留（推荐）
+  grep -E '后端|同步|失败|停止' /data/adb/keylens.log   # 只看关键行
+  logcat -d -s KeyLens | tail -n 30                    # 系统日志（重启即清空）
   logcat -s TS-AUTO                                    # 实时跟随（Ctrl+C 退出）
   logcat -c                                            # 先清空系统缓冲再操作，便于观察单次行为
   ```
@@ -244,8 +253,8 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 
   ```bash
   adb logcat -s TS-AUTO                                       # 实时查看（不需要 root）
-  adb shell su -c 'tail -n 50 /data/adb/ts_auto.log'          # 读本地缓冲（需要 root）
-  adb shell su -c 'cat /data/adb/ts_auto.log' > ts_auto_log.txt   # 导出到电脑再慢慢看
+  adb shell su -c 'tail -n 50 /data/adb/keylens.log'          # 读本地缓冲（需要 root）
+  adb shell su -c 'cat /data/adb/keylens.log' > keylens_log.txt   # 导出到电脑再慢慢看
   ```
 
   > 模块只在**开机**与**文件变化**（安装/卸载应用）时写日志，没有事件时不会有输出，属正常现象。缓冲文件的每行都带 `月-日 时:分:秒` 时间戳，不依赖 `logcat` 缓冲是否还在。
@@ -287,7 +296,7 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 - 名单与 Tricky 的条目模式仍在「应用列表」维护；配置页不写 `apps` / `scoop`，避免和自动同步互相覆盖。
 
 - **装上自动进、卸载自动出**；你手动加的条目会保留，手动删掉的不会被自动加回来。
-- 算法是**快照差分**：`加入 = 本轮已装 − 上次已装`，`删除 = 上次已装 − 本轮已装`，其余（目标文件里的现有条目）原样保留。手动删掉的包仍然装着、但不在"新装"里，所以结构上就不会被回填 —— 没有墓碑文件。想恢复就把它加回文件；应用页里名单外的行尾有一个 **+**（加入）、「已排除」的行另有中性标签和 **+**（加回），等价于写回文件；在「名单」视图点「选择」可以多选移出（一次写入、至少保留一条），移出前会把当前名单并入 `.ts_ever`，所以移出的包仍显示为「已排除」而不会被自动加回；移出后 6 秒内可在提示条点「撤销」精确恢复。卸载后再装一次也会重新加入。
+- 算法是**快照差分**：`加入 = 本轮已装 − 上次已装`，`删除 = 上次已装 − 本轮已装`，其余（目标文件里的现有条目）原样保留。手动删掉的包仍然装着、但不在"新装"里，所以结构上就不会被回填 —— 没有墓碑文件。想恢复就把它加回文件；应用页里名单外的行尾有一个 **+**（加入）、「已排除」的行另有中性标签和 **+**（加回），等价于写回文件；在「名单」视图点「选择」可以多选移出（一次写入、至少保留一条），移出前会把当前名单并入 `.kl_ever`，所以移出的包仍显示为「已排除」而不会被自动加回；移出后 6 秒内可在提示条点「撤销」精确恢复。卸载后再装一次也会重新加入。
 - **OhMyKeymint 首次接入**：`scoop` 已有内容时沿用现有名单（不批量加入已装），只把当前已装记成基线；之后的新装照常加入。`scoop` 为空时才按其它后端一样加入全部已装 + 三件套。
 - **空列表保护**：后台自动同步读到「已装为空、但基线非空」时会放弃这次写入（这更像一次 `pm` 读取失败，而不是真把应用全卸了），并把失败写进模块描述；点界面「立即同步」或用管理器的「操作」按钮会强制按当前已装处理。
 - 首次安装后的第一次同步会把谷歌三件套（`com.android.vending` / `com.google.android.gms` / `com.google.android.gsf`）种进去**一次** —— 它们是系统应用，不会被"已装第三方"覆盖到。之后你把它们从名单里删掉，也不会再被加回来。
@@ -296,24 +305,24 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 
 ## 📂 数据与配置路径
 
-运行时文件位于**当前后端目录**（TEE Simulator：`/data/adb/teesim/`；Tricky Store：`/data/adb/tricky_store/`；OhMyKeymint：本模块的 `.ts_*` 状态寄生在 OMK 自己的 `/data/adb/omk/`，配置本身在 `/data/misc/keystore/omk/`）：
+运行时文件位于**当前后端目录**（TEE Simulator：`/data/adb/teesim/`；Tricky Store：`/data/adb/tricky_store/`；OhMyKeymint：本模块的 `.kl_*` 状态寄生在 OMK 自己的 `/data/adb/omk/`，配置本身在 `/data/misc/keystore/omk/`）：
 
 | 文件 | 说明 |
 |------|------|
 | `config.json` | TEE Simulator 配置（模块仅维护 `profiles.default.apps`） |
 | `target.txt` | Tricky Store / OSS 的应用列表（模块按增量维护：只加新装、只删卸掉的，你手动加的条目保留） |
 | `injector.toml` | OhMyKeymint 的名单（模块仅维护 `scoop`；`config.toml` 不碰） |
-| `.ts_daemon_pids.list` | 所有后台子进程 PID 列表 |
-| `.ts_fingerprint` | 源数据指纹缓存（变更检测用） |
-| `.ts_installed_last` | 上次同步看到的「已装第三方」，快照差分的基线 |
-| `.ts_ever` | 历次纳入过名单的并集（判断「已排除」用；OhMyKeymint 首次沿用现有 scoop 时不能拿基线当这个集合） |
-| `.ts_lock` / `.ts_debounce` / `.ts_tmp` | 运行时锁与临时文件 |
+| `.kl_daemon_pids.list` | 所有后台子进程 PID 列表 |
+| `.kl_fingerprint` | 源数据指纹缓存（变更检测用） |
+| `.kl_installed_last` | 上次同步看到的「已装第三方」，快照差分的基线 |
+| `.kl_ever` | 历次纳入过名单的并集（判断「已排除」用；OhMyKeymint 首次沿用现有 scoop 时不能拿基线当这个集合） |
+| `.kl_lock` / `.kl_debounce` / `.kl_tmp` | 运行时锁与临时文件 |
 
-> 日志缓冲不放在后端目录，而是固定在 `/data/adb/ts_auto.log`（权限 `600`，仅 root 可读；超过 64KB 自动只保留末尾 200 行；卸载时自动删除）。
+> 日志缓冲不放在后端目录，而是固定在 `/data/adb/keylens.log`（权限 `600`，仅 root 可读；超过 64KB 自动只保留末尾 200 行；卸载时自动删除）。
 >
-> 属性伪装开关同样不放在后端目录，而是 `/data/adb/ts_auto.props_off`：**文件存在 = 已关闭**，由 WebUI 的「属性」页写入/删除，覆盖安装模块不会丢失，卸载时一并清理。
+> 属性伪装开关同样不放在后端目录，而是 `/data/adb/keylens.props_off`：**文件存在 = 已关闭**，由 WebUI 的「属性」页写入/删除，覆盖安装模块不会丢失，卸载时一并清理。
 >
-> Verified Boot 哈希保存在 `/data/adb/ts_auto.boot_hash`（权限 `600`，内容为 64/128 位十六进制），卸载时一并清理。
+> Verified Boot 哈希保存在 `/data/adb/keylens.boot_hash`（权限 `600`，内容为 64/128 位十六进制），卸载时一并清理。
 
 ---
 
@@ -341,7 +350,7 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 | `ro.bootloader`（若含 `engineering`） | `release` | 隐藏工程版 Bootloader |
 | `ro.build.description`（若含 `test-keys`） | `release-keys` | 隐藏测试密钥 |
 
-> **提示**：不需要属性重置时，直接在模块 WebUI 的「属性」页关掉开关即可（写入 `/data/adb/ts_auto.props_off`，下次开机生效，覆盖安装模块不会丢失）；没有 WebUI 入口的话，也可以在 `post-fs-data.sh` 中删除或注释 `apply_resetprop` 调用后重启。
+> **提示**：不需要属性重置时，直接在模块 WebUI 的「属性」页关掉开关即可（写入 `/data/adb/keylens.props_off`，下次开机生效，覆盖安装模块不会丢失）；没有 WebUI 入口的话，也可以在 `post-fs-data.sh` 中删除或注释 `apply_resetprop` 调用后重启。
 >
 > **开机后复核**：`service.sh` 等到 `sys.boot_completed` 后会把这张表**再幂等跑一遍**（已符合的不重复写）。有些机型在 post-fs-data 之后才落锁状态 / AVB 元数据，早段写入会被系统覆盖，这一遍就是兜住它。
 >
@@ -351,7 +360,7 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 
 ## 🔄 更新亮点（v2.2.19.5-yuzu）
 
-- **日志双写 + 本地缓冲**：日志除写入 `logcat` 外，另写 `/data/adb/ts_auto.log`（带时间戳，超 64KB 只保留末尾 200 行），解决 `logcat` 环形缓冲被系统刷掉后查不到记录的问题。
+- **日志双写 + 本地缓冲**：日志除写入 `logcat` 外，另写 `/data/adb/keylens.log`（带时间戳，超 64KB 只保留末尾 200 行），解决 `logcat` 环形缓冲被系统刷掉后查不到记录的问题。
 - **工程整理**：换行符统一为 LF（新增 `.gitattributes`），CI 增加 `sh -n` 语法检查，README 增加 CI / Release / License 徽章与下载入口。
 - **新增 TEE Simulator 后端**：按模块 id `teesim` 探测，仅替换 `config.json` 中 `profiles.default.apps`，其余字段与其它 profile 原样保留。
 - **后端冲突即停止**：Tricky Store 与 TEE Simulator 同时启用时模块停止运行，并把状态写入模块描述（`⛔`）。
@@ -370,13 +379,13 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 ## ❓ 常见问题
 
 **Q：点「打开界面」没有反应，或界面提示“当前管理器不支持 WebUI”？**  
-A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU（主线）/ KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧（Material Web 需要 Chromium 111+，可在系统里更新 Android System WebView）或禁用了 JavaScript；重新覆盖安装模块可确认 `webroot/` 是否完整。
+A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU（主线）/ KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/keylens/action.sh` 同步并打印最近日志，`sh /data/adb/modules/keylens/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧（Material Web 需要 Chromium 111+，可在系统里更新 Android System WebView）或禁用了 JavaScript；重新覆盖安装模块可确认 `webroot/` 是否完整。
 
 **Q：界面提示「当前管理器没有提供可用的 exec 桥接」，但我的管理器明明有 WebUI 入口？**  
 A：各家注入的桥接对象名与调用形状不一样（KernelSU 主线是 `window.ksu.exec(cmd, optionsJson, 回调函数名)` 的**异步回调**，部分是同步返回 `{errno, stdout}`）。这种情况下界面会直接把扫描结果列出来——扫到了哪些对象、各自有哪些方法，据此就能判断该认谁；把那一屏反馈给维护者即可。
 
 **Q：怎么看模块日志？为什么 logcat 里一会儿就没了？**  
-A：日志同时写 `logcat`（tag `TS-AUTO`）与本地缓冲 `/data/adb/ts_auto.log`。`logcat` 的缓冲默认只有几百 KB 且由全系统共用，系统繁忙时旧记录很快被挤掉、重启即清空 —— 这正是“一会儿就没了”的原因；缓冲文件跨重启保留，排查请优先看它（超过 64KB 会自动只保留末尾 200 行）。设备上读这两处**都需要 root**（`/data/adb` 为 `0700`，终端里先 `su`，或用 `su -c '...'`）；电脑上 `adb logcat -s TS-AUTO` 不需要 root，读缓冲文件需要 `adb shell su -c '...'`。最省事的方式是在管理器里点模块的“操作”按钮 —— `action.sh` 会附带打印最近 15 条日志。完整命令与排查步骤见上方「🛠 使用方法 → 查看运行状态」。另外模块只在**开机**与**文件变化**时写日志，没有事件时没有输出属正常现象。
+A：日志同时写 `logcat`（tag `KeyLens`）与本地缓冲 `/data/adb/keylens.log`。`logcat` 的缓冲默认只有几百 KB 且由全系统共用，系统繁忙时旧记录很快被挤掉、重启即清空 —— 这正是“一会儿就没了”的原因；缓冲文件跨重启保留，排查请优先看它（超过 64KB 会自动只保留末尾 200 行）。设备上读这两处**都需要 root**（`/data/adb` 为 `0700`，终端里先 `su`，或用 `su -c '...'`）；电脑上 `adb logcat -s TS-AUTO` 不需要 root，读缓冲文件需要 `adb shell su -c '...'`。最省事的方式是在管理器里点模块的“操作”按钮 —— `action.sh` 会附带打印最近 15 条日志。完整命令与排查步骤见上方「🛠 使用方法 → 查看运行状态」。另外模块只在**开机**与**文件变化**时写日志，没有事件时没有输出属正常现象。
 
 **Q：安装时提示“未找到 inotify 工具”？**  
 A：请确认系统是否包含 `inotifywait` 或 `inotifyd`。部分精简 ROM 可能缺失，可尝试安装 Busybox 或更换 ROM（Magisk / KernelSU / APatch 自带的 busybox 会被自动识别）。
@@ -388,13 +397,13 @@ A：说明 Tricky Store / TEE Simulator / OhMyKeymint 中有多于一个同时�
 A：目标文件不可写（目录只读、文件被占用等），或 OhMyKeymint 的 `injector.toml` 还没生成。检查对应后端目录的权限、先打开一次 OMK 后重试（执行 `action.sh` 或等待下次事件触发）。
 
 **Q：`target.txt` 未按预期更新？**  
-A：先看本地缓冲 `tail -n 50 /data/adb/ts_auto.log`（或 `logcat -d -s TS-AUTO`）里的错误信息；确认 `pm` 命令可用；尝试手动执行 `action.sh` 测试。
+A：先看本地缓冲 `tail -n 50 /data/adb/keylens.log`（或 `logcat -d -s KeyLens`）里的错误信息；确认 `pm` 命令可用；尝试手动执行 `action.sh` 测试。
 
 **Q：OhMyKeymint 的 `injector.toml` 被改动了？**  
 A：模块只改 `scoop` 数组，写入前备份到 `/data/adb/omk/injector.toml.bak`；其它段与 `config.toml` 不碰。写入后会写 `/data/adb/omk/restart.injector`，让 OMK 自己重载 injector。
 
 **Q：如何临时禁用后台监听？**  
-A：可删除后端目录下的 `.ts_daemon_pids.list` 并重启，或直接卸载模块。
+A：可删除后端目录下的 `.kl_daemon_pids.list` 并重启，或直接卸载模块。
 
 ---
 

@@ -16,9 +16,9 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-TAA_DIR="$T"
+KL_DIR="$T"
 AWK_CMD="awk"
-TAA_PATCH="$ROOT/module/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 
 chk() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"; else printf '  ✗    %s\n        期望 [%s]，实得 [%s]\n' "$1" "$2" "$3"; fail=1; fi; }
 chk_rc() { if [ "$2" = "$3" ]; then printf '  ok   %-34s rc=%s\n' "$1" "$3"; else printf '  ✗    %-34s 期望 rc=%s，实得 %s\n' "$1" "$2" "$3"; fail=1; fi; }
@@ -38,7 +38,7 @@ chk_pkg "斜杠拒绝" "com.x/y" 1
 chk_pkg "空串拒绝" "" 1
 
 echo "── 2 Tricky Store：逐行追加 ──"
-TAA_BACKEND="tricky"
+KL_BACKEND="tricky"
 TARGET_FILE="$T/target.txt"
 printf '# keep\ncom.a\ncom.b' > "$TARGET_FILE"      # 故意不带结尾换行
 add_target_app "com.c"; chk_rc "追加成功" 0 "$?"
@@ -53,7 +53,7 @@ rm -f "$TARGET_FILE"
 add_target_app "com.a"; chk_rc "文件不存在时报失败" 2 "$?"
 
 echo "── 3 TEESim：只改 default.apps ──"
-TAA_BACKEND="teesim"
+KL_BACKEND="teesim"
 TARGET_FILE="$T/config.json"
 cat > "$TARGET_FILE" <<'EOF'
 {

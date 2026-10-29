@@ -6,6 +6,15 @@
 
 #### 新增
 
+* **模块改名 KeyLens**：`name=TS-AUTO-ADD` → `KeyLens`，`id=ts-auto-add` → `keylens`。按"凡是代表老模块的地方都换"执行，动了约 **500 处**：`TAA_*`/`_taa_*` 标识符 → `KL_*`/`_kl_*`（`KL_DIR` 一项就 108 处），后端目录里的运行时文件 `.ts_lock` / `.ts_ever` / `.ts_fingerprint` / `.ts_installed_last` / `.ts_daemon_pids` … 全部 → `.kl_*`，`/data/adb/ts_auto.*` → `/data/adb/keylens.*`，临时文件后缀 `.ts_auto.$$` → `.keylens.$$`，logcat tag `TS-AUTO` → `KeyLens`，界面标题与 README 的日志/路径段同步。
+  * **老名字只剩三处必要地方**：① 清理老版本遗留在用户机器上的文件名（`taa_sys.txt`、`service.d/taa_resetprop.sh`、`/data/adb/ts_auto.*`）—— 按旧名才找得到；② 迁移函数的源路径与它扫的旧 glob；③ 更新说明与 GitHub 仓库 URL（仓库改名由人做，`zipUrl`/徽章等它改完再动）。
+  * **不靠人眼保证不漏**：`node tools/name-residue-check.mjs` 扫全部 git 跟踪文件，白名单外的旧名一律退非 0。这道闸第一版把 `ts_auto` 全局放行，于是 README 里那些已经过期的 `/data/adb/ts_auto.log` 路径被一起放过 —— 改成**按文件豁免**（只有 core.sh / uninstall.sh / customize.sh 这类"必须按旧名找东西"的文件能用旧名），当场抓出 28 处。它自己也带正对照：往 `lib/props.sh` 塞一行旧锁名 → 闸门必须响且点名文件，跑完逐字节还原（在 `tests/legacy-migrate.sh` 里）。
+  * **改名把运行时状态文件名也换了，所以必须有迁移**：`ts_auto.props_off` 存在 = 用户关掉了属性伪装，`.ts_installed_last` 是快照差分的基线，`.ts_ever` 决定"手动删掉的包不再回来" —— 丢了就是静默改行为。新增 `migrate_legacy_paths`（`lib/core.sh`），在 post-fs-data / service / webui 三个入口各调一次：只在新名不存在时 `mv`，所以幂等、也不会覆盖用户在新路径上写过的东西；按目录扫 `.ts_*`，不依赖 `detect_backend` 的顺序。`tests/legacy-migrate.sh` 抽的是真函数，钉住"搬到位 / 不覆盖已有新值 / 反复调用 no-op / 缺目录退 0 / 不带点的同名文件不被误搬"。
+  * **id 变了意味着必须重刷**：管理器按目录名认模块，`/data/adb/modules/ts-auto-add` 与 `keylens` 并存 = 两套 `service.sh` 同时跑、各自监听、各自写同一份后端配置。README 新增一节写明"先卸旧再刷新"，以及**旧 id 的装机收不到自动更新**（`updateJson` 按 id 走）。本轮**没有**往设备推这一版：推过去就是在那台机器上造第二个模块目录。
+  * 顺带修掉 README 一句现在说反了的话："本模块**不再修改安全补丁**" —— 新版界面三家都能改补丁级别（Tricky 写 `security_patch.txt`、TEESim 写 profile 的 `patchLevel`、OMK 写 `[trust]`）。
+  * `tools/rename-keylens.cjs` 留下做重放：这种规模的机械改名，手改的结果一定是"改了我记得的那几处"。
+  * 回放台架同轮补了一道**采集自检**：它曾经把 Git Bash 改写路径造成的满屏 shell 报错当成"真包名画到屏上"判全绿。现在必须先证明 16 条读命令都拿到该有的键、targets 128 条形状正常，才允许去驱动界面。
+
 * **产物从 894 KB 降到 761 KB：同一份图标字体不再落三遍**。库里 `Outlined / Rounded / Sharp` 三个族名的 `@font-face` **指向同一个 `material-symbols-rounded.woff2`**（在 `dist/tokens.min.css` 里逐条看过），整份内联就是 50 KB 字节 ×3。现在只留 Rounded 那一条：组件内部一律写 `var(--md-icon-font-family, 'Material Symbols Rounded', …)`，Rounded 在链首；库里唯一把 Outlined 放第一位的是 `md-fab`，而它不在本界面的 import 列表里。
   * 守这个前提的是**运行时量测**，不是静态扫：`verify.mjs` 现在逐个元素取 computed `font-family` 的第一个族名，查它有没有对应 `@font-face`。静态扫试过，会被库里那两条**没人用的工具类规则**（`.material-symbols-outlined{…}` / `-sharp{…}`）绊倒，判成假阳性 —— 死规则不渲染，就不该判死。
   * 变异验过（`node tools/md3e-build/mutate-fontface-gate.cjs`）：把唯一那份 Rounded 也删掉 → 台架退码 1 并报「落空: Material Symbols Rounded×13」，同时正对照也塌（`home` 从 24px 变 65px）；还原后重新构建复跑回绿，并逐字节确认 `build.mjs` 回到原样。

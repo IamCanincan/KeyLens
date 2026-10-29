@@ -25,7 +25,8 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
 const CHROME = process.env.CHROME || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const PORT = Number(process.env.PORT || 9253);
-const SH_PATH = '/data/adb/modules/ts-auto-add/webui.sh';
+// 改名过渡期：已装着的机器还在旧目录下，用 MODDIR 指过去；默认是新名。
+const SH_PATH = (process.env.MODDIR || '/data/adb/modules/keylens') + '/webui.sh';
 const OUT = path.join(os.tmpdir(), 'ksu-replay');
 fs.mkdirSync(OUT, { recursive: true });
 
@@ -63,6 +64,38 @@ console.log(`  ${serial}：${Object.keys(store).length} 条命令现读完成，
 for (const [k, r] of Object.entries(store)) {
   if (r.errno !== 0) console.log(`     · ${k} 退 ${r.errno}: ${(r.stderr || r.stdout).split('\n')[0].slice(0, 52)}`);
 }
+
+/* 采集自检：先证明"读回来的确实是真数据"，再去驱动界面。
+   第一版没有这一段：Git Bash 把 /data/adb/... 改写成了 D:/Git/data/adb/...，
+   于是每条命令都返回错误文本，而断言拿那句错误当"真包名"去匹配 —— 全绿。
+   一台会替错误编造成功判据的仪器，比没有仪器更坏。 */
+console.log('── 采集自检 ──');
+const problems = [];
+const needKV = (cmd, keys) => {
+  const t = store[cmd].stdout || '';
+  for (const k of keys) if (!new RegExp('^' + k + '=', 'm').test(t)) problems.push(`${cmd} 的输出里没有 ${k}=`);
+};
+if (store.contract.errno !== 0) problems.push('contract 读失败');
+needKV('contract', ['api', 'commands']);
+needKV('status', ['state', 'backend', 'daemon_alive']);
+needKV('env', ['resetprop', 'root_user']);
+needKV('backend-info', ['backend', 'target_file']);
+needKV('boot-hash', ['status']);
+const apiVal = (store.contract.stdout.match(/^api=(\S+)/m) || [])[1];
+if (apiVal !== '4') problems.push(`契约号不是 4，是 ${apiVal}（设备上跑的是旧版命令层？）`);
+const tgt = (store.targets.stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
+const badTgt = tgt.filter(s => !/^[A-Za-z0-9_.:@!?-]+$/.test(s));
+if (badTgt.length) problems.push(`targets 里有不像条目的行：${JSON.stringify(badTgt[0].slice(0, 60))}`);
+if (/\bNo such file\b|adb:|command not found|Permission denied/.test(Object.values(store).map(r => r.stdout + r.stderr).join(' ')))
+  problems.push('采集里混进了 shell 报错（路径被 MSYS 改写？adb 掉线？没 root？）');
+if (problems.length) {
+  problems.forEach(p => console.log('✗   ' + p));
+  console.log('✗ 采集不像真数据，停在这里 —— 不去驱动界面');
+  process.exit(1);
+}
+console.log(`  ok   ${Object.keys(store).length} 条都读到了该有的键，targets ${tgt.length} 条形状正常`);
+
+console.log('── 驱动界面 ──');
 
 /* 注入的假桥接：**照 KernelSU 主线的形状** —— exec(cmd, optionsJson, 回调函数名)。
    形状不对的时候必须**像真机那样静默不回调**：真管理器拿到一个函数对象不会抛错，

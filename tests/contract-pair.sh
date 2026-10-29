@@ -2,7 +2,7 @@
 #=============================================================================
 # tests/contract-pair.sh - 界面与命令层的契约对账（CI 跑，不需要设备）
 #
-# 说明：TAA_API（webui.sh）与 EXPECT_API（index.html）是一对手写的号，两边
+# 说明：KL_API（webui.sh）与 EXPECT_API（index.html）是一对手写的号，两边
 #       各推各的文件时最容易只改一边 —— 上线表现就是界面顶部挂一条"不是同一
 #       版"的横幅，而代码本身没有任何错。这里把这对号、以及"界面会调的命令
 #       必须在命令层清单里"变成一条静态断言，不必等真机看见横幅。
@@ -60,12 +60,12 @@ grab() {   # grab <名字>
     printf '%s' "$v"
 }
 
-api_sh=$(sed -n 's/^TAA_API=\([0-9][0-9]*\).*/\1/p' "$SH_FILE" | head -1)
+api_sh=$(sed -n 's/^KL_API=\([0-9][0-9]*\).*/\1/p' "$SH_FILE" | head -1)
 api_ui=$(grab EXPECT_API)
 
-# TAA_COMMANDS 跨行续写：从开引号攒到闭引号
-cmds=$(awk '/^TAA_COMMANDS="/ {
-    sub(/^TAA_COMMANDS="/, "")
+# KL_COMMANDS 跨行续写：从开引号攒到闭引号
+cmds=$(awk '/^KL_COMMANDS="/ {
+    sub(/^KL_COMMANDS="/, "")
     buf = $0
     while (buf !~ /"$/) { getline; buf = buf " " $0 }
     sub(/"$/, "", buf)
@@ -79,12 +79,12 @@ cmds=$(awk '/^TAA_COMMANDS="/ {
 writes=$(grab WRITE_CMDS)
 
 echo "── 契约号 ──"
-chk "webui.sh TAA_API 读得到" 1 "$([ -n "$api_sh" ] && echo 1 || echo 0)"
+chk "webui.sh KL_API 读得到" 1 "$([ -n "$api_sh" ] && echo 1 || echo 0)"
 chk "index.html EXPECT_API 读得到" 1 "$([ -n "$api_ui" ] && echo 1 || echo 0)"
 chk "两侧契约号一致" "$api_sh" "$api_ui"
 
 echo "── 命令清单 ──"
-chk "TAA_COMMANDS 读得到" 1 "$([ -n "$cmds" ] && echo 1 || echo 0)"
+chk "KL_COMMANDS 读得到" 1 "$([ -n "$cmds" ] && echo 1 || echo 0)"
 chk "WRITE_CMDS 读得到" 1 "$([ -n "$writes" ] && echo 1 || echo 0)"
 for w in $writes; do
     chk_has "写命令 $w" "$cmds" "$w"

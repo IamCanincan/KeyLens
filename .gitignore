@@ -1,5 +1,5 @@
 # ============================================================
-# TS-AUTO-ADD .gitignore
+# KeyLens .gitignore
 #
 # 说明：本仓库是纯 shell 模块，只忽略构建产物与编辑器临时文件。
 #       注意：不要忽略 module/META-INF/ —— 它是刷机包必需的目录。
@@ -27,7 +27,7 @@ desktop.ini
 *.iml
 
 # ---------------------- 本地日志副本 ----------------------
-# 模块实际把日志写到 /data/adb/ts_auto.log，这里只防误提交到仓库
+# 模块实际把日志写到 /data/adb/keylens.log，这里只防误提交到仓库
 *.log
 
 # 界面源码的构建中间物（产物是 module/webroot/index.html）

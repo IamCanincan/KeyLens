@@ -1,8 +1,8 @@
-id=ts-auto-add
-name=TS-AUTO-ADD
+id=keylens
+name=KeyLens
 version=v2.2.19.5-yuzu
 versionCode=202609140202
 author=IamCanincan
-description=自动同步应用列表（TEE Simulator 改 default.apps；Tricky Store 写 target.txt）；修改系统属性；省电事件驱动监听；两个后端同时启用时模块自动停止。
+description=密钥认证后端控制台（Tricky Store / TEE Simulator / OhMyKeymint 三家统一读写：名单、补丁级别、keybox、伪装属性）；附加功能：应用列表自动同步。三家同时启用时模块自动停止。
 updateJson=https://raw.githubusercontent.com/IamCanincan/TS-AUTO-ADD/main/update.json
 minKsuVersion=10000

@@ -18,12 +18,12 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-TAA_DIR="$T/state"
-mkdir -p "$TAA_DIR"
-ST_INSTALLED="$TAA_DIR/.ts_installed_last"
-ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
-ST_EVER="$TAA_DIR/.ts_ever"
-ST_EVER_NEW="$TAA_DIR/.ts_ever.new"
+KL_DIR="$T/state"
+mkdir -p "$KL_DIR"
+ST_INSTALLED="$KL_DIR/.kl__installed_last"
+ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"
+ST_EVER="$KL_DIR/.kl__ever"
+ST_EVER_NEW="$KL_DIR/.kl__ever.new"
 AWK_CMD="awk"
 OMK_STATE_DIR="$T/omk"
 mkdir -p "$OMK_STATE_DIR"
@@ -38,8 +38,8 @@ req() { printf '%s\n' "$@" > "$T/req"; }
 list() { current_target_apps | tr '\n' ' ' | sed 's/ $//'; }
 
 echo "── 1 Tricky：只删匹配行 ──"
-TAA_BACKEND="tricky"
-TAA_PATCH="$ROOT/module/backends/teesim.awk"
+KL_BACKEND="tricky"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 TARGET_FILE="$T/target.txt"
 : > "$ST_EVER"
 printf '# keep\ncom.a\ncom.b\ncom.c' > "$TARGET_FILE"   # 故意不带结尾换行
@@ -49,13 +49,13 @@ printf '# keep\ncom.a\ncom.c\n' > "$T/exp"
 cmp -s "$T/exp" "$TARGET_FILE" && printf '  ok   注释与剩余顺序保留、补了结尾换行\n' \
     || { printf '  ✗   移出后的内容不对\n'; fail=1; }
 chk_has "$ST_EVER" '^com\.b$' "被移出的包并入了 ever"
-chk "removed_list 记录 b" "com.b" "$TAA_REMOVED_LIST"
+chk "removed_list 记录 b" "com.b" "$KL_REMOVED_LIST"
 
 before=$(sha256sum "$TARGET_FILE" | cut -d' ' -f1)
 req com.d
 remove_target_apps "$T/req"; chk_rc "本来就不在返回 1" 1 "$?"
 chk "文件逐字节未变" "$before" "$(sha256sum "$TARGET_FILE" | cut -d' ' -f1)"
-chk "未移出时 removed_list 为空" "" "$TAA_REMOVED_LIST"
+chk "未移出时 removed_list 为空" "" "$KL_REMOVED_LIST"
 
 req com.a com.c
 remove_target_apps "$T/req"; chk_rc "会清空时返回 3" 3 "$?"
@@ -65,7 +65,7 @@ printf '# keep\ncom.a\ncom.b\ncom.c\n' > "$TARGET_FILE"
 req com.a com.b
 remove_target_apps "$T/req"; chk_rc "一次移出多条" 0 "$?"
 chk "多条移出后只剩 c" "com.c" "$(list)"
-chk "removed_list 记录两条" "com.a,com.b" "$TAA_REMOVED_LIST"
+chk "removed_list 记录两条" "com.a,com.b" "$KL_REMOVED_LIST"
 
 printf '# only\n\n' > "$TARGET_FILE"
 req com.a
@@ -84,9 +84,9 @@ chk "excluded 只含被移出的 b" "com.b" "$(excluded_apps)"
 chk_no "$TARGET_FILE" '^com\.b$' "目标文件里没有 b"
 
 echo "── 3 TEESim：只改 default.apps ──"
-TAA_BACKEND="teesim"
+KL_BACKEND="teesim"
 TARGET_FILE="$T/config.json"
-TAA_PATCH="$ROOT/module/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 : > "$ST_EVER"
 cat > "$TARGET_FILE" <<'EOF'
 {
@@ -129,9 +129,9 @@ req com.a
 remove_target_apps "$T/req"; chk_rc "定位不到 apps 返回 2" 2 "$?"
 
 echo "── 4 OhMyKeymint：只改 scoop ──"
-TAA_BACKEND="omk"
+KL_BACKEND="omk"
 TARGET_FILE="$T/injector.toml"
-TAA_PATCH="$ROOT/module/backends/omk.awk"
+KL_PATCH="$ROOT/module/backends/omk.awk"
 : > "$ST_EVER"
 cat > "$TARGET_FILE" <<'EOF'
 # top comment
@@ -161,7 +161,7 @@ chk_has "$TARGET_FILE" '^version = 1$' "version 保留"
 chk_has "$TARGET_FILE" '^\[main\]$' "[main] 保留"
 chk_has "$TARGET_FILE" '^deny_packages = \[\]$' "其它数组保留"
 chk_has "$TARGET_FILE" '^\[scoop\.com\.a\]$' "per-package 段保留"
-chk_has "$TAA_DIR/injector.toml.bak" '"com.b"' "写入前备份了原文件"
+chk_has "$KL_DIR/injector.toml.bak" '"com.b"' "写入前备份了原文件"
 [ -f "$OMK_STATE_DIR/restart.injector" ] && printf '  ok   已请求 OMK 重载\n' || { printf '  ✗   没有写重启请求\n'; fail=1; }
 chk_has "$ST_EVER" '^com\.b$' "ever 含被移出的 b"
 

@@ -81,7 +81,7 @@ is_pkg_token() {
 is_target_entry() {
     local t="${1:-}" pkg rest
 
-    case "${TAA_BACKEND:-}" in
+    case "${KL_BACKEND:-}" in
         tricky)
             case "$t" in
                 *\?) pkg="${t%[?]}" ;;
@@ -118,19 +118,19 @@ is_target_entry() {
 #       直接丢弃；找不到解析脚本时原样输出（只有纯包名列表时才安全）。
 # 用法：entries_to_bases <文件>
 entries_to_bases() {
-    local f="$1" patch="${TAA_PATCH:-}" helper
+    local f="$1" patch="${KL_PATCH:-}" helper
 
     [ -f "$f" ] || return 0
     helper="${patch%/*}/entry_base.awk"
     if [ -n "$patch" ] && [ -f "$helper" ]; then
-        "${AWK_CMD:-awk}" -v backend="${TAA_BACKEND:-tricky}" -f "$helper" "$f"
+        "${AWK_CMD:-awk}" -v backend="${KL_BACKEND:-tricky}" -f "$helper" "$f"
     else
         sed '/^[[:space:]]*$/d' "$f"
     fi
 }
 
 # ---------- 应用列表生成（快照差分） ----------
-# 说明：was = 上一次成功同步时见到的已装集合（.ts_installed_last）。
+# 说明：was = 上一次成功同步时见到的已装集合（.kl__installed_last）。
 #   首次运行（没有基线）时 was 为空，等于把所有已装应用都当"新装"加一遍；
 #   只有"目标文件为空 + 没有基线"时才加种子。
 #   **OhMyKeymint 例外**：首次接入且 scoop 已有内容时沿用现有名单（不批量加入
@@ -141,7 +141,7 @@ build_app_list() {
     local tmp="$1"
     local apps_raw user_list cur base seed adopt
 
-    mkdir -p "$TAA_DIR" 2>/dev/null
+    mkdir -p "$KL_DIR" 2>/dev/null
 
     apps_raw=$(cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null)
     user_list=$(printf '%s\n' "$apps_raw" | sed -n 's/^package://p' | sed '/^$/d' | sort -u)
@@ -149,8 +149,8 @@ build_app_list() {
 
     # 已装列表读空但基线非空：更像是一次读取失败，而不是真的把应用全卸了。
     # 自动同步放弃（不写、不提交基线）；界面「立即同步」/管理器「操作」按钮会
-    # 显式设 TAA_EMPTY_OK=1 强制按当前已装处理。
-    if [ -z "$user_list" ] && [ -s "$ST_INSTALLED" ] && [ "${TAA_EMPTY_OK:-0}" != 1 ]; then
+    # 显式设 KL_EMPTY_OK=1 强制按当前已装处理。
+    if [ -z "$user_list" ] && [ -s "$ST_INSTALLED" ] && [ "${KL_EMPTY_OK:-0}" != 1 ]; then
         rm -f "$tmp" 2>/dev/null
         return 1
     fi
@@ -167,7 +167,7 @@ build_app_list() {
     # OhMyKeymint 首次接入：scoop 已有内容时沿用现有名单，不把已装应用灌进去；
     # 以后的新装照常加入。其它后端维持原来的"首次全部加入"。
     adopt=0
-    if [ "${TAA_BACKEND:-}" = "omk" ] && [ ! -f "$ST_INSTALLED" ] && [ -n "$cur" ]; then
+    if [ "${KL_BACKEND:-}" = "omk" ] && [ ! -f "$ST_INSTALLED" ] && [ -n "$cur" ]; then
         adopt=1
     fi
 
@@ -185,7 +185,7 @@ build_app_list() {
     # 配置解析不了时 cur 为空，这里会算出"删掉所有卸载过的"；但那样 teesim.awk
     # 也定位不到 apps 数组、写入直接返回 2，基线不会提交 —— 由写入器兜底，
     # 不在这里靠读取命令的退码猜。
-    awk -v adopt="$adopt" -v backend="${TAA_BACKEND:-tricky}" '
+    awk -v adopt="$adopt" -v backend="${KL_BACKEND:-tricky}" '
         FILENAME == ARGV[1] { inst[$0] = 1; next }
         FILENAME == ARGV[2] {
             tok = $0; b = tok
@@ -221,7 +221,7 @@ build_app_list() {
         | sort -u | sed '/^$/d' > "$tmp" 2>/dev/null
     rm -rf "$base" 2>/dev/null
 
-    TAA_COUNT=$(wc -l < "$tmp" 2>/dev/null | tr -d ' ')
+    KL_COUNT=$(wc -l < "$tmp" 2>/dev/null | tr -d ' ')
 
     # 只在写成功后由 sync_* 提交，失败不推进。权限显式收成 600：
     # WebUI 经管理器 exec 出来的 umask 可能是 000（实测生成过 666 的状态文件）。
@@ -240,7 +240,7 @@ build_app_list() {
 }
 
 # ---------- 「已排除」= 已装、曾经在名单里、但现在文件里没有 ----------
-# 说明：用 ever（.ts_ever，历次写进去的并集）判断"曾经纳入"，而不是已装基线：
+# 说明：用 ever（.kl__ever，历次写进去的并集）判断"曾经纳入"，而不是已装基线：
 #       OhMyKeymint 首次接入沿用现有 scoop 时，基线包含全部已装，用基线会把
 #       从未纳入的应用误标成"已排除"。
 #       三份集合都落临时文件再交给 awk：toybox awk 的 -v 不接受换行，
@@ -254,8 +254,8 @@ excluded_apps() {
     cur=$(current_target_apps 2>/dev/null)
 
     # 只读命令不创建状态目录；没有 ever 时排除表就是空
-    [ -d "$TAA_DIR" ] || return 0
-    base="${TAA_DIR}/.ts_excl.$$"
+    [ -d "$KL_DIR" ] || return 0
+    base="${KL_DIR}/.kl__excl.$$"
     mkdir -p "$base" 2>/dev/null || return 0
     printf '%s\n' "$inst" | sed '/^[[:space:]]*$/d' | sort -u > "$base/inst" 2>/dev/null
     printf '%s\n' "$cur"  | sed '/^[[:space:]]*$/d' > "$base/cur" 2>/dev/null
@@ -279,6 +279,6 @@ excluded_apps() {
 #       失败时保留，便于回退旧版本时仍读得到。
 # 用法：drop_legacy_state
 drop_legacy_state() {
-    rm -f "$TAA_DIR/.ts_written_last" "$TAA_DIR/.ts_written.new" \
-          "$TAA_DIR/.ts_removed" "$TAA_DIR/.ts_removed.new" 2>/dev/null
+    rm -f "$KL_DIR/.kl__written_last" "$KL_DIR/.kl__written.new" \
+          "$KL_DIR/.kl__removed" "$KL_DIR/.kl__removed.new" 2>/dev/null
 }

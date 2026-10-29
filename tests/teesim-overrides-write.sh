@@ -162,7 +162,7 @@ printf '── 命令层接线 ──\n'
 grep -q 'teesim-save-overrides) cmd_teesim_save_overrides' module/webui.sh \
     && ok '分发接上了 teesim-save-overrides' || bad '命令没接进分发'
 grep -q 'teesim-save-overrides' module/webui.sh \
-    && ok 'TAA_COMMANDS 里声明了（界面才会摆出这个输入框）' || bad '没进声明清单'
+    && ok 'KL_COMMANDS 里声明了（界面才会摆出这个输入框）' || bad '没进声明清单'
 
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"
 exit $fail

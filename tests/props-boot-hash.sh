@@ -15,7 +15,7 @@ set -u
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-TAA_BOOT_HASH="$T/boot_hash"
+KL_BOOT_HASH="$T/boot_hash"
 . "$ROOT/module/lib/props.sh"
 
 fail=0
@@ -65,10 +65,10 @@ chk_rc "带 0x 前缀拒绝" 1 "$(boot_hash_valid "0x$H64"; echo $?)"
 chk_rc "空值拒绝" 1 "$(boot_hash_valid ""; echo $?)"
 
 echo "── 2 保存 / 读取 / 清除 ──"
-rm -f "$TAA_BOOT_HASH"
+rm -f "$KL_BOOT_HASH"
 set_boot_hash "  ${H64B}  "; chk_ok "带空白的大写值可保存" "$?"
 chk "读回已转小写" "$(printf 'b%.0s' $(seq 1 64))" "$(boot_hash_get)"
-mode=$(stat -c %a "$TAA_BOOT_HASH" 2>/dev/null || stat -f %Lp "$TAA_BOOT_HASH" 2>/dev/null)
+mode=$(stat -c %a "$KL_BOOT_HASH" 2>/dev/null || stat -f %Lp "$KL_BOOT_HASH" 2>/dev/null)
 case "$(uname -s 2>/dev/null)" in
     MINGW*|MSYS*|CYGWIN*) printf '  skip 权限 600（Windows 文件系统不给 Unix 位）\n' ;;
     *) chk "权限 600" 600 "$mode" ;;
@@ -77,7 +77,7 @@ ls "$T".*boot_hash.tmp.* >/dev/null 2>&1 && { printf '  ✗    留下了临时�
 set_boot_hash "$H63"; chk_rc "非法值被拒绝" 1 "$?"
 chk "非法值没有覆盖原配置" "$(printf 'b%.0s' $(seq 1 64))" "$(boot_hash_get)"
 set_boot_hash "-"; chk_ok "清除成功" "$?"
-[ ! -f "$TAA_BOOT_HASH" ] && printf '  ok   清除后文件不存在\n' || { printf '  ✗   清除后文件仍在\n'; fail=1; }
+[ ! -f "$KL_BOOT_HASH" ] && printf '  ok   清除后文件不存在\n' || { printf '  ✗   清除后文件仍在\n'; fail=1; }
 chk "清除后读为空" "" "$(boot_hash_get)"
 
 echo "── 3 应用：只在需要时写 ──"
@@ -108,7 +108,7 @@ rm -f "$RP".* "$RP_COUNT"
 set_boot_hash "$H64"
 RP_DROP=1 apply_boot_hash; chk_rc "读回不一致时返回失败" 1 "$?"
 RP_DROP=0
-printf 'not-a-hash\n' > "$TAA_BOOT_HASH"
+printf 'not-a-hash\n' > "$KL_BOOT_HASH"
 rp_reset
 chk "坏配置读为空" "" "$(boot_hash_get)"
 apply_boot_hash; chk_ok "坏配置时返回 0（不写）" "$?"

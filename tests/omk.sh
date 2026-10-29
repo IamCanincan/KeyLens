@@ -17,16 +17,16 @@ ROOT=$(cd "$(dirname "$0")/.." && pwd)
 fail=0
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
-TAA_DIR="$T/state"
-mkdir -p "$TAA_DIR"
+KL_DIR="$T/state"
+mkdir -p "$KL_DIR"
 TARGET_FILE="$T/injector.toml"
-TAA_PATCH="$ROOT/module/backends/omk.awk"
+KL_PATCH="$ROOT/module/backends/omk.awk"
 AWK_CMD="awk"
-TAA_BACKEND="omk"
-ST_INSTALLED="$TAA_DIR/.ts_installed_last"
-ST_INSTALLED_NEW="$TAA_DIR/.ts_installed.new"
-ST_EVER="$TAA_DIR/.ts_ever"
-ST_EVER_NEW="$TAA_DIR/.ts_ever.new"
+KL_BACKEND="omk"
+ST_INSTALLED="$KL_DIR/.kl__installed_last"
+ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"
+ST_EVER="$KL_DIR/.kl__ever"
+ST_EVER_NEW="$KL_DIR/.kl__ever.new"
 FAKE=""
 cmd() { printf '%s\n' "$FAKE"; }
 pm()  { cmd; }
@@ -88,7 +88,7 @@ chk_has "$TARGET_FILE" '^\[scoop\.com\.a\]$' "per-package 段保留"
 chk_has "$TARGET_FILE" '^mode = "strict"$' "per-package 内容保留"
 chk_has "$TARGET_FILE" '^  "com\.c",$' "元素缩进两格"
 chk_has "$TARGET_FILE" '^\]$' "闭合括号回到行首"
-chk_has "$TAA_DIR/injector.toml.bak" '"com.a"' "写入前备份了原文件"
+chk_has "$KL_DIR/injector.toml.bak" '"com.a"' "写入前备份了原文件"
 [ -f "$OMK_STATE_DIR/restart.injector" ] && printf '  ok   已请求 OMK 重载\n' || { printf '  ✗   没有写重启请求\n'; fail=1; }
 
 before=$(sha256sum "$TARGET_FILE" | cut -d' ' -f1)
@@ -122,7 +122,7 @@ touch "$M/tricky_store/disable"; backends_conflict; chk_rc "只剩一个启用 =
 rm -f "$M/tricky_store/disable"; touch "$M/oh_my_keymint/disable"; backends_conflict; chk_rc "另一个启用 = 不冲突" 1 "$?"
 rm -rf "$M/tricky_store"; backends_conflict; chk_rc "只剩 OMK = 不冲突" 1 "$?"
 
-chk "后端名称" "OhMyKeymint" "$(TAA_BACKEND=omk; backend_name)"
+chk "后端名称" "OhMyKeymint" "$(KL_BACKEND=omk; backend_name)"
 
 echo "── 5 整条同步：首次沿用不动文件 ──"
 fixture

@@ -23,20 +23,20 @@ esac
 if backends_conflict; then
     mark_module_stopped "$PROP_FILE"
     echo "================================================"
-    echo "        ⛔ TS-AUTO-ADD 已停止"
+    echo "        ⛔ KeyLens 已停止"
     echo "================================================"
-    echo "  $TAA_CONFLICT_MSG"
+    echo "  $KL_CONFLICT_MSG"
     echo "  该状态已写入模块描述，可在管理器界面查看。"
     echo "================================================"
     exit 1
 fi
 
 detect_backend "$MODDIR"
-TMP="${TAA_DIR}/.ts_tmp"
-LOCK_DIR="${TAA_DIR}/.ts_lock"
+TMP="${KL_DIR}/.kl__tmp"
+LOCK_DIR="${KL_DIR}/.kl__lock"
 
 echo "================================================"
-echo "        🚀 TS-AUTO-ADD 手动同步工具"
+echo "        🚀 KeyLens 手动同步工具"
 echo "================================================"
 echo "  🔌 后端：$(backend_name)"
 echo "  🎯 目标：$TARGET_FILE"
@@ -46,13 +46,13 @@ acquire_lock "$LOCK_DIR" || { echo " ❌ 获取锁超时" >&2; exit 1; }
 
 echo "🔄 [1/1] 正在同步应用列表..."
 # 手动入口：允许把"读到空已装列表"当成真的清空处理；后台守护进程不这样处理。
-TAA_EMPTY_OK=1
+KL_EMPTY_OK=1
 run_sync "$PROP_FILE" "$TMP"
 rc=$?
 
 case "$rc" in
-    0) echo " ✅ 已更新（应用总数：$TAA_COUNT），模块描述已刷新" ;;
-    1) echo " ℹ️ 内容与现有配置一致，无需写入（应用总数：$TAA_COUNT）" ;;
+    0) echo " ✅ 已更新（应用总数：$KL_COUNT），模块描述已刷新" ;;
+    1) echo " ℹ️ 内容与现有配置一致，无需写入（应用总数：$KL_COUNT）" ;;
     2) echo " ❌ 写入失败：未能生成或写入应用列表，已记入模块描述" ;;
 esac
 
@@ -66,14 +66,14 @@ echo "================================================"
 # 说明：优先读本地缓冲（logcat 是环形缓冲，旧记录会被系统挤掉，缓冲文件更耐查），
 #       缓冲不存在时回退到 logcat。管理器以 root 运行本脚本并显示输出，
 #       因此无需另开终端或手动 su 即可查看（设备上直接读这些内容需要 root）。
-if [ -f "$TAA_LOG" ]; then
-    echo "📜 最近日志（$TAA_LOG）："
-    tail -n 15 "$TAA_LOG" 2>/dev/null
+if [ -f "$KL_LOG" ]; then
+    echo "📜 最近日志（$KL_LOG）："
+    tail -n 15 "$KL_LOG" 2>/dev/null
 else
-    echo "📜 最近日志（logcat -s TS-AUTO）："
-    logcat -d -s TS-AUTO 2>/dev/null | tail -n 15
+    echo "📜 最近日志（logcat -s KeyLens）："
+    logcat -d -s KeyLens 2>/dev/null | tail -n 15
 fi
-echo "  💡 完整日志：su -c 'tail -n 50 $TAA_LOG'"
+echo "  💡 完整日志：su -c 'tail -n 50 $KL_LOG'"
 echo "================================================"
 
 [ "$rc" = "2" ] && exit 1

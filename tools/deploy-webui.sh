@@ -14,7 +14,9 @@
 #     （设备上跑的版本必须对得上仓库里的某个提交），推之后逐文件比 sha256。
 set -u
 
-MODDIR=/data/adb/modules/ts-auto-add
+# 模块改名 KeyLens 后 id 变成 keylens，但**已装着的机器还在旧目录**里跑：
+# 留一个环境变量口子，改名过渡期可以显式推到旧目录验证，默认是新名。
+MODDIR=${MODDIR:-/data/adb/modules/keylens}
 MODE_HTML=644
 MODE_SH=755
 GROUP=webui

@@ -64,7 +64,7 @@ jobs:
           fail=0
           for g in tests/ui-shape.js tools/kv-shape-check.mjs \
                    tools/md3e-build/icon-gate.mjs tools/md3e-build/check-artifact.mjs \
-                   tools/json-flat-set-check.cjs; do
+                   tools/json-flat-set-check.cjs tools/name-residue-check.mjs; do
             printf '\n══ %s\n' "$g"
             if node "$g"; then
               printf 'OK   %s\n' "$g"
@@ -84,7 +84,7 @@ jobs:
           echo "::notice title=CI 不重建界面产物::新鲜度靠本地 build.mjs --check；CI 只查产物自身的形状"
           echo "上机产物：$(wc -c < module/webroot/index.html) 字节"
           grep -o 'EXPECT_API *= *[0-9]*' webui/src/bridge.js | head -1
-          grep -o '^TAA_API=[0-9]*' module/webui.sh | head -1
+          grep -o '^KL_API=[0-9]*' module/webui.sh | head -1
 
   # ── 打包：语法检查 + 版本号注入 + 上传 Artifact ─────────────────────────
   build:

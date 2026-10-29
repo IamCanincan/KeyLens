@@ -11,7 +11,7 @@
  * 这套里最值钱的是第 ② 组：**表单字段名必须被命令层的校验分支接受**。
  * 两边都是字符串，对不上时不是"少一个字段"，而是整单被 `*) echo 未知字段` 拒掉 ——
  * 用户点保存只看到一句"未知字段：xxx"，而这在运行时之前完全可以静态查出来。
- * 同类的还有：假数据的命令清单 = case 实际实现、TAA_COMMANDS 声明 = 实现、
+ * 同类的还有：假数据的命令清单 = case 实际实现、KL_COMMANDS 声明 = 实现、
  * 界面读的 KV 键 ⊆ 命令层输出的键（后者在 tools/kv-shape-check.mjs）。
  */
 const fs = require('fs');
@@ -39,8 +39,8 @@ console.log('── 契约 ──');
 const EXPECT_API = (bridge.match(/export const EXPECT_API *= *(\d+)/) || [])[1];
 chk('EXPECT_API 读得到', !!EXPECT_API, 'api=' + EXPECT_API);
 chk('EXPECT_API 与命令层一致',
-  EXPECT_API === (sh.match(/^TAA_API=(\d+)/m) || [])[1],
-  '界面 ' + EXPECT_API + ' / 命令层 ' + (sh.match(/^TAA_API=(\d+)/m) || [])[1]);
+  EXPECT_API === (sh.match(/^KL_API=(\d+)/m) || [])[1],
+  '界面 ' + EXPECT_API + ' / 命令层 ' + (sh.match(/^KL_API=(\d+)/m) || [])[1]);
 const writeCmds = ((bridge.match(/export const WRITE_CMDS = '((?:[^']|\n)+)'/) || [])[1] || '').split(/\s+/).filter(Boolean);
 chk('WRITE_CMDS 读得到', writeCmds.length > 5, writeCmds.length + ' 条');
 
@@ -101,7 +101,7 @@ chk('TEESim 命令层没有界面却填不出的多余键', dup.length === 0, du
 
 /* ──  写命令都在清单里，且都进了 WRITE_CMDS ─────────────────────── */
 console.log('── 写命令接线 ──');
-const cmds = ((sh.match(/^TAA_COMMANDS="([\s\S]*?)"$/m) || [])[1] || '').replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean);
+const cmds = ((sh.match(/^KL_COMMANDS="([\s\S]*?)"$/m) || [])[1] || '').replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean);
 const used = [...screens.matchAll(/write\('([a-z-]+)'/g)].map(m => m[1]);
 const unknown = [...new Set(used)].filter(c => !cmds.includes(c));
 chk('界面调用的写命令都在命令层清单里', unknown.length === 0, unknown.join(' '));
@@ -191,7 +191,7 @@ chk('图标字体族名保留（组件画连字要用）', !/--md-icon-font-fami
 }
 
 /* 命令层的两份清单自己也要对得上：`case "$CMD"` 的标签是**真实现**，
-   TAA_COMMANDS 是**对外声明**（界面靠 hasCmd() 读它决定要不要摆控件）。
+   KL_COMMANDS 是**对外声明**（界面靠 hasCmd() 读它决定要不要摆控件）。
    声明里有而 case 里没有 → 界面摆出一个点了就报"未知命令"的按钮；
    case 里有而声明里没有 → 那条能力永远不露出（teesim-overrides 就这么被埋过一次，
    当时设备上部署的还是 32 条的旧声明）。 */
@@ -200,17 +200,17 @@ chk('图标字体族名保留（组件画连字要用）', !/--md-icon-font-fami
   const body = sec.slice(0, sec.indexOf('\nesac'));
   const real = [...body.matchAll(/^\s{2,4}([a-z][a-z0-9-]*)\)/gm)].map(m => m[1]);
   const dq = String.fromCharCode(34);
-  const start = sh.indexOf('TAA_COMMANDS=' + dq);
+  const start = sh.indexOf('KL_COMMANDS=' + dq);
   let declRaw = '';
   for (const line of sh.slice(start).split('\n')) {
     declRaw += line.replace(/\\\$/g, '') + '\n';
     if (!/\\\s*$/.test(line)) break;
   }
   const declared = declRaw.replace(/\\\s*/g, ' ').split(/[\s"=]+/)
-    .filter(x => /^[a-z][a-z0-9-]*$/.test(x) && x !== 'TAA_COMMANDS');
+    .filter(x => /^[a-z][a-z0-9-]*$/.test(x) && x !== 'KL_COMMANDS');
   const unimpl = declared.filter(c => !real.includes(c));
   const undeclared = real.filter(c => !declared.includes(c));
-  chk('TAA_COMMANDS 声明 = case 实际实现',
+  chk('KL_COMMANDS 声明 = case 实际实现',
     unimpl.length === 0 && undeclared.length === 0 && declared.length > 20,
     '声明 ' + declared.length + ' · 实现 ' + real.length
     + (unimpl.length ? ' · 声明了没实现: ' + unimpl.join(' ') : '')

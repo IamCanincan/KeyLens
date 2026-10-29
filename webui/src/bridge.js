@@ -9,7 +9,7 @@
  *===========================================================================*/
 
 export const QUERY = new URLSearchParams(location.search);
-export const MODDIR = QUERY.get('mod') || '/data/adb/modules/ts-auto-add';
+export const MODDIR = QUERY.get('mod') || '/data/adb/modules/keylens';
 export const SH = 'sh ' + MODDIR + '/webui.sh';
 export const DEMO = QUERY.get('demo') === '1';
 /* 台架专用的两个开关，只在 demo=1 时有效：真机界面永远走不到这里。
@@ -422,13 +422,13 @@ function demoResult(cmd, arg) {
   var body = {
     contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
-      /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + TAA_CONFLICT_MSG 并 mark_module_stopped，
+      /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种
          机器上根本不存在的状态。 */
       'description=' + (DEMO_CONFLICT
         ? '⛔ 检测到多个密钥库后端同时启用（Tricky Store / TEE Simulator / OhMyKeymint），模块停止运行（请只保留一个）'
         : '✅ [' + B.name + ' | 应用: ' + toks.length + ' | 更新: 16:52]'),
-      'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu', 'backend=' + B.backend, 'backend_name=' + B.name,
+      'mod_id=keylens', 'mod_version=v2.2.19.5-yuzu', 'backend=' + B.backend, 'backend_name=' + B.name,
       'conflict=' + (DEMO_CONFLICT ? 1 : 0),
       /* 三态与三家：真机现量是 tricky=absent / teesim=absent / oh_my_keymint=active。
          conflict=1 时三家全成 active —— 那是台架唯一能看到互斥横幅的时刻。 */
@@ -437,7 +437,7 @@ function demoResult(cmd, arg) {
       'omk_state=' + (DEMO_CONFLICT || B.backend === 'omk' ? 'active' : 'absent'),
       'data_dir=' + B.dir, 'target_file=' + B.dir + '/' + B.target,
       'target_exists=1', 'target_writable=1', 'target_mtime=1793263964',
-      'props_masking=on', 'daemon_alive=' + (DEMO_CONFLICT ? 0 : 1), 'log_file=/data/adb/ts_auto.log',
+      'props_masking=on', 'daemon_alive=' + (DEMO_CONFLICT ? 0 : 1), 'log_file=/data/adb/keylens.log',
       'log_lines=492', 'log_bytes=33933'].join('\n'),
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',

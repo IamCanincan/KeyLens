@@ -1,5 +1,5 @@
 {
-  "name": "ts-auto-add-md3e-build",
+  "name": "keylens-md3e-build",
   "private": true,
   "type": "module",
   "description": "Builds the inline MD3E Web bundle used by module/webroot/index.html",

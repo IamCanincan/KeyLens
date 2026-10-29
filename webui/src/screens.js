@@ -840,7 +840,7 @@ export function renderLog() {
   row.appendChild(sw);
   s.appendChild(row);
   s.appendChild(h('p', 'hint', '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes)
-    + '（' + (S.status.log_lines || '?') + ' 行）· 文件 ' + (S.status.log_file || '/data/adb/ts_auto.log')));
+    + '（' + (S.status.log_lines || '?') + ' 行）· 文件 ' + (S.status.log_file || '/data/adb/keylens.log')));
   const console_ = h('div', 'console tall');
   if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
   else S.log.forEach(function (l) { console_.appendChild(logRow(l)); });
