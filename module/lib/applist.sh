@@ -45,6 +45,90 @@ is_pkg_name() {
     return 0
 }
 
+# ---------- 目标条目语法 ----------
+# 三个后端的 apps / target.txt / scoop 对「一个条目」的写法并不相同：
+#   tricky  pkg / pkg? / pkg!
+#   teesim  pkg / pkg@用户 / uid:数字
+#   omk     pkg
+# 界面与同步都要按「基础包名」判断一个应用是否已在名单里，同时把原 token
+# 原样写回，否则 ?/! 与 @用户 会在每次同步时被当成新包名重复加入或误删。
+# 用法：is_pkg_token <名字>；比 is_pkg_name 多允许每段以下划线开头（上游允许）
+is_pkg_token() {
+    local p="${1:-}" seg oldifs
+
+    case "$p" in
+        ''|.*|*.|*..*|*[!A-Za-z0-9_.]*) return 1 ;;
+    esac
+    case "$p" in
+        *.*) ;;
+        *)   return 1 ;;
+    esac
+
+    oldifs=$IFS
+    IFS=.
+    for seg in $p; do
+        case "$seg" in
+            [A-Za-z_]*) ;;
+            *) IFS=$oldifs; return 1 ;;
+        esac
+    done
+    IFS=$oldifs
+    return 0
+}
+
+# 说明：校验界面传来的目标条目 token（按当前后端）。只允许该后端真实支持的形状。
+# 用法：is_target_entry <token>
+is_target_entry() {
+    local t="${1:-}" pkg rest
+
+    case "${TAA_BACKEND:-}" in
+        tricky)
+            case "$t" in
+                *\?) pkg="${t%[?]}" ;;
+                *\!) pkg="${t%[!]}" ;;
+                *)   pkg="$t" ;;
+            esac
+            is_pkg_token "$pkg"
+            ;;
+        teesim)
+            case "$t" in
+                uid:*)
+                    rest="${t#uid:}"
+                    case "$rest" in
+                        ''|*[!0-9]*) return 1 ;;
+                    esac
+                    return 0
+                    ;;
+                *@*)
+                    pkg="${t%@*}"
+                    rest="${t##*@}"
+                    case "$rest" in
+                        ''|*[!0-9]*) return 1 ;;
+                    esac
+                    is_pkg_token "$pkg"
+                    ;;
+                *) is_pkg_token "$t" ;;
+            esac
+            ;;
+        *) is_pkg_token "$t" ;;
+    esac
+}
+
+# 说明：把目标条目文件（可能含 ?/!、@用户、uid:）转成基础包名。uid: 无包名，
+#       直接丢弃；找不到解析脚本时原样输出（只有纯包名列表时才安全）。
+# 用法：entries_to_bases <文件>
+entries_to_bases() {
+    local f="$1" patch="${TAA_PATCH:-}" helper
+
+    [ -f "$f" ] || return 0
+    helper="${patch%/*}/entry_base.awk"
+    if [ -n "$patch" ] && [ -f "$helper" ]; then
+        "${AWK_CMD:-awk}" -v backend="${TAA_BACKEND:-tricky}" -f "$helper" "$f"
+    else
+        sed '/^[[:space:]]*$/d' "$f"
+    fi
+}
+
 # ---------- 应用列表生成（快照差分） ----------
 # 说明：was = 上一次成功同步时见到的已装集合（.ts_installed_last）。
 #   首次运行（没有基线）时 was 为空，等于把所有已装应用都当"新装"加一遍；
@@ -95,22 +179,42 @@ build_app_list() {
     write_set "$base/seed" "$seed"
     : > "$base/was"; [ -s "$ST_INSTALLED" ] && cp -f "$ST_INSTALLED" "$base/was"
 
-    # 一次 awk 做完全部集合运算。配置解析不了时 cur 为空，这里会算出
-    # "删掉所有卸载过的"；但那样 teesim.awk 也定位不到 apps 数组、写入直接
-    # 返回 2，基线不会提交 —— 由写入器兜底，不在这里靠读取命令的退码猜
-    awk -v adopt="$adopt" '
+    # 一次 awk 做完全部集合运算。cur 里可能带后端语法（Tricky 的 ?/!、
+    # TEESim 的 @用户/uid:），卸载判断与新装判重都按基础包名做，写回仍用
+    # 原 token —— 否则卸载一个包时它的变体会留在名单里，新装时又会重复加入。
+    # 配置解析不了时 cur 为空，这里会算出"删掉所有卸载过的"；但那样 teesim.awk
+    # 也定位不到 apps 数组、写入直接返回 2，基线不会提交 —— 由写入器兜底，
+    # 不在这里靠读取命令的退码猜。
+    awk -v adopt="$adopt" -v backend="${TAA_BACKEND:-tricky}" '
         FILENAME == ARGV[1] { inst[$0] = 1; next }
-        FILENAME == ARGV[2] { cur[$0] = 1; next }
+        FILENAME == ARGV[2] {
+            tok = $0; b = tok
+            if (backend == "tricky") {
+                if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1)
+            } else if (backend == "teesim") {
+                if (b ~ /^uid:/) b = ""
+                else sub(/@[0-9]+$/, "", b)
+            }
+            cur[++nc] = tok; curbase[tok] = b
+            next
+        }
         FILENAME == ARGV[3] { seed[$0] = 1; next }
         FILENAME == ARGV[4] { was[$0] = 1; next }
         END {
             for (p in was) if (!(p in inst)) gone[p] = 1   # 这一轮之前卸载的
-            for (p in cur)  keep[p] = 1                     # 手工加的、手工删的，原样
-            if (adopt != 1) {
-                for (p in inst) if (!(p in was)) keep[p] = 1    # 新装
+            for (i = 1; i <= nc; i++) {
+                tok = cur[i]; b = curbase[tok]
+                # 包名已卸载：连同它的 ?/! 或 @用户 变体一起移除；uid: 无法反查，保留
+                if (b != "" && (b in gone)) continue
+                keep[tok] = 1
+                if (b != "") keepbase[b] = 1
             }
-            for (p in seed) keep[p] = 1
-            for (p in gone) delete keep[p]
+            if (adopt != 1) {
+                for (p in inst)
+                    if (!(p in was) && !(p in keepbase)) { keep[p] = 1; keepbase[p] = 1 }
+            }
+            for (p in seed)
+                if (!(p in keepbase)) { keep[p] = 1; keepbase[p] = 1 }
             for (p in keep) if (p != "") print p
         }
     ' "$base/inst" "$base/cur" "$base/seed" "$base/was" \
@@ -126,7 +230,9 @@ build_app_list() {
 
     # 「曾经纳入过」的并集：排除判定用它。OhMyKeymint 首次接入时基线是全部
     # 已装、但 scoop 可能只有几条，用基线会把从未纳入的应用误标成"已排除"。
-    { cat "$ST_EVER" 2>/dev/null; cat "$tmp" 2>/dev/null; } \
+    # 这里按基础包名入册：Tricky 的 pkg? / TEESim 的 pkg@10 都归到 pkg，
+    # 否则同一个应用换个模式就会被当成另一个应用。
+    { cat "$ST_EVER" 2>/dev/null; entries_to_bases "$tmp" 2>/dev/null; } \
         | sed '/^[[:space:]]*$/d' | sort -u > "${ST_EVER_NEW}.tmp" 2>/dev/null \
         && mv -f "${ST_EVER_NEW}.tmp" "$ST_EVER_NEW" 2>/dev/null
     chmod 600 "$ST_EVER_NEW" 2>/dev/null
@@ -152,7 +258,9 @@ excluded_apps() {
     base="${TAA_DIR}/.ts_excl.$$"
     mkdir -p "$base" 2>/dev/null || return 0
     printf '%s\n' "$inst" | sed '/^[[:space:]]*$/d' | sort -u > "$base/inst" 2>/dev/null
-    printf '%s\n' "$cur"  | sed '/^[[:space:]]*$/d' | sort -u > "$base/cur" 2>/dev/null
+    printf '%s\n' "$cur"  | sed '/^[[:space:]]*$/d' > "$base/cur" 2>/dev/null
+    # 目标里可能有 pkg? / pkg@10 / uid:，排除判定只按基础包名比
+    entries_to_bases "$base/cur" | sort -u > "$base/curbase" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$ST_EVER" > "$base/ever" 2>/dev/null || : > "$base/ever"
 
     awk '
@@ -162,7 +270,7 @@ excluded_apps() {
             p = $0; sub(/\r$/, "", p)
             if (p != "" && (p in ever) && !(p in cur)) print p
         }
-    ' "$base/cur" "$base/ever" "$base/inst" | sort -u
+    ' "$base/curbase" "$base/ever" "$base/inst" | sort -u
     rm -rf "$base" 2>/dev/null
 }
 

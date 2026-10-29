@@ -79,6 +79,16 @@ jobs:
         # 会清空返回 3、读取失败返回 2、移出前并入 ever。不需要设备。
         run: sh tests/remove-app.sh
 
+      - name: Target Entry Grammar Self-Test
+        # 三个后端的条目语法：Tricky 的 #/?/!、TEESim 的 pkg@用户/uid:、
+        # 快照差分按基础包名清理变体，以及 backend-info 的三个只读解析器。
+        run: sh tests/target-tokens.sh
+
+      - name: Backend Config Write Self-Test
+        # 后端配置写回：TEESim JSON 标量/嵌套 patchLevel、OMK TOML 标量/多行
+        # deny_packages/新段、Tricky 补丁表全局值；保留其它字段与注释、幂等。
+        run: sh tests/config-write.sh
+
       - name: Sync Empty-List Guard Self-Test
         # 已装读空但基线非空：自动同步必须放弃（rc=2、文件不动、基线不推进）；
         # 手动同步（TAA_EMPTY_OK=1）按当前已装处理。跑两个后端真实的 sync_*。

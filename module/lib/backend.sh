@@ -70,7 +70,8 @@ use_backend() {
         TAA_BACKEND="tricky"
         TAA_DIR="$TSTORE_DIR"
         TARGET_FILE="$TSTORE_DIR/target.txt"
-        AWK_CMD=""
+        # target.txt 现在要解析注释与 ?/! 后缀，和另外两个后端一样需要 awk
+        AWK_CMD=$(find_awk)
         # 仅在选用该后端时加载其写入实现，避免无用开销
         if [ -f "$mdir/backends/tricky.sh" ]; then
             . "$mdir/backends/tricky.sh"
@@ -100,7 +101,11 @@ current_target_apps() {
         [ -n "$AWK_CMD" ] || return 0
         $AWK_CMD -f "${TAA_PATCH%/*}/omk_list.awk" "$TARGET_FILE" 2>/dev/null
     else
-        sed '/^[[:space:]]*#/d; /^[[:space:]]*$/d' "$TARGET_FILE" 2>/dev/null
+        # Tricky Store OSS：行内 # 注释、?/! 模式后缀都按它自己的解析规则处理；
+        # 同一个包名出现多次时后出现的模式生效（与它的 Map 一致）。
+        [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+        [ -n "$AWK_CMD" ] || return 0
+        $AWK_CMD -f "${TAA_PATCH%/*}/tricky_list.awk" "$TARGET_FILE" 2>/dev/null
     fi
 }
 
@@ -153,10 +158,34 @@ add_target_apps() {
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' | sort -u > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
+    # 判重按基础包名：Tricky 的 pkg? / TEESim 的 pkg@10 已经代表这个应用在名单里，
+    # 不能再追加一条裸 pkg（Tricky 会变成同包两个模式，TEESim 会重复覆盖）。
     # 用 FILENAME 而不是 NR==FNR：cur 为空时，第二个文件的第一条记录会让
     # NR==FNR 仍为真，把新包名当成"已在名单"吞掉（实测：文件不存在时返回 1）。
-    awk 'FILENAME == ARGV[1] { cur[$0] = 1; next } $0 != "" && !($0 in cur)' \
-        "$dir/cur" "$dir/req" > "$dir/new" 2>/dev/null
+    awk -v backend="${TAA_BACKEND:-tricky}" '
+        FILENAME == ARGV[1] {
+            tok = $0; b = tok
+            if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
+            else if (backend == "teesim") { if (b ~ /^uid:/) b = ""; else sub(/@[0-9]+$/, "", b) }
+            exact[tok] = 1
+            if (b != "") base[b] = 1
+            next
+        }
+        {
+            tok = $0; b = tok
+            if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
+            else if (backend == "teesim") { if (b ~ /^uid:/) b = ""; else sub(/@[0-9]+$/, "", b) }
+            if (tok == "" || (tok in exact)) next
+            if (b != "" && (b in base)) {
+                # TEESim 的 @用户 是独立作用域，可以与该包的裸条目并存（撤销要用）；
+                # Tricky 的模式与裸包名互斥（同一个 Map 键），其余情况按已存在处理。
+                if (!(backend == "teesim" && tok ~ /@[0-9]+$/)) next
+            }
+            print tok
+            exact[tok] = 1
+            if (b != "") base[b] = 1
+        }
+    ' "$dir/cur" "$dir/req" > "$dir/new" 2>/dev/null
     if [ ! -s "$dir/new" ]; then
         rm -rf "$dir" 2>/dev/null
         return 1
@@ -191,7 +220,10 @@ add_target_apps() {
         fi
     fi
 
-    [ "$rc" = 0 ] && ever_add_list "$dir/new"
+    if [ "$rc" = 0 ]; then
+        entries_to_bases "$dir/new" > "$dir/newbase" 2>/dev/null
+        ever_add_list "$dir/newbase"
+    fi
     rm -rf "$dir" 2>/dev/null
     return "$rc"
 }
@@ -236,10 +268,29 @@ remove_target_apps() {
     printf '%s\n' "$cur" | sed '/^$/d' > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
 
-    # 实际被移出的包名（去重、保留原顺序），界面「撤销」用它精确恢复；
+    # 实际被移出的条目（去重、保留原顺序），界面「撤销」用它精确恢复；
     # 不能用界面勾选的那一份：列表可能已经刷新过，勾选里可能夹着已不在文件里的包。
-    if ! $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
-        $0 != "" && ($0 in req) && !seen[$0]++ { print }' "$dir/req" "$dir/cur" > "$dir/removed" 2>/dev/null; then
+    # Tricky 的模式同属一个应用（它内部按包名存 Map），所以按基础包名匹配；
+    # TEESim 的 pkg@10 是一个独立作用域，按 token 精确匹配，避免误删同包的其他用户。
+    if ! $AWK_CMD -v backend="${TAA_BACKEND:-tricky}" -v removedfile="$dir/removed" '
+        FILENAME == ARGV[1] {
+            tok = $0; b = tok
+            if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
+            else if (backend == "teesim") { if (b ~ /^uid:/) b = ""; else sub(/@[0-9]+$/, "", b) }
+            reqexact[tok] = 1
+            if (b != "") reqbase[b] = 1
+            next
+        }
+        {
+            tok = $0; b = tok
+            if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
+            else if (backend == "teesim") { if (b ~ /^uid:/) b = ""; else sub(/@[0-9]+$/, "", b) }
+            hit = (tok in reqexact) || (backend == "tricky" && b != "" && (b in reqbase))
+            if (hit) { if (!(tok in seen)) { print tok > removedfile; seen[tok] = 1 } }
+            else keep[++n] = tok
+        }
+        END { for (i = 1; i <= n; i++) print keep[i] }
+    ' "$dir/req" "$dir/cur" > "$dir/combo" 2>/dev/null; then
         rm -rf "$dir" 2>/dev/null
         return 2
     fi
@@ -250,12 +301,6 @@ remove_target_apps() {
     fi
     TAA_REMOVED_LIST=$(tr '\n' ',' < "$dir/removed" 2>/dev/null | sed 's/,$//')
 
-    # 保持剩余条目的原顺序，只去掉重复项；TEESim/OMK 的数组顺序因此不变。
-    if ! $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
-        $0 != "" && !($0 in req) && !seen[$0]++' "$dir/req" "$dir/cur" > "$dir/combo" 2>/dev/null; then
-        rm -rf "$dir" 2>/dev/null
-        return 2
-    fi
     if [ ! -s "$dir/combo" ]; then
         rm -rf "$dir" 2>/dev/null
         return 3
@@ -279,10 +324,30 @@ remove_target_apps() {
             fi
         fi
     else
-        # Tricky：只删匹配的包名行，注释、空行与其余条目原样保留。
-        if $AWK_CMD 'FILENAME == ARGV[1] { req[$0] = 1; next }
-            { p = $0; sub(/\r$/, "", p); if (p in req) next; print }' \
-            "$dir/req" "$TARGET_FILE" > "$dir/out" 2>/dev/null; then
+        # Tricky：只删匹配的条目行，注释、空行与其余条目原样保留。
+        # 模式后缀属于同一个应用，按基础包名删；行内注释不参与比较。
+        if $AWK_CMD '
+            FILENAME == ARGV[1] {
+                tok = $0; b = tok
+                if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1)
+                reqexact[tok] = 1
+                if (b != "") reqbase[b] = 1
+                next
+            }
+            {
+                orig = $0
+                line = $0; sub(/\r$/, "", line)
+                h = index(line, "#"); body = h ? substr(line, 1, h - 1) : line
+                gsub(/^[ \t]+|[ \t]+$/, "", body)
+                tok = body; b = tok
+                if (b ~ /[?!]$/) {
+                    b = substr(b, 1, length(b) - 1)
+                    sub(/[ 	]+$/, "", b)
+                }
+                if ((tok in reqexact) || (b != "" && (b in reqbase))) next
+                print orig
+            }
+        ' "$dir/req" "$TARGET_FILE" > "$dir/out" 2>/dev/null; then
             chmod 644 "$dir/out" 2>/dev/null
             mv -f "$dir/out" "$TARGET_FILE" 2>/dev/null && rc=0
         fi
@@ -290,9 +355,78 @@ remove_target_apps() {
 
     # 移出前把当前名单并入 ever：手工加进文件、还没同步过的包也被记住，
     # 移出后才能在「已安装」里显示成「已排除」，而不是凭空消失。
-    [ "$rc" = 0 ] && ever_add_list "$dir/cur"
+    if [ "$rc" = 0 ]; then
+        entries_to_bases "$dir/cur" > "$dir/curbase" 2>/dev/null
+        ever_add_list "$dir/curbase"
+    fi
     rm -rf "$dir" 2>/dev/null
     return "$rc"
+}
+
+# ---------- 修改 Tricky 条目的模式 ----------
+# 说明：Tricky Store OSS 的 target.txt 支持 ?（强制叶证书破解）与 !（强制证书
+#       生成），不带后缀为自动。只改这一行的后缀，注释与其余条目原样保留；
+#       写完由 Tricky 自己的 FileObserver 重载（MOVED_TO）。
+# 用法：set_tricky_mode <包名> <auto|leaf|generate>
+# 返回：0=已修改 1=无需修改/没有这个包 2=失败
+set_tricky_mode() {
+    local pkg="$1" mode="$2" dir out status rc=2
+
+    [ "${TAA_BACKEND:-}" = "tricky" ] || return 2
+    is_pkg_token "$pkg" || return 2
+    case "$mode" in auto|leaf|generate) ;; *) return 2 ;; esac
+    [ -f "$TARGET_FILE" ] || return 2
+    [ -n "${AWK_CMD:-}" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] && [ -f "${TAA_PATCH%/*}/tricky_mode.awk" ] || return 2
+
+    dir="${TAA_DIR}/.ts_mode.$$"
+    mkdir -p "$dir" 2>/dev/null || return 2
+    out="$dir/out"; status="$dir/status"
+    $AWK_CMD -v pkg="$pkg" -v mode="$mode" -v statusfile="$status" \
+        -f "${TAA_PATCH%/*}/tricky_mode.awk" "$TARGET_FILE" > "$out" 2>/dev/null
+
+    case "$(cat "$status" 2>/dev/null)" in
+        ok)
+            chmod 644 "$out" 2>/dev/null
+            mv -f "$out" "$TARGET_FILE" 2>/dev/null && rc=0
+            ;;
+        same|none) rc=1 ;;
+        *) rc=2 ;;
+    esac
+    rm -rf "$dir" 2>/dev/null
+    return "$rc"
+}
+
+# ---------- 原子替换并保留目标文件属性 ----------
+# 说明：界面改后端配置时用。new 必须与 target 在同一目录（rename 才是原子的）；
+#       先按原文件的 owner / mode / SELinux 上下文修正 new，有备份就先 cp -p，
+#       最后 mv。目标不存在时按 600 root 落地。
+# 用法：write_atomic_preserve <目标> <新文件> <备份路径|"">
+# 返回：0=成功 1=失败
+write_atomic_preserve() {
+    local target="$1" new="$2" backup="$3"
+    local uid gid mode ctx
+
+    [ -f "$new" ] || return 1
+
+    if [ -f "$target" ]; then
+        uid=$(stat -c %u "$target" 2>/dev/null)
+        gid=$(stat -c %g "$target" 2>/dev/null)
+        mode=$(stat -c %a "$target" 2>/dev/null)
+        ctx=$(ls -Zd "$target" 2>/dev/null | awk '{print $1}')
+        [ -n "$uid" ] && [ -n "$gid" ] && chown "$uid:$gid" "$new" 2>/dev/null
+        [ -n "$mode" ] && chmod "$mode" "$new" 2>/dev/null
+        if [ -n "$ctx" ] && command -v chcon >/dev/null 2>&1; then
+            chcon "$ctx" "$new" 2>/dev/null
+        fi
+        if [ -n "$backup" ]; then
+            cp -p "$target" "$backup" 2>/dev/null && chmod 600 "$backup" 2>/dev/null
+        fi
+    else
+        chmod 600 "$new" 2>/dev/null
+    fi
+
+    mv -f "$new" "$target" 2>/dev/null
 }
 
 # ---------- 后端名称 ----------
