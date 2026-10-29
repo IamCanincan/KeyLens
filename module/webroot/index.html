@@ -287,9 +287,15 @@ body.is-selecting .tabs{display:none}
 .wrap{padding:0 var(--sp4) calc(104px + var(--inset-bottom));
   display:flex;flex-direction:column;gap:var(--sp6);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
+/* 除主页外的页内容通常比一屏短（功能菜单、Verified Boot、日志…），
+   在内容区里垂直居中，别贴顶、下面空一大片；内容超出时 safe 退回顶部。
+   主页不居中：英雄卡是这一屏的锚点，从顶部开始才像仪表盘。 */
+.wrap.center{justify-content:safe center}
 /* 面板竖着排，靠 hidden 切换 —— 没有滚动、没有容器高度变化，
    也没有"相邻页第一次进视口才绘制"那一帧。
-   概览自己不是卡片（里面还套着状态明细卡），所以用 .panel 而不是 .card.panel。 */
+   概览自己不是卡片（里面还套着状态明细卡），所以用 .panel 而不是 .card.panel。
+   .pages 撑满 .wrap 剩下的高度：功能菜单那张卡靠 auto 外边距在它里面垂直居中
+   （普通块布局里 auto 纵向外边距恒为 0，居不上去）。 */
 .pages{display:block}
 .panel[hidden]{display:none}
 /* 二级页没有英雄卡，卡片离顶栏补一点气口（概览靠 .wrap 的 gap） */
@@ -392,7 +398,9 @@ body.is-selecting .tabs{display:none}
 .menu-txt{flex:1;min-width:0;display:block}
 .menu-txt b{display:block;font-size:var(--fs16);font-weight:600;line-height:1.4}
 .menu-txt small{display:block;margin-top:2px;font-size:var(--fs12);color:var(--on-variant);line-height:1.5}
-/* 菜单卡自己不留内边距：行的 padding 已经是 sp6，与其它卡的内容左缘对齐 */
+/* 菜单卡自己不留内边距：行的 padding 已经是 sp6，与其它卡的内容左缘对齐。
+   功能菜单只有四项，比一屏短得多 —— 在内容区里垂直居中，否则整张卡贴着顶栏、
+   下面空一大片。 */
 .menu-card{padding:0;overflow:hidden}
 /* 概览里是两张卡：入口在上、状态明细在下 */
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
@@ -410,7 +418,9 @@ body.is-selecting .tabs{display:none}
    surface-high，所以里面改用 surface-highest，两处都是同一档落差。
    负外边距 + 等值内边距：色块向外铺到卡内边距的中点，文字左缘仍然精确落在 41
    （全站那一条内容左缘不能因为加底色而挪位置）。 */
-.grp{background:var(--block);border-radius:var(--r-m);
+/* 圆角与外卡同心：卡 20 是边框外沿，减 1px 边框、再减 8（卡内边距 24 − 外扩 16）
+   = 11。别再改回 --r-m（16）—— 那样两个圆角不同心。 */
+.grp{background:var(--block);border-radius:11px;
   margin:0 calc(var(--sp4) * -1);padding:var(--sp4)}
 .grp+.grp{margin-top:var(--sp6)}
 .grp-t{display:flex;align-items:center;gap:8px;font-size:var(--fs13);font-weight:700;
@@ -3437,6 +3447,7 @@ function applyPage(name){
   }
   btnBack.hidden = !SUB_OF[name];
   document.querySelector('.appbar').classList.toggle('is-sub', !home);
+  document.querySelector('.wrap').classList.toggle('center', !home);
 }
 /* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
    入场从切的方向滑进来（底栏往右切 +1 从右、往左切 -1 从左）：位移 24px

@@ -159,6 +159,12 @@ chk('Verified Boot 是独立一页', /id="p-boot"[\s\S]{0,600}id="bootHashBox"/.
   && !/id="bootHashGrp"/.test(html));
 /* .menu-row 自己设了 display:flex，[hidden] 会被盖掉 —— 少了这条，能力门就关不掉 */
 chk('菜单行支持 hidden', /\.menu-row\[hidden\]\{display:none\}/.test(html));
+/* 内容比一屏短的页（功能/属性子页/日志…）在内容区里垂直居中，主页保持顶部对齐 */
+chk('短页内容垂直居中（主页除外）',
+  /\.wrap\.center\{justify-content:safe center\}/.test(html)
+  && /classList\.toggle\('center', !home\)/.test(fnBody('applyPage')));
+/* 同心圆：卡片 20 − 1px 边框 − 8px 间距 = 11 */
+chk('板块圆角与外卡同心', /\.grp\{background:var\(--block\);border-radius:11px/.test(html));
 chk('每个 tab 图标都在 ICON 表里',
   tabSrc.every(t => iconSrc.indexOf(t[2] + ": '") >= 0),
   tabSrc.filter(t => iconSrc.indexOf(t[2] + ": '") < 0).map(t => t[2]).join(','));
