@@ -389,6 +389,9 @@ body.is-selecting .tabs{display:none}
   color:var(--on-variant);opacity:.6}
 .menu-txt{flex:1;min-width:0;display:block}
 .menu-txt b{display:block;font-size:var(--fs16);font-weight:600;line-height:1.4}
+.menu-txt small{display:block;margin-top:2px;font-size:var(--fs12);color:var(--on-variant);line-height:1.5}
+/* 菜单卡自己不留内边距：行的 padding 已经是 sp6，与其它卡的内容左缘对齐 */
+.menu-card{padding:0;overflow:hidden}
 /* 概览里是两张卡：入口在上、状态明细在下 */
 /* 卡与卡之间 (24) 不小于卡内边距 (24)：外距小于内距时，两张卡看起来会比
    它们自己的内容还亲，版面立刻显得局促。 */
@@ -1176,11 +1179,12 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 
 <header class="appbar">
   <!-- 顶栏不放配色与深浅开关：颜色一律跟随系统（见「关于 → 取色 / 深浅」）。
-       原先那两个按钮会让人不小心把界面调成和系统不一样的东西。
-       也不放返回箭头：六个页都在底栏并列，没有上一级可言。 -->
+       返回箭头只在二级页出现（功能 → 后端与名单 / 系统属性）：一级四页
+       都在底栏并列，没有上一级可言。 -->
   <div class="appbar-row">
+    <md-gb-icon-button class="back" id="btnBack" size="sm" aria-label="返回功能" hidden></md-gb-icon-button>
     <div style="min-width:0">
-      <h1 id="pageTitle">概览</h1>
+      <h1 id="pageTitle">主页</h1>
     </div>
   </div>
 </header>
@@ -1216,6 +1220,19 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
       </section>
     </section>
 
+
+    <!-- 功能：二级菜单。一级只留四个目的地，具体工具收在这一层，
+         点进去后顶栏出现返回箭头（不是第五个底栏格）。 -->
+    <section class="card panel menu-card" id="p-func" hidden>
+      <div class="menu">
+        <button type="button" class="menu-row" data-go="backend">
+          <span class="menu-txt"><b>后端与名单</b><small>目标名单、条目语法与可编辑配置</small></span>
+        </button>
+        <button type="button" class="menu-row" data-go="props">
+          <span class="menu-txt"><b>系统属性伪装</b><small>17 项属性、开机写入与 Verified Boot 哈希</small></span>
+        </button>
+      </div>
+    </section>
 
     <section class="card panel" id="p-backend" hidden>
       <!-- 名单就是这个后端的数据：条目语法（Tricky 的 ?/!、TEESim 的 @用户）与
@@ -1308,10 +1325,9 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
      未选中只留图标、选中才展开两个字的名字 —— 六个图标 + 一个名字实测 350px，
      在 417 CSS px 屏（可用 401）放得下，长页名走 aria-label 而不占横向空间。 -->
 <nav class="tabs" aria-label="主导航" id="tabs">
-  <button type="button" class="tab is-active" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
-  <button type="button" class="tab" data-tab="backend" data-icon="backend" aria-label="后端与格式"><i class="ico"></i><span class="lb">后端</span></button>
+  <button type="button" class="tab is-active" data-tab="over" data-icon="home" aria-label="主页"><i class="ico"></i><span class="lb">主页</span></button>
+  <button type="button" class="tab" data-tab="func" data-icon="apps" aria-label="功能"><i class="ico"></i><span class="lb">功能</span></button>
   <button type="button" class="tab" data-tab="log" data-icon="logs" aria-label="运行日志"><i class="ico"></i><span class="lb">日志</span></button>
-  <button type="button" class="tab" data-tab="props" data-icon="tune" aria-label="系统属性伪装"><i class="ico"></i><span class="lb">属性</span></button>
   <button type="button" class="tab" data-tab="about" data-icon="info" aria-label="关于与自检"><i class="ico"></i><span class="lb">关于</span></button>
 </nav>
 
@@ -1360,6 +1376,7 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
    0. 图标（内联 SVG，避免外部请求）
    ========================================================= */
 var ICON = {
+  back: '<path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20Z"/>',
   sync: '<path d="M12 4V1L8 5l4 4V6a6 6 0 1 1-6 6H4a8 8 0 0 0 8-8Z"/>',
   reload: '<path d="M17.65 6.35A8 8 0 1 0 19.73 14h-2.08A6 6 0 1 1 12 6c1.66 0 3.14.69 4.22 1.78L13 11h7V4Z"/>',
   save: '<path d="M5 3h9l5 5v13H5Zm3 0v5h6V3Zm4 10a3 3 0 1 0 0 6 3 3 0 0 0 0-6Z"/>',
@@ -3086,8 +3103,9 @@ var inflight = {};
    切回一个已经画过的页面时这里什么都不取，重画只会把整张列表再建一遍。 */
 function ensure(tab){
   /* 「关于」不取自己的数：那一页全是界面自检（status / env / THEME / 桥接），
-     基础链已经取过。写成 tab 会被下面那条三元当成 props 去读属性表。 */
-  if (tab === 'about') return Promise.resolve(false);
+     基础链已经取过。写成 tab 会被下面那条三元当成 props 去读属性表。
+     「功能」是静态菜单，同样不取数。 */
+  if (tab === 'about' || tab === 'func') return Promise.resolve(false);
   /* 后端页是「名单 + 配置」两半，两样都要；各自去重，返回这一趟有没有真取到数 */
   if (tab === 'backend') {
     return Promise.all([ensureNeed('lists'), ensureNeed('backend')]).then(function (rs){
@@ -3113,6 +3131,8 @@ function ensureNeed(need){
 function renderAll(){
   renderHero();
   if (S.tab === 'over') renderOver();
+  /* 「功能」是静态菜单，没有要画的数据 */
+  else if (S.tab === 'func') { /* 菜单行在标记里 */ }
   /* 后端页两半都要画：名单来自 lists，配置来自 backend */
   else if (S.tab === 'backend') { renderApps(); renderBackend(); }
   else if (S.tab === 'log') renderLog();
@@ -3134,9 +3154,10 @@ function runChain(withBase, quiet){
     S.iconAsked = {};                               // 图标问过的名单也重开：新装的应用该被认出来
     /* 列表随基础信息一起取：英雄卡的三个数字在任何一页都要显示，
        以前只按当前页懒加载，进「日志」页时英雄卡就是一片 —，看着像坏了。
-       「关于」页没有英雄卡，也不读名单，就不白跑这一趟命令。 */
+     「关于」页没有英雄卡，也不读名单，就不白跑这一趟命令；「功能」是静态菜单，
+     同样不用名单。 */
     chain = Promise.all([loadStatus(), loadEnv(),
-      S.tab === 'about' ? Promise.resolve(false) : ensureNeed('lists')]);
+      (S.tab === 'about' || S.tab === 'func') ? Promise.resolve(false) : ensureNeed('lists')]);
   } else {
     chain = Promise.resolve();
   }
@@ -3365,11 +3386,16 @@ function confirm(title, text, okLabel){
    6. 交互装配
    ========================================================= */
 var tabs = document.getElementById('tabs');
+var btnBack = document.getElementById('btnBack');
 var btnAppsRefresh = document.getElementById('btnAppsRefresh');
-var PAGES = ['over', 'backend', 'log', 'props', 'about'];
-var TAB_LABEL = { over: '概览', backend: '后端与格式', log: '运行日志',
-  props: '系统属性伪装', about: '关于与自检' };
-/* 只切状态：显隐目标页、标题、底栏选中态、概览的英雄卡。 */
+/* 一级四个（底栏），功能下面挂两个二级页 —— 二级页也占 hash 与面板，
+   但底栏高亮的是它们的父级，返回箭头也只在它们身上出现。 */
+var PAGES = ['over', 'func', 'backend', 'props', 'log', 'about'];
+var TAB_LABEL = { over: '主页', func: '功能', backend: '后端与格式',
+  props: '系统属性伪装', log: '运行日志', about: '关于与自检' };
+var SUB_OF = { backend: 'func', props: 'func' };
+function barTabOf(name){ return SUB_OF[name] || name; }
+/* 只切状态：显隐目标页、标题、底栏选中态（二级页高亮父级）、返回箭头、英雄卡。 */
 function applyPage(name){
   S.tab = name;
   /* 多选只属于后端页的名单区：离开这一页就收掉 */
@@ -3382,13 +3408,15 @@ function applyPage(name){
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
   hero.hidden = !home;        // 二级页不重复英雄卡：那一屏只有标题 + 内容
+  var bar = barTabOf(name);
   var items = tabs.querySelectorAll('.tab');
   for (var i = 0; i < items.length; i++){
-    var on = items[i].dataset.tab === name;
+    var on = items[i].dataset.tab === bar;
     items[i].classList.toggle('is-active', on);
     if (on) items[i].setAttribute('aria-current', 'page');
     else items[i].removeAttribute('aria-current');
   }
+  btnBack.hidden = !SUB_OF[name];
   document.querySelector('.appbar').classList.toggle('is-sub', !home);
 }
 /* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
@@ -3460,7 +3488,7 @@ function showTab(name){
    概览位置抹回 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
 function pageFromHash(){
-  var m = /^#\/(over|backend|log|props|about)$/.exec(location.hash || '');
+  var m = /^#\/(over|func|backend|props|log|about)$/.exec(location.hash || '');
   return m ? m[1] : null;
 }
 function navTo(name){
@@ -3468,6 +3496,14 @@ function navTo(name){
   /* file:// 下有的 WebView 会拒绝改历史条目，退回 location.hash 至少页名跟得上 */
   try { history.replaceState(null, '', '#/' + name); }
   catch (e) { location.hash = '#/' + name; }
+}
+/* 二级页的出口：回到它挂着的那个一级页（功能菜单） */
+function goBack(){
+  var up = SUB_OF[S.tab];
+  if (!up) return;
+  navTo(up);
+  showTab(up);
+  loadTab();
 }
 function goTab(name){
   if (name === S.tab) { loadTab(); return; }
@@ -3510,6 +3546,21 @@ function wire(){
     var x = e.target && e.target.closest ? e.target.closest('.tab') : null;
     if (x) goTab(x.dataset.tab);
   });
+  /* 功能页的二级菜单：点一行进那一页（底栏仍停在「功能」） */
+  btnBack.innerHTML = svg('back');
+  btnBack.addEventListener('click', goBack);
+  var menuRows = document.querySelectorAll('#p-func .menu-row');
+  for (var mi = 0; mi < menuRows.length; mi++){
+    (function (row){
+      row.addEventListener('click', function (){
+        var to = row.dataset.go;
+        if (PAGES.indexOf(to) < 0) return;
+        navTo(to);
+        showTab(to);
+        loadTab();
+      });
+    })(menuRows[mi]);
+  }
   btnSync.addEventListener('click', doSync);
   btnReload.addEventListener('click', refresh);
 

@@ -125,18 +125,34 @@ const pagesSrc = (html.match(/var PAGES = \[([^\]]*)\]/) || [])[1] || '';
 const pages = (pagesSrc.match(/'[a-z]+'/g) || []).map(s => s.slice(1, -1));
 const tabSrc = [...html.matchAll(/data-tab="([a-z]+)" data-icon="([a-z]+)"/g)];
 const iconSrc = extract('var ICON =');
-chk('PAGES 抽到 5 项', pages.length === 5, JSON.stringify(pages));
+const subMap = [...((html.match(/var SUB_OF = \{([^}]*)\}/) || [])[1] || '').matchAll(/([a-z]+):\s*'([a-z]+)'/g)]
+  .map(m => ({ child: m[1], parent: m[2] }));
+const subPages = subMap.map(s => s.child);
+const topPages = pages.filter(p => subPages.indexOf(p) < 0);
+chk('PAGES 抽到 6 项（4 个一级 + 2 个二级）', pages.length === 6, JSON.stringify(pages));
 /* 名单是后端自己的数据：它必须长在后端页里，而不是又拆回独立一页 */
 chk('名单区与配置区同在后端页', /id="p-backend"[\s\S]*id="appsBody"[\s\S]*id="backendBody"/.test(html)
   && !/id="p-apps"/.test(html) && /<h3 class="grp-t">名单<\/h3>/.test(html) && /<h3 class="grp-t"[^>]*>配置<\/h3>/.test(html));
-chk('底栏 tab 与 PAGES 一一对应（不多不少不重）',
-  tabSrc.length === pages.length && new Set(tabSrc.map(t => t[1])).size === tabSrc.length
-  && pages.every(p => tabSrc.some(t => t[1] === p)),
-  'tabs=' + JSON.stringify(tabSrc.map(t => t[1])));
+chk('底栏 tab = 一级页（不多不少不重）',
+  tabSrc.length === topPages.length && new Set(tabSrc.map(t => t[1])).size === tabSrc.length
+  && topPages.every(p => tabSrc.some(t => t[1] === p)),
+  'tabs=' + JSON.stringify(tabSrc.map(t => t[1])) + ' top=' + JSON.stringify(topPages));
+chk('二级页都挂在底栏存在的父级下',
+  subMap.length === 2 && subMap.every(s => pages.indexOf(s.child) >= 0
+    && topPages.indexOf(s.parent) >= 0),
+  JSON.stringify(subMap));
+chk('功能页有两个菜单行，恰好指向两个二级页',
+  (function (){
+    const rows = [...html.matchAll(/class="menu-row" data-go="([a-z]+)"/g)].map(m => m[1]);
+    return /id="p-func"/.test(html) && rows.length === 2
+      && subPages.every(p => rows.indexOf(p) >= 0);
+  })());
 chk('每个 tab 图标都在 ICON 表里',
   tabSrc.every(t => iconSrc.indexOf(t[2] + ": '") >= 0),
   tabSrc.filter(t => iconSrc.indexOf(t[2] + ": '") < 0).map(t => t[2]).join(','));
-chk('顶栏返回钮的图标已随返回一起撤掉', iconSrc.indexOf("back: '") < 0);
+chk('返回钮只给二级页用（图标与位置都在）',
+  iconSrc.indexOf("back: '") >= 0 && /id="btnBack"/.test(html)
+  && /btnBack\.innerHTML = svg\('back'\)/.test(html));
 chk('.tabs 钉在视口底部（含安全区）',
   /\.tabs\{position:fixed/.test(html) && /\.tabs\{[\s\S]{0,200}bottom:calc\(var\(--inset-bottom\) \+ \d+px\)/.test(html));
 chk('选中项用 secondary-container 药丸', /\.tab\.is-active\{background:var\(--secondary-container\)/.test(html));
@@ -159,16 +175,17 @@ function fnBody(name) {
   if (end < 0) throw new Error('函数没有闭合：' + name);
   return html.slice(i, end);
 }
-chk('applyPage 同步底栏选中态', /classList\.toggle\('is-active', on\)/.test(fnBody('applyPage')));
-chk('顶栏返回钮确实不再由 applyPage 控制', !/btnBack/.test(fnBody('applyPage')));
+chk('applyPage 同步底栏选中态（二级页高亮父级）',
+  /classList\.toggle\('is-active', on\)/.test(fnBody('applyPage'))
+  && /barTabOf\(name\)/.test(fnBody('applyPage')));
+chk('返回钮只由二级页控制', /btnBack\.hidden = !SUB_OF\[name\]/.test(fnBody('applyPage')));
 /* replaceState 不发 popstate：少了这一步，点底栏只改地址栏、屏幕不动 */
 chk('goTab 自己完成切页', /showTab\(name\);/.test(fnBody('goTab')));
+chk('goBack 回到父级', /SUB_OF\[S\.tab\]/.test(fnBody('goBack')) && /showTab\(up\)/.test(fnBody('goBack')));
 chk('popstate 仍然接住真实的前进/后退', /window\.addEventListener\('popstate'/.test(html));
 chk('多选时底栏给批量条让位', /body\.is-selecting \.tabs\{display:none\}/.test(html));
 chk('切页不往历史里堆横向条目', /try \{ history\.replaceState\(null, '', '#\/' \+ name\); \}/.test(html));
-chk('概览入口列表与返回钮没有留下残骸',
-  !/home-menu/.test(html) && !/id="btnBack"/.test(html) && !/data-go=/.test(html)
-  && !/function goBack\(/.test(html));
+chk('菜单行都接上了切页', /row\.addEventListener\('click'/.test(html) && /row\.dataset\.go/.test(html));
 
 if (fail) {
   console.log('有断言失败');
