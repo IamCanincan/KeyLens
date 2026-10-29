@@ -1,0 +1,10 @@
+{
+  "name": "ts-auto-add-md3e-build",
+  "private": true,
+  "type": "module",
+  "description": "Builds the inline MD3E Web bundle used by module/webroot/index.html",
+  "devDependencies": {
+    "@materialwebunofficial/md3e-web": "1.0.14",
+    "esbuild": "0.25.10"
+  }
+}

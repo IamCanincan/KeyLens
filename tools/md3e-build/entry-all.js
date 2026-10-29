@@ -1,0 +1,48 @@
+/* 候选组件集：先把"这版界面要用哪些 MD3E 元素"钉成一份清单，
+   按它打包量体积，再决定砍谁。缺一个 import 就会在渲染时静默降级成
+   未知元素（什么都不画），所以这一份就是清单本身。 */
+import '@materialwebunofficial/md3e-web/components/md-theme.js';
+import '@materialwebunofficial/md3e-web/components/md-top-app-bar.js';
+import '@materialwebunofficial/md3e-web/components/md-navigation-bar.js';
+import '@materialwebunofficial/md3e-web/components/md-bottom-app-bar.js';
+import '@materialwebunofficial/md3e-web/components/md-card.js';
+import '@materialwebunofficial/md3e-web/components/md-list.js';
+import '@materialwebunofficial/md3e-web/components/md-button.js';
+import '@materialwebunofficial/md3e-web/components/md-icon-button.js';
+import '@materialwebunofficial/md3e-web/components/md-button-group.js';
+import '@materialwebunofficial/md3e-web/components/md-split-button.js';
+import '@materialwebunofficial/md3e-web/components/md-segmented-button.js';
+import '@materialwebunofficial/md3e-web/components/md-switch.js';
+import '@materialwebunofficial/md3e-web/components/md-text-field.js';
+import '@materialwebunofficial/md3e-web/components/md-select.js';
+import '@materialwebunofficial/md3e-web/components/md-chip.js';
+import '@materialwebunofficial/md3e-web/components/md-dialog.js';
+import '@materialwebunofficial/md3e-web/components/md-menu.js';
+import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
+import '@materialwebunofficial/md3e-web/components/md-tooltip.js';
+import '@materialwebunofficial/md3e-web/components/md-tabs.js';
+import '@materialwebunofficial/md3e-web/components/md-expansion-panel.js';
+import '@materialwebunofficial/md3e-web/components/md-divider.js';
+import '@materialwebunofficial/md3e-web/components/md-badge.js';
+import '@materialwebunofficial/md3e-web/components/md-progress-indicator.js';
+import '@materialwebunofficial/md3e-web/components/md-loading-indicator.js';
+import '@materialwebunofficial/md3e-web/components/md-search-bar.js';
+import '@materialwebunofficial/md3e-web/components/md-date-picker.js';
+import '@materialwebunofficial/md3e-web/components/md-slider.js';
+import '@materialwebunofficial/md3e-web/components/md-checkbox.js';
+import '@materialwebunofficial/md3e-web/components/md-radio-button.js';
+import '@materialwebunofficial/md3e-web/components/md-bottom-sheet.js';
+import '@materialwebunofficial/md3e-web/components/md-fab.js';
+import '@materialwebunofficial/md3e-web/components/md-toolbar.js';
+import '@materialwebunofficial/md3e-web/components/md-autocomplete.js';
+import '@materialwebunofficial/md3e-web/components/md-stepper.js';
+import '@materialwebunofficial/md3e-web/components/md-paginator.js';
+import '@materialwebunofficial/md3e-web/components/md-carousel.js';
+import '@materialwebunofficial/md3e-web/components/md-shape.js';
+import '@materialwebunofficial/md3e-web/components/md-navigation-drawer.js';
+import '@materialwebunofficial/md3e-web/components/md-navigation-rail.js';
+import '@materialwebunofficial/md3e-web/components/md-side-sheet.js';
+import '@materialwebunofficial/md3e-web/components/md-app-bar-with-search.js';
+import '@materialwebunofficial/md3e-web/components/md-fab-menu.js';
+import '@materialwebunofficial/md3e-web/components/md-time-picker.js';
+export * from '@materialwebunofficial/md3e-web';

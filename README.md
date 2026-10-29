@@ -85,7 +85,9 @@ module/
 tools/                     # 不进刷机包：构建与自检
 tests/                     # 静态自检（CI 跑）
 tools/icondump/            # 图标 dex 的源码与编译命令
-tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）
+tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）—— 当前线上版
+tools/md3e-build/         # MD3E Web 组件包 → 内联 bundle（npm + esbuild），新版用，含图标闸门
+webui/src/                # 新版界面源码（index.html / app.css / app.js），构建产物才是 webroot/index.html
 tools/ui-cdp-check.mjs   # 界面验收台架：CDP 钉死视口，逐页量溢出/面板/标题（本地跑，要 Chrome）
 tools/deploy-webui.sh    # 推 WebUI 上机：入口闸门 + chmod 644 + 逐文件对 sha256
 THIRD_PARTY_NOTICES.md     # 内联 bundle 的第三方许可
@@ -189,6 +191,7 @@ node tests/ui-shape.js            # 79 条静态断言
 - **`adb push` 默认把文件落成 0666**，而这个 `index.html` 由管理器以 root 加载、里面的命令以 root 执行 —— 世界可写等于任何应用都能改写一个 root 界面。所以"模式不是 644/444 就退非 0"是部署脚本的硬闸门，不靠人记得 `chmod`。脚本还会拒绝"工作区有未提交改动"（否则设备上跑的版本对不上仓库，回头说不清），并要求 `adb shell` 是 root。
 - **量布局别用 `--headless --screenshot --window-size=417`**：那样起出来的布局视口是 **491**，截图仍旧 834 宽，看着像 417 —— 溢出检查会静默地在一台不存在的手机上通过。台架用 CDP `Emulation.setDeviceMetricsOverride` 钉死，并且第一步就断言"量到的宽度确实等于要的宽度"。
 - 台架与闸门都用变异验过：往 `.console` 塞 `min-width:900px`、让 `applyPage` 不再藏面板、把 `chmod` 改成 666、推完再往设备文件尾部追加一个字节 —— 每一种都让对应的检查退非 0 并点名。
+- **新版（`webui/src/` → MD3E Web）有一条硬约束：图标名必须在字体子集里。** 库自带的是**子集**符号字体（`tools/md3e-build/vendor/icons.txt`，257 个连字 / 50KB；全量圆体 5.3MB，不可能内联），而组件把图标名当**连字文本**画 —— 名字不在子集里，界面就把 `security`、`DASHBOARD` 原样画在屏幕上（不是降级，是脏）。所以 `icon-gate.mjs` 是构建的第一步，越界名字直接拒绝出产物。子集内可用的有 `home` `category` `article` `info` `https` `group` `refresh` `settings` `tune` `verified` `download` `delete` `edit` `history` `error` `warning` `check` `expand_more` `chevron_right` `more_vert` `search` `label` `folder` `schedule`；**不在**子集的：`sync` `apps` `dashboard` `security` `build` `shield` `key` `dns` `storage` `phone_android` —— 要这类图形就走 slot 自己画内联 SVG。构建验收（`verify-build.mjs`）带一正一负两个对照：子集内的名字量出来必须是一个字形的宽度，子集外的仍旧是八个字母 —— 只量正则会漏掉"整个字体没落地"。
 
 ### 查看运行状态
 - **模块描述**：在模块详情页，`description` 字段动态显示：

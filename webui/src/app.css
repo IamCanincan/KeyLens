@@ -1,0 +1,49 @@
+/*=============================================================================
+ * webui/src/app.css — 我们自己的布局层
+ *
+ * 只管"壳"与排版：组件的颜色、圆角、动效全部来自 MD3E 的 tokens 与组件自身，
+ * 这里不复制一份数值（复制了就会有两套，改一处漏一处）。
+ *===========================================================================*/
+
+/* 文本走系统字体：管理器的 WebView 里网页字体不生效（实测 @font-face 落地后
+   仍旧退回系统字体），所以把库的 Roboto 让位给 system-ui。图标族名不动 ——
+   组件内部画的是连字串（expand_more / arrow_back），Material Symbols 没落地
+   就会把字面词画在界面上，那种失败肉眼可查。 */
+:root{
+  --md-sys-typescale-font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
+  /* 安全区：/internal/insets.css 由管理器注入，取不到时按 0 处理而不是拍脑袋给值 */
+  --inset-top: env(safe-area-inset-top, 0px);
+  --inset-bottom: env(safe-area-inset-bottom, 0px);
+  --bar-h: 64px;
+  --nav-h: 88px;
+}
+
+html,body{margin:0;padding:0;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)}
+body{
+  min-height:100dvh;
+  font-family:var(--md-sys-typescale-font-family);
+  -webkit-font-smoothing:antialiased;
+}
+
+/* 壳：顶栏与底栏各自贴边，中间是可滚动的 view。
+   用 dvh 而不是 vh —— WebView 的工具栏收展时 vh 会把底栏顶到屏幕外。 */
+md-top-app-bar{position:sticky;top:0;z-index:20}
+.view{
+  min-height:calc(100dvh - var(--bar-h) - var(--nav-h));
+  padding:var(--md-sys-spacing-m, 12px) var(--md-sys-spacing-l, 16px)
+    calc(var(--nav-h) + var(--inset-bottom));
+  box-sizing:border-box;
+  display:flex;flex-direction:column;gap:var(--md-sys-spacing-l, 16px);
+  max-width:600px;margin:0 auto;width:100%;
+}
+md-navigation-bar{
+  position:fixed;left:0;right:0;bottom:0;z-index:30;
+  padding-bottom:var(--inset-bottom);
+  background:var(--md-sys-color-surface-container);
+}
+
+/* 骨架屏：首屏在等 status/env 回来时不能是白板 */
+.sk{height:14px;border-radius:8px;background:var(--md-sys-color-surface-container-high);
+  animation:pulse 1.2s var(--md-sys-motion-easing-standard, ease-in-out) infinite alternate}
+.sk.w70{width:70%}.sk.w90{width:90%}.sk.h40{height:40px}
+@keyframes pulse{from{opacity:.45}to{opacity:1}}
