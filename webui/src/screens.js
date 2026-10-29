@@ -7,6 +7,7 @@
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
 import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons } from './bridge.js';
+import { loadOverrides } from './bridge.js';
 
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
@@ -421,13 +422,26 @@ function teesimOverrides() {
   const s = section('overrides.json · 安全等级与版本', ICON.patch);
   s.appendChild(h('p', 'hint', '这块与 profile 是硬边界：设备标识只能在 profile 里改，安全等级/版本/启动键哈希只能在这里。'
     + 'verifiedBootKey / verifiedBootHash 只有当守护进程自己那份是合成兜底值时才可编辑。'));
-  s.appendChild(list([
-    item({ headline: 'attestationSecurityLevel', supporting: '0 软件 / 1 TEE / 2 StrongBox', trailing: '待接入' }),
-    item({ headline: 'keymasterSecurityLevel', supporting: '同上', trailing: '待接入' }),
-    item({ headline: 'attestationVersion / keymasterVersion', supporting: '1..100000', trailing: '待接入' }),
-    item({ headline: 'verifiedBootKey / verifiedBootHash', supporting: '可编辑性是数据决定的，不是写死的', tone: 'warn', trailing: '待接入' }),
-    item({ headline: 'deviceLocked / verifiedBootState', supporting: '根信任，上游明确不可改 —— 只显示', trailing: '只读' }),
-  ]));
+  if (!S.overrides.length) {
+    s.appendChild(h('p', 'empty', hasCmd('teesim-overrides')
+      ? '读不到 overrides.json 与 harvested.json 的 overrides 段。'
+      : '这一版命令层没有 teesim-overrides —— 重装模块后可以读出各项当前值与可否编辑。'));
+    c.appendChild(s); return c;
+  }
+  const rows = S.overrides.map(function (o) {
+    return item({
+      headline: o.field,
+      supporting: '来源 ' + o.source + (o.editable ? '' : ' · 上游判定为不可改'),
+      trailing: o.value,
+      tone: o.editable ? 'ok' : 'warn',
+    });
+  });
+  rows.push(item({ headline: 'deviceLocked / verifiedBootState',
+    supporting: '根信任，上游明确不可改（REQUIRED 锁定）—— 只显示，不给输入框',
+    trailing: '只读' }));
+  s.appendChild(list(rows));
+  s.appendChild(h('p', 'hint', '可编辑性是**数据决定**的：启动键/哈希只有当守护进程自己那份是合成兜底值时才可改，'
+    + '所以这两格随来源变化，不是写死的开关。'));
   c.appendChild(s);
   return c;
 }

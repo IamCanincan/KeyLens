@@ -89,7 +89,7 @@ export const S = {
   targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
   backendInfo: {}, profiles: [], teeStatus: null, trickyPatches: [],
   appsSrc: 'targets', view: 'targets', search: '', selectMode: false, selected: {},
-  profile: 'default', scope: 'global', newPkg: '',
+  profile: 'default', scope: 'global', newPkg: '', overrides: [],
   icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
   excluded: [], theme: 'auto',
   loaded: {}, seq: 0,
@@ -281,6 +281,16 @@ export function loadExcluded() {
     function () { S.excluded = []; });
 }
 
+export function loadOverrides() {
+  if (S.contract.checked && !hasCmd('teesim-overrides')) { S.overrides = []; return Promise.resolve(); }
+  return call('teesim-overrides').then(function (r) {
+    S.overrides = r.ok ? splitLines(r.text).map(function (line) {
+      var f = line.split('\t');
+      return { field: f[0] || '', value: f[1] || '-', editable: f[2] === '1', source: f[3] || 'unset' };
+    }) : [];
+  }, function () { S.overrides = []; });
+}
+
 export function ensure(what) {
   if (S.loaded[what]) return Promise.resolve(false);
   if (inflight[what]) return inflight[what];
@@ -290,7 +300,7 @@ export function ensure(what) {
       S.boot = r.ok ? parseKV(r.text) : null;
     }, function () { S.boot = null; })]); },
     excluded: loadExcluded,
-    teesim: function () { return Promise.all([loadBackend(), loadTeesimProfiles()]); },
+    teesim: function () { return Promise.all([loadBackend(), loadTeesimProfiles(), loadOverrides()]); },
     tricky: function () { return Promise.all([loadBackend(), loadTeeStatus(), loadTrickyPatches()]); },
     omk: loadBackend,
   }[what];
@@ -351,6 +361,13 @@ function demoResult(cmd, arg) {
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
     'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
       'category=3', 'serviceErrorCode=13', 'teeBroken=1'].join('\n'),
+    'teesim-overrides': [
+      'attestationSecurityLevel' + T + '2' + T + '1' + T + 'required',
+      'keymasterSecurityLevel' + T + '-' + T + '1' + T + 'unset',
+      'attestationVersion' + T + '-' + T + '1' + T + 'unset',
+      'keymasterVersion' + T + '100' + T + '0' + T + 'supplement',
+      'verifiedBootKey' + T + '-' + T + '0' + T + 'original',
+      'verifiedBootHash' + T + '3a7f' + T + '1' + T + 'synthesized'].join('\n'),
     'tricky-patches': ['global' + T + 'today' + T + 'YYYY-MM-05' + T + 'YYYY-MM-05',
       'com.android.vending' + T + '2024-01-05' + T + '-' + T + '-'].join('\n'),
     'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),

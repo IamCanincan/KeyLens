@@ -53,7 +53,7 @@ TAA_API=4
 TAA_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
-sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart"
+sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -887,6 +887,21 @@ cmd_omk_restart() {
     kv trigger "$f"
 }
 
+# 输出：每行「字段<TAB>当前值<TAB>可编辑(1|0)<TAB>来源」。
+# 为什么单独一条：overrides.json 是与 config.json 互斥的第二块可写面（安全等级、
+# 版本、启动键哈希只能改这里；设备标识只能在 profile 里改），而可编辑性是
+# 数据决定的 —— 启动键哈希只有守护进程自己那份是合成兜底值时才可改。
+cmd_teesim_overrides() {
+    local ac
+    detect_backend "$MODDIR"
+    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
+    [ -n "$ac" ] || { echo "未找到 awk，读不了 overrides" >&2; return 1; }
+    [ -f "${TAA_PATCH%/*}/teesim_overrides.awk" ] || { echo "缺少 teesim_overrides.awk" >&2; return 1; }
+    $ac -v ov="$TEESIM_DIR/overrides.json" -v ha="$TEESIM_DIR/harvested.json" \
+        -f "${TAA_PATCH%/*}/teesim_overrides.awk"
+}
+
 cmd_contract() {
   kv api "$TAA_API"
   kv commands "$TAA_COMMANDS"
@@ -1592,6 +1607,7 @@ cmd_help() {
   backend-info           当前后端的配置摘要
   teesim-profiles        TEE Simulator：列出所有 profile（名字/关键/模式/条目数/是否默认）
   tee-status             Tricky：读它自己写的 TEE 探测结果（present/status/teeBroken…）
+  teesim-overrides       TEE Simulator：读 overrides.json（安全等级/版本/启动键哈希，含各项可否编辑）
   tricky-patches         Tricky：列出 security_patch.txt 的全局与按包补丁块
   omk-restart <范围>     OhMyKeymint：触发重载，范围 = keymint | injector | all
   teesim-save <b64>      TEE Simulator default profile 字段（payload）
@@ -1623,6 +1639,7 @@ case "$CMD" in
     backend-info) cmd_backend_info ;;
     teesim-profiles) cmd_teesim_profiles ;;
     tee-status)    cmd_tee_status ;;
+    teesim-overrides) cmd_teesim_overrides ;;
     tricky-patches) cmd_tricky_patches ;;
     omk-restart)   cmd_omk_restart "$ARG" ;;
     teesim-save) cmd_teesim_save "$ARG" ;;
