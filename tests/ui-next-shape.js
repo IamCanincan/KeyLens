@@ -260,6 +260,31 @@ chk('命令层会报 apply_scope / apply_note', /kv apply_scope "\$scope"/.test(
 chk('[trust] 那一单的生效代价写进了界面说明',
   /整组热生效/.test(screens) && /重启【整机】/.test(screens));
 
+/* overrides 写回面：六个可写字段、两种"锁"要分开说、keymaster 只记录要写明 */
+chk('OV_SPEC 六个可写字段齐全',
+  ['attestationSecurityLevel', 'keymasterSecurityLevel', 'attestationVersion', 'keymasterVersion',
+    'verifiedBootKey', 'verifiedBootHash'].every(k => new RegExp(k + ':').test(screens)));
+/* 分隔那个中点不写进正则：它在源码里是一个字节、在我这里可能被规范化成另一个，
+   匹配失败会伪装成"枚举写错了"。只认值与词。
+   KEYSTORE 只许出现在**说明**里（那正是我们警告不要用的一套），所以判的是那一行选项。 */
+const ovLevel = (screens.match(/const OV_LEVEL = \[.*\];/) || [''])[0];
+chk('等级枚举是 0/1/2 = Software/TrustedEnvironment/StrongBox（不是 KM1 那套）',
+  /'0', '0[^']*Software'/.test(ovLevel) && /'1', '1[^']*TrustedEnvironment'/.test(ovLevel)
+  && /'2', '2[^']*StrongBox'/.test(ovLevel) && ovLevel !== '' && !/KEYSTORE/.test(ovLevel),
+  ovLevel.replace(/\s+/g, ' ').slice(0, 70));
+chk('keymaster 两项写明"只记录，不上线"', /OV_RECORD_ONLY = \{ keymasterSecurityLevel/.test(screens));
+/* 两种锁不是一回事：一台不可改 ≠ 本模块不写。上一版把 serial（来源 supplement）
+   也说成"锁死为 REQUIRED"，那是把别家的判据安到这条头上。 */
+chk('两种锁的说法分开（不再一律喊 REQUIRED）',
+  /来源由守护进程决定/.test(screens) && /这一台的来源不是合成兜底值/.test(screens)
+  && !/上游锁死为 REQUIRED，写了守护进程会丢弃'\)/.test(screens));
+chk('写命令接在表单上', /'teesim-save-overrides', null, '已写入 overrides\.json'/.test(screens));
+/* 隐私底线：serial/imei/meid 是 PRIVATE 类字段，值不许进本模块自己的日志 */
+const logLines = sh.split('\n').filter(l => /^\s*log_(info|warn|err)/.test(l));
+const leaks = logLines.filter(l => /\$v\b|\$\{v\}|\$val\b/.test(l));
+chk('log_info/log_err 不插用户填的字段值', leaks.length === 0,
+  leaks.map(l => l.trim().slice(0, 60)).join(' | '));
+
 /* ── ⑧ 不许有半成品 ─────────────────────────────────────────────── */
 console.log('── 完成度（不许留空壳）──');
 const todo = [...screens.matchAll(/TODO|FIXME|待接入|尚未接|还没接/g)];

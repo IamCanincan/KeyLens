@@ -18,6 +18,18 @@
 
 #### 新增
 
+* **TEESim 的 `overrides.json` 从"只读"变成能写**：新命令 `teesim-save-overrides` + 新 awk `module/backends/json_flat_set.awk`（扁平 JSON 的定点改/插/删）。界面上那六项（两侧安全等级、两侧版本、启动键哈希两项）从只读行变成表单，其余仍按上游判定显示为不可写。
+  * 判据照抄上游的 `validOverride`（`Harvester.kt:423-432`）：等级只认 **0/1/2 = Software / TrustedEnvironment / StrongBox**（`Const.kt:75-77`）—— **不是** KM1 那套 `KEYSTORE=1 / TRUSTED_ENVIRONMENT=2 / STRONGBOX=3`，写 3 上游直接丢；版本 1–100000；启动键/哈希 = 可选 `0x` + 恰好 64 位十六进制 + 非全零。等级按**数值**比（上游 `toIntOrNull` 认 `01`），按字面枚举就严于上游了。
+  * 白名单外的字段当场拒：那些在上游是 `OverrideSource.REQUIRED` 锁死的，写进去守护进程**丢弃并记一条日志**（`Harvester.kt:403-405`）—— 静默收下就是让用户以为设好了。
+  * 启动键/哈希的可编辑性是**数据决定**的（只有守护进程自己那份是合成兜底值时才可改，`Harvester.kt:183-189`），写之前问自家那条只读汇总，不在这里另判一套。
+  * `keymasterSecurityLevel` / `keymasterVersion` 标了「只记录，不上线」：上游 `Resolver.kt` 全文不读这两项，只有 `attestation*` 会进证书。
+  * 留空 = 删掉这一项（上游同义：`system-controller.js:75` 空值即删除，`Harvester.kt:409` 空值复位默认）。值一律写成**带引号的字符串** —— 上游自己的写入器就是这么落的（`overrides-io.js:34-39`），守护进程按 `Map<String,String>` 读；我们写裸数字会让界面读回另一种形状。
+  * 生效方式如实报出去：上游是 `FileObserver` 监听该文件 → `resolveAndPush`（`ConfigStore.kt:204-214`），**不需要重启任何进程**，所以命令层回 `apply_note`。
+  * 新建这个文件时补 `chmod 644`：守护进程以 keystore 身份读它，留成本模块默认的 600 会直接读不到（私钥在 keybox.xml，那个仍是 600）。
+  * 测试：`tests/teesim-overrides-write.sh` 49 条（本地 + 设备 toybox 各一遍），三个校验函数是从 `webui.sh` **抽真身**跑的；写回那一段用真 awk 真形状，产物还要过 `JSON.parse`（手工吃逗号这种事只有解析器会立刻抓出来），并钉住"重复写 = same、产物逐字节不变、未知键原样保住"。
+  * 另配一个台架 `node tools/json-flat-set-check.cjs`（19 例）：删中间/第一条/最后一条/唯一一条/全删、紧凑一行写法同样四种、改+加+删混一单、空对象插入、值里带引号要转义回来、只动一行、未知键保留。删除分支第一版就是靠它抓坏的 —— 它只吃了值没吃键名，产出 `"a": ,` 这种东西，而"看起来差不多"的 JSON 是守护进程读不出来的。
+  * 顺带修一处文案 bug：`serial`（来源 `supplement`）以前被写成"上游锁死为 REQUIRED"，那是把别家的判据安到这条头上。现在两种锁分开说：这一台不可改 ≠ 本模块不写。
+
 * **OMK 的"生效代价"改成分档算，不再一律重启 keymint**：`cmd_omk_save_config` 以前写完就 `omk_restart keymint`。上游把代价写得很清楚（`docs/CONFIGURATION.md:415-425`）：**同一次保存里只动** `security_patch` / `os_patchlevel` / `vendor_patchlevel` / `boot_patchlevel` 这四个字段时，keymint 在运行中整组热生效，已有 TA 原地更新、在途操作与 per-boot 计数器都不丢；掺进任何别的字段才重启；`vb_key`/`vb_hash` 从 `random` 改成 `auto` 要重启**整机**。现在抽出 `omk_apply_scope`（按这一单提交的字段集判 hot/restart）与 `omk_reboot_needed`（只认 random→auto 这一条），结果用 `apply_scope` / `apply_note` 报给界面，`write()` 优先采用命令层那句而不是自己写死的"已保存"。
   * `tests/omk-apply-scope.sh` 22 条：抽的是 webui.sh 里的**真函数**；分类表把"四个全动 / 只动一个 / 四个+os_version / 四个+日志级别 / 四个+[device] / 四个+vb_key / 空参数"各钉一档；重启那 7 条含反向（auto→random 不算）与"vb_key 没变但 vb_hash 变了"；最后三条钉写路径确实接上了（函数里 `omk_restart` 只许出现一次，多于一次就是又退回无条件重启）。
   * 界面 `[trust]` 那一单的说明改写成同一套规则 —— 生效代价是**算出来的**，界面写死一句话就会说错。

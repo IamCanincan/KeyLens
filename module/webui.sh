@@ -53,7 +53,8 @@ TAA_API=4
 TAA_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
-sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides"
+sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
+teesim-save-overrides"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -1016,6 +1017,130 @@ cmd_teesim_overrides() {
         -f "${TAA_PATCH%/*}/teesim_overrides.awk"
 }
 
+# 说明：overrides.json 的取值范围照抄上游的 validOverride（Harvester.kt:423-432）。
+#   等级只认 0..2 —— 0=Software、1=TrustedEnvironment、2=StrongBox（Const.kt:75-77）。
+#   **不是** KM1 那套 KEYSTORE=1 / TRUSTED_ENVIRONMENT=2 / STRONGBOX=3：写 3 上游会丢。
+valid_ov_level() {
+    local v="${1:-}"
+    [ -z "$v" ] && return 0
+    case "$v" in *[!0-9]*) return 1 ;; esac
+    # 上游是 value.toIntOrNull() in 0..2 —— "01" 会解析成 1 被接受，
+    # 所以这里按数值比，不按字面枚举（按字面就严于上游了）
+    [ "$v" -le 2 ]
+}
+valid_ov_version() {
+    local v="${1:-}"
+    [ -z "$v" ] && return 0
+    printf '%s' "$v" | grep -Eq '^[0-9]{1,6}$' || return 1
+    [ "$v" -ge 1 ] && [ "$v" -le 100000 ]
+}
+# 启动键/哈希：可带 0x 前缀、去掉前缀后必须恰好 64 位十六进制，且不许全零
+valid_ov_hex() {
+    local v="${1:-}"
+    [ -z "$v" ] && return 0
+    case "$v" in 0x*) v="${v#0x}" ;; 0X*) v="${v#0X}" ;; esac
+    printf '%s' "$v" | grep -Eq '^[0-9a-fA-F]{64}$' || return 1
+    printf '%s' "$v" | grep -Eiq '^0+$' && return 1
+    return 0
+}
+
+# 写 overrides.json。可写的只有这六个字段：其余在上游是 OverrideSource.REQUIRED
+# 锁死的，写进去守护进程会**丢弃并记一条日志**（Harvester.kt:403-405）——
+# 静默无效比当场拒掉坏得多，所以这里直接说不通。
+# 留空 = 删掉这个键（上游同义：system-controller.js:75 空值即删除，
+# Harvester.kt:409 空值复位默认）。
+cmd_teesim_save_overrides() {
+    local payload="$1" dir pairs out status st saved=0 n=0 k v src
+    local ov ha ac ed badf
+
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    ov="$TEESIM_DIR/overrides.json"; ha="$TEESIM_DIR/harvested.json"
+    ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
+    [ -n "$ac" ] || { echo "未找到 awk，写不了 overrides.json" >&2; return 1; }
+    [ -f "${TAA_PATCH%/*}/json_flat_set.awk" ] || { echo "缺少 json_flat_set.awk" >&2; return 1; }
+
+    dir="${TAA_DIR}/.ts_ov.$$"
+    mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
+    pairs="$dir/pairs"
+    parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
+
+    badf=""
+    while IFS=$TAB read -r k v; do
+        case "$k" in
+            attestationSecurityLevel|keymasterSecurityLevel)
+                valid_ov_level "$v" || { echo "$k 只能是 0(Software) / 1(TrustedEnvironment) / 2(StrongBox)，留空表示删掉这一项；收到的是「$v」" >&2; badf=1; } ;;
+            attestationVersion|keymasterVersion)
+                valid_ov_version "$v" || { echo "$k 只能是 1–100000 的整数，留空表示删掉这一项；收到的是「$v」" >&2; badf=1; } ;;
+            verifiedBootKey|verifiedBootHash)
+                valid_ov_hex "$v" || { echo "$k 要 64 位十六进制（可带 0x 前缀）、不许全零，留空表示删掉这一项；收到的是「$v」" >&2; badf=1; }
+                # 数据决定的可编辑性：只有守护进程自己那份是合成兜底值时才可改
+                # （Harvester.kt:183-189）。问自家那条只读汇总，不在这里另判一套。
+                if [ -z "$badf" ] && [ -n "$v" ] && [ -f "$ha" ]; then
+                    ed=$($ac -v ov="$ov" -v ha="$ha" -f "${TAA_PATCH%/*}/teesim_overrides.awk" 2>/dev/null \
+                        | $ac -F"$TAB" -v key="$k" '$1 == key { print $3; exit }')
+                    if [ -n "$ed" ] && [ "$ed" != "1" ]; then
+                        echo "$k 现在不可改：harvested.json 判它的来源不是合成兜底值（上游规则，不是本模块的限制）" >&2
+                        badf=1
+                    fi
+                fi ;;
+            *)
+                echo "overrides.json 里这个字段被上游锁死为 REQUIRED，写进去守护进程会直接丢弃：$k" >&2
+                badf=1 ;;
+        esac
+        [ -n "$badf" ] && break
+        n=$((n + 1))
+    done < "$pairs"
+    [ -n "$badf" ] && { rm -rf "$dir"; return 1; }
+    [ "$n" -gt 0 ] || { echo "没有字段要保存" >&2; rm -rf "$dir"; return 1; }
+
+    # 文件还不存在时以 {} 为底本 —— 底本写在临时目录里，不往 TEESIM_DIR 造半成品
+    src="$ov"
+    [ -f "$ov" ] || { printf '{}\n' > "$dir/base.json"; src="$dir/base.json"; }
+
+    webui_lock || { rm -rf "$dir"; return 1; }
+    out="$TEESIM_DIR/.overrides.json.ts_auto.$$"
+    status="$dir/status"
+    $ac -v pairsfile="$pairs" -v statusfile="$status" \
+        -f "${TAA_PATCH%/*}/json_flat_set.awk" "$src" > "$out" 2>/dev/null
+    st=$(cat "$status" 2>/dev/null)
+    case "$st" in
+        ok)
+            if cmp -s "$out" "$ov" 2>/dev/null; then
+                rm -f "$out" 2>/dev/null
+            elif commit_backend_file "$ov" "$out" "${TAA_DIR}/overrides.json.bak"; then
+                saved=1
+                # 上游的写入器就是 0644（overrides-io.js:34-39）：守护进程以 keystore
+                # 身份读这个文件，新建时留 0600 会直接读不到。私钥在 keybox.xml，不在这儿。
+                chmod 644 "$ov" 2>/dev/null
+            else
+                rm -f "$out" 2>/dev/null
+                release_lock "${TAA_DIR}/.ts_lock"
+                rm -rf "$dir"
+                echo "写入失败：$ov" >&2
+                return 1
+            fi
+            ;;
+        same) rm -f "$out" 2>/dev/null ;;
+        *)
+            rm -f "$out" 2>/dev/null
+            release_lock "${TAA_DIR}/.ts_lock"
+            rm -rf "$dir"
+            echo "overrides.json 定位失败（不是可写的扁平对象？）：$ov" >&2
+            return 1
+            ;;
+    esac
+    release_lock "${TAA_DIR}/.ts_lock"
+    rm -rf "$dir" 2>/dev/null
+    # 上游是 FileObserver 监听 overrides.json → resolveAndPush，不需要重启任何进程
+    # （ConfigStore.kt:204-214）。它自家界面也是等 600ms 再回读 /status。
+    [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 TEESim overrides.json（$n 项，热生效无需重启）"
+    kv saved "$saved"
+    kv fields "$n"
+    kv apply_note "$([ "$saved" = 1 ] && echo '已写入，TEESim 监听该文件自行热生效，不需要重启' || echo '内容与现有一致，未写入')"
+}
+
 cmd_contract() {
   kv api "$TAA_API"
   kv commands "$TAA_COMMANDS"
@@ -1756,6 +1881,7 @@ case "$CMD" in
     teesim-profiles) cmd_teesim_profiles ;;
     tee-status)    cmd_tee_status ;;
     teesim-overrides) cmd_teesim_overrides ;;
+    teesim-save-overrides) cmd_teesim_save_overrides "$ARG" ;;
     tricky-patches) cmd_tricky_patches ;;
     omk-restart)   cmd_omk_restart "$ARG" ;;
     teesim-save) cmd_teesim_save "$ARG" ;;

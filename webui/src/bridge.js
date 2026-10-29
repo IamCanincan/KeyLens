@@ -27,7 +27,7 @@ export const EXPECT_API = 4;
 
 /* 写命令：契约不符时全部拒绝。新增写入口必须同时加进这里。 */
 export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restore-app restore-apps \
-remove-apps set-mode teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
+remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config tricky-save-patch keybox-save \
 sync clear-log omk-restart';
 
 /* 每条命令必须出现的键 —— 这张表是从线上那版抄的，键名以真机 `webui.sh status`
@@ -47,6 +47,7 @@ export const KV_REQUIRED = {
   'remove-apps': 'removed',
   'set-mode': 'changed',
   'teesim-save': 'saved fields',
+  'teesim-save-overrides': 'saved fields',
   'omk-save-injector': 'saved fields',
   'omk-save-config': 'saved fields',
   'tricky-save-patch': 'saved fields',
@@ -394,7 +395,7 @@ function demoResult(cmd, arg) {
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + TAA_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种
@@ -438,13 +439,24 @@ function demoResult(cmd, arg) {
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
     'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
       'category=keystore2_unavailable', 'service_error_code=none', 'tee_broken=unknown'].join('\n'),
+    /* 一份"纯软件兜底设备"的 overrides 汇总。source 只有三种取值
+       （OverrideSource 枚举：required / supplement / synthesized，没有 original），
+       且 **source=required 而 editable=1 是真实存在的组合**：启动键/哈希在设备上报
+       全零时是兜底值，此时可改（Harvester.kt:86-102,175-189）。
+       假数据把这种组合摆出来，才能验出界面有没有拿 source 反推可编辑性。 */
     'teesim-overrides': [
-      'attestationSecurityLevel' + T + '2' + T + '1' + T + 'required',
-      'keymasterSecurityLevel' + T + '-' + T + '1' + T + 'unset',
-      'attestationVersion' + T + '-' + T + '1' + T + 'unset',
-      'keymasterVersion' + T + '100' + T + '0' + T + 'supplement',
-      'verifiedBootKey' + T + '-' + T + '0' + T + 'original',
-      'verifiedBootHash' + T + '3a7f' + T + '1' + T + 'synthesized'].join('\n'),
+      'attestationSecurityLevel' + T + '1' + T + '1' + T + 'synthesized',
+      'keymasterSecurityLevel' + T + '1' + T + '1' + T + 'synthesized',
+      'attestationVersion' + T + '300' + T + '1' + T + 'synthesized',
+      'keymasterVersion' + T + '300' + T + '1' + T + 'synthesized',
+      'verifiedBootKey' + T + '4166677843448ea03fa5983c9cba554318c06bbaac8bd075ee18f6cedfba2dfa' + T + '1' + T + 'required',
+      'verifiedBootHash' + T + '9f2c4d8e7a1b3c5d9f2c4d8e7a1b3c5d9f2c4d8e7a1b3c5d9f2c4d8e7a1b3c5d' + T + '1' + T + 'required',
+      'deviceLocked' + T + 'true' + T + '0' + T + 'required',
+      'verifiedBootState' + T + '0' + T + '0' + T + 'required',
+      'moduleHash' + T + '0b6e' + T + '0' + T + 'required',
+      'serial' + T + 'FAKE0000' + T + '0' + T + 'supplement'].join('\n'),
+    'teesim-save-overrides': ['saved=1', 'fields=2',
+      'apply_note=已写入，TEESim 监听该文件自行热生效，不需要重启'].join('\n'),
     'tricky-patches': ['global' + T + 'today' + T + 'YYYY-MM-05' + T + 'YYYY-MM-05',
       'com.android.vending' + T + '2024-01-05' + T + '-' + T + '-'].join('\n'),
     'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),

@@ -363,6 +363,22 @@ function listSection() {
 }
 
 /* TEESim 的第二块可写面：overrides.json（上一版完全没有） */
+/* 本模块允许写的只有这六个（其余在上游是 REQUIRED 锁死的，写了守护进程会丢弃
+   并记一条日志 —— Harvester.kt:403-405）。等级只认 0/1/2 = Software /
+   TrustedEnvironment / StrongBox（Const.kt:75-77），**不是** KM1 那套
+   KEYSTORE=1 / TRUSTED_ENVIRONMENT=2 / STRONGBOX=3 —— 写 3 上游直接丢。 */
+const OV_LEVEL = [['', '留空 = 删掉这一项'], ['0', '0 · Software'], ['1', '1 · TrustedEnvironment'], ['2', '2 · StrongBox']];
+const OV_SPEC = {
+  attestationSecurityLevel: ['select', OV_LEVEL, 'attestation 侧安全等级'],
+  keymasterSecurityLevel: ['select', OV_LEVEL, 'keymaster 侧安全等级'],
+  attestationVersion: ['text', null, 'attestation 版本（1–100000）'],
+  keymasterVersion: ['text', null, 'keymaster 版本（1–100000）'],
+  verifiedBootKey: ['text', null, 'verifiedBootKey（64 位十六进制）'],
+  verifiedBootHash: ['text', null, 'verifiedBootHash（64 位十六进制）'],
+};
+/* 上游 Resolver 只读 attestation* 那几条，keymaster* 写了不进证书（Resolver.kt 全文
+   没有 keymasterSecurityLevel / keymasterVersion）—— 不写明白，用户会以为改了生效。 */
+const OV_RECORD_ONLY = { keymasterSecurityLevel: 1, keymasterVersion: 1 };
 function teesimOverrides() {
   const c = card();
   const s = section('overrides.json · 安全等级与版本', ICON.patch);
@@ -374,20 +390,44 @@ function teesimOverrides() {
       : '这一版命令层没有 teesim-overrides —— 重装模块后可以读出各项当前值与可否编辑。'));
     c.appendChild(s); return c;
   }
-  const rows = S.overrides.map(function (o) {
-    return item({
-      headline: o.field,
-      supporting: '来源 ' + o.source + (o.editable ? '' : ' · 上游判定为不可改'),
-      trailing: o.value,
-      tone: o.editable ? 'ok' : 'warn',
-    });
+  const canWrite = hasCmd('teesim-save-overrides');
+  const edit = [], locked = [];
+  S.overrides.forEach(function (o) {
+    if (canWrite && o.editable && OV_SPEC[o.field]) edit.push(o); else locked.push(o);
   });
-  rows.push(item({ headline: 'deviceLocked / verifiedBootState',
-    supporting: '根信任，上游明确不可改（REQUIRED 锁定）—— 只显示，不给输入框',
-    trailing: '只读' }));
-  s.appendChild(list(rows));
-  s.appendChild(h('p', 'hint', '可编辑性是**数据决定**的：启动键/哈希只有当守护进程自己那份是合成兜底值时才可改，'
-    + '所以这两格随来源变化，不是写死的开关。'));
+  if (locked.length) {
+    s.appendChild(list(locked.map(function (o) {
+      /* 两种"锁"不是一回事，别说成一种：
+           · 在白名单里但这一台不可改 —— 启动键/哈希的来源不是合成兜底值
+           · 根本不在白名单里 —— 上游按 REQUIRED / SUPPLEMENT 决定，本模块不写 */
+      const why = OV_SPEC[o.field]
+        ? ' · 这一台的来源不是合成兜底值，上游判为不可改'
+        : ' · 来源由守护进程决定（' + o.source + '），本模块不提供写入';
+      return item({
+        headline: o.field,
+        supporting: '来源 ' + o.source + why,
+        trailing: o.value || '（空）',
+        tone: OV_SPEC[o.field] ? 'warn' : 'none',
+      });
+    })));
+  }
+  if (edit.length) {
+    const spec = {};
+    edit.forEach(function (o) { spec[o.field] = o.value; });
+    const fields = edit.map(function (o) {
+      const sp = OV_SPEC[o.field];
+      return [o.field, o.field, sp[2] + (OV_RECORD_ONLY[o.field] ? '（只记录，不上线）' : ''), sp[0], null, sp[1]];
+    });
+    s.appendChild(form(spec, fields, 'teesim-save-overrides', null, '已写入 overrides.json'));
+    s.appendChild(h('p', 'hint', '可编辑性是**数据决定**的：启动键/哈希只有当守护进程自己那份是合成兜底值时才可改，'
+      + '所以这两格随来源变化，不是写死的开关。留空 = 删掉这一项（守护进程复位成默认）。'));
+    s.appendChild(h('p', 'hint', 'keymaster 那两项上游 Resolver 从不读取，写进去只影响记录，不改线上证书内容。'
+      + '保存后 TEESim 监听该文件自行热生效，不需要重启任何进程。'));
+  } else if (canWrite) {
+    s.appendChild(h('p', 'empty', '这一台目前没有任何一项处于可编辑状态 —— 上面每一格的来源都不是合成兜底值。'));
+  } else {
+    s.appendChild(h('p', 'hint', '这一版命令层还不能写 overrides.json（只有只读汇总）—— 重装模块后可以改。'));
+  }
   c.appendChild(s);
   return c;
 }

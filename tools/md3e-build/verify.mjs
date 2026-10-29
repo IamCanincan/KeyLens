@@ -158,16 +158,21 @@ async function main() {
       '上游没给出探测结论',
       /* 补丁值的说明：这一句只在 Tricky 那条 hint 里，画出来才证明分叉的文案
          真的到了对应那一家的页面上。 */
-      '整个组件标签不报'] },
+      '整个组件标签不报'] , tail: '补丁级别' },
     { id: 'teesim', q: 'teesim', must: ['Profile 表', '编辑 profile · default',
       'overrides.json · 安全等级与版本', 'config.json',
       '报告 0', '模板令牌必须大写',
       /* overrides 表真画出值才算走到了非降级分支：以前假数据的命令清单里
          漏了 teesim-overrides，hasCmd() 恒 false，这张卡永远显示"命令层没有这条"，
          而台架只看区块标题，照样绿。 */
-      'attestationSecurityLevel', 'synthesized'] },
+      /* overrides 现在要能**写**：可编辑的那几条变成表单控件（字段名不再原样出现在
+         屏上，标签是中文），锁死的那几条仍是列表行 —— 两边各钉一个只有真读到
+         假数据才会出现的值。 */
+      'attestation 侧安全等级', '留空 = 删掉这一项', 'TrustedEnvironment', '只记录，不上线',
+      'deviceLocked', 'supplement', '本模块不提供写入'] , tail: 'overrides.json ·' },
     { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml',
-      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'] },
+      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'],
+      tail: 'config.toml ·' },
   ];
   console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');
   for (const b of BACKENDS) {
@@ -184,6 +189,16 @@ async function main() {
       + (miss.length ? '  没画出来: ' + miss.join('、') : ''));
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '.png'), Buffer.from(shot.data, 'base64'));
+    /* 页尾那张卡（overrides / tee_status / config.toml）在首屏之外 —— 再滚过去截一张，
+       不然"画出来了"只有判词、没有能看的东西。 */
+    const scrolled = await ev(`(function(){ var els=[].slice.call(document.querySelectorAll('#view md-card'));
+      var t=els.filter(function(e){return (e.textContent||'').indexOf(${JSON.stringify(b.tail || '')})>=0;})[0];
+      if (t) t.scrollIntoView(true); return t?1:0; })()`);
+    if (scrolled) {
+      await sleep(400);
+      const s2 = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '-tail.png'), Buffer.from(s2.data, 'base64'));
+    }
   }
 
   /* 读失败与"真的是空的"必须长得不一样 */
