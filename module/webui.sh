@@ -382,7 +382,7 @@ cmd_status() {
 #       安装模块/换工具/换设备时才变，所以与 status 分开 —— 界面每次打开只问一次，
 #       省下 status 里约 400ms。
 cmd_env() {
-    local ino uimode hex seed wc fontpkg sys_font sys_font_file sys_font_alt fontapk reg ff src fontdir icondir fhash dst alt old tmp d
+    local ino uimode hex seed wc
 
     kv resetprop "$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)"
     kv awk "$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -405,123 +405,6 @@ cmd_env() {
     prop_now ro.build.version.sdk;         kv sdk "$PROP_NOW"
     prop_now ro.build.type;                kv build_type "$PROP_NOW"
     prop_now ro.boot.verifiedbootstate;    kv vbstate "$PROP_NOW"
-
-    # ---------- 系统字体 ----------
-    # Chromium / WebView 在 Android 上有自己的一套字体映射（sans-serif 默认就是 Roboto），
-    # 它**不读框架的 config_bodyFontFamily**。所以 ROM 换了系统字体时，
-    # 界面会悄悄退回 Roboto —— 本机就是这一种：启用了
-    # org.lineageos.overlay.font.googlesansflex，系统各处是 Google Sans Flex，
-    # 而这个 WebUI 是 Roboto。只能把字体名显式写进 CSS，名字从设备上读，不写死。
-    # 读法：找出启用的字体 overlay → 从它的 resources.arsc 里取出候选族名
-    #       → 再拿字体注册表验一遍。验不过就当没有，退回 system-ui。
-    fontpkg=$(cmd overlay list 2>/dev/null | sed -n 's/^\[x\] \(.*font.*\)$/\1/p' | head -n 1)
-    sys_font=""
-    if [ -n "$fontpkg" ]; then
-        fontapk=$(pm path "$fontpkg" 2>/dev/null | sed -n '1s/^package://p')
-        if [ -n "$fontapk" ] && [ -r "$fontapk" ]; then
-            # 注册表里的族名当成一个"白名单正则"，一次 grep 同时完成「取候选 + 验注册」。
-            # 不这么做的话：resources.arsc 的字符串池是 UTF-16，直接 grep -o 会吐出
-            # amily / edium 这类碎片（实测），而逐个族名去 grep 又要 160 次 fork。
-            reg=$(cat /product/etc/fonts_customization.xml /system/etc/fonts.xml 2>/dev/null \
-                  | grep -o 'name="[a-z0-9][a-z0-9-]*"' | sed 's/name="//;s/"//' \
-                  | sort -u | tr '\n' '|' | sed 's/|$//')
-            if [ -n "$reg" ]; then
-                # 先 tr -d 把 UTF-16 的 NUL 去掉，否则族名会被拆成单字节碎片。
-                # 再排掉字重/用途别名：overlay 里同时写着 config_bodyFontFamily 与
-                # config_bodyFontFamilyMedium，两个族名都在注册表里，而 -medium 更长 ——
-                # 不排的话"取最长"会挑到 medium（实测踩过），那是 500 字重不是正文。
-                sys_font=$(unzip -p "$fontapk" resources.arsc 2>/dev/null | tr -d '\000' \
-                           | grep -a -o -E "($reg)" 2>/dev/null \
-                           | grep -Ev -- '-(medium|bold|black|thin|light|regular|semibold|italic|clock|condensed|text)$' \
-                           | sort -u \
-                           | awk '{ if (length($0) > m) { m = length($0); s = $0 } } END { print s }')
-            fi
-        fi
-    fi
-    # 族名写进 CSS 未必生效：Chromium 有自己的字体映射表，实测把族名写进去界面仍是 Roboto。
-    # 所以补一条不依赖名字的路 —— 按字体注册表找到那个 ttf，拷进 webroot，
-    # 由界面用 @font-face 直接加载。文件名带内容哈希：换字体时 URL 一定变，
-    # WebView 不会拿旧 URL 的缓存继续用；同名文件只搬一次。
-    sys_font_file=""
-    if [ -n "$sys_font" ]; then
-        ff=$(awk -v fam="name=\"$sys_font\"" '
-            index($0, fam) { hit = 1; next }
-            hit && match($0, /[A-Za-z0-9_.-]+\.(ttf|otf)/) { print substr($0, RSTART, RLENGTH); exit }
-        ' /product/etc/fonts_customization.xml 2>/dev/null)
-        [ -n "$ff" ] || ff=$(awk -v fam="name=\"$sys_font\"" '
-            index($0, fam) { hit = 1; next }
-            hit && match($0, /[A-Za-z0-9_.-]+\.(ttf|otf)/) { print substr($0, RSTART, RLENGTH); exit }
-        ' /system/etc/fonts.xml 2>/dev/null)
-        src=""
-        for d in /product/fonts /system/fonts; do
-            if [ -n "$ff" ] && [ -f "$d/$ff" ]; then src="$d/$ff"; break; fi
-        done
-        if [ -n "$src" ]; then
-            fontdir="$MODDIR/webroot/fonts"
-            fhash=""
-            command -v md5sum >/dev/null 2>&1 \
-                && fhash=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
-            [ -n "$fhash" ] || fhash=$(wc -c < "$src" 2>/dev/null | tr -d ' ')
-            if [ -n "$fhash" ]; then
-                dst="$fontdir/font-$fhash.ttf"
-                mkdir -p "$fontdir" 2>/dev/null
-                if [ ! -s "$dst" ]; then
-                    # 先写临时名，确认大小完整再换上去：拷贝失败时旧字体还得能用。
-                    tmp="$fontdir/.font.$$.tmp"
-                    rm -f "$tmp" 2>/dev/null
-                    if cp -f "$src" "$tmp" 2>/dev/null \
-                        && [ -s "$tmp" ] \
-                        && [ "$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')" = "$(wc -c < "$src" 2>/dev/null | tr -d ' ')" ]; then
-                        chmod 644 "$tmp" 2>/dev/null
-                        chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
-                        mv -f "$tmp" "$dst" 2>/dev/null
-                    fi
-                    rm -f "$tmp" 2>/dev/null
-                fi
-                # 新文件就位后再清旧名（含上一版的 sys.ttf）；失败则保留旧文件。
-                if [ -s "$dst" ]; then
-                    for old in "$fontdir"/font-*.ttf "$fontdir"/sys.ttf; do
-                        [ -f "$old" ] && [ "$old" != "$dst" ] && rm -f "$old" 2>/dev/null
-                    done
-                fi
-                [ -s "$dst" ] && sys_font_file="fonts/font-$fhash.ttf"
-            fi
-        fi
-    fi
-    # 管理器用 WebViewAssetLoader 发 webroot；字体加载器可能不接 ttf。
-    # 把同一份字节镜像到 icons/（管理器确定会发的 PNG 路径），界面 fetch
-    # 成 ArrayBuffer 后交给 FontFace；文件内容仍是 ttf，只是路径/后缀借道。
-    sys_font_alt=""
-    if [ -n "$src" ] && [ -n "$fhash" ]; then
-        icondir="$MODDIR/webroot/icons"
-        alt="$icondir/font-$fhash.png"
-        mkdir -p "$icondir" 2>/dev/null
-        if [ ! -s "$alt" ] || ! cmp -s "$src" "$alt"; then
-            tmp="$icondir/.font.$$.tmp"
-            rm -f "$tmp" 2>/dev/null
-            if cp -f "$src" "$tmp" 2>/dev/null \
-                && [ -s "$tmp" ] \
-                && [ "$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')" = "$(wc -c < "$src" 2>/dev/null | tr -d ' ')" ]; then
-                chmod 644 "$tmp" 2>/dev/null
-                chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
-                mv -f "$tmp" "$alt" 2>/dev/null
-            fi
-            rm -f "$tmp" 2>/dev/null
-        fi
-        if [ -s "$alt" ]; then
-            for old in "$icondir"/font-*.png; do
-                [ -f "$old" ] && [ "$old" != "$alt" ] && rm -f "$old" 2>/dev/null
-            done
-            sys_font_alt="icons/font-$fhash.png"
-        fi
-    fi
-    kv sys_font_file "$sys_font_file"
-    kv sys_font_alt "$sys_font_alt"
-
-    # 这个值会进 CSS：上面是「注册表原样取出的名字」，字符集已被
-    # grep -o 'name="[a-z0-9][a-z0-9-]*"' 限死，引号与分号进不来。
-    kv sys_font "$sys_font"
-    kv sys_font_pkg "$fontpkg"
 
     # ---------- 系统取色 ----------
     # 深浅：以系统算出来的结果为准。管理器的 WebView 有时被钉在浅色，

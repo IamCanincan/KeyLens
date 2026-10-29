@@ -59,9 +59,9 @@ jobs:
         # 超时标记已带到 call()、内联脚本可解析。不需要设备。
         run: node tests/ui-shape.js
 
-      - name: WebUI Font Chain Self-Test
-        # 抽出 applyFont 执行：按文件哈希生成唯一族名、换文件不复用旧族名、
-        # 加载失败落到 THEME.fontLoaded、可见时重读 env。不需要设备。
+      - name: WebUI System Font Self-Test
+        # 字体交给 WebView 的 system-ui（与机上其它 WebUI 一致）；这里防止
+        # 再把 @font-face / 字体探测/复制管线加回来。不需要设备。
         run: node tests/ui-font.js
 
       - name: Verified Boot Hash Self-Test

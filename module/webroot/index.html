@@ -67,10 +67,10 @@
      两条都只在这里定义一次，appbar / 吸顶标签 / .wrap / snackbar 全读令牌。 */
   --inset-top: var(--window-inset-top, env(safe-area-inset-top));
   --inset-bottom: var(--window-inset-bottom, env(safe-area-inset-bottom));
-  /* 不写死 Roboto / Segoe UI / 微软雅黑：那几个名字会**抢在系统字体之前**匹配上。
-     WebView 在 Android 上有自己的一套字体映射（sans-serif 默认就是 Roboto），
-     根本不读框架的 config_bodyFontFamily，所以 ROM 换了系统字体时界面会退回 Roboto。
-     真名字由 env 的 sys_font 从设备上读出来再注入（见 webui.sh 的「系统字体」段）。 */
+  /* 字体交给 WebView 的 system-ui：本机 WebView 156 会按系统字体渲染
+     （和机上其它模块的 WebUI 一样，它们也是 --font: system-ui）。
+     不再复制/加载系统 ttf，也不写 @font-face；Material Web 组件通过
+     --md-ref-typeface-plain: var(--font) 使用同一份字体。 */
   --font: system-ui, sans-serif;
   /* 同样不写死具体名字：Menlo / Consolas 在这台机器上永远匹配不到，
      ui-monospace 与 monospace 才是系统自带的那一支等宽字 */
@@ -1528,7 +1528,7 @@ function kvMissing(cmd, text){
 var HUE_DEFAULT = 267;
 var SAT_DEFAULT = 0.41;
 var THEME = { seedRaw: '', seedSrc: 'none', frro: '', frroSrc: '', frroParsed: null, frroOk: false,
-              font: '', fontSrc: '', fontFile: '', fontLoaded: null, dark: '', darkSrc: '', applied: '', note: '' };
+              dark: '', darkSrc: '', applied: '', note: '' };
 
 function hex2(v){ return (v < 16 ? '0' : '') + v.toString(16); }
 
@@ -1643,99 +1643,6 @@ function frroSeed(fr){
     if (mono && got >= 8 && seed !== null) return seed;
   }
   return null;
-}
-
-/* 系统字体。两条路，优先第二条：
-   ① 把族名写进 font-family —— 实测**不生效**（Chromium 有自己的字体映射表，
-      不读 ROM 的 config_bodyFontFamily / fonts_customization.xml）；
-   ② webui.sh 把系统那个 ttf 按内容哈希拷进 webroot/fonts/，这里用 @font-face
-      直接加载。文件名随字体内容变，WebView 不会拿旧 URL 的缓存继续用；族名也
-      按文件生成，换字体时不复用已经加载过的旧 FontFace。font-weight 声明 100 900
-      是因为它是可变字体。文件加载失败时仍把族名放进栈里当第二选择。 */
-function applyFont(name, pkg, file, alt){
-  var fam = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name || '') ? name : '';
-  var url = /^fonts\/[a-z0-9-]+\.ttf$/.test(file || '') ? file : '';
-  var altUrl = /^icons\/font-[a-z0-9-]+\.png$/.test(alt || '') ? alt : '';
-  var st = document.documentElement.style;
-  THEME.font = fam;
-  THEME.fontSrc = fam ? (pkg || '') : '';
-  THEME.fontFile = url || altUrl;
-  THEME.fontAlt = altUrl;
-  THEME.fontLoaded = null;
-  THEME.fontFace = null;
-  var use = '', face = '';
-
-  function mark(ok){
-    if (ok) THEME.fontLoaded = true;
-    else if (THEME.fontLoaded !== true) THEME.fontLoaded = false;
-    if (S.tab === 'about') renderAbout();
-  }
-  function fetchFace(){
-    if (typeof window === 'undefined' || !(window.FontFace && window.fetch)) { mark(false); return; }
-    var urls = [];
-    if (url) urls.push(url);
-    if (altUrl) urls.push(altUrl);
-    (function next(i){
-      if (i >= urls.length) { mark(false); return; }
-      window.fetch(urls[i], { credentials: 'same-origin' }).then(function (r){
-        if (!r.ok) throw new Error('font HTTP ' + r.status);
-        return r.arrayBuffer();
-      }).then(function (buf){
-        var ff = new window.FontFace(face, buf, { style: 'normal', weight: '100 900' });
-        return ff.load().then(function (){
-          if (THEME.fontFace){ try { document.fonts.delete(THEME.fontFace); } catch (e){} }
-          document.fonts.add(ff);
-          THEME.fontFace = ff;
-          mark(true);
-        });
-      }).catch(function (){ next(i + 1); });
-    })(0);
-  }
-
-  var keySrc = url || altUrl;
-  if (keySrc) {
-    var key = keySrc.replace(/^(fonts|icons)\//, '').replace(/\.(ttf|png)$/, '').replace(/[^a-z0-9-]/g, '');
-    face = 'ts-sys-' + key;
-    var tag = document.getElementById('sysfont');
-    if (!tag) {
-      tag = document.createElement('style');
-      tag.id = 'sysfont';
-      document.head.appendChild(tag);
-    }
-    /* local() 先试系统字体管理器；文件 URL 只作后备。 */
-    var srcs = [];
-    if (fam) {
-      srcs.push('local("' + fam + '")');
-      var pretty = fam.split('-').map(function (s){
-        return s.charAt(0).toUpperCase() + s.slice(1);
-      }).join(' ');
-      if (pretty !== fam) srcs.push('local("' + pretty + '")');
-    }
-    if (url) srcs.push('url("' + url + '")');
-    tag.textContent = srcs.length
-      ? '@font-face{font-family:"' + face + '";src:' + srcs.join(',') +
-        ';font-display:swap;font-weight:100 900}'
-      : '';
-    use = '"' + face + '"';
-    /* 先让浏览器按 CSS 加载；CSS 失败（管理器可能按 MIME 拦字体）时
-       用 fetch 读字节再交给 FontFace；主路径失败再试 icons/ 镜像。 */
-    if (url && document.fonts && document.fonts.load) {
-      document.fonts.load('16px "' + face + '"').then(function (faces){
-        if (faces && faces.length) mark(true);
-        else fetchFace();
-      }, fetchFace);
-    } else {
-      fetchFace();
-    }
-  } else if (fam) {
-    use = '"' + fam + '"';
-  }
-  var stack = [];
-  if (use) stack.push(use);
-  if (url && fam) stack.push('"' + fam + '"');
-  stack.push('system-ui', 'sans-serif');
-  st.setProperty('--font', stack.join(', '));
-  return use;
 }
 
 function applyPalette(){
@@ -2487,7 +2394,6 @@ function loadEnv(){
     THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
     THEME.darkSrc = S.env.sys_dark_src || 'none';
     /* 系统字体名是设备上读出来的，写死会抢在系统之前匹配上 */
-    applyFont(S.env.sys_font, S.env.sys_font_pkg, S.env.sys_font_file, S.env.sys_font_alt);
     applyPalette();                 // 系统强调色到手，重推一遍色板
     applyScheme();                  // 系统深浅与 WebView 不一致时以系统为准
     S.envAt = Date.now();
@@ -2555,28 +2461,7 @@ function renderAbout(){
     blk('取色', THEME.frroOk ? '系统 overlay'
         : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
       (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na'),
-    (function (){
-      var label, tone, note = '';
-      if (THEME.fontFile) {
-        label = '系统字体' + (THEME.font ? ' · ' + THEME.font : '');
-        if (THEME.fontLoaded === false) {
-          label += ' · 未加载';
-          tone = 'bad';
-          note = '字体文件没被 WebView 加载，退回族名/系统默认';
-        } else {
-          tone = 'ok';
-          if (THEME.fontLoaded === true) note = '已由 WebView 加载';
-        }
-      } else if (THEME.font) {
-        label = '族名 ' + THEME.font;
-        tone = 'warn';
-        note = 'Chromium 可能不认这个名字';
-      } else {
-        label = 'WebView 默认';
-        tone = 'na';
-      }
-      return blk('字体', label, tone, note);
-    })(),
+    blk('字体', '跟随系统（system-ui）', 'ok'),
     blk('深浅', '跟随系统 → ' + (resolveScheme() === 'dark' ? '深色' : '浅色'), 'ok'),
     blk('生效值', THEME.applied || '—')
   ]));

@@ -6,7 +6,8 @@
 
 #### 新增
 
-* **字体加载再兜底：`local()` 优先 + `fetch + FontFace` + icons 镜像**：部分管理器用 `WebViewAssetLoader` 提供 webroot，字体请求可能被字体加载器按 MIME 处理而退回 Roboto。现在 `@font-face` 先试系统族名（`local("google-sans-flex")` / `local("Google Sans Flex")`），CSS 加载失败或返回空时再用 `fetch` 读 ttf 字节、`new FontFace(..., ArrayBuffer)` 加进 `document.fonts`；`env` 再把同一份字节镜像到 `webroot/icons/font-<hash>.png`（管理器确定会发 icons 目录），主 ttf 路径被拦时改走这个镜像。关于页会显示「已由 WebView 加载」或「未加载」。`tests/ui-font.js` 增至 **22 条**（含 fetch 与 icons 镜像假体）；桌面用真实 GoogleSansFlex-Regular.ttf 验证组件内外都拿到唯一族名。
+* **字体改为 `system-ui`（学习机上其它 WebUI）**：参考 `nomount` 模块的 `--nm-font-family: system-ui` —— 本机 WebView 156 下 system-ui 就按系统字体（Google Sans Flex）渲染。删掉整套字体探测/复制/hash 文件/`@font-face`/`fetch` 镜像：`env` 不再输出 `sys_font*`，不再往 `webroot/fonts` 或 `webroot/icons` 写 4MB 字体文件；关于页只写「跟随系统（system-ui）」。Material Web 的 `--md-ref-typeface-plain` 仍映射到 `var(--font)`。`tests/ui-font.js` 改为 **9 条断言**，专门防止再引入 `@font-face`/字体文件管线；8 个 shell 测试与 `ui-shape` 19 条全绿。
+
 * **全量重构 WebUI：接入 `@material/web` 2.5.0（labs/gb Expressive）**：界面控件不再自己仿 Material，直接用组件；仍是单文件、不联网。
   * 组件：`md-gb-button` / `md-gb-icon-button` / `md-gb-list` / `md-gb-list-item` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`。原生按钮、分段、开关、输入框、确认框、首页入口和应用列表全部换掉；卡片、分组、日志台、提示条保留模块自己的布局。
   * 构建：`@material/web` 2.5.0 + Lit 3.3.3 经 esbuild 打成 **190KB minified / 40KB gzip 的 IIFE**，内联进 `index.html`；`m3.css` 用 adoptedStyleSheets 注入，颜色/字体/圆角通过未分层的 `--md-sys-color-*`、`--md-ref-typeface-*`、`--md-sys-shape-*` 别名映射到现有 token。**要求 Chromium 111+ WebView**（本机 156）；更旧的 WebView 会在顶部提示升级，而不是空白。
@@ -20,13 +21,6 @@
   * 分段选中与列表选中改用 `secondary-container / on-secondary-container`；列表选中头像用 `primary-container`。
   * 应用列表行最小 56px、头像 40px 圆形（官方 list-item 尺寸）；入口行最小 56px。
   * 417 宽复测：横向溢出 0；行高 56、头像 40、分段/列表选中颜色取到 `secondary-container`；`.btn:active` 解析为 `border-radius: var(--r-xs)`，过渡含 350ms 官方曲线。全部静态测试与 JS 语法通过。
-
-* **换系统字体后界面不跟：字体文件按内容哈希 + 回到界面重读**：
-  * 原因：字体文件之前固定叫 `webroot/fonts/sys.ttf`，WebView 会按同一个 URL 继续用缓存；`env` 也只在打开页面时读一次，换字体后回到已经开着的界面不会重读。
-  * 现在 `webui.sh env` 按源 ttf 的 md5 生成 `fonts/font-<hash>.ttf`，换字体 URL 必变；新文件就位后清理旧版 `sys.ttf`，同名文件只搬一次。界面 `@font-face` 的族名也带文件哈希，避免复用已经加载过的旧 FontFace。
-  * 页面从后台回到前台时重读 `env`（1.5 秒内刚读过就跳过），换字体 / 深浅 / 取色不用重开；关于页显示当前族名，字体文件没被 WebView 加载时明确写「未加载」并退回族名 / `system-ui`。
-  * `tests/ui-font.js`（接进 CI，**22 条断言**）：从 `index.html` 原样抽出 `applyFont`，覆盖唯一族名、换文件族名变化、`--font` 栈、`local()` 优先、CSS 加载失败时 `fetch + FontFace(ArrayBuffer)` 兜底、icons 镜像兜底、关于页重画与接线；三处变异（固定族名 / 失败仍记成功 / 拒绝哈希文件名）都验过会红。
-  * 真机（当前 Google Sans Flex）：`env` 生成 `font-0aa580…ttf`，md5 与 `/product/fonts/GoogleSansFlex-Regular.ttf` 相同，重复执行 mtime 不变，旧 `sys.ttf` 已清；另用设备上的替代字体包模拟出 `source-sans-pro` / `SourceSansPro-Regular.ttf`，说明换字体时族名与文件确实会变。未改动你的系统字体做端到端切换。
 
 * **目标名单可以减了（`remove-apps`）**：应用页「名单」视图点「选择」进入多选，底部条变成红色的「移出名单」（加入模式仍是主色「加入名单」），确认后**一次写入**；全选时会拒绝并提示「至少保留一个应用」。确认框会列出前三个包名。新命令 `remove-apps <包名,...>`（能力门；`api` 仍为 2，旧命令层没有它时名单页不出现「选择」）。
   * 只删请求里的包名：Tricky 保留注释、空行与其余行顺序；TEESim/OMK 只替换数组并保留其它字段。移出前把当前名单并入 `.ts_ever`，所以手工加进文件、还没同步过的包也会在移出后显示「已排除」，下次同步不会自动加回（卸载重装仍按原规则回来）。
@@ -58,7 +52,7 @@
 * **同步模型换成快照差分，墓碑文件整个拿掉**：加入的来源从「已装但文件里没有」改成「上一轮之后新装的」（`inst − was`），删除只删「上一轮之后卸载的」（`was − inst`），文件里其余条目原样保留。手动删掉的包仍然装着、但不在"新装"里，所以**结构上就不可能被回填** —— 不再需要 `.ts_removed` 与那份"上次写了什么"的 `.ts_written_last`；差分状态只剩 `.ts_installed_last` 一份基线，另加一份 `.ts_ever`（历次纳入的并集，只用于「已排除」判定）。
   * `excluded` 改成按 `.ts_ever` 现算（`已装 ∩ 曾经纳入 ∩ ¬目标文件`）。用已装基线会在 OhMyKeymint 首次沿用现有 scoop 时把 100 多个从未纳入的应用误标成「已排除」；升级后第一次成功同步会顺手清掉旧的墓碑文件（失败不删，便于回退）。
   * **空列表保护**：已装列表读空、但基线非空时（更像一次 `pm` 读取失败，而不是真把应用全卸了），自动同步放弃本次写入（`build_app_list` 返回 1，描述标失败）；界面「立即同步」与管理器「操作」按钮会显式设 `TAA_EMPTY_OK=1` 强制按当前已装处理。首次运行（没有基线）不受影响。
-  * `tests/sync-guard.sh`（接进 CI，**10 条断言**）：两个后端真实的 `sync_*` 在空列表下返回 2、目标文件逐字节不变、基线不推进；`TAA_EMPTY_OK=1` 时按当前已装写入。两处变异（去掉保护 / 忽略强制标记）都验过会红。
+  * `tests/sync-guard.sh`（接进 CI，**9 条断言**）：两个后端真实的 `sync_*` 在空列表下返回 2、目标文件逐字节不变、基线不推进；`TAA_EMPTY_OK=1` 时按当前已装写入。两处变异（去掉保护 / 忽略强制标记）都验过会红。
   * `tests/sync-incremental.sh` 按新模型重写：**16 个场景 / 38 条断言**（首次种子、目标非空不种、新装进/卸载出、手加保留、手删不回、卸载后重装回来、手加回、已装为空、清空不回填、种子只种一次、状态只写已装、旧状态清理、首次运行不误报排除、空列表保护与手动强制、OhMyKeymint 首次沿用）。本机 mksh + toybox awk 跑同一份全绿。
   * 真机端到端（本机 config.json）：换算法后跑 `sync`，内容一致（125 条），文件 sha 与测试前**逐位相同**。
 
