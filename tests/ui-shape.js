@@ -137,6 +137,12 @@ chk('顶栏返回钮的图标已随返回一起撤掉', iconSrc.indexOf("back: '
 chk('.tabs 钉在视口底部（含安全区）',
   /\.tabs\{position:fixed/.test(html) && /\.tabs\{[\s\S]{0,200}bottom:calc\(var\(--inset-bottom\) \+ \d+px\)/.test(html));
 chk('选中项用 secondary-container 药丸', /\.tab\.is-active\{background:var\(--secondary-container\)/.test(html));
+/* 底栏上下跳的真因：切页入场把面板右移 24px，文档比视口宽 8.9px，WebView 把
+   布局视口撑高（真机 975 → 987，首切 1083），bottom 定位的底栏跟着沉。滑动这
+   200ms 必须裁掉横向溢出；静止时不裁（常开会改变整页文字的次像素抗锯齿）。 */
+chk('滑动期间裁掉横向溢出', /\.wrap\.sliding\{overflow-x:clip/.test(html));
+chk('滑动结束摘掉裁切类', /classList\.add\('sliding'\)/.test(fnBody('pageSlide'))
+  && /classList\.remove\('sliding'\)/.test(fnBody('pageSlide')));
 const wrapPad = +(html.match(/\.wrap\{padding:0 var\(--sp4\) calc\((\d+)px/) || [0, 0])[1];
 chk('.wrap 底部留白给药丸让位（≥96px）', wrapPad >= 96, 'wrapPad=' + wrapPad);
 const snackBottom = +(html.match(/\.snackbar\{[\s\S]{0,160}bottom:calc\(var\(--inset-bottom\) \+ (\d+)px/) || [0, 0])[1];

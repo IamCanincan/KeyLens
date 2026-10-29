@@ -271,6 +271,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 /* 多选时底栏让位：批量条和它占同一条底边，两个浮层叠在一起没法点 */
 body.is-selecting .tabs{display:none}
 
+/* 滑动期间才裁：面板（或英雄卡）右移 24px 会让文档比视口宽出 8.9px，WebView 把
+   布局视口撑高来容纳它（真机 innerHeight 975 → 987，首切 1083），fixed 底栏跟着
+   沉 12px 再弹回 —— 就是「底栏上下跳」。裁切只在这 200ms 里开：常开会让整棵子树
+   退回灰度抗锯齿（实测静止画面 2 万像素与不裁切不同）。clip 而不是 hidden ——
+   hidden 会把另一轴强制成 auto，整页滚动当场消失。真机 A/B：不裁 3/3 跳，
+   开裁 4/4 恒定。 */
+.wrap.sliding{overflow-x:clip;overflow-y:visible}
+
 /* ================= 卡片 ================= */
 /* 底部要给药丸底栏让位（离屏 20 + 自身 58 + 收尾气口），
    加在这里、不加在 body 上，页面背景才一直铺到屏幕底边 */
@@ -3371,14 +3379,24 @@ function applyPage(name){
    不碰高度、不盖遮罩，所以不会回到「闪」。切回概览时英雄卡一起滑，
    否则它会硬蹦出来。 */
 var REDUCE_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
+var slideDepth = 0;
 function pageSlide(el, dir){
   if (!el || !el.animate || REDUCE_MOTION) return;
   var dx = Math.min(24, Math.round((window.innerWidth || 626) * .05)) || 12;
-  el.animate(
+  /* 位移期间把横向溢出收住：见 .wrap.sliding。用计数是因为一次切页会同时滑
+     面板与英雄卡，两边都结束才摘掉。 */
+  var wrap = document.querySelector('.wrap');
+  slideDepth++;
+  wrap.classList.add('sliding');
+  var anim = el.animate(
     [{ transform: 'translateX(' + (dir * dx) + 'px)', opacity: .9 },
      { transform: 'translateX(0)', opacity: 1 }],
     { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
   );
+  var done = function (){
+    if (--slideDepth <= 0) { slideDepth = 0; wrap.classList.remove('sliding'); }
+  };
+  anim.finished.then(done, done);
 }
 function showTab(name){
   var prev = S.tab;
