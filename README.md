@@ -87,6 +87,7 @@ tests/                     # 静态自检（CI 跑）
 tools/icondump/            # 图标 dex 的源码与编译命令
 tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）
 tools/ui-cdp-check.mjs   # 界面验收台架：CDP 钉死视口，逐页量溢出/面板/标题（本地跑，要 Chrome）
+tools/deploy-webui.sh    # 推 WebUI 上机：入口闸门 + chmod 644 + 逐文件对 sha256
 THIRD_PARTY_NOTICES.md     # 内联 bundle 的第三方许可
 ```
 
@@ -174,6 +175,20 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
 
 > 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；**样式与脚本不要拆成多个 css/js 文件**——部分管理器用 `file://` 加载且不解析子资源路径。Material Web bundle 也是内联的；`tools/mwc-build/` 只用于维护时重新生成它（`npm install && npm run build`），不会进刷机包。唯一的运行时子资源例外是 `webroot/icons/*.png`：那是运行时导出的图片，读不到时界面会退成首字块，所以缺了也不影响任何功能与可读性。第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
+
+### 改完界面怎么上机、怎么验收
+
+三条命令，各自退非 0：
+
+```sh
+sh tools/deploy-webui.sh          # 推 + chmod 644 + 逐文件对 sha256
+node tools/ui-cdp-check.mjs       # 417/360/320 × 浅/深 × 八页 + 主页三条退路
+node tests/ui-shape.js            # 79 条静态断言
+```
+
+- **`adb push` 默认把文件落成 0666**，而这个 `index.html` 由管理器以 root 加载、里面的命令以 root 执行 —— 世界可写等于任何应用都能改写一个 root 界面。所以"模式不是 644/444 就退非 0"是部署脚本的硬闸门，不靠人记得 `chmod`。脚本还会拒绝"工作区有未提交改动"（否则设备上跑的版本对不上仓库，回头说不清），并要求 `adb shell` 是 root。
+- **量布局别用 `--headless --screenshot --window-size=417`**：那样起出来的布局视口是 **491**，截图仍旧 834 宽，看着像 417 —— 溢出检查会静默地在一台不存在的手机上通过。台架用 CDP `Emulation.setDeviceMetricsOverride` 钉死，并且第一步就断言"量到的宽度确实等于要的宽度"。
+- 台架与闸门都用变异验过：往 `.console` 塞 `min-width:900px`、让 `applyPage` 不再藏面板、把 `chmod` 改成 666、推完再往设备文件尾部追加一个字节 —— 每一种都让对应的检查退非 0 并点名。
 
 ### 查看运行状态
 - **模块描述**：在模块详情页，`description` 字段动态显示：
