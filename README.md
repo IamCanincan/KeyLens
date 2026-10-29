@@ -42,7 +42,7 @@ TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段
   日志同时写入系统日志（`logcat`，tag 为 `TS-AUTO`）与本地缓冲文件 `/data/adb/ts_auto.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
 
 - **WebUI 控制台（Material 3 Expressive）**  
-  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、对照目标名单与已装应用、翻日志、手动同步，以及一键开关开机属性伪装。界面是单文件、不联网、不依赖任何外部库或字体。
+  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、对照目标名单与已装应用、翻日志、手动同步，以及一键开关开机属性伪装。界面是单文件、不联网；`@material/web 2.5.0` 已打成内联 bundle（不需要联网加载任何库或字体）。
 
 - **兼容性广泛**  
   支持 Magisk、KernelSU、APatch，并自动适配 `inotifywait` / `inotifyd` 两种监控模式（含各框架自带的 busybox）。
@@ -77,14 +77,16 @@ module/
 │  ├─ omk.awk             # OhMyKeymint 后端实现：定点替换 scoop 数组
 │  └─ omk_list.awk        # OhMyKeymint 只读提取：取出 scoop 供界面展示
 ├─ webroot/
-│  └─ index.html          # WebUI 界面（单文件，内联样式与脚本）
+│  └─ index.html          # WebUI 界面（单文件；内联样式、脚本与 Material Web bundle）
 │                         # 运行时会多出 webroot/icons/*.png —— 由 webui.sh icons 从桌面
 │                         # 图标缓存导出，不进仓库、不进刷机包
 └─ META-INF/              # 刷机包脚本
 
 tools/                     # 不进刷机包：构建与自检
-tests/watch-backoff.sh     # 监听退避的自检（CI 跑）
+tests/                     # 静态自检（CI 跑）
 tools/icondump/            # 图标 dex 的源码与编译命令
+tools/mwc-build/          # 生成 index.html 里的 Material Web bundle（npm，构建时用）
+THIRD_PARTY_NOTICES.md     # 内联 bundle 的第三方许可
 ```
 
 - **入口脚本必须留在根目录**：Magisk / KernelSU / APatch 按固定路径调用 `customize.sh` / `post-fs-data.sh` / `service.sh` / `uninstall.sh`，管理器“操作”按钮调用 `action.sh`。
@@ -149,23 +151,23 @@ sh /data/adb/modules/ts-auto-add/action.sh
 - **页内返回拿不到「可预测返回」的预览**：反汇编宿主可以看到它用的是普通 `BackHandler` —— 全 dex 里 `startBackProgress`、`getBackProgress` **0 次**，也就是宿主根本没实现应用内预览；系统能画的那种预览只覆盖**跨 Activity**（从 WebUI 退回管理器就是这一种，所以那一下有预览、页内那一下没有）。网页这层也没有接口：屏幕边缘的拖动被系统手势接管，页面收不到，也没有任何 API 能把「上一页长什么样」喂给系统。所以页内返回的动效上限就是方向一致的滑入（下钻从右、返回从左）。
 - **二级页的顶栏钉住**（`position:sticky`）：返回箭头是那一屏唯一的出口，长列表滚到一半不能让它滚走；概览不钉，让内容照常滚。二级页隐藏英雄卡，一屏只有标题 + 内容。下钻与返回都只滑当前面板（24px / 200ms，WAAPI 在合成器上跑，不碰高度、不盖遮罩）；返回时英雄卡跟着一起滑，否则它会硬蹦出来。
 - **导航状态写在地址栏的 hash 上**（`#/over`、`#/apps`…），顶栏箭头与 `popstate` 是同一条路；宿主的返回是「`doUpdateVisitedHistory` 里读 `webView.canGoBack()` 写进状态 → 返回回调执行 `webView.goBack()`」（dex 实测），但**这条链在实测里没被走通过**：直接指定组件起第二个实例会被它自己 finish（`Displayed +61ms` 紧跟 `type=CLOSE numActivities=0`），走管理器的 `ksu://webui/…` 则是管理器起来了、却没替我们起 WebUI —— 所以系统边缘返回目前**就是关掉整个界面**，页内返回请用顶栏箭头。⚠ **也没有安卓的可预测返回预览**：预览要宿主实现 `OnBackAnimationCallback` 并驱动 `startBackProgress`，全 dex 里 `startBackProgress` / `getBackProgress` 各 **0 次** —— 系统只会为**跨 Activity**（WebUI → 管理器）那一下自己截图，页内这一档它没有画面可画，页面也没有接口能喂。滚动位置自己管（`history.scrollRestoration = 'manual'`），回概览时还原 —— 否则浏览器会把下钻前已归零的位置再恢复一次，把还原抹掉（实测 52 → 0）。
-- 视觉只有一套语言：**静止形状全部对称**（按钮一律胶囊、卡片与格子一律单一圆角、切角与「叶子形」已收掉），**主色只出现在两处**——生效数字与主行动按钮；正常状态不上色（一个点即可），只有需要处理的才着色。最大的那个色块（英雄卡）现在装的是最该被看见的东西，而不是一片底色。动态形状参考 `@material/web` 2.5.0 的 `labs/gb` Expressive 模板：按钮按下从胶囊收成 8px（350ms、官方过冲曲线），分段与列表选中用 `secondary-container`，列表行最小 56px、头像 40px；**没有把 Lit/组件库打进界面**——单文件离线仍是自己的实现。
+- 视觉只有一套语言：**静止形状全部对称**（按钮默认胶囊、卡片与格子单一圆角，切角与「叶子形」已收掉），**主色只出现在两处**——生效数字与主行动按钮；正常状态不上色（一个点即可），只有需要处理的才着色。界面控件由 `@material/web` 2.5.0 的 `labs/gb` Expressive 组件驱动：`md-gb-button` / `md-gb-icon-button` / `md-gb-list(-item)` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`；卡片、分组、日志台和提示条仍是模块自己的布局。按钮按下时圆角收缩使用组件自带的 350ms 过冲曲线；列表行 56px、头像 40px，选中用 `secondary-container`。这需要 **Chromium 111+ 的 WebView**（本机 WebView 156）。
 - **每个板块一块底**（`.grp`）：比它所在卡面抬一档（`--surface-high`，与卡面比 1.143 深 / 1.116 浅 —— 和"页底 vs 卡面"那档同量级）。色块往外铺 12、内边距补回 12，所以文字左缘还是那条 41；板块之间外距 20 > 块内 12。格子内部与图标仍然不着色。底色定义在 `:root` 而不是 `.grp` 上 —— 写在 `.grp` 上会盖掉别处的覆盖（自定义属性也是元素自己的声明赢过继承）。
 - 布局按**自适应网格**排，不写断点：本机 WebView 是 **417 CSS px** 宽（1644px @630dpi；低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，两套模式都是 417）。概览与「关于」的四个板块在这台机器上各排 **两列**（格子下限 `--cell:150`，列宽 158）—— 值按真机字符串最宽的 142 定，注释行改成换行而不是裁字。改布局后用 CDP 在顶层文档扫溢出（5 页 × 320/360/417 × 浅/深），别只信 `--headless --screenshot`——它给出过与真实渲染不一致的读数。
-- 界面**不联网、不加载任何外部资源**（单文件，样式与脚本都在 `index.html` 里），断网、无 Play 服务的机器一样能开。
+- 界面**不联网、不加载任何外部资源**（单文件；样式、脚本与内联的 Material Web bundle 都在 `index.html` 里，字体走系统字体文件），断网、无 Play 服务的机器一样能开。WebView 需要 **Chromium 111+** 才能解析 Material Web 2.5；更旧的 WebView 会在顶部直接提示升级，而不是空白页。
 - 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/ts-auto-add/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
 - 界面开机先问一次 `contract`（命令层自报契约号与命令清单）：**号对不上就横幅明说「界面与命令层不是同一版」，并把写命令挡在传输层外**（读命令仍放行，好让人看到现场）。另外每次调用会校验界面真正要读的关键键（`status` / `env` / `boot-hash` / `sync` / `restore-*` / `remove-apps` 等）：字段名变了会横幅「命令层返回格式不认识」并停写，不会静默画成空值。需要这条是因为迭代时可以只推 `index.html` 或只推 `webui.sh`，不同版以前只会表现为"某个值怪怪的"。改任何命令的输出形状仍要两侧同时把号 +1；电脑上预览可用 `?badapi=99` 验契约号，形状检查可在演示数据里临时改坏一个键验证。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
-- **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。
+- **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。Material Web 组件通过 `:root` 里未分层的 `--md-sys-color-*` 别名映射到这套 token（`m3.css` 在 `@layer` 里，不会盖掉）。
 - **强调色按四级回退，取到哪一级在概览页「关于 → 取色」里照实写出**：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`。
   界面里 `--primary` 是 `oklch(49% .19×sat hue)`，而系统 `accent1_600` 的明度就在 49% 那一档，所以 `sat = 系统实测C / .19` 即可对上——**彩度按实测比值走，不做审美放大**（放大过的版本色相差不多却完全不像一套东西）。
   需要说清楚的是：跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套——模块侧拿不到系统算好的 12 组色调表本身，只能拿到这份 overlay 文件里的 ARGB。
-- **字体也跟随系统，走的是「把系统字体文件加载进来」而不是写族名**：Chromium 在 Android 上有自己的字体映射表，**不读** ROM 的 `config_bodyFontFamily` / `fonts_customization.xml`，所以 CSS 里写 `google-sans-flex` 这个名字不会生效、会静默退回 Roboto。现在 `webui.sh env` 从字体注册表里找到该族的 ttf（本机 `/product/fonts/GoogleSansFlex-Regular.ttf`），按**内容哈希**拷成 `webroot/fonts/font-<md5>.ttf`：换字体时 URL 一定变，WebView 不会继续用旧缓存；同名文件只搬一次，旧文件在新文件就位后清掉。界面用按文件生成的唯一 `@font-face` 族名加载，并在每次从系统设置回来后重读一次 `env`，所以换系统字体不用重开界面。读不到或加载失败会退回族名 → `system-ui, sans-serif`；概览「关于 → 字体」会显示族名以及字体文件是否真的被 WebView 加载。
+- **字体也跟随系统，走的是「把系统字体文件加载进来」而不是写族名**：Chromium 在 Android 上有自己的字体映射表，**不读** ROM 的 `config_bodyFontFamily` / `fonts_customization.xml`，所以 CSS 里写 `google-sans-flex` 这个名字不会生效、会静默退回 Roboto。现在 `webui.sh env` 从字体注册表里找到该族的 ttf（本机 `/product/fonts/GoogleSansFlex-Regular.ttf`），按**内容哈希**拷成 `webroot/fonts/font-<md5>.ttf`：换字体时 URL 一定变，WebView 不会继续用旧缓存；同名文件只搬一次，旧文件在新文件就位后清掉。界面用按文件生成的唯一 `@font-face` 族名加载，并在每次从系统设置回来后重读一次 `env`，所以换系统字体不用重开界面。读不到或加载失败会退回族名 → `system-ui, sans-serif`；概览「关于 → 字体」会显示族名以及字体文件是否真的被 WebView 加载。Material Web 组件通过 `--md-ref-typeface-plain: var(--font)` 使用同一份字体。
 - 松紧只由两组令牌控制：`--r-*`（圆角）与 `--sp-*`（留白），加上少量字号档位。**要整体调密度就改这几行**，不要逐条找元素——上一轮"收一档"是逐条改的，结果改完就变成"很挤"。
 - 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
 - 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
 
-> 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；**样式与脚本不要拆成多个 css/js 文件**——部分管理器用 `file://` 加载且不解析子资源路径。唯一的例外是 `webroot/icons/*.png`：那是运行时导出的图片，读不到时界面会退成首字块，所以缺了也不影响任何功能与可读性。
+> 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；**样式与脚本不要拆成多个 css/js 文件**——部分管理器用 `file://` 加载且不解析子资源路径。Material Web bundle 也是内联的；`tools/mwc-build/` 只用于维护时重新生成它（`npm install && npm run build`），不会进刷机包。唯一的运行时子资源例外是 `webroot/icons/*.png`：那是运行时导出的图片，读不到时界面会退成首字块，所以缺了也不影响任何功能与可读性。第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
 ### 查看运行状态
 - **模块描述**：在模块详情页，`description` 字段动态显示：
@@ -293,7 +295,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 ## ❓ 常见问题
 
 **Q：点「打开界面」没有反应，或界面提示“当前管理器不支持 WebUI”？**  
-A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU（主线）/ KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧或禁用了 JavaScript，重新覆盖安装模块可确认 `webroot/` 是否完整。
+A：WebUI 需要管理器自己实现入口——原版 Magisk 管理器没有，KernelSU（主线）/ KernelSU Next / SukiSU / SmartPack / APatch 等才有。这种情况下**模块功能完全不受影响**，改用命令行即可：`sh /data/adb/modules/ts-auto-add/action.sh` 同步并打印最近日志，`sh /data/adb/modules/ts-auto-add/webui.sh status` 输出界面用的同一份结构化状态（`webui.sh help` 看全部命令）。若界面能打开但一片空白，通常是管理器的 WebView 版本过旧（Material Web 需要 Chromium 111+，可在系统里更新 Android System WebView）或禁用了 JavaScript；重新覆盖安装模块可确认 `webroot/` 是否完整。
 
 **Q：界面提示「当前管理器没有提供可用的 exec 桥接」，但我的管理器明明有 WebUI 入口？**  
 A：各家注入的桥接对象名与调用形状不一样（KernelSU 主线是 `window.ksu.exec(cmd, optionsJson, 回调函数名)` 的**异步回调**，部分是同步返回 `{errno, stdout}`）。这种情况下界面会直接把扫描结果列出来——扫到了哪些对象、各自有哪些方法，据此就能判断该认谁；把那一屏反馈给维护者即可。

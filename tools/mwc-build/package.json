@@ -1,0 +1,16 @@
+{
+  "name": "ts-auto-add-mwc-build",
+  "private": true,
+  "type": "module",
+  "description": "Builds the inline @material/web bundle used by module/webroot/index.html",
+  "scripts": {
+    "build": "node build.mjs"
+  },
+  "dependencies": {
+    "@material/web": "2.5.0",
+    "lit": "3.3.3"
+  },
+  "devDependencies": {
+    "esbuild": "0.25.10"
+  }
+}

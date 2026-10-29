@@ -6,6 +6,14 @@
 
 #### 新增
 
+* **全量重构 WebUI：接入 `@material/web` 2.5.0（labs/gb Expressive）**：界面控件不再自己仿 Material，直接用组件；仍是单文件、不联网。
+  * 组件：`md-gb-button` / `md-gb-icon-button` / `md-gb-list` / `md-gb-list-item` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`。原生按钮、分段、开关、输入框、确认框、首页入口和应用列表全部换掉；卡片、分组、日志台、提示条保留模块自己的布局。
+  * 构建：`@material/web` 2.5.0 + Lit 3.3.3 经 esbuild 打成 **190KB minified / 40KB gzip 的 IIFE**，内联进 `index.html`；`m3.css` 用 adoptedStyleSheets 注入，颜色/字体/圆角通过未分层的 `--md-sys-color-*`、`--md-ref-typeface-*`、`--md-sys-shape-*` 别名映射到现有 token。**要求 Chromium 111+ WebView**（本机 156）；更旧的 WebView 会在顶部提示升级，而不是空白。
+  * 应用列表用 `static` 列表项（行内还要放 + 按钮，避免嵌套 `<button>`），选中/悬停用 `::part(list-item)` + 自定义 selbox；行高 56、头像 40，选中 `secondary-container`。列表项的 Material Symbols 勾选被构建脚本关掉（界面不装图标字体）。首页入口改为 `md-gb-list`；搜索框、批量条、属性开关/输入框、确认框、日志分段全部组件化。
+  * 顺手修掉英雄卡「立即同步 / 重新读取」两个按钮一直没有 click 监听的问题（现在接到 `doSync()` / `refresh()`）。
+  * 维护：`tools/mwc-build/`（npm + esbuild，构建时用，不进刷机包）；`THIRD_PARTY_NOTICES.md` 记录 Apache-2.0 / BSD-3-Clause / 0BSD。`build.mjs` 用替换函数内联，避免 bundle 里的 `$1` 被 `String.replace` 当捕获组。
+  * `tests/ui-shape.js` 扩到 **19 条断言**：解析内联 bundle 与 app 两段脚本，并检查 `md-gb-button` / `md-gb-list-item` / text field / dialog 的注册；8 个 shell 测试全绿。桌面 417 宽实测：应用/日志/属性/概览/关于五页横向溢出 0；应用行 56×335、头像 40、加号 32、标签不重叠；分段/搜索/批量条/对话框/开关/加入/移出/撤销均跑通。真机只读检查 WebView 156，未做真机界面截图。
+
 * **按 Material Web 2.5.0 的 Expressive 模板调整交互形状**：只取 `labs/gb` 的令牌与组件解剖，不把 Lit/组件库打进单文件界面（官方 All 组件包约 455KB minified，且 MWC 已进入维护模式）。
   * 按钮按下时圆角从胶囊收成 8px，350ms 使用官方 `cubic-bezier(.42, 1.67, .21, .9)` 过冲曲线，松开弹回；FAB 保留自己的 50% 形状。
   * 分段选中与列表选中改用 `secondary-container / on-secondary-container`；列表选中头像用 `primary-container`。
@@ -24,7 +32,7 @@
   * 名单不允许清空：`remove_target_apps` 在结果为空时返回 3，界面提示先取消一个；读取目标文件失败/定位不到数组返回 2，不会伪装成「本来就不在」。
   * **移出后可撤销**：命令层返回实际被移出的 `removed_list`（不是界面勾选快照），提示条在 6 秒内提供「撤销」，走 `restore-apps` 精确恢复；列表刷新过、勾选里夹着已不在文件里的包时也不会多加。
   * `tests/remove-app.sh`（接进 CI，**43 条断言**）：三个后端、一次移出多条、`removed_list` 精确记录、本来不在、会清空、目标损坏、`ever` 与 `excluded`；三处变异（去掉空名单保护 / 不检测读取失败 / 不并入 ever）都验过会红。
-* **命令层返回值的形状检查**：界面每次调用后校验自己真正会读的关键键（status / env / contract / boot-hash / sync / restore / remove / props 等）；缺键时横幅「命令层返回格式不认识」并停写，不再把字段名变化静默画成空值。`tests/ui-shape.js`（接进 CI，**14 条断言**）从 `index.html` 原样抽出 `KV_REQUIRED` / `parseKV` / `kvMissing` 执行，缺键、未知命令、`call()` 接线、超时标记与内联脚本语法都覆盖；两处变异（少一个必需键、`call()` 不接 `kvMissing`）都验过会红。
+* **命令层返回值的形状检查**：界面每次调用后校验自己真正会读的关键键（status / env / contract / boot-hash / sync / restore / remove / props 等）；缺键时横幅「命令层返回格式不认识」并停写，不再把字段名变化静默画成空值。`tests/ui-shape.js`（接进 CI，**19 条断言**）从 `index.html` 原样抽出 `KV_REQUIRED` / `parseKV` / `kvMissing` 执行，缺键、未知命令、`call()` 接线、超时标记、两段内联脚本语法与组件注册都覆盖；两处变异（少一个必需键、`call()` 不接 `kvMissing`）都验过会红。
 * **应用页刷新图标与超时文案**：应用页工具栏加了一个图标刷新（选择模式下隐藏，避免把选中状态刷掉；靠右对齐），60 秒超时从「命令超时」改成「结果未知；已重新读取当前状态」，写操作本来就统一走 `reloadAll()`。
   * 验证：417 宽下应用页横向溢出 0；刷新图标右缘与卡片内容右缘对齐；批量条四件（已选 / 全选 / 移出名单 / 取消）落在卡内；桌面演示跑通移出→已排除→撤销、加入、刷新、缺键横幅与超时文案；全部静态测试与 JS 语法通过。
 

@@ -86,7 +86,7 @@ chk('超时标记从 callExec 带到 call',
   /timeout: true/.test(html) && /timeout: !!r\.timeout/.test(html));
 
 console.log('── 脚本语法 ──');
-const scripts = [...html.matchAll(/<script>([\s\S]*?)<\/script>/g)].map(m => m[1]);
+const scripts = [...html.matchAll(/<script[^>]*>([\s\S]*?)<\/script>/g)].map(m => m[1]);
 chk('抽到内联脚本', scripts.length > 0, 'scripts=' + scripts.length);
 scripts.forEach((code, i) => {
   try {
@@ -96,6 +96,10 @@ scripts.forEach((code, i) => {
     chk('第 ' + (i + 1) + ' 段脚本可解析', false, e.message);
   }
 });
+chk('Material Web bundle 含 gb 按钮', html.indexOf('customElements.define("md-gb-button"') >= 0);
+chk('Material Web bundle 含列表项', html.indexOf('customElements.define("md-gb-list-item"') >= 0);
+chk('Material Web bundle 含文本域', html.indexOf('md-outlined-text-field') >= 0);
+chk('Material Web bundle 含对话框', html.indexOf('md-dialog') >= 0);
 
 if (fail) {
   console.log('有断言失败');
