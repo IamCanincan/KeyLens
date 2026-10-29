@@ -183,7 +183,7 @@ sh /data/adb/modules/ts-auto-add/action.sh
 三条命令，各自退非 0：
 
 ```sh
-sh tools/deploy-webui.sh          # 推 + chmod 644 + 逐文件对 sha256
+sh tools/deploy-webui.sh          # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
 node tools/ui-cdp-check.mjs       # 417/360/320 × 浅/深 × 八页 + 主页三条退路
 node tests/ui-shape.js            # 79 条静态断言
 ```

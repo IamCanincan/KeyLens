@@ -11,6 +11,11 @@
   * 四条闸门各造了一次"真的该响"的场景验过：改脏工作区、把 `REMOTE` 指到不存在的目录、把脚本里的 `chmod 644` 改成 666、推完再往设备文件尾部追加一个字节 —— 每次都退非 0 且点名对应那条，跑完逐字节还原，并再真部署一次把设备留在好的那一版（收尾核到 `644 root:root 386671`）。
   * 中途踩到 `UID` 在 shell 里是只读的，脚本第一版在 `UID=$(...)` 那行直接炸；改名 `AS_UID`。
 
+* **部署脚本会吃掉自己的清单：25 个文件只推了 1 个**：`tools/deploy-webui.sh` 扩到命令层（`--shell` / `--all`）后第一次跑就报"组=shell 文件数=25"却只推成 `webui.sh` 一个 —— `while read` 的循环体里 `adb shell` 会读 stdin，把喂给循环的整份 heredoc 清单吃掉了。剩下的 24 个文件留在设备上是旧版，而脚本原本会**报成功**。
+  * 修法分两层：① 清单走 **fd 3**（`read <&3` + `done 3<<EOF`），stdin 空出来谁也别想抢 —— 先给单条 `adb` 加 `</dev/null` 是不够的，命令替换里那两处照样吃；② 加数量断言 `n = want_n`，"清单 25 推成 1"这种直接失败退出。原来那句 `[ "$n" -gt 0 ]` 挡不住它，1 也大于 0。
+  * 这道新闸门是**被真 bug 撞响的**，不是造的变异：修 fd 之前它退非 0 并打印"只推成 1 个"，修完 25/25、`--all` 26/26 全过。
+  * 顺带把命令层纳入同一条闸门：`webui.sh` + `lib/*.sh` + `backends/*` 共 25 个文件，逐个对 sha256 与模式（`.sh`/`.awk` 收 755，界面 644）。今天前面那几次手工 `adb push` 命令层就是没这条闸门，全靠人记得 chmod。
+
 * **命令层补四条后端能力（契约号不动，仍是 api=4）**：`teesim-profiles` / `tee-status` / `tricky-patches` / `omk-restart`，命令数 31 → 35。
   * 为什么需要：上游文档里 TEESim 的 `profiles` 是一张「名字→配置」的表（每个 profile 自带 keybox、模式、三档补丁级别、设备身份、apps、自动纳入），而写回路径以前只认 `profiles.default` —— 多 profile 这层概念在界面上根本不存在；Tricky 的 `security_patch.txt` 支持 `[包名]` 按包块覆盖全局值，也支持 `device_default` / `prop` 两种取值，以前既不读也不列；Tricky 自己写的 `tee_status`（`AVAILABLE/FAILED/UNAVAILABLE`、`teeBroken`、`serviceErrorCode`）正是"这台机器为什么只能走 leaf hack"的答案，从来没被露出来。
   * **只加不改，所以号不涨**：这四条都是新命令，没动任何既有命令的输出形状 —— 涨号会让手机上正在跑的旧界面（`EXPECT_API=4`）当场判契约不符并停写。界面按 `hasCmd()` 逐条揭示，命令层与界面不同版时最坏是少一块内容。
