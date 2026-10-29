@@ -125,7 +125,10 @@ const pagesSrc = (html.match(/var PAGES = \[([^\]]*)\]/) || [])[1] || '';
 const pages = (pagesSrc.match(/'[a-z]+'/g) || []).map(s => s.slice(1, -1));
 const tabSrc = [...html.matchAll(/data-tab="([a-z]+)" data-icon="([a-z]+)"/g)];
 const iconSrc = extract('var ICON =');
-chk('PAGES 抽到 6 项', pages.length === 6, JSON.stringify(pages));
+chk('PAGES 抽到 5 项', pages.length === 5, JSON.stringify(pages));
+/* 名单是后端自己的数据：它必须长在后端页里，而不是又拆回独立一页 */
+chk('名单区与配置区同在后端页', /id="p-backend"[\s\S]*id="appsBody"[\s\S]*id="backendBody"/.test(html)
+  && !/id="p-apps"/.test(html) && /<h3 class="grp-t">名单<\/h3>/.test(html) && /<h3 class="grp-t"[^>]*>配置<\/h3>/.test(html));
 chk('底栏 tab 与 PAGES 一一对应（不多不少不重）',
   tabSrc.length === pages.length && new Set(tabSrc.map(t => t[1])).size === tabSrc.length
   && pages.every(p => tabSrc.some(t => t[1] === p)),

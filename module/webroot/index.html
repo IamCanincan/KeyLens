@@ -1217,7 +1217,10 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
     </section>
 
 
-    <section class="card panel" id="p-apps" hidden>
+    <section class="card panel" id="p-backend" hidden>
+      <!-- 名单就是这个后端的数据：条目语法（Tricky 的 ?/!、TEESim 的 @用户）与
+           配置字段都由后端决定，所以名字与配置放在同一页，不再单独占一格。 -->
+      <h3 class="grp-t">名单</h3>
       <div class="toolbar" style="margin-top:0">
         <md-outlined-segmented-button-set id="appsSeg">
           <md-outlined-segmented-button data-src="targets" label="名单" selected></md-outlined-segmented-button>
@@ -1238,9 +1241,7 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
         <md-gb-button id="btnBulkAdd" color="filled" size="sm" disabled>加入名单</md-gb-button>
         <md-gb-button id="btnBulkExit" color="text" size="sm">取消</md-gb-button>
       </div>
-    </section>
-
-    <section class="card panel" id="p-backend" hidden>
+      <h3 class="grp-t" style="margin-top:var(--sp6)">配置</h3>
       <p class="hint" id="backendStat">读取中…</p>
       <div id="backendBody"></div>
     </section>
@@ -1308,7 +1309,6 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
      在 417 CSS px 屏（可用 401）放得下，长页名走 aria-label 而不占横向空间。 -->
 <nav class="tabs" aria-label="主导航" id="tabs">
   <button type="button" class="tab is-active" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
-  <button type="button" class="tab" data-tab="apps" data-icon="apps" aria-label="应用列表"><i class="ico"></i><span class="lb">应用</span></button>
   <button type="button" class="tab" data-tab="backend" data-icon="backend" aria-label="后端与格式"><i class="ico"></i><span class="lb">后端</span></button>
   <button type="button" class="tab" data-tab="log" data-icon="logs" aria-label="运行日志"><i class="ico"></i><span class="lb">日志</span></button>
   <button type="button" class="tab" data-tab="props" data-icon="tune" aria-label="系统属性伪装"><i class="ico"></i><span class="lb">属性</span></button>
@@ -1768,7 +1768,7 @@ var ICON_STATE = {};
 var S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
-  targets: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
+  targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
   backendInfo: {},
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
@@ -3042,7 +3042,7 @@ function loadIcons(pkgs){
 function ensureIcons(pkgs){
   return loadIcons(pkgs).then(function (got){
     if (!got) return;
-    if (S.tab === 'apps') renderApps();
+    if (S.tab === 'backend') renderApps();
     });
 }
 function loadLog(){
@@ -3088,7 +3088,16 @@ function ensure(tab){
   /* 「关于」不取自己的数：那一页全是界面自检（status / env / THEME / 桥接），
      基础链已经取过。写成 tab 会被下面那条三元当成 props 去读属性表。 */
   if (tab === 'about') return Promise.resolve(false);
-  var need = (tab === 'apps' || tab === 'over') ? 'lists' : tab;
+  /* 后端页是「名单 + 配置」两半，两样都要；各自去重，返回这一趟有没有真取到数 */
+  if (tab === 'backend') {
+    return Promise.all([ensureNeed('lists'), ensureNeed('backend')]).then(function (rs){
+      return rs[0] || rs[1];
+    });
+  }
+  return ensureNeed(tab === 'over' ? 'lists' : tab);
+}
+
+function ensureNeed(need){
   if (S.loaded[need]) return Promise.resolve(false);
   if (inflight[need]) return inflight[need];
 
@@ -3104,8 +3113,8 @@ function ensure(tab){
 function renderAll(){
   renderHero();
   if (S.tab === 'over') renderOver();
-  else if (S.tab === 'apps') renderApps();
-  else if (S.tab === 'backend') renderBackend();
+  /* 后端页两半都要画：名单来自 lists，配置来自 backend */
+  else if (S.tab === 'backend') { renderApps(); renderBackend(); }
   else if (S.tab === 'log') renderLog();
   else if (S.tab === 'props') renderProps();
   else if (S.tab === 'about') renderAbout();
@@ -3124,8 +3133,10 @@ function runChain(withBase, quiet){
     S.loaded = {};                                  // 整份刷新：列表缓存一并作废
     S.iconAsked = {};                               // 图标问过的名单也重开：新装的应用该被认出来
     /* 列表随基础信息一起取：英雄卡的三个数字在任何一页都要显示，
-       以前只按当前页懒加载，进「日志」页时英雄卡就是一片 —，看着像坏了。 */
-    chain = Promise.all([loadStatus(), loadEnv(), ensure(S.tab === 'log' || S.tab === 'props' || S.tab === 'backend' ? 'lists' : S.tab)]);
+       以前只按当前页懒加载，进「日志」页时英雄卡就是一片 —，看着像坏了。
+       「关于」页没有英雄卡，也不读名单，就不白跑这一趟命令。 */
+    chain = Promise.all([loadStatus(), loadEnv(),
+      S.tab === 'about' ? Promise.resolve(false) : ensureNeed('lists')]);
   } else {
     chain = Promise.resolve();
   }
@@ -3148,11 +3159,15 @@ function refresh(){ runChain(true); }
 function loadTab(){
   /* 切页一律不盖整屏遮罩：那层 45% 的黑一压一收，看就是"整个页面闪一下"。
      首次进某页确实要取数，就在该页自己的状态行里写「读取中…」——反馈留在页面内。 */
-  var need = (S.tab === 'apps' || S.tab === 'over') ? 'lists' : S.tab;
-  if (!S.loaded[need]) {
-    if (need === 'log') logStat.textContent = '读取中…';
-    else if (need === 'props') propsStat.textContent = '读取中…';
-    else if (need === 'backend') document.getElementById('backendStat').textContent = '读取中…';
+  if (S.tab === 'backend') {
+    if (!S.loaded.lists) appsStat.textContent = '读取中…';
+    if (!S.loaded.backend) backendStat.textContent = '读取中…';
+  } else {
+    var need = S.tab === 'over' ? 'lists' : S.tab;
+    if (!S.loaded[need]) {
+      if (need === 'log') logStat.textContent = '读取中…';
+      else if (need === 'props') propsStat.textContent = '读取中…';
+    }
   }
   runChain(false, true);
 }
@@ -3351,13 +3366,14 @@ function confirm(title, text, okLabel){
    ========================================================= */
 var tabs = document.getElementById('tabs');
 var btnAppsRefresh = document.getElementById('btnAppsRefresh');
-var PAGES = ['over', 'apps', 'backend', 'log', 'props', 'about'];
-var TAB_LABEL = { over: '概览', apps: '应用列表', backend: '后端与格式', log: '运行日志',
+var PAGES = ['over', 'backend', 'log', 'props', 'about'];
+var TAB_LABEL = { over: '概览', backend: '后端与格式', log: '运行日志',
   props: '系统属性伪装', about: '关于与自检' };
 /* 只切状态：显隐目标页、标题、底栏选中态、概览的英雄卡。 */
 function applyPage(name){
   S.tab = name;
-  if (name !== 'apps' && S.selectMode) { S.selectMode = false; S.selected = {}; updateBulkBar(); }
+  /* 多选只属于后端页的名单区：离开这一页就收掉 */
+  if (name !== 'backend' && S.selectMode) { S.selectMode = false; S.selected = {}; updateBulkBar(); }
   var home = name === 'over';
   PAGES.forEach(function (k){
     var el = document.getElementById('p-' + k);
@@ -3431,7 +3447,7 @@ function showTab(name){
   if (home) pageSlide(hero, dir);
 }
 
-/* 页名写在地址栏的 hash 上（#/over、#/apps…）方便重载后回到同一屏，
+/* 页名写在地址栏的 hash 上（#/over、#/backend…）方便重载后回到同一屏，
    但切页不新增历史：六个页在底栏并列，彼此没有「上一级」，历史里堆一串
    横向条目只会让系统返回变成「逐个退页」而不是退出 WebUI —— 所以 replaceState。
    宿主的返回是怎么决定的（dex 实测）：WebViewClient.doUpdateVisitedHistory 里读
@@ -3444,7 +3460,7 @@ function showTab(name){
    概览位置抹回 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
 function pageFromHash(){
-  var m = /^#\/(over|apps|backend|log|props|about)$/.exec(location.hash || '');
+  var m = /^#\/(over|backend|log|props|about)$/.exec(location.hash || '');
   return m ? m[1] : null;
 }
 function navTo(name){
@@ -3711,7 +3727,7 @@ function boot(){
   }
   wire();
 
-  // ?tab=over|apps|backend|log|props|about 直接进某一页（预览与排查用）；取数交给下面的 refresh
+  // ?tab=over|backend|log|props|about 直接进某一页（预览与排查用）；取数交给下面的 refresh
   /* 先把当前条目定在 #/over（replace 不产生历史、也不惊动宿主） */
   try { history.replaceState(history.state, '', '#/over'); } catch (e) {}
   var want = QUERY.get('tab');
