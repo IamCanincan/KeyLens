@@ -50,6 +50,7 @@ const LINE_OK_BY_FILE = {
   'tools/deploy-webui.sh': [/ts-auto-add/, /ts_auto/],
   'tools/replay-check.mjs': [/ts-auto-add/, /ts_auto/],
   'tools/rename-keylens.cjs': [/.*/],
+  'tests/legacy-migrate.sh': [/\.ts_|ts_auto|taa_|TAA_/],   // 迁移测试必须点名旧文件才能测
   'README.md': [/改名|旧名/],
   '.gitignore': [/.*/],
 };

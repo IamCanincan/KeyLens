@@ -493,6 +493,17 @@
 
 #### 修复
 
+* **改名迁移在真机上静默失效**：`migrate_legacy_paths` 原来用 `for pair in "旧|新"` 再 `${pair%%|*}` / `${pair##*|}` 切分 —— **Android 的 sh 把 `|` 当成"或"**，两个展开都变成空串，于是 `/data/adb/ts_auto.*` 那三个文件一个都不搬。本机 dash/bash 一切正常，**只有把套子推到机上跑才看得出来**。改成 `_mig 旧 新` 两条参数直传，并在 `tests/legacy-migrate.sh` 里加一条静态禁令（判代码不判注释：解释这个坑的注释里就写着这种写法，连注释一起查会自己绊自己 —— 这类假阳性本轮犯了第三次）。
+  * 后果本来很实在：`ts_auto.props_off` 存在 = 用户关掉了属性伪装，`ts_auto.boot_hash` 是配置好的启动哈希 —— 不搬就是升级后静默回到默认。
+  * 同轮把 20 个 shell 套子全部推到 `/data/local/tmp` 用**设备 toybox sh** 跑了一遍：修前 18 过 2 红，修后 20 全绿。
+  * 三个套子的临时目录加了自报护栏：之前有一次 `teesim-overrides-write.sh` 退非 0 却**一条 ✗ 都没打** —— 只看得到"失败了"，看不到"死在哪"。现在建不出临时目录会直接点名。那次单发失败连跑两遍没能复现，记在这儿当作未结的疑点，不当作已修。
+
+* **发布包不能用 PowerShell 打**：`Compress-Archive` 把条目名写成 `backends\teesim.awk` 这种**反斜杠**，而 zip 规范的分隔符是 `/`；busybox/recovery 的 unzip 会把反斜杠当文件名的一部分，整个目录树被摊平成一个个叫 `lib\core.sh` 的文件，`update-binary` 找不到，装机必坏。另外第一版自写的打包器漏写了中央目录的**本地头偏移**（每个条目都指向 0），`unzip -l` 报满屏 `mismatching "local" filename` —— 这种包看着能列、实际解坏。
+  * 现在用 `node tools/build-zip.mjs`：正斜杠、made-by=UNIX、`.sh`/`.awk`/`update-binary` 给 0755、其余 0644；`--check` 验"没有反斜杠条目 / 装机必需文件齐 / 脚本有可执行位 / 界面产物在包里且 >400KB"，验完再做**解压回来与 `module/` 逐字节 diff** 的 round-trip。
+  * 顺手发现老发布包 `mode=0o0`（没存 unix 权限）却能装 —— 说明管理器自己 chmod；新包把权限存上，只多不少。
+
+* **台架的采集自检**：`tools/replay-check.mjs` 曾把 Git Bash 改写 adb 路径造成的满屏 shell 报错，当成"真包名画到屏上 ✓"判全绿 —— 断言拿那句错误文本当包名去匹配。现在驱动界面之前必须先证明 16 条读命令都拿到该有的键、`targets` 128 条形状正常、采集里没混进 `No such file`/`Permission denied`，否则停住不跑。一台会替错误编造成功判据的仪器，比没有仪器更坏。
+
 * **换版后界面只剩框架（内容一条都不出来）**：桥接的调用形状写错了。KernelSU 主线（`me.weishu.kernelsu`）的 `exec(cmd, optionsJson, **回调函数名字符串**)` 第三个参数要的是**全局函数名**，新版传的是函数对象 —— 管理器找不到那个名字，于是**永远不回调**：所有命令挂到 30 秒超时，屏幕上只剩顶栏和底栏。
   * 证据不是猜的：把**机上一直能用的那一版**（`git show b918440^:module/webroot/index.html`）的 `callExec` 抠出来对照 —— 它注册 `window['tsaa_cb_N']` 再把**名字**传进去，注释还专门写了"第三个参数是回调函数名，不是函数"。这条形状本来就在旧版里，我重构时把它当"可以简化的地方"改掉了。
   * 现在按 `S.bridge.kind` 分叉：`ksu` 走函数名回调，其余仍走 `exec(cmd, callback)` / 同步返回 `{errno, stdout}`；两条路径都保留超时兜底。

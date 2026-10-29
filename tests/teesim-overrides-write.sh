@@ -22,6 +22,10 @@ set -u
 cd "$(dirname "$0")/.." || exit 1
 T=$(mktemp -d 2>/dev/null) || T="/tmp/tov-$$"
 mkdir -p "$T"
+# 建不出来就自己说清楚：这里死过一次（rc≠0 却一条 ✗ 都没打），只看得出"失败了"，
+# 看不出"死在哪"。
+[ -d "$T" ] || { echo '  ✗    临时目录建不起来（mktemp 与 /tmp 回退都失败）'; exit 1; }
+mkdir -p "$T"
 trap 'rm -rf "$T"' EXIT
 fail=0
 ok()  { printf '  ok   %s\n' "$1"; }

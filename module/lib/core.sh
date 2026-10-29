@@ -44,12 +44,21 @@ KL_LEGACY_BOOT_HASH="/data/adb/ts_auto.boot_hash"
 #       这里按目录扫，不依赖 detect_backend 的顺序（迁移在探测之前就要能跑）。
 KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/misc/keystore/omk"
 
+# 说明：一条搬家：只在新名不存在时 mv，源不存在就什么都不做。
+#       为什么不用 `for pair in "旧|新"` 再 ${pair%%|*} 切：**Android 的 sh 把 | 当成"或"**，
+#       两个展开都变成空串，迁移静默什么都不搬（本机 dash/bash 正常，所以只有真机测得出来）。
+_mig() {
+    [ -e "$1" ] || return 0
+    [ -e "$2" ] && return 0
+    mv -f "$1" "$2" 2>/dev/null
+    return 0
+}
+
 migrate_legacy_paths() {
-    local pair old new dir f base
-    for pair in "$KL_LEGACY_LOG|$KL_LOG" "$KL_LEGACY_PROPS_OFF|$KL_PROPS_OFF" "$KL_LEGACY_BOOT_HASH|$KL_BOOT_HASH"; do
-        old="${pair%%|*}"; new="${pair##*|}"
-        [ -e "$old" ] && [ ! -e "$new" ] && mv -f "$old" "$new" 2>/dev/null
-    done
+    local dir f base
+    _mig "$KL_LEGACY_LOG" "$KL_LOG"
+    _mig "$KL_LEGACY_PROPS_OFF" "$KL_PROPS_OFF"
+    _mig "$KL_LEGACY_BOOT_HASH" "$KL_BOOT_HASH"
     for dir in $KL_BACKEND_DIRS; do
         [ -d "$dir" ] || continue
         for f in "$dir"/.ts_*; do

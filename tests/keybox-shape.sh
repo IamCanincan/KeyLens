@@ -23,6 +23,8 @@ AWKF=module/backends/keybox_check.awk
 F1=tests/fixtures/keybox-tricky-aosp.xml
 F2=tests/fixtures/keybox-omk-template.xml
 D=$(mktemp -d 2>/dev/null || echo /tmp/kbs-$$); mkdir -p "$D"
+# 建不出来就自己说清楚：这里死过一次（rc≠0 却一条 ✗ 都没打），只看得出"失败了"。
+[ -d "$D" ] || { echo '  ✗    临时目录建不起来（mktemp 与 /tmp 回退都失败）'; exit 1; }
 
 # 跑一次校验，结果放 LAST（"ok" 或 "err<TAB>原因"），退码放 RC
 run() {

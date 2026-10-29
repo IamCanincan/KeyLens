@@ -19,15 +19,30 @@ ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  ✗    %s\n' "$1"; fail=1; }
 
 # 抽 core.sh 里的真函数（抄一份的话，改坏实现测试也不会响）
-start=$(grep -n '^migrate_legacy_paths() {' module/lib/core.sh | cut -d: -f1 | head -1)
-[ -n "$start" ] || { bad '抽不到 migrate_legacy_paths'; exit 1; }
-end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' module/lib/core.sh)
-[ -n "$end" ] || { bad '找不到结尾'; exit 1; }
-eval "$(sed -n "${start},${end}p" module/lib/core.sh)"
-printf '  ok   从 core.sh 抽出 migrate_legacy_paths（第 %s–%s 行）\n' "$start" "$end"
+# _mig 与 migrate_legacy_paths 都要抽：后者调用前者。
+for fn in _mig migrate_legacy_paths; do
+    start=$(grep -n "^$fn() {" module/lib/core.sh | cut -d: -f1 | head -1)
+    [ -n "$start" ] || { bad "抽不到 $fn"; exit 1; }
+    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' module/lib/core.sh)
+    [ -n "$end" ] || { bad "$fn 找不到结尾"; exit 1; }
+    eval "$(sed -n "${start},${end}p" module/lib/core.sh)"
+    printf '  ok   从 core.sh 抽出 %s（第 %s–%s 行）\n' "$fn" "$start" "$end"
+done
+
+# 这条是踩过的坑：Android 的 sh 把 ${pair%%|*} 里的 | 当"或"，两个展开都变空串，
+# 迁移静默不搬 —— 本机 dash/bash 一切正常，只有真机跑得出来。所以禁掉这种写法。
+# 只判代码：解释这个坑的注释里就写着这种写法，连注释一起查会自己绊自己（犯过两次）。
+if grep -hE '\$\{[a-zA-Z_]+(%%|##)\*?\|' module/lib/*.sh module/*.sh module/backends/*.sh 2>/dev/null \
+   | grep -vE '^[[:space:]]*#' | grep -q .; then
+    bad '又用 `|` 做 ${var%%|*} 切分了（Android sh 会当"或"，迁移会静默失效）'
+else
+    ok '没有用 | 做参数展开切分'
+fi
 
 D=$(mktemp -d 2>/dev/null) || D="/tmp/km-$$"
 rm -rf "$D"; mkdir -p "$D/new" "$D/b1" "$D/b2" "$D/b3"
+# 建不出来就自己说清楚：这里死过一次（rc≠0 却一条 ✗ 都没打），只看得出"失败了"。
+[ -d "$D/new" ] || { echo '  ✗    临时目录建不起来（mktemp 与 /tmp 回退都失败）'; exit 1; }
 
 KL_LOG="$D/new/keylens.log"; KL_PROPS_OFF="$D/new/keylens.props_off"; KL_BOOT_HASH="$D/new/keylens.boot_hash"
 KL_LEGACY_LOG="$D/ts_auto.log"; KL_LEGACY_PROPS_OFF="$D/ts_auto.props_off"; KL_LEGACY_BOOT_HASH="$D/ts_auto.boot_hash"
