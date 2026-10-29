@@ -124,10 +124,26 @@ function load(doc, theme, state, render) {
   await tick();
   chk('CSS 失败时 fetch 字节兜底成功', t3.fontLoaded === true);
   chk('FontFace 已加入 document.fonts', c.added() === 1);
+
+  console.log('── icons 镜像兜底 ──');
+  const t4 = {}, s4 = { tab: 'apps' };
+  const e = fakeDoc(() => Promise.reject(new Error('css blocked')));
+  global.window.fetch = (url) => {
+    if (url.indexOf('icons/') === 0) {
+      return Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) });
+    }
+    return Promise.reject(new Error('ttf blocked'));
+  };
+  const fn4 = load(e.doc, t4, s4, () => {});
+  fn4('google-sans-flex', 'pkg', 'fonts/font-x.ttf', 'icons/font-x.png');
+  await tick();
+  await tick();
+  chk('主路径失败后试 icons 镜像', t4.fontLoaded === true);
+  chk('镜像 FontFace 已加入', e.added() === 1);
   delete global.window;
 
   console.log('── 接线 ──');
-  chk('loadEnv 传入了 sys_font_file', /applyFont\(S\.env\.sys_font, S\.env\.sys_font_pkg, S\.env\.sys_font_file\)/.test(html));
+  chk('loadEnv 传入了 sys_font_file 与 icons 镜像', /applyFont\(S\.env\.sys_font, S\.env\.sys_font_pkg, S\.env\.sys_font_file, S\.env\.sys_font_alt\)/.test(html));
   chk('可见时重读 env', /visibilitychange/.test(html) && /loadEnv\(\)\.then/.test(html));
   chk('关于页读 fontLoaded', /THEME\.fontLoaded === false/.test(html));
   chk('字体文件名允许带哈希', html.indexOf('[a-z0-9-]+\\.ttf') >= 0);

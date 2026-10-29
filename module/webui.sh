@@ -382,7 +382,7 @@ cmd_status() {
 #       安装模块/换工具/换设备时才变，所以与 status 分开 —— 界面每次打开只问一次，
 #       省下 status 里约 400ms。
 cmd_env() {
-    local ino uimode hex seed wc fontpkg sys_font sys_font_file fontapk reg ff src fontdir fhash dst old tmp d
+    local ino uimode hex seed wc fontpkg sys_font sys_font_file sys_font_alt fontapk reg ff src fontdir icondir fhash dst alt old tmp d
 
     kv resetprop "$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)"
     kv awk "$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -488,7 +488,35 @@ cmd_env() {
             fi
         fi
     fi
+    # 管理器用 WebViewAssetLoader 发 webroot；字体加载器可能不接 ttf。
+    # 把同一份字节镜像到 icons/（管理器确定会发的 PNG 路径），界面 fetch
+    # 成 ArrayBuffer 后交给 FontFace；文件内容仍是 ttf，只是路径/后缀借道。
+    sys_font_alt=""
+    if [ -n "$src" ] && [ -n "$fhash" ]; then
+        icondir="$MODDIR/webroot/icons"
+        alt="$icondir/font-$fhash.png"
+        mkdir -p "$icondir" 2>/dev/null
+        if [ ! -s "$alt" ] || ! cmp -s "$src" "$alt"; then
+            tmp="$icondir/.font.$$.tmp"
+            rm -f "$tmp" 2>/dev/null
+            if cp -f "$src" "$tmp" 2>/dev/null \
+                && [ -s "$tmp" ] \
+                && [ "$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')" = "$(wc -c < "$src" 2>/dev/null | tr -d ' ')" ]; then
+                chmod 644 "$tmp" 2>/dev/null
+                chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
+                mv -f "$tmp" "$alt" 2>/dev/null
+            fi
+            rm -f "$tmp" 2>/dev/null
+        fi
+        if [ -s "$alt" ]; then
+            for old in "$icondir"/font-*.png; do
+                [ -f "$old" ] && [ "$old" != "$alt" ] && rm -f "$old" 2>/dev/null
+            done
+            sys_font_alt="icons/font-$fhash.png"
+        fi
+    fi
     kv sys_font_file "$sys_font_file"
+    kv sys_font_alt "$sys_font_alt"
 
     # 这个值会进 CSS：上面是「注册表原样取出的名字」，字符集已被
     # grep -o 'name="[a-z0-9][a-z0-9-]*"' 限死，引号与分号进不来。

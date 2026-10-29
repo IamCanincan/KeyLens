@@ -1652,13 +1652,15 @@ function frroSeed(fr){
       直接加载。文件名随字体内容变，WebView 不会拿旧 URL 的缓存继续用；族名也
       按文件生成，换字体时不复用已经加载过的旧 FontFace。font-weight 声明 100 900
       是因为它是可变字体。文件加载失败时仍把族名放进栈里当第二选择。 */
-function applyFont(name, pkg, file){
+function applyFont(name, pkg, file, alt){
   var fam = /^[a-z][a-z0-9]*(-[a-z0-9]+)*$/.test(name || '') ? name : '';
   var url = /^fonts\/[a-z0-9-]+\.ttf$/.test(file || '') ? file : '';
+  var altUrl = /^icons\/font-[a-z0-9-]+\.png$/.test(alt || '') ? alt : '';
   var st = document.documentElement.style;
   THEME.font = fam;
   THEME.fontSrc = fam ? (pkg || '') : '';
-  THEME.fontFile = url;
+  THEME.fontFile = url || altUrl;
+  THEME.fontAlt = altUrl;
   THEME.fontLoaded = null;
   THEME.fontFace = null;
   var use = '', face = '';
@@ -1670,22 +1672,29 @@ function applyFont(name, pkg, file){
   }
   function fetchFace(){
     if (typeof window === 'undefined' || !(window.FontFace && window.fetch)) { mark(false); return; }
-    window.fetch(url, { credentials: 'same-origin' }).then(function (r){
-      if (!r.ok) throw new Error('font HTTP ' + r.status);
-      return r.arrayBuffer();
-    }).then(function (buf){
-      var ff = new window.FontFace(face, buf, { style: 'normal', weight: '100 900' });
-      return ff.load().then(function (){
-        if (THEME.fontFace){ try { document.fonts.delete(THEME.fontFace); } catch (e){} }
-        document.fonts.add(ff);
-        THEME.fontFace = ff;
-        mark(true);
-      });
-    }).catch(function (){ mark(false); });
+    var urls = [];
+    if (url) urls.push(url);
+    if (altUrl) urls.push(altUrl);
+    (function next(i){
+      if (i >= urls.length) { mark(false); return; }
+      window.fetch(urls[i], { credentials: 'same-origin' }).then(function (r){
+        if (!r.ok) throw new Error('font HTTP ' + r.status);
+        return r.arrayBuffer();
+      }).then(function (buf){
+        var ff = new window.FontFace(face, buf, { style: 'normal', weight: '100 900' });
+        return ff.load().then(function (){
+          if (THEME.fontFace){ try { document.fonts.delete(THEME.fontFace); } catch (e){} }
+          document.fonts.add(ff);
+          THEME.fontFace = ff;
+          mark(true);
+        });
+      }).catch(function (){ next(i + 1); });
+    })(0);
   }
 
-  if (url) {
-    var key = url.replace(/^fonts\//, '').replace(/\.ttf$/, '').replace(/[^a-z0-9-]/g, '');
+  var keySrc = url || altUrl;
+  if (keySrc) {
+    var key = keySrc.replace(/^(fonts|icons)\//, '').replace(/\.(ttf|png)$/, '').replace(/[^a-z0-9-]/g, '');
     face = 'ts-sys-' + key;
     var tag = document.getElementById('sysfont');
     if (!tag) {
@@ -1702,13 +1711,15 @@ function applyFont(name, pkg, file){
       }).join(' ');
       if (pretty !== fam) srcs.push('local("' + pretty + '")');
     }
-    srcs.push('url("' + url + '")');
-    tag.textContent = '@font-face{font-family:"' + face + '";src:' + srcs.join(',') +
-      ';font-display:swap;font-weight:100 900}';
+    if (url) srcs.push('url("' + url + '")');
+    tag.textContent = srcs.length
+      ? '@font-face{font-family:"' + face + '";src:' + srcs.join(',') +
+        ';font-display:swap;font-weight:100 900}'
+      : '';
     use = '"' + face + '"';
     /* 先让浏览器按 CSS 加载；CSS 失败（管理器可能按 MIME 拦字体）时
-       用 fetch 读字节再交给 FontFace，绕开字体加载器。 */
-    if (document.fonts && document.fonts.load) {
+       用 fetch 读字节再交给 FontFace；主路径失败再试 icons/ 镜像。 */
+    if (url && document.fonts && document.fonts.load) {
       document.fonts.load('16px "' + face + '"').then(function (faces){
         if (faces && faces.length) mark(true);
         else fetchFace();
@@ -2476,7 +2487,7 @@ function loadEnv(){
     THEME.dark = (S.env.sys_dark === '0' || S.env.sys_dark === '1') ? S.env.sys_dark : '';
     THEME.darkSrc = S.env.sys_dark_src || 'none';
     /* 系统字体名是设备上读出来的，写死会抢在系统之前匹配上 */
-    applyFont(S.env.sys_font, S.env.sys_font_pkg, S.env.sys_font_file);
+    applyFont(S.env.sys_font, S.env.sys_font_pkg, S.env.sys_font_file, S.env.sys_font_alt);
     applyPalette();                 // 系统强调色到手，重推一遍色板
     applyScheme();                  // 系统深浅与 WebView 不一致时以系统为准
     S.envAt = Date.now();
