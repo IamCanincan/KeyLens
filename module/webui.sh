@@ -836,11 +836,15 @@ cmd_teesim_profiles() {
 # tee_status 是 Tricky 自己写的探测结果 —— 它就是"这台机器为什么只能走 leaf hack"
 # 的答案，以前界面没有任何一处把它露出来。
 cmd_tee_status() {
-    local f="$TSTORE_DIR/tee_status" k v rest
+    local f="$TSTORE_DIR/tee_status" k rest
     [ -f "$f" ] || { kv present 0; return 0; }
     kv present 1
     kv file "$f"
-    while IFS='=' read -r k rest; do
+    # 上游写这个文件时**不留尾换行**（Config.kt:140-143 是四行一次写出），
+    # 而 `while read` 在最后一行缺换行符时会直接结束循环 —— 丢的正好是最后一行
+    # teeBroken，也就是"这台机器为什么只能走叶证书"的那个答案。
+    # 真机验过：旧写法只读到三行，加 `|| [ -n "$k" ]` 才读到第四行。
+    while IFS='=' read -r k rest || [ -n "$k" ]; do
         case "$k" in
             status)           kv status "$rest" ;;
             category)         kv category "$rest" ;;
