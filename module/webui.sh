@@ -167,8 +167,16 @@ valid_log_level() {
 
 # TEE Simulator 的补丁占位与日期
 valid_patch() {
+    # `harvested` 这个字面量上游的 UI 校验表收了、README 也写了，但守护进程里
+    # 没有对应分支（DeviceProps.resolvePatch / Resolver 都没有 equals("harvested")），
+    # 写进去等于"该标签省略"，而它真正的"用采集值"写法是**空串**。
+    # 与其静默收下让用户以为设好了，不如明确拒绝并给出正确写法。
+    if [ "${1:-}" = "harvested" ]; then
+        echo "harvested 这个写法上游守护进程并没有实现（写进去等于省略该标签）；要用采集值请留空" >&2
+        return 1
+    fi
     case "${1:-}" in
-        ''|today|no|harvested|system_property|YYYY|MM|DD) return 0 ;;
+        ''|today|no|system_property|YYYY|MM|DD) return 0 ;;
         [0-9][0-9][0-9][0-9]|[0-9][0-9][0-9][0-9][0-9][0-9]|\
         [0-9][0-9][0-9][0-9][0-9][0-9][0-9][0-9]) return 0 ;;
     esac
