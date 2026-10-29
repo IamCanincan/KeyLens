@@ -1,13 +1,15 @@
 #=============================================================================
-# backends/teesim_set.awk - 定点修改 TEE Simulator default profile 的字段
+# backends/teesim_set.awk - 定点修改 TEE Simulator 某个 profile 的字段
 #
-# 只改请求里的键：已存在的标量原位替换，不存在的插到 default 对象末尾；
+# 只改请求里的键：已存在的标量原位替换，不存在的插到目标 profile 对象末尾；
 #   apps 数组、其它 profile、其它字段逐字节保留。
 # 字符串值由调用方先校验，这里只负责 JSON 转义。
 #
 # 用法：awk -v pairsfile=<key<TAB>value> -v statusfile=<文件> \
-#           -f backends/teesim_set.awk config.json
-# 状态：ok=有改动；same=无需改；missing=定位不到 profiles.default
+#           [-v profile=<名字>] -f backends/teesim_set.awk config.json
+#   profile 省略时是 default —— 上游 profiles 是一张「名字→配置」的表，
+#   以前这里写死只改 default，其余 profile 在界面上根本改不动。
+# 状态：ok=有改动；same=无需改；missing=定位不到 profiles.<profile>
 #=============================================================================
 
 function findstr(s, from, needle,   i, l) {
@@ -111,10 +113,25 @@ BEGIN {
 END {
     pp = findstr(buf, 1, "\"profiles\"")
     if (pp == 0) { print "missing" > statusfile; printf "%s", buf; exit }
-    dp = findstr(buf, pp + 10, "\"default\"")
+    pname = (profile == "" ? "default" : profile)
+    pkey = "\"" pname "\""
+    # 必须确认找到的是"键"而不是某个字符串值（profile 叫 alt/default 时，
+    # 文件里 apps、keybox 名等地方都可能出现同名串）—— 只有后面紧跟冒号
+    # 再跟 { 的才算一个 profile 对象。认错位置的代价是写坏用户配置。
+    from = pp + 10; dp = 0; db = 0
+    while (1) {
+        q = findstr(buf, from, pkey)
+        if (q == 0) break
+        m = q + length(pkey)
+        while (m <= length(buf) && substr(buf, m, 1) ~ /[ \t\r\n]/) m++
+        if (substr(buf, m, 1) == ":") {
+            o = m + 1
+            while (o <= length(buf) && substr(buf, o, 1) ~ /[ \t\r\n]/) o++
+            if (substr(buf, o, 1) == "{") { dp = q; db = o; break }
+        }
+        from = q + length(pkey)
+    }
     if (dp == 0) { print "missing" > statusfile; printf "%s", buf; exit }
-    db = findstr(buf, dp + 9, "{")
-    if (db == 0) { print "missing" > statusfile; printf "%s", buf; exit }
     dc = matchclose(buf, db)
     if (dc == 0) { print "missing" > statusfile; printf "%s", buf; exit }
 

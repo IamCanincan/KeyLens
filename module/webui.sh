@@ -175,6 +175,15 @@ valid_patch() {
     printf '%s' "${1:-}" | grep -Eq '^(YYYY|[0-9]{4})-(0[1-9]|1[0-2]|MM)(-(0[1-9]|[12][0-9]|3[01]|DD))?$'
 }
 
+# Tricky 的补丁值与 TEESim 那套 mini 语言不同：它另有 device_default / prop 两个
+# 关键字（Config.kt），以前复用 valid_patch 会把这两个合法值拒掉。
+valid_tricky_patch() {
+    case "${1:-}" in
+        no|device_default|prop|YYYY|MM|DD|YYYY-MM|YYYY-MM-DD) return 0 ;;
+    esac
+    printf '%s' "${1:-}" | grep -Eq '^[0-9]{6}$|^[0-9]{8}$|^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$|^(YYYY|[0-9]{4})-(MM|0[1-9]|1[0-2])(-(DD|[0-3][0-9]))?$'
+}
+
 valid_os_version() {
     case "${1:-}" in
         ''|harvested|system_property) return 0 ;;
@@ -477,6 +486,17 @@ cmd_teesim_save() {
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
 
+    # profile 是"改哪一份"，不是"改成什么" —— 先摘出来，别当未知字段拒掉。
+    # 省略时仍是 default，所以旧界面发来的 payload 行为不变。
+    prof=$(awk -F"$TAB" '$1=="profile"{print $2; exit}' "$pairs")
+    [ -n "$prof" ] || prof=default
+    case "$prof" in
+        *[!A-Za-z0-9._-]*|''|*/*) echo "profile 名字不合法：$prof" >&2; rm -rf "$dir"; return 1 ;;
+    esac
+    grep -v "^profile$TAB" "$pairs" > "$pairs.f" 2>/dev/null && mv "$pairs.f" "$pairs"
+    rm -f "$pairs.f" 2>/dev/null
+    [ -s "$pairs" ] || { echo "没有可写字段" >&2; rm -rf "$dir"; return 1; }
+
     while IFS=$TAB read -r k v; do
         case "$k" in
             mode) [ "$v" = "patch" ] || [ "$v" = "generation" ] || { echo "模式只能是 patch / generation" >&2; rm -rf "$dir"; return 1; } ;;
@@ -494,7 +514,7 @@ cmd_teesim_save() {
     webui_lock || { rm -rf "$dir"; return 1; }
     out="$TEESIM_DIR/.config.json.ts_auto.$$"
     status="$dir/status"
-    $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" \
+    $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" -v profile="$prof" \
         -f "${TAA_PATCH%/*}/teesim_set.awk" "$TEESIM_CONFIG" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
@@ -523,9 +543,10 @@ cmd_teesim_save() {
     release_lock "${TAA_DIR}/.ts_lock"
     rm -rf "$dir" 2>/dev/null
 
-    [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 TEE Simulator 配置（$n 项）"
+    [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 TEE Simulator 配置（profile=$prof，$n 项）"
     kv saved "$saved"
     kv fields "$n"
+    kv profile "$prof"
 }
 
 # 用法：omk-save-injector <payload_b64>
@@ -687,10 +708,21 @@ cmd_tricky_save_patch() {
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
 
+    # scope 是"改哪一段"：省略 = 全局；给包名 = 那个 [包名] 块（没有就新建）。
+    sc=$(awk -F"$TAB" '$1=="scope"{print $2; exit}' "$pairs")
+    [ -n "$sc" ] || sc=global
+    if [ "$sc" != "global" ]; then
+        printf '%s' "$sc" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$' \
+            || { echo "scope 必须是 global 或一个合法包名：$sc" >&2; rm -rf "$dir"; return 1; }
+    fi
+    grep -v "^scope$TAB" "$pairs" > "$pairs.f" 2>/dev/null && mv "$pairs.f" "$pairs"
+    rm -f "$pairs.f" 2>/dev/null
+    [ -s "$pairs" ] || { echo "没有可写字段" >&2; rm -rf "$dir"; return 1; }
+
     while IFS=$TAB read -r k v; do
         case "$k" in
             patch_system|patch_vendor|patch_boot|patch_all)
-                valid_patch "$v" && [ -n "$v" ] || { echo "补丁值不合法：$k" >&2; rm -rf "$dir"; return 1; } ;;
+                valid_tricky_patch "$v" || { echo "补丁值不合法：$k = $v（接受 YYYY-MM-DD / YYYYMMDD / YYYYMM / no / device_default / prop / YYYY、MM、DD 占位）" >&2; rm -rf "$dir"; return 1; } ;;
             *) echo "未知字段：$k" >&2; rm -rf "$dir"; return 1 ;;
         esac
         n=$((n + 1))
@@ -700,7 +732,7 @@ cmd_tricky_save_patch() {
     webui_lock || { rm -rf "$dir"; return 1; }
     out="$TSTORE_DIR/.security_patch.txt.ts_auto.$$"
     status="$dir/status"
-    $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" \
+    $AWK_CMD -v pairsfile="$pairs" -v statusfile="$status" -v scope="$sc" \
         -f "${TAA_PATCH%/*}/tricky_patch_set.awk" "$target" > "$out" 2>/dev/null
     st=$(cat "$status" 2>/dev/null)
     case "$st" in
@@ -728,9 +760,10 @@ cmd_tricky_save_patch() {
     esac
     release_lock "${TAA_DIR}/.ts_lock"
     rm -rf "$dir" 2>/dev/null
-    [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 Tricky 全局补丁表（$n 项）"
+    [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 Tricky 补丁表（scope=$sc，$n 项）"
     kv saved "$saved"
     kv fields "$n"
+    kv scope "$sc"
 }
 
 # 用法：keybox-save <base64(xml)>；写到当前后端的活动 keybox
