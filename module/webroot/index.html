@@ -581,9 +581,17 @@ body.is-selecting #appsBody{padding-bottom:96px}
 /* ================= 日志 ================= */
 .console{background:var(--surface-lowest);border:1px solid var(--outline-variant);border-radius:var(--r-m);
   padding:var(--sp2);max-height:52vh;overflow:auto;font-family:var(--mono);font-size:var(--fs12);line-height:1.7;-webkit-overflow-scrolling:touch}
-.log-line{white-space:pre-wrap;word-break:break-all;padding:3px 6px;border-radius:6px;color:var(--on-surface)}
+/* 三列网格：时间 / 级别图标 / 正文。图标列恒占宽 —— 没有级别的行也要把正文
+   对齐到同一条竖线上，否则正文左一句右一句。时间列 auto，由最长那条定宽。 */
+.log-line{display:grid;grid-template-columns:auto 16px minmax(0,1fr);column-gap:var(--sp2);
+  align-items:baseline;padding:4px 6px;border-radius:var(--r-s);color:var(--on-surface)}
+.log-time{color:var(--on-variant);white-space:nowrap}
+.log-lvl{display:flex;align-self:start;margin-top:3px}
+.log-msg{min-width:0;white-space:pre-wrap;word-break:break-all}
 .log-line[data-lvl=err]{background:var(--error-container);color:var(--on-error-container)}
+.log-line[data-lvl=err] .log-time{color:var(--on-error-container)}
 .log-line[data-lvl=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
+.log-line[data-lvl=warn] .log-time{color:var(--on-secondary-container)}
 .log-line[data-lvl=ok]{color:var(--success)}
 .seg{display:inline-flex;padding:3px;gap:2px;background:var(--surface-mid);border-radius:var(--r-full)}
 .seg button{border:0;background:transparent;color:var(--on-variant);min-height:32px;padding:0 var(--sp3);
@@ -1237,23 +1245,23 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 
     <section class="card panel" id="p-log" hidden>
       <div class="toolbar" style="margin-top:0">
-        <md-outlined-segmented-button-set id="logSeg">
+        <md-outlined-segmented-button-set id="logSeg" aria-label="日志取末尾多少行">
           <md-outlined-segmented-button data-n="30" label="30"></md-outlined-segmented-button>
           <md-outlined-segmented-button data-n="60" label="60" selected></md-outlined-segmented-button>
           <md-outlined-segmented-button data-n="120" label="120"></md-outlined-segmented-button>
           <md-outlined-segmented-button data-n="300" label="300"></md-outlined-segmented-button>
         </md-outlined-segmented-button-set>
-        <md-gb-button id="btnLogRefresh" color="outlined" size="sm"></md-gb-button>
       </div>
       <div class="toolbar" style="margin-top:var(--sp2)">
-        <md-gb-button id="btnLogClear" color="text" size="sm">清空缓冲</md-gb-button>
-        <div class="switch-row" style="margin-left:auto;padding:0">
+        <div class="switch-row" style="padding:0">
           <span class="txt" style="font-size:var(--fs14)">自动刷新</span>
           <md-gb-switch id="logAuto"></md-gb-switch>
         </div>
+        <md-gb-button id="btnLogRefresh" color="outlined" size="sm"></md-gb-button>
+        <md-gb-button id="btnLogClear" color="text" size="sm">清空缓冲</md-gb-button>
       </div>
       <p class="hint" id="logStat">—</p>
-      <div class="console" id="logBody" style="margin-top:var(--sp3)"></div>
+      <div class="console" id="logBody" style="margin-top:var(--sp2)"></div>
     </section>
 
     <section class="card panel" id="p-props" hidden>
@@ -1362,8 +1370,11 @@ var ICON = {
   add: '<path d="M11 5h2v6h6v2h-6v6h-2v-6H5v-2h6Z"/>',
   warn: '<path d="M12 2 1 21h22Zm0 6 1 7h-2Zm0 11a1.2 1.2 0 1 1 0-2.4 1.2 1.2 0 0 1 0 2.4Z"/>',
   check: '<path d="M9.5 16.2 5.3 12l-1.4 1.4 5.6 5.6L21.1 7.4 19.7 6Z"/>',
+  /* 日志的 ok 用带圈的勾：info/err 本身就是圆底，裸勾比它们轻一档 */
+  checkc: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm-2 15-5-5 1.41-1.41L10 14.17l7.59-7.59L19 8l-9 9Z"/>',
   trash: '<path d="M8 4V2h8v2h5v2H3V4Zm1 16a2 2 0 0 0 2 2h6a2 2 0 0 0 2-2V8H9Z"/>',
   info: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm1 15h-2v-6h2Zm0-8h-2V7h2Z"/>',
+  close: '<path d="M12 2a10 10 0 1 0 0 20 10 10 0 0 0 0-20Zm3.5 12.1-1.4 1.4-2.1-2.1-2.1 2.1-1.4-1.4 2.1-2.1-2.1-2.1 1.4-1.4 2.1 2.1 2.1-2.1 1.4 1.4Z"/>',
   home: '<path d="M12 3 2 12h3v9h6v-6h2v6h6v-9h3Z"/>',
   list: '<path d="M4 6h2v2H4Zm4 0h12v2H8ZM4 11h2v2H4Zm4 0h12v2H8ZM4 16h2v2H4Zm4 0h12v2H8Z"/>',
   apps: '<path d="M4 4h7v7H4Zm9 0h7v7h-7ZM4 13h7v7H4Zm9 0h7v7h-7Z"/>',
@@ -1931,7 +1942,7 @@ function renderHero(){
     var title = st.conflict === '1' ? '两个后端同时启用，模块已停止'
       : st.state === 'failed' ? '写入失败' : st.target_writable === '0' ? '目标文件不可写' : '需要处理';
     bannerTitle.textContent = title;
-    bannerText.textContent = st.description || '详见日志页';
+    bannerText.textContent = stripEmoji(st.description) || '详见日志页';
   } else banner.hidden = true;
 }
 
@@ -2392,11 +2403,31 @@ function undoRemove(pkgs){
 }
 
 /* ---------- 日志 ---------- */
+/* 磁盘上的日志行是「MM-DD HH:MM:SS <emoji> 正文」，那个 emoji 是脚本自己写的分级前缀。
+   界面不照抄：剥掉前缀、换成四个统一图标，正文里就不再有第二套图形语言。
+   只能在渲染侧做 —— 缓冲里已有的行早就带着 emoji 落盘了，改脚本只影响新行。 */
+var EMOJI_RE = /\p{Extended_Pictographic}(?:\uFE0F)?(?:\u200D\p{Extended_Pictographic}(?:\uFE0F)?)*\s?/gu;
+/* 脚本在正文里也写 emoji（模块状态描述就是 `✅ [...]` / `❌ [...]`），
+   而提示条自带一个 warn 图标 —— 那里再来一个图形就是两个。统一从这里剥。 */
+function stripEmoji(s){ return String(s == null ? '' : s).replace(EMOJI_RE, ''); }
+var LOG_ICON = { err: 'close', warn: 'warn', ok: 'checkc', info: 'info' };
 function logLevel(line){
-  if (/[❌⛔]|失败|超时|错误/.test(line)) return 'err';
-  if (/[⚠️]|警告|未能|不存在|未找到/.test(line)) return 'warn';
+  if (/❌|⛔|失败|超时|错误/.test(line)) return 'err';
+  if (/⚠|警告|未能|不存在|未找到/.test(line)) return 'warn';
   if (/✅|完成|就绪/.test(line)) return 'ok';
   return '';
+}
+/* 拆成时间 / 级别 / 正文三段。带 emoji 前缀但没命中关键词的行算 info：
+   它本来就是脚本主动打的状态行，不给图标会在这一列里塌成一条空白。 */
+function logParts(line){
+  var s = String(line);
+  var m = s.match(/^(\d\d-\d\d\s+\d\d:\d\d:\d\d)\s+/);
+  var time = '';
+  if (m) { time = m[1]; s = s.slice(m[0].length); }
+  var bare = s.replace(EMOJI_RE, '');
+  var lv = logLevel(line);
+  if (!lv && bare !== s) lv = 'info';
+  return { time: time, text: bare, lvl: lv, icon: LOG_ICON[lv] || '' };
 }
 function renderLog(){
   var box = document.getElementById('logBody');
@@ -2407,9 +2438,14 @@ function renderLog(){
     box.textContent = '';
     var frag = document.createDocumentFragment();
     S.log.forEach(function (line){
-      var d = el('div', 'log-line', line);
-      var lv = logLevel(line);
-      if (lv) d.setAttribute('data-lvl', lv);
+      var p = logParts(line);
+      var d = el('div', 'log-line');
+      if (p.lvl) d.setAttribute('data-lvl', p.lvl);
+      d.appendChild(el('span', 'log-time', p.time));
+      var g = el('span', 'log-lvl');
+      if (p.icon) g.innerHTML = svg(p.icon, 16);
+      d.appendChild(g);
+      d.appendChild(el('span', 'log-msg', p.text));
       frag.appendChild(d);
     });
     box.appendChild(frag);

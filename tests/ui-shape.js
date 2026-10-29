@@ -120,6 +120,33 @@ chk('keybox 粘贴对话框', /id="keyboxDialog"/.test(html) && /call\('keybox-s
 chk('保存命令有返回形状校验', /'teesim-save': 'saved fields'/.test(html) && /'keybox-save': 'saved keybox_file keybox_bytes'/.test(html));
 chk('写命令清单包含后端保存', /teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save/.test(html));
 
+console.log('── 日志行归一 ──');
+/* 脚本在日志里写 emoji 当前缀（ℹ️ ✅ ⚠️ ❌ 🔄 👀 …）。界面照抄就等于在 Material
+   图标之外再养一套图形语言，而且旧缓冲里的行改不掉，所以归一只能在渲染侧做。 */
+chk('有 emoji 剥离正则', /var EMOJI_RE = \/\\p\{Extended_Pictographic\}/.test(html));
+chk('日志按 时间/级别/正文 三段画',
+  /d\.appendChild\(el\('span', 'log-time', p\.time\)\)/.test(html)
+  && /d\.appendChild\(el\('span', 'log-msg', p\.text\)\)/.test(html));
+chk('不再把整行原样塞进一个 div', !/el\('div', 'log-line', line\)/.test(html));
+/* 模块状态描述也是脚本写的（`✅ [...]`），提示条自带 warn 图标，不能再来一个 */
+chk('提示条也剥描述里的 emoji',
+  /function stripEmoji\(s\)\{ return String\(s == null \? '' : s\)\.replace\(EMOJI_RE, ''\); \}/.test(html)
+  && /bannerText\.textContent = stripEmoji\(st\.description\)/.test(html));
+chk('三列网格：图标列恒占宽', /\.log-line\{display:grid;grid-template-columns:auto 16px minmax\(0,1fr\)/.test(html));
+chk('四个级别都有图标',
+  (function (){
+    const map = (html.match(/var ICON = \{[\s\S]*?\n\};/) || [''])[0];
+    return ['close', 'warn', 'checkc', 'info'].every(function (n){ return new RegExp('^  ' + n + ':', 'm').test(map); });
+  })()
+  && /var LOG_ICON = \{ err: 'close', warn: 'warn', ok: 'checkc', info: 'info' \}/.test(html));
+chk('日志页工具条收进两行',
+  (function (){
+    const a = html.indexOf('id="p-log"');
+    if (a < 0) return false;
+    const sec = html.slice(a, html.indexOf('</section>', a));
+    return (sec.match(/class="toolbar"/g) || []).length === 2;
+  })());
+
 console.log('── 底栏导航 ──');
 const pagesSrc = (html.match(/var PAGES = \[([^\]]*)\]/) || [])[1] || '';
 const pages = (pagesSrc.match(/'[a-z]+'/g) || []).map(s => s.slice(1, -1));
