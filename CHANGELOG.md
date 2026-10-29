@@ -6,6 +6,7 @@
 
 #### 新增
 
+* **字体加载再兜底：`local()` 优先 + CSS 失败时 `fetch + FontFace`**：部分管理器用 `WebViewAssetLoader` 提供 webroot，字体请求可能被字体加载器按 MIME 处理而退回 Roboto。现在 `@font-face` 先试系统族名（`local("google-sans-flex")` / `local("Google Sans Flex")`），CSS 加载失败或返回空时再用 `fetch` 读 ttf 字节、`new FontFace(..., ArrayBuffer)` 加进 `document.fonts`；关于页会显示「已由 WebView 加载」或「未加载」。`tests/ui-font.js` 增至 **20 条**（含 fetch 兜底假体）；桌面用真实 GoogleSansFlex-Regular.ttf 验证组件内外都拿到唯一族名。
 * **全量重构 WebUI：接入 `@material/web` 2.5.0（labs/gb Expressive）**：界面控件不再自己仿 Material，直接用组件；仍是单文件、不联网。
   * 组件：`md-gb-button` / `md-gb-icon-button` / `md-gb-list` / `md-gb-list-item` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`。原生按钮、分段、开关、输入框、确认框、首页入口和应用列表全部换掉；卡片、分组、日志台、提示条保留模块自己的布局。
   * 构建：`@material/web` 2.5.0 + Lit 3.3.3 经 esbuild 打成 **190KB minified / 40KB gzip 的 IIFE**，内联进 `index.html`；`m3.css` 用 adoptedStyleSheets 注入，颜色/字体/圆角通过未分层的 `--md-sys-color-*`、`--md-ref-typeface-*`、`--md-sys-shape-*` 别名映射到现有 token。**要求 Chromium 111+ WebView**（本机 156）；更旧的 WebView 会在顶部提示升级，而不是空白。
@@ -24,7 +25,7 @@
   * 原因：字体文件之前固定叫 `webroot/fonts/sys.ttf`，WebView 会按同一个 URL 继续用缓存；`env` 也只在打开页面时读一次，换字体后回到已经开着的界面不会重读。
   * 现在 `webui.sh env` 按源 ttf 的 md5 生成 `fonts/font-<hash>.ttf`，换字体 URL 必变；新文件就位后清理旧版 `sys.ttf`，同名文件只搬一次。界面 `@font-face` 的族名也带文件哈希，避免复用已经加载过的旧 FontFace。
   * 页面从后台回到前台时重读 `env`（1.5 秒内刚读过就跳过），换字体 / 深浅 / 取色不用重开；关于页显示当前族名，字体文件没被 WebView 加载时明确写「未加载」并退回族名 / `system-ui`。
-  * `tests/ui-font.js`（接进 CI，**17 条断言**）：从 `index.html` 原样抽出 `applyFont`，覆盖唯一族名、换文件族名变化、`--font` 栈、加载成功/失败、关于页重画与接线；三处变异（固定族名 / 失败仍记成功 / 拒绝哈希文件名）都验过会红。
+  * `tests/ui-font.js`（接进 CI，**20 条断言**）：从 `index.html` 原样抽出 `applyFont`，覆盖唯一族名、换文件族名变化、`--font` 栈、`local()` 优先、CSS 加载失败时 `fetch + FontFace(ArrayBuffer)` 兜底、关于页重画与接线；三处变异（固定族名 / 失败仍记成功 / 拒绝哈希文件名）都验过会红。
   * 真机（当前 Google Sans Flex）：`env` 生成 `font-0aa580…ttf`，md5 与 `/product/fonts/GoogleSansFlex-Regular.ttf` 相同，重复执行 mtime 不变，旧 `sys.ttf` 已清；另用设备上的替代字体包模拟出 `source-sans-pro` / `SourceSansPro-Regular.ttf`，说明换字体时族名与文件确实会变。未改动你的系统字体做端到端切换。
 
 * **目标名单可以减了（`remove-apps`）**：应用页「名单」视图点「选择」进入多选，底部条变成红色的「移出名单」（加入模式仍是主色「加入名单」），确认后**一次写入**；全选时会拒绝并提示「至少保留一个应用」。确认框会列出前三个包名。新命令 `remove-apps <包名,...>`（能力门；`api` 仍为 2，旧命令层没有它时名单页不出现「选择」）。

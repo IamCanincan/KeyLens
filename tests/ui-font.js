@@ -42,14 +42,19 @@ function extract(start) {
 function fakeDoc(loadImpl) {
   const style = {};
   let tag = null;
+  let added = 0;
   const doc = {
     documentElement: { style: { setProperty(k, v){ style[k] = v; } } },
     head: { appendChild(){ } },
     getElementById(id){ return id === 'sysfont' ? tag : null; },
     createElement(){ tag = { id: '', textContent: '' }; return tag; },
-    fonts: { load(){ return loadImpl(); } }
+    fonts: {
+      load(){ return loadImpl(); },
+      add(){ added++; },
+      delete(){ }
+    }
   };
-  return { doc, style, tag: () => tag };
+  return { doc, style, tag: () => tag, added: () => added };
 }
 const tick = () => new Promise(r => setTimeout(r, 0));
 
@@ -75,7 +80,8 @@ function load(doc, theme, state, render) {
   chk('返回按文件生成的族名', use1 === '"ts-sys-font-abc123"', use1);
   chk('THEME 记录了文件与族名', theme.fontFile === 'fonts/font-abc123.ttf' && theme.font === 'google-sans-flex');
   chk('@font-face 用了同一族名', /font-family:"ts-sys-font-abc123"/.test(a.tag().textContent));
-  chk('@font-face 指向字体文件', /src:url\("fonts\/font-abc123\.ttf"\)/.test(a.tag().textContent));
+  chk('@font-face 先试 local 系统族名', /src:local\("google-sans-flex"\)/.test(a.tag().textContent));
+  chk('@font-face 指向字体文件', /url\("fonts\/font-abc123\.ttf"\)/.test(a.tag().textContent));
   chk('--font 带文件族名、系统族名与 system-ui',
     /"ts-sys-font-abc123"/.test(a.style['--font']) &&
     /"google-sans-flex"/.test(a.style['--font']) &&
@@ -101,6 +107,24 @@ function load(doc, theme, state, render) {
   await tick();
   chk('字体加载失败记 false', t2.fontLoaded === false);
   chk('关于页会重画一次', rendered2 === 1);
+
+  console.log('── CSS 失败、fetch 兜底 ──');
+  const t3 = {}, s3 = { tab: 'apps' };
+  const c = fakeDoc(() => Promise.reject(new Error('css blocked')));
+  global.window = {
+    FontFace: class {
+      constructor(family, buf, opts){ this.family = family; this.buf = buf; this.opts = opts; }
+      load(){ return Promise.resolve(this); }
+    },
+    fetch: () => Promise.resolve({ ok: true, arrayBuffer: () => Promise.resolve(new ArrayBuffer(8)) })
+  };
+  const fn3 = load(c.doc, t3, s3, () => {});
+  fn3('google-sans-flex', 'pkg', 'fonts/font-ok.ttf');
+  await tick();
+  await tick();
+  chk('CSS 失败时 fetch 字节兜底成功', t3.fontLoaded === true);
+  chk('FontFace 已加入 document.fonts', c.added() === 1);
+  delete global.window;
 
   console.log('── 接线 ──');
   chk('loadEnv 传入了 sys_font_file', /applyFont\(S\.env\.sys_font, S\.env\.sys_font_pkg, S\.env\.sys_font_file\)/.test(html));

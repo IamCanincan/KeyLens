@@ -1660,7 +1660,30 @@ function applyFont(name, pkg, file){
   THEME.fontSrc = fam ? (pkg || '') : '';
   THEME.fontFile = url;
   THEME.fontLoaded = null;
+  THEME.fontFace = null;
   var use = '', face = '';
+
+  function mark(ok){
+    if (ok) THEME.fontLoaded = true;
+    else if (THEME.fontLoaded !== true) THEME.fontLoaded = false;
+    if (S.tab === 'about') renderAbout();
+  }
+  function fetchFace(){
+    if (typeof window === 'undefined' || !(window.FontFace && window.fetch)) { mark(false); return; }
+    window.fetch(url, { credentials: 'same-origin' }).then(function (r){
+      if (!r.ok) throw new Error('font HTTP ' + r.status);
+      return r.arrayBuffer();
+    }).then(function (buf){
+      var ff = new window.FontFace(face, buf, { style: 'normal', weight: '100 900' });
+      return ff.load().then(function (){
+        if (THEME.fontFace){ try { document.fonts.delete(THEME.fontFace); } catch (e){} }
+        document.fonts.add(ff);
+        THEME.fontFace = ff;
+        mark(true);
+      });
+    }).catch(function (){ mark(false); });
+  }
+
   if (url) {
     var key = url.replace(/^fonts\//, '').replace(/\.ttf$/, '').replace(/[^a-z0-9-]/g, '');
     face = 'ts-sys-' + key;
@@ -1670,17 +1693,28 @@ function applyFont(name, pkg, file){
       tag.id = 'sysfont';
       document.head.appendChild(tag);
     }
-    tag.textContent = '@font-face{font-family:"' + face + '";src:url("' + url +
-      '");font-display:swap;font-weight:100 900}';
+    /* local() 先试系统字体管理器；文件 URL 只作后备。 */
+    var srcs = [];
+    if (fam) {
+      srcs.push('local("' + fam + '")');
+      var pretty = fam.split('-').map(function (s){
+        return s.charAt(0).toUpperCase() + s.slice(1);
+      }).join(' ');
+      if (pretty !== fam) srcs.push('local("' + pretty + '")');
+    }
+    srcs.push('url("' + url + '")');
+    tag.textContent = '@font-face{font-family:"' + face + '";src:' + srcs.join(',') +
+      ';font-display:swap;font-weight:100 900}';
     use = '"' + face + '"';
+    /* 先让浏览器按 CSS 加载；CSS 失败（管理器可能按 MIME 拦字体）时
+       用 fetch 读字节再交给 FontFace，绕开字体加载器。 */
     if (document.fonts && document.fonts.load) {
       document.fonts.load('16px "' + face + '"').then(function (faces){
-        THEME.fontLoaded = !!(faces && faces.length);
-        if (S.tab === 'about') renderAbout();
-      }, function (){
-        THEME.fontLoaded = false;
-        if (S.tab === 'about') renderAbout();
-      });
+        if (faces && faces.length) mark(true);
+        else fetchFace();
+      }, fetchFace);
+    } else {
+      fetchFace();
     }
   } else if (fam) {
     use = '"' + fam + '"';
@@ -2518,7 +2552,10 @@ function renderAbout(){
           label += ' · 未加载';
           tone = 'bad';
           note = '字体文件没被 WebView 加载，退回族名/系统默认';
-        } else tone = 'ok';
+        } else {
+          tone = 'ok';
+          if (THEME.fontLoaded === true) note = '已由 WebView 加载';
+        }
       } else if (THEME.font) {
         label = '族名 ' + THEME.font;
         tone = 'warn';
