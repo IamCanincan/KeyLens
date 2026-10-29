@@ -246,6 +246,12 @@ node tests/ui-shape.js            # 79 条静态断言
 
 「后端与格式」页的配置区按当前后端渲染可编辑字段，只提交改动过的项；未知字段、非法枚举/日期/包名会在写盘前拒绝，写前备份到后端数据目录：
 
+> **payload 的最后一个字段以前会被静默丢掉**：`parse_payload` 用 `while read` 逐行解，而 `read` 在最后一行**没有换行符**时直接结束循环 —— 界面拼的正是 `join('\n')`（无尾换行），于是"改 N 个存进 N−1 个"，丢的那个连校验都没过。现已修掉并配了回归测试（`tests/payload-last-field.sh`，含"撤掉修复必须变红"的自证）。
+>
+> OhMyKeymint 的 `[trust]` 字段现在按上游文档校验（`auto|latest|YYYY-MM-DD`、`auto|random|64hex`、`os_version` 是 0–99 的 MMmmss 编码值而不是年份）；以前一律 `valid_text 128`，写错的关键字 OMK 读不懂时会静默退回默认值。
+
+三条只读命令已经把三家文档里的能力面读出来了，**界面还没画它们**（在新版重构里）：`teesim-profiles`（TEESim 的多 profile 表，写回路径以前只认 `default`）、`tricky-patches`（`security_patch.txt` 的全局与 `[包名]` 按包块）、`tee-status`（Tricky 自己的 TEE 探测结果，即"为什么只能走 leaf hack"）；写命令多一条 `omk-restart <keymint|injector|all>`。契约号仍是 **4** —— 只加命令、不改任何既有输出形状，涨号会让手机上旧界面当场停写。
+
 | 后端 | 可编辑项 | 备份 / 生效 |
 |------|----------|-------------|
 | TEE Simulator | default profile：`mode`、`keybox`、`patchLevel.system/vendor/boot`、`osVersion`、`autoIncludeNewApps`；brand / device / product / manufacturer / model / serial / imei / meid / imei2 | `config.json.bak`；TEE Simulator 的目录 watcher 自动重载 |

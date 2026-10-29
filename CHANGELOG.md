@@ -11,6 +11,12 @@
   * 四条闸门各造了一次"真的该响"的场景验过：改脏工作区、把 `REMOTE` 指到不存在的目录、把脚本里的 `chmod 644` 改成 666、推完再往设备文件尾部追加一个字节 —— 每次都退非 0 且点名对应那条，跑完逐字节还原，并再真部署一次把设备留在好的那一版（收尾核到 `644 root:root 386671`）。
   * 中途踩到 `UID` 在 shell 里是只读的，脚本第一版在 `UID=$(...)` 那行直接炸；改名 `AS_UID`。
 
+* **命令层补四条后端能力（契约号不动，仍是 api=4）**：`teesim-profiles` / `tee-status` / `tricky-patches` / `omk-restart`，命令数 31 → 35。
+  * 为什么需要：上游文档里 TEESim 的 `profiles` 是一张「名字→配置」的表（每个 profile 自带 keybox、模式、三档补丁级别、设备身份、apps、自动纳入），而写回路径以前只认 `profiles.default` —— 多 profile 这层概念在界面上根本不存在；Tricky 的 `security_patch.txt` 支持 `[包名]` 按包块覆盖全局值，也支持 `device_default` / `prop` 两种取值，以前既不读也不列；Tricky 自己写的 `tee_status`（`AVAILABLE/FAILED/UNAVAILABLE`、`teeBroken`、`serviceErrorCode`）正是"这台机器为什么只能走 leaf hack"的答案，从来没被露出来。
+  * **只加不改，所以号不涨**：这四条都是新命令，没动任何既有命令的输出形状 —— 涨号会让手机上正在跑的旧界面（`EXPECT_API=4`）当场判契约不符并停写。界面按 `hasCmd()` 逐条揭示，命令层与界面不同版时最坏是少一块内容。
+  * 两个新 awk：`backends/teesim_profiles.awk`（`tests/teesim-profiles.sh` 9 条，含"default 排在文件里第二行也要输出在第一行"、apps 计数、没有 profiles 时退 1 不瞎输出；本地 gawk 与**设备 toybox awk** 输出逐字节相同）、`backends/tricky_patches.awk`。踩到的坑：`close` 是 awk 内建函数名，当局部变量用会语法错 —— 是测试先撞出来的，不是看图发现的。
+  * `omk-restart <keymint|injector|all>` 不复用现成的 `omk_restart()`：那个在目录不存在时静默 `return 0`，而这是用户主动点的写命令，必须如实报成败。
+
 * **界面验收台架进仓库**：`node tools/ui-cdp-check.mjs` —— 417 / 360 / 320 × 浅 / 深 × 八页，每页断四件事（视口确实钉住、横向溢出 0 并点名越界元素、只有一个可见面板且 id 对得上、顶栏标题等于**外部**期望值），最后跑主页「最近动态」的三条退路。
   * 起因是量具自己错：`--headless --screenshot --window-size=417,975` 起出来的布局视口是 **491**，截图仍旧 834 宽 —— 看着像 417，实际是在一台宽 18% 的假手机上验收。台架第一步是 `Emulation.setDeviceMetricsOverride` 之后**回读 `clientWidth` 并断言它等于要的宽度**。
   * **标题判据不能从页面里读**：第一版拿页面自己的 `TAB_LABEL` 当期望值，而顶栏标题就是它设的 —— 把 `系统属性伪装` 改成 `属性伪装`，台架一声不响。改成台架里另存一份 `EXPECT_TITLE` 才会响（这就是"两份实现对得上若共享同一个会坏的原语，信心恰好是零"）。
@@ -414,6 +420,15 @@
 * `.gitattributes` 为 `*.html` / `*.css` / `*.js` 固定 LF。
 
 #### 修复
+
+* **保存配置时最后一个字段被静默丢掉（既没写入、也没过校验）**：`parse_payload` 用 `while IFS= read -r line` 逐行解 payload，而 `read` 在**最后一行没有换行符**时会直接结束循环 —— 界面的 payload 是 `payload.join('\n')` 拼的，本来就没有尾换行，所以最后一个字段永远进不去。实测（修前）：两个字段、第二个故意放非法值 → 命令层回 `saved=1 fields=1`、退码 0，也就是"改 N 个存进 N−1 个"，而且被丢那个连校验都没跑。单字段时更幸运：直接报"没有字段"，所以这个洞以前只在多字段保存时出现，从来没被撞到过。
+  * 修法是一个字符级的 `|| [ -n "$line" ]`。回归测试 `tests/payload-last-field.sh` 抽的是 webui.sh 里的**真函数**（不抄一份），四条断言分别钉：无尾换行的两字段、无尾换行的单字段、带尾换行不重复计数、含怪字符的第二条要进 pairs 交给上层校验。
+  * **绿测试在证明它会红之前什么也没证明**：把修复撤掉重跑 → 3 条变红、退码 1；还原 → 全绿。变异本身也自证落地（锚点恰好命中 1 处 + 文件确实变了）。
+  * 踩到的两个仪器坑记在这里：① 测试最初只抽了 `parse_payload` 没抽 `find_base64`，四条全红是**仪器缺件**不是代码有问题；② 用 `node -e` 跑变异时一个全角括号把脚本炸掉，幸好语法错误发生在写文件之前 —— 变异类脚本一律写成 `.cjs` 文件（这条早就记过，又犯了一次）。
+
+* **OhMyKeymint 的 [trust] 字段从"任意文本"收紧到文档格式**：以前 `trust_os_version` / `trust_security_patch` / 三档 patchlevel / `trust_vb_key` / `trust_vb_hash` 全部走 `valid_text 128` —— 把 `auto` 敲成 `aut`、把年份 `2016` 填进本该是 MMmmss 编码值（0–99）的 os_version，都存得进去；而 OMK 读不懂时**静默退回默认值**，界面上完全看不出来"存进去了 ≠ 生效了"。现在按 `docs/CONFIGURATION.md` 各自校验：`auto|latest|YYYY-MM-DD`（boot 额外收十进制 u32）、`auto|random|64hex`、`auto|0..99`；injector 的 log_level 补上它独有的 `warning` 别名，config.toml 那一侧仍然拒绝。
+  * `tests/omk-validation.sh` 40 条：既测好值过，更测坏值被拒（`aut`、`2024-13-01`、`2024-1-5`、`2016`、63/65 位哈希），并**单独一段钉接线** —— 只测函数本身的话，忘了在保存路径里换调用照样全绿。接线判据跟着 case 分支走（`a|b|c)` 这种并列要认，第一版只找 `key)` 漏掉了并列在中间的键）。
+  * 真机端到端复核（设备后端正是 OhMyKeymint）：非法值现在回 `trust_vb_hash 只能是 auto / random / 64 位十六进制` 且 `config.toml` 的 sha 前后一致；修复前同样的 payload 是静默通过。
 
 * **点底栏切页时底栏上下跳（实测定位到真因）**：切页入场把面板右移 24px，面板右缘到 425，比 417 的视口宽 **8.9px**；WebView 会把布局视口撑高来容纳它 —— 真机逐帧 `innerHeight` 从 **975 → 987**（第一次切页 1083），`visualViewport` 恒为 975.2，`bottom` 定位的底栏就跟着沉 **12px**，200ms 后弹回。修法：滑动这 200ms 给 `.wrap` 加 `.sliding`（`overflow-x:clip`），动画结束按计数摘掉；静止时不裁（常开会把整棵子树退回灰度抗锯齿，静止画面实测 2 万像素与不裁切不同）。`clip` 而不是 `hidden`：hidden 会把另一轴强制成 auto，整页滚动当场消失。
   * 判定方法：不猜机制，直接让页面自测。临时探针页自己切页、逐帧记录药丸 rect 与视口读数写盘，**同一次打开里**做 A/B —— 不裁的 3 次全部跳（897.71 → 909.65，首切 1005.90），开裁的 4 次全部恒定 897.71、`innerHeight` 恒 975。

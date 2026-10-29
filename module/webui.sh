@@ -53,7 +53,7 @@ TAA_API=4
 TAA_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
-sync help contract excluded"
+sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -182,6 +182,39 @@ valid_os_version() {
     printf '%s' "${1:-}" | grep -Eq '^[0-9]+(\.[0-9]+){0,2}$'
 }
 
+# ---------- OhMyKeymint 的 [trust] 字段格式 ----------
+# 说明：这些以前一律走 valid_text 128 —— 把 "auto" 敲成 "aut" 也能存进去，而 OMK
+#       读不懂时静默退回默认值，界面上完全看不出来（存进去了 ≠ 生效了）。收紧到
+#       文档格式，校验不过就在屏幕上说清是哪个字段、接受什么。
+valid_omk_date() {
+    printf '%s' "${1:-}" | grep -Eq '^[0-9]{4}-(0[1-9]|1[0-2])-(0[1-9]|[12][0-9]|3[01])$'
+}
+# auto | latest | YYYY-MM-DD
+valid_omk_patch() {
+    case "${1:-}" in auto|latest) return 0 ;; esac
+    valid_omk_date "${1:-}"
+}
+# boot 额外收十进制 u32（OMK 在链路上给 HAL 的是数字，文档同时给了两种写法）
+valid_omk_boot() {
+    valid_omk_patch "${1:-}" && return 0
+    printf '%s' "${1:-}" | grep -Eq '^[0-9]{1,10}$'
+}
+# auto | random | 64 位十六进制
+valid_omk_hash() {
+    case "${1:-}" in auto|random) return 0 ;; esac
+    printf '%s' "${1:-}" | grep -Eq '^[0-9a-fA-F]{64}$'
+}
+# auto | 0..99（os_version 是 MMmmss 的编码值，不是年份）
+valid_omk_os_version() {
+    case "${1:-}" in auto) return 0 ;; esac
+    printf '%s' "${1:-}" | grep -Eq '^([0-9]|[1-9][0-9])$'
+}
+# injector.toml 的 log_level 比 config.toml 多一个 warning 别名
+valid_inj_log_level() {
+    case "${1:-}" in off|error|warn|warning|info|debug|trace) return 0 ;; esac
+    return 1
+}
+
 valid_keybox_name() {
     case "${1:-}" in
         ''|*[!A-Za-z0-9._-]*|*/*) return 1 ;;
@@ -220,7 +253,11 @@ parse_payload() {
     printf '%s' "$enc" | $bcmd -d > "$raw" 2>/dev/null || { rm -f "$raw"; echo "payload 解码失败" >&2; return 1; }
 
     : > "$out"
-    while IFS= read -r line; do
+    # 说明：`|| [ -n "$line" ]` 不能省。while read 在最后一行没有换行符时会直接
+    #       结束循环，那一行就丢了 —— 而界面的 payload 是 join('\n') 拼的，本来
+    #       就没有尾换行。实测（改两个字段、第二个故意放非法值）旧代码回
+    #       saved=1 fields=1：最后一个字段既没保存、也没过校验，静默通过。
+    while IFS= read -r line || [ -n "$line" ]; do
         [ -n "$line" ] || continue
         k="${line%%=*}"
         [ "$k" != "$line" ] || { rm -f "$raw" "$out"; echo "payload 行格式错误" >&2; return 1; }
@@ -515,7 +552,7 @@ cmd_omk_save_injector() {
             intercept_list_entries|intercept_delete_key|intercept_grant|intercept_ungrant|\
             intercept_get_number_of_entries|intercept_list_entries_batched|intercept_get_supplementary_attestation_info)
                 valid_bool "$v" || { echo "字段只能是 true/false：$k" >&2; rm -rf "$dir"; return 1; } ;;
-            inj_log_level) valid_log_level "$v" || { echo "日志级别不合法" >&2; rm -rf "$dir"; return 1; } ;;
+            inj_log_level) valid_inj_log_level "$v" || { echo "日志级别不合法（injector 认 off/error/warn/warning/info/debug/trace）" >&2; rm -rf "$dir"; return 1; } ;;
             filter_deny)
                 valid_deny_list "$v" || { echo "拒绝包名列表不合法" >&2; rm -rf "$dir"; return 1; }
                 printf '%s\t%s\n' "$k" "$DENY_NORM" >> "$norm"
@@ -584,8 +621,14 @@ cmd_omk_save_config() {
             cfg_log_level) valid_log_level "$v" || { echo "日志级别不合法" >&2; rm -rf "$dir"; return 1; } ;;
             cfg_force_skip_biometric|cfg_retire_stale_keys|trust_verified_boot|trust_device_locked|dev_override_telephony)
                 valid_bool "$v" || { echo "字段只能是 true/false：$k" >&2; rm -rf "$dir"; return 1; } ;;
-            trust_os_version|trust_security_patch|trust_os_patchlevel|trust_vendor_patchlevel|trust_boot_patchlevel|trust_vb_key|trust_vb_hash)
-                valid_text "$v" 128 && [ -n "$v" ] || { echo "字段不合法：$k" >&2; rm -rf "$dir"; return 1; } ;;
+            trust_os_version)
+                valid_omk_os_version "$v" || { echo "OS 版本只能是 auto 或 0–99（MMmmss 编码值）" >&2; rm -rf "$dir"; return 1; } ;;
+            trust_security_patch|trust_os_patchlevel|trust_vendor_patchlevel)
+                valid_omk_patch "$v" || { echo "$k 只能是 auto / latest / YYYY-MM-DD" >&2; rm -rf "$dir"; return 1; } ;;
+            trust_boot_patchlevel)
+                valid_omk_boot "$v" || { echo "trust_boot_patchlevel 只能是 auto / latest / YYYY-MM-DD / 十进制数" >&2; rm -rf "$dir"; return 1; } ;;
+            trust_vb_key|trust_vb_hash)
+                valid_omk_hash "$v" || { echo "$k 只能是 auto / random / 64 位十六进制" >&2; rm -rf "$dir"; return 1; } ;;
             dev_brand|dev_device|dev_product|dev_manufacturer|dev_model|dev_serial|dev_imei|dev_imei2|dev_meid)
                 valid_text "$v" 128 || { echo "字段不合法：$k" >&2; rm -rf "$dir"; return 1; } ;;
             *) echo "未知字段：$k" >&2; rm -rf "$dir"; return 1 ;;
@@ -734,6 +777,77 @@ cmd_keybox_save() {
     kv keybox_file "$target"
     kv keybox_bytes "$bytes"
     kv keybox_sha "$(sha256sum "$target" 2>/dev/null | cut -d' ' -f1)"
+}
+
+# ---------- 后端能力补全（只读枚举 + 显式重载） ----------
+# 说明：前三条只读各后端自己的文件，不改任何东西；第四条是写命令，但写的只是
+#       一个"请重载"的触发文件。界面按 hasCmd 逐条揭示，所以命令层与界面不同版
+#       时最坏是少一块内容，不会拿旧解析画新数据。
+
+# 输出：每行「名字<TAB>keybox<TAB>mode<TAB>apps数<TAB>是否默认」，default 在首行。
+# 为什么需要：上游 profiles 是「名字→配置」的表，一个 profile 自带 keybox、模式、
+#       三档补丁级别与设备身份；写回路径以前只认 default，多 profile 这层在界面上
+#       根本不存在。
+cmd_teesim_profiles() {
+    local ac
+    detect_backend "$MODDIR"
+    if [ "$TAA_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    [ -f "$TEESIM_CONFIG" ] || { echo "配置不存在：$TEESIM_CONFIG" >&2; return 1; }
+    ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
+    [ -n "$ac" ] || { echo "未找到 awk，读不了 profile 列表" >&2; return 1; }
+    [ -f "${TAA_PATCH%/*}/teesim_profiles.awk" ] || { echo "缺少 teesim_profiles.awk" >&2; return 1; }
+    $ac -f "${TAA_PATCH%/*}/teesim_profiles.awk" "$TEESIM_CONFIG"
+}
+
+# 输出：present=0|1，另有 status / category / service_error_code / tee_broken。
+# tee_status 是 Tricky 自己写的探测结果 —— 它就是"这台机器为什么只能走 leaf hack"
+# 的答案，以前界面没有任何一处把它露出来。
+cmd_tee_status() {
+    local f="$TSTORE_DIR/tee_status" k v rest
+    [ -f "$f" ] || { kv present 0; return 0; }
+    kv present 1
+    kv file "$f"
+    while IFS='=' read -r k rest; do
+        case "$k" in
+            status)           kv status "$rest" ;;
+            category)         kv category "$rest" ;;
+            serviceErrorCode) kv service_error_code "$rest" ;;
+            teeBroken)        kv tee_broken "$rest" ;;
+        esac
+    done < "$f"
+}
+
+# 输出：每行「范围<TAB>system<TAB>vendor<TAB>boot」，范围是 global 或包名。
+# 按包块（`[包名]` 段）以前不读也不写：全局值改了不等于那个包生效了。
+cmd_tricky_patches() {
+    local f="$TSTORE_DIR/security_patch.txt" ac
+    [ -f "$f" ] || { echo "文件不存在：$f" >&2; return 1; }
+    ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
+    [ -n "$ac" ] || { echo "未找到 awk，读不了补丁表" >&2; return 1; }
+    [ -f "${TAA_PATCH%/*}/tricky_patches.awk" ] || { echo "缺少 tricky_patches.awk" >&2; return 1; }
+    $ac -f "${TAA_PATCH%/*}/tricky_patches.awk" "$f"
+}
+
+# 用法：omk-restart <keymint|injector|all>
+# 说明：OMK 的 config.toml 里只有四个补丁级别字段与两个开关是热生效的，其余要
+#       重启 keymint 才读得到；这里给界面一个明确的出口，而不是让用户以为保存
+#       完就生效。不复用 omk_restart() —— 那个在目录不存在时静默返回 0，
+#       而这是用户主动点的命令，必须如实报成败。
+cmd_omk_restart() {
+    local which="$1" f
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    if [ "$TAA_BACKEND" != "omk" ]; then echo "当前后端不是 OhMyKeymint" >&2; return 1; fi
+    case "$which" in
+        keymint|injector|all) ;;
+        *) echo "只能触发 keymint / injector / all（收到：$which）" >&2; return 1 ;;
+    esac
+    [ -d "$OMK_STATE_DIR" ] || { echo "目录不存在：$OMK_STATE_DIR（OMK 没装？）" >&2; return 1; }
+    f="$OMK_STATE_DIR/restart.$which"
+    : > "$f" 2>/dev/null || { echo "写入失败：$f" >&2; return 1; }
+    log_info "🛠 WebUI 触发 OhMyKeymint 重载：$which"
+    kv restarted "$which"
+    kv trigger "$f"
 }
 
 cmd_contract() {
@@ -1439,6 +1553,10 @@ cmd_help() {
   remove-apps <包名,...> 批量移出（逗号分隔；只写一次；至少保留一条）
   set-mode <包名> <模式>  Tricky 专用：auto / leaf / generate
   backend-info           当前后端的配置摘要
+  teesim-profiles        TEE Simulator：列出所有 profile（名字/关键/模式/条目数/是否默认）
+  tee-status             Tricky：读它自己写的 TEE 探测结果（present/status/teeBroken…）
+  tricky-patches         Tricky：列出 security_patch.txt 的全局与按包补丁块
+  omk-restart <范围>     OhMyKeymint：触发重载，范围 = keymint | injector | all
   teesim-save <b64>      TEE Simulator default profile 字段（payload）
   omk-save-injector <b64> OhMyKeymint injector.toml 字段（payload）
   omk-save-config <b64>  OhMyKeymint config.toml 字段（payload）
@@ -1466,6 +1584,10 @@ case "$CMD" in
         cmd_set_mode "$_pkg" "$_mode"
         ;;
     backend-info) cmd_backend_info ;;
+    teesim-profiles) cmd_teesim_profiles ;;
+    tee-status)    cmd_tee_status ;;
+    tricky-patches) cmd_tricky_patches ;;
+    omk-restart)   cmd_omk_restart "$ARG" ;;
     teesim-save) cmd_teesim_save "$ARG" ;;
     omk-save-injector) cmd_omk_save_injector "$ARG" ;;
     omk-save-config) cmd_omk_save_config "$ARG" ;;
