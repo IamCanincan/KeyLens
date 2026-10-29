@@ -20,17 +20,21 @@ import {
   S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
 } from './bridge.js';
 import {
-  ICON, h, renderOver, renderTargets, renderBackend, renderProps, renderLog,
+  ICON, h, renderBackend, renderAutoSync, renderProps, renderLog,
   onToast, onReload, onAuto, onApplyTheme,
 } from './screens.js';
 
 /* 五格，按"用户来这儿要办的事"分，不按上一版的"功能二级菜单"分：
    名单是最高频、后端配置是三家里差异最大的、属性伪装与后端无关所以独立一格。
    界面自检收进"状态"页底部 —— 它不是一个目的地，是一屏说明。 */
+/* 四格，主体是后端控制面板：本模块首先是一个后端面板，名单本来就是三家各自的
+   配置文件之一（target.txt / apps[] / scoop），控制它属于面板职责；
+   "自动更新应用列表"是我们附加的功能，所以排在面板之后，不占落地页。
+   上一版把生效数当英雄数字、把"立即同步"当主按钮、把名单提成独立目的地，
+   等于把附加功能放在了主体前面。 */
 const PAGES = [
-  { id: 'over', label: '状态', icon: ICON.over, need: ['base', 'lists', 'log'] },
-  { id: 'targets', label: '名单', icon: ICON.list, need: ['lists', 'backend', 'excluded'] },
-  { id: 'backend', label: '后端', icon: ICON.backend, need: ['backend'] },
+  { id: 'backend', label: '后端', icon: ICON.backend, need: ['backend', 'lists', 'excluded'] },
+  { id: 'autosync', label: '自动更新', icon: ICON.sync, need: ['base', 'lists', 'log'] },
   { id: 'props', label: '伪装', icon: ICON.tune, need: ['props'] },
   { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },
 ];
@@ -81,7 +85,7 @@ onToast(function (text, bad) {
 /* ── 路由 ──────────────────────────────────────────────────────────── */
 function show(name) {
   S.tab = name;
-  const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'over';
+  const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'backend';
   /* 顶栏标题走 headline 属性 —— `bar.title = x` 设的是原生 tooltip，界面上
      什么都不画（上一版就是这么错的，而台架读 .title 读得到值，跟着一起被骗）。 */
   const label = (PAGES.filter(function (x) { return x.id === p; })[0] || PAGES[0]).label;
@@ -94,9 +98,9 @@ function show(name) {
 function draw() {
   view.textContent = '';
   const body = {
-    over: renderOver, targets: renderTargets, backend: renderBackend,
+    backend: renderBackend, autosync: renderAutoSync,
     props: renderProps, log: renderLog,
-  }[S.tab] || renderOver;
+  }[S.tab] || renderBackend;
   view.appendChild(body());
 }
 function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[0] || PAGES[0]; }
@@ -133,9 +137,9 @@ function boot() {
   /* 首屏只走一条路：契约 → 基础状态 → show()。show() 自己会按目标页取数，
      这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
-    show(PAGES.some(function (p) { return p.id === start; }) ? start : 'over');
+    show(PAGES.some(function (p) { return p.id === start; }) ? start : 'backend');
   }, function () {
-    show('over');
+    show('backend');
     onToast('基础状态读取失败，界面显示的是空值', true);
   });
 }

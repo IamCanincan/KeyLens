@@ -313,6 +313,161 @@ export function renderProps() {
   return box;
 }
 
+/* ── 后端控制面板：这就是主体，也是落地页 ───────────────────────────── */
+/* 层级说明（这一版重排的原因）：本模块首先是一个**后端控制面板** —— 名单
+   （target.txt / apps[] / scoop）本来就是三家后端自己的配置文件之一，控制它
+   属于面板职责；"自动更新应用列表"才是我们附加上去的功能。上一版把生效数当
+   英雄数字、把"立即同步"当主按钮、把名单提成独立一格，等于把附加功能放在了
+   主体前面。现在：状态条 → 名单 → 该后端的配置面 → keybox → 只读状态 → 自检。 */
+export function renderBackend() {
+  const bi = S.backendInfo;
+  const box = h('div', 'stack');
+  box.appendChild(statusStrip());
+  box.appendChild(listSection());
+  if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
+  if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
+  if (bi.backend === 'omk') { box.appendChild(omkReload()); }
+  box.appendChild(keyboxCard());
+  box.appendChild(renderTheme());
+  box.appendChild(selfCheck());
+  return box;
+}
+
+/* 状态条：一行讲清"还在不在跑、写的哪一版"，不再占一整屏 */
+function statusStrip() {
+  const st = S.status;
+  const [tone, label] = toneOfState(st.state);
+  const c = card('strip');
+  const row = h('div', 'strip-row');
+  row.appendChild(h('span', 'chip chip-' + tone, label));
+  row.appendChild(h('span', 'strip-k', st.backend_name || '未探测到后端'));
+  row.appendChild(h('span', 'strip-k', st.mod_version || '—'));
+  row.appendChild(h('span', 'strip-k', '生效 ' + (bi_entries() || '—') + ' 条'));
+  c.appendChild(row);
+  if (st.conflict === '1') {
+    c.appendChild(h('p', 'warn-text', '检测到两个后端同时启用，模块已停止 —— 先只留一个。'));
+  }
+  /* 契约不匹配横幅：写命令已在传输层被拦，这里只负责说清楚 */
+  if (S.contract.bad) {
+    c.appendChild(h('p', 'warn-text', '命令层契约不匹配（界面要 api=' + EXPECT_API + '，命令层是 '
+      + (S.contract.api === null ? '读不到' : S.contract.api) + '）：已停止一切写入，把模块整体重装一次。'));
+  }
+  return c;
+}
+function bi_entries() { return S.backendInfo.target_entries || ''; }
+
+/* 名单：作为后端配置的一部分呈现（语法跟着后端走） */
+function listSection() {
+  const bi = S.backendInfo, syn = SYNTAX[bi.backend] || SYNTAX.omk;
+  const baseSet = {};
+  S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
+  const c = card();
+  const s = section('目标名单 · ' + (bi.target_file || '—'), ICON.list);
+  s.appendChild(h('p', 'hint', '这个后端接受的写法：' + syn.label));
+  const seg = h('div', 'acts');
+  [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
+   ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
+   ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
+    seg.appendChild(button(v[1], { variant: v[0] === S.view ? 'filled' : 'text',
+      on: function () { S.view = v[0]; draw(); } }));
+  });
+  s.appendChild(seg);
+  const src = S.view === 'apps' ? S.apps
+    : S.view === 'missing' ? S.apps.filter(function (a) { return !baseSet[a]; })
+    : S.view === 'excluded' ? S.excluded : S.targets;
+  const q = (S.search || '').toLowerCase();
+  const shown = q ? src.filter(function (t) {
+    return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
+      || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
+  }) : src;
+  const tf = h('md-text-field');
+  tf.setAttribute('label', '搜索包名或应用名');
+  tf.addEventListener('input', function () { S.search = String(tf.value || ''); draw(); });
+  s.appendChild(tf);
+  const l = h('md-list');
+  shown.slice(0, 200).forEach(function (tok) {
+    const b = baseOf(tok), ic = S.icons[b];
+    const meta = (S.targetMeta || {})[tok];
+    const it = item({
+      headline: (ic && ic.label) || b || tok,
+      supporting: (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : ''),
+      interactive: true,
+    });
+    if (ic && ic.src) {
+      const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
+      img.loading = 'lazy'; img.decoding = 'async';
+      it.appendChild(img);
+    }
+    if (S.view === 'targets' && bi.backend === 'tricky' && syn.modes) {
+      it.appendChild(modeButton(tok, meta));
+    } else {
+      it.appendChild(S.view === 'targets'
+        ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
+        : button('加入', { variant: 'text', on: function () { write('restore-apps', b || tok, '已加入：' + (b || tok)); } }));
+    }
+    l.appendChild(it);
+  });
+  if (!shown.length) l.appendChild(h('p', 'empty', '这一类现在是空的。'));
+  s.appendChild(l);
+  s.appendChild(h('p', 'hint', '共 ' + shown.length + ' 条' + (shown.length > 200 ? '（只画前 200 条）' : '')));
+  c.appendChild(s);
+  loadIconsFor(shown);
+  return c;
+}
+
+/* TEESim 的第二块可写面：overrides.json（上一版完全没有） */
+function teesimOverrides() {
+  const c = card();
+  const s = section('overrides.json · 安全等级与版本', ICON.patch);
+  s.appendChild(h('p', 'hint', '这块与 profile 是硬边界：设备标识只能在 profile 里改，安全等级/版本/启动键哈希只能在这里。'
+    + 'verifiedBootKey / verifiedBootHash 只有当守护进程自己那份是合成兜底值时才可编辑。'));
+  s.appendChild(list([
+    item({ headline: 'attestationSecurityLevel', supporting: '0 软件 / 1 TEE / 2 StrongBox', trailing: '待接入' }),
+    item({ headline: 'keymasterSecurityLevel', supporting: '同上', trailing: '待接入' }),
+    item({ headline: 'attestationVersion / keymasterVersion', supporting: '1..100000', trailing: '待接入' }),
+    item({ headline: 'verifiedBootKey / verifiedBootHash', supporting: '可编辑性是数据决定的，不是写死的', tone: 'warn', trailing: '待接入' }),
+    item({ headline: 'deviceLocked / verifiedBootState', supporting: '根信任，上游明确不可改 —— 只显示', trailing: '只读' }),
+  ]));
+  c.appendChild(s);
+  return c;
+}
+
+/* ── 自动更新：本模块附加的功能，不是后端自带的 ─────────────────────── */
+export function renderAutoSync() {
+  const st = S.status, env = S.env;
+  const box = h('div', 'stack');
+  const c = card();
+  const s = section('自动更新应用列表', ICON.sync);
+  s.appendChild(h('p', 'hint', '这是本模块附加的功能：三家后端自己都不主动改名单，模块在开机与文件变化时'
+    + '把已装应用同步进当前后端的名单文件。后端配置本身在「后端」那一格。'));
+  const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
+  s.appendChild(list([
+    item({ headline: '守护进程', trailing: st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个', tone: st.daemon_alive === '0' ? 'bad' : 'ok' }),
+    item({ headline: '事件监听', trailing: ino, tone: env.inotify_mode === 'none' ? 'bad' : 'ok' }),
+    item({ headline: '目标文件', trailing: (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
+      tone: st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', supporting: '上次写入 ' + timeLabel(st.target_mtime) }),
+    item({ headline: '日志', trailing: bytesLabel(st.log_bytes), supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
+  ]));
+  const acts = h('div', 'acts');
+  acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
+  acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: function () { reload(); } }));
+  s.appendChild(acts);
+  s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
+  c.appendChild(s);
+  box.appendChild(c);
+
+  /* 自动纳入：OMK/Tricky 没有这个概念，只有 TEESim 的 autoIncludeNewApps 有 */
+  const a = card();
+  const as = section('自动纳入新应用', ICON.addPkg);
+  as.appendChild(h('p', 'hint', '只有 TEE Simulator 有这一项（profile 级 autoIncludeNewApps）。'
+    + '它依赖一份只冻结一次的基线包名表，且只在守护进程 rescan 时展开 —— 开关打开不等于立刻生效。'));
+  as.appendChild(h('p', 'empty', S.backendInfo.backend === 'teesim' ? '当前后端：TEE Simulator，可在下方 profile 里逐份设置。'
+    : '当前后端不是 TEE Simulator，这一项不适用。'));
+  a.appendChild(as);
+  box.appendChild(a);
+  return box;
+}
+
 /* ── 编辑表单：字段规格集中一份，渲染与提交都读它 ───────────────────── */
 /* [key, 取值来源, 标签, 类型, 分组小标题?]
    key 必须与命令层校验表逐字对上（webui.sh 的 cmd_*_save 里那个 case），
@@ -466,31 +621,6 @@ export function logRow(line) {
   d.appendChild(h('span', 'log-lvl', p.lvl ? { bad: '✕', warn: '!', ok: '✓', none: '·' }[p.lvl] : ''));
   d.appendChild(h('span', 'log-msg', p.text));
   return d;
-}
-
-/* ── 后端页：三家各自的能力面 ──────────────────────────────────────── */
-export function renderBackend() {
-  const box = h('div', 'stack');
-  const bi = S.backendInfo;
-  const sum = card();
-  sum.appendChild(section('当前后端 · ' + (bi.backend_name || '读取中'), ICON.backend));
-  sum.appendChild(list([
-    item({ headline: '目标文件', supporting: bi.target_file || '—', trailing: (bi.target_entries || '0') + ' 条' }),
-    item({ headline: 'keybox', supporting: bi.keybox_file || '—', trailing: bi.keybox_exists === '1' ? '存在' : '不存在', tone: bi.keybox_exists === '1' ? 'ok' : 'warn' }),
-  ]));
-  box.appendChild(sum);
-
-  if (bi.backend === 'teesim') box.appendChild(teesimProfiles());
-  if (bi.backend === 'tricky') box.appendChild(trickyBlocks());
-  if (bi.backend === 'omk') box.appendChild(omkReload());
-  box.appendChild(keyboxCard());
-
-  if (S.contract.bad) {
-    const w = card('warn-card');
-    w.appendChild(h('p', 'warn-text', '命令层契约不匹配（界面要 api=' + S.contract.api + '）：已停止一切写入，把模块整体重装一次。'));
-    box.appendChild(w);
-  }
-  return box;
 }
 
 /* TEESim：profiles 是一张表 —— 先选哪一份，再编辑那一份 */

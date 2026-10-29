@@ -54,6 +54,12 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* 状态条：芯片与几段小字一行排开。之前只加了 DOM 没加样式，
+   结果 "OhMyKeymint" 和版本号、条数直接连成一串读不断的字。 */
+.strip-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.strip-k{font-size:13px;color:var(--md-sys-color-on-surface-variant);white-space:nowrap}
+.strip-k + .strip-k::before{content:"·";margin-right:10px;color:var(--md-sys-color-outline)}
+.sec-h b{min-width:0;overflow-wrap:anywhere}
 md-list{display:block}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
