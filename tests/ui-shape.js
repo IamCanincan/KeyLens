@@ -147,6 +147,20 @@ chk('日志页工具条收进两行',
     return (sec.match(/class="toolbar"/g) || []).length === 2;
   })());
 
+console.log('── 主页「最近动态」 ──');
+/* 主页原先最后一张卡下面空 412 CSS px（视口 42%）。补的这块只给尾巴，
+   且必须与日志页共用同一个行构造器 —— 两处各写一遍就会长得不一样。 */
+chk('主页有最近动态卡（默认藏起来）', /<section class="card home-recent" id="overRecent" hidden><\/section>/.test(html));
+chk('ensure(over) 同时取名单与日志', /Promise\.all\(\[ensureNeed\('lists'\), logLeg\]/.test(html));
+/* 日志只是主页上的一块预览，它失败不该把名单那一屏一起带走 */
+chk('日志那一腿自己吞失败', /ensureNeed\('log'\)\.catch\(function \(\)\{ return false; \}\)/.test(html));
+chk('能力缺失时整块撤掉', /if \(S\.contract\.checked && !hasCmd\('log'\)\) \{ rec\.hidden = true; rec\.textContent = ''; return; \}/.test(html));
+chk('两页共用一个行构造器',
+  /frag\.appendChild\(logRow\(line\)\)/.test(html) && !/S\.log\.forEach\(function \(line\)\{\s*var p = logParts/.test(html));
+chk('空态与失败态各有文案',
+  /还没有日志 —— 模块只在开机与文件变化时写。/.test(html) && /日志读取失败，详见日志页/.test(html));
+chk('尾巴按 6 行留最小高', /var RECENT_N = 6;/.test(html) && /\.home-recent \.console\{min-height:186px/.test(html));
+
 console.log('── 底栏导航 ──');
 const pagesSrc = (html.match(/var PAGES = \[([^\]]*)\]/) || [])[1] || '';
 const pages = (pagesSrc.match(/'[a-z]+'/g) || []).map(s => s.slice(1, -1));

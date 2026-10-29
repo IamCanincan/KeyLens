@@ -392,6 +392,11 @@ body.is-selecting .tabs{display:none}
 /* 主页那张卡里只有一个板块：给它描边就是盒中盒，
    多组时才需要的分层在这里只会多一个"面"。 */
 .home-card .grp{border:0;margin:0;padding:0}
+/* 主页的「最近动态」：按 6 行留最小高度 —— 日志只有两三行时这块会塌成一条，
+   那一屏的空白又跑回来。长消息换行让它自然长高，不滚（全量在日志页）。 */
+.home-recent{margin-top:var(--sp6)}
+.home-recent .console{min-height:186px;max-height:none}
+.recent-empty{font-size:var(--fs12);color:var(--on-variant);line-height:1.6}
 
 /* ================= 概览分组 ================= */
 /* 「标签贴左、数值贴右」的整行布局会在中间拉出一大片空洞（本机内容宽 335，
@@ -1188,6 +1193,9 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
              叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
         <div id="overBody"><div class="skeleton" style="width:70%"></div><div class="skeleton" style="width:90%;margin-top:14px"></div><div class="skeleton" style="width:55%;margin-top:14px"></div></div>
       </section>
+      <!-- 最近动态：上面四格回答「它还在跑吗」，这块回答「最近跑成了什么」。
+           命令层确认没有 log 时整块不出现。 -->
+      <section class="card home-recent" id="overRecent" hidden></section>
     </section>
 
 
@@ -1772,7 +1780,7 @@ var S = {
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
   selectMode: false, selected: {}, selectable: [],
-  log: [], logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], boot: null, loaded: {}, seq: 0, homeY: 0, envAt: 0
+  log: [], logErr: false, logSig: '', appsSig: '', tail: 60, autoTimer: null, props: [], boot: null, loaded: {}, seq: 0, homeY: 0, envAt: 0
 };
 
 
@@ -1984,7 +1992,9 @@ function renderOver(){
     : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
 
   /* 一屏只留一份事实：日志字节数在日志页、属性开关在属性页、目标语法与配置
-     在后端页。概览只回答「它还在跑吗、写进去没有」。 */
+     在后端页。概览只回答「它还在跑吗、写进去没有」。
+     下面那块「最近动态」不算破例：它给的是**事件**（这一屏原先没有的东西），
+     且只给尾巴 —— 行数、字节数、全量仍旧只在日志页出现一次。 */
   box.appendChild(grp('运行', [
     blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok'),
     blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')),
@@ -1995,6 +2005,30 @@ function renderOver(){
       st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad',
       '上次写入 ' + timeLabel(st.target_mtime))
   ]));
+  renderRecent();
+}
+/* 主页只给尾巴，全量在日志页 —— 同一份 S.log 用同一个 logRow() 画，
+   两处不会长得不一样。取数走 ensure('over') 里的 log 那一趟，
+   之后真进日志页不会重复请求（S.loaded 认的是 need，不是 tab）。 */
+var RECENT_N = 6;
+function renderRecent(){
+  var rec = document.getElementById('overRecent');
+  if (!rec) return;
+  /* 只有"已经确认命令层没有 log"才整块撤掉：还没问到就藏起来，
+     这一屏会永久少一块该出现的区域（loadBootHash 同一个套路）。 */
+  if (S.contract.checked && !hasCmd('log')) { rec.hidden = true; rec.textContent = ''; return; }
+  rec.hidden = false;
+  rec.textContent = '';
+  rec.appendChild(el('h3', 'grp-t', '最近动态'));
+  var cbox = el('div', 'console recent-box');
+  var lines = S.log.slice(-RECENT_N);
+  if (!lines.length) {
+    cbox.appendChild(el('p', 'recent-empty',
+      S.logErr ? '日志读取失败，详见日志页' : '还没有日志 —— 模块只在开机与文件变化时写。'));
+  } else {
+    lines.forEach(function (l){ cbox.appendChild(logRow(l)); });
+  }
+  rec.appendChild(cbox);
 }
 
 
@@ -2424,6 +2458,19 @@ function logParts(line){
   if (!lv && bare !== s) lv = 'info';
   return { time: time, text: bare, lvl: lv, icon: LOG_ICON[lv] || '' };
 }
+/* 一行的 DOM。日志页与主页「最近动态」共用 —— 同一份日志在两个地方长出两种
+   样子，就会有一处是过期的（时间列宽、级别图标都得各修一次）。 */
+function logRow(line){
+  var p = logParts(line);
+  var d = el('div', 'log-line');
+  if (p.lvl) d.setAttribute('data-lvl', p.lvl);
+  d.appendChild(el('span', 'log-time', p.time));
+  var g = el('span', 'log-lvl');
+  if (p.icon) g.innerHTML = svg(p.icon, 16);
+  d.appendChild(g);
+  d.appendChild(el('span', 'log-msg', p.text));
+  return d;
+}
 function renderLog(){
   var box = document.getElementById('logBody');
   /* 内容没变就不重建这两三百个节点（自动刷新多数时候确实没新日志） */
@@ -2432,17 +2479,7 @@ function renderLog(){
     var atBottom = box.scrollHeight - box.scrollTop - box.clientHeight < 40;   // 用户翻上去看历史时别拽回底部
     box.textContent = '';
     var frag = document.createDocumentFragment();
-    S.log.forEach(function (line){
-      var p = logParts(line);
-      var d = el('div', 'log-line');
-      if (p.lvl) d.setAttribute('data-lvl', p.lvl);
-      d.appendChild(el('span', 'log-time', p.time));
-      var g = el('span', 'log-lvl');
-      if (p.icon) g.innerHTML = svg(p.icon, 16);
-      d.appendChild(g);
-      d.appendChild(el('span', 'log-msg', p.text));
-      frag.appendChild(d);
-    });
+    S.log.forEach(function (line){ frag.appendChild(logRow(line)); });
     box.appendChild(frag);
     S.logSig = sig;
     if (atBottom) box.scrollTop = box.scrollHeight;
@@ -3078,6 +3115,7 @@ function ensureIcons(pkgs){
 function loadLog(){
   return call('log', String(S.tail)).then(function (r){
     S.log = r.ok ? split(r.text) : [];
+    S.logErr = !r.ok;
     return r;
   });
 }
@@ -3121,8 +3159,16 @@ function ensure(tab){
   if (tab === 'about' || tab === 'func') return Promise.resolve(false);
   /* Verified Boot 哈希的数据随属性页一起取 */
   if (tab === 'boot') return ensureNeed('props');
-  /* 名单：主页与名单页都读它 */
-  var need = (tab === 'over' || tab === 'apps') ? 'lists' : tab;
+  /* 名单：主页与名单页都读它。主页还要一条日志尾巴 —— 这一趟同时也是日志页
+     的第一趟，之后进日志页 S.loaded 命中就不再请求。日志那一腿单独吞掉失败：
+     它只是主页上的一块预览，不该让名单因此画不出来。 */
+  if (tab === 'over') {
+    var logLeg = (S.contract.checked && !hasCmd('log'))
+      ? Promise.resolve(false)
+      : ensureNeed('log').catch(function (){ return false; });
+    return Promise.all([ensureNeed('lists'), logLeg]).then(function (a){ return !!(a[0] || a[1]); });
+  }
+  var need = tab === 'apps' ? 'lists' : tab;
   return ensureNeed(need);
 }
 
