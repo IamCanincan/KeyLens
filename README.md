@@ -42,7 +42,7 @@ TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段
   日志同时写入系统日志（`logcat`，tag 为 `TS-AUTO`）与本地缓冲文件 `/data/adb/ts_auto.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
 
 - **WebUI 控制台（Material 3 Expressive）**  
-  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、对照目标名单与已装应用、翻日志、手动同步，以及一键开关开机属性伪装。界面是单文件、不联网；`@material/web 2.5.0` 已打成内联 bundle（不需要联网加载任何库或字体）。
+  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：查看运行状态、对照目标名单与已装应用、翻日志、手动同步，以及一键开关开机属性伪装。「后端与格式」页按当前后端分别适配并可**手动配置**：TEE Simulator 的 default profile（模式、keybox 文件名、补丁级别、OS 版本、自动纳入、设备身份）、Tricky Store OSS 的全局补丁表（`system / vendor / boot / all`）、OhMyKeymint 的 injector（过滤、拒绝包、10 个拦截方法）与 config.toml（日志、trust、设备身份）；三家都支持粘贴替换 keybox.xml。保存只提交改动过的字段，写前备份，Tricky/TEE Simulator 由各自的 watcher 重载，OMK 通过自己的 `restart.injector / restart.keymint` 生效。名单里 Tricky 的条目带 `自动 / 叶证书 / 证书生成` 选择，TEE Simulator 的 `pkg@用户` 与 `uid:数字` 会显示成对应标签。界面是单文件、不联网；`@material/web 2.5.0` 已打成内联 bundle（不需要联网加载任何库或字体）。
 
 - **兼容性广泛**  
   支持 Magisk、KernelSU、APatch，并自动适配 `inotifywait` / `inotifyd` 两种监控模式（含各框架自带的 busybox）。
@@ -132,25 +132,25 @@ sh /data/adb/modules/ts-auto-add/action.sh
 
 在管理器的模块详情页点 **「打开界面」/「Open with WebUI」** 即可（KernelSU 主线、KernelSU Next、SukiSU、SmartPack、APatch，以及支持 WebUI 的 Magisk 管理器都有这个入口；**原版 Magisk 管理器没有**，此时仍可用下面的命令行方式）。
 
-界面是「**概览 + 四个二级页**」，没有底栏：概览页上半是状态英雄卡、中间是入口卡（应用列表 / 运行日志 / 系统属性伪装 / 关于与自检），下半按「运行 / 目标 / 日志与属性」分成三块。**四个入口是同一条路**：`#/apps`…`#/about` 各占一个 hash，进去都是顶栏左侧一个返回箭头。点一行进入二级页，回到概览会还原离开时的滚动位置。⚠ **别指望系统的边缘返回退这一级**：实测那一下是关掉整个 WebUI（`{m=CLOSE WebUIActivity}`），这是宿主 Activity 的行为，模块改不了。
+界面是**六个并列的目的地 + 一条悬浮药丸底栏**：概览 / 应用 / 后端 / 日志 / 属性 / 关于。底栏沿用 Opticon 的 FloatingNavBar 形态 —— 未选中的只留图标，选中那格展开成「图标 + 名字」的胶囊，所以药丸宽度只在点按那一下变一次。概览是状态英雄卡加一张「运行」卡，其余五页各是一张卡片，顶栏大标题就是页名。六页之间没有上下级，**没有返回箭头**：切页只改地址栏的 `#/` hash（`replaceState`，不堆历史），系统返回一次就退回管理器。
 
 | 页面 | 内容 | 能改什么 |
 |------|------|----------|
-| **概览** | 生效应用数（大数字）、第三方条目数、后端、目标文件与可写性、上次写入时间、监听方式、守护进程、日志缓冲、属性伪装状态。**诊断信息不在这页上** —— 它们在「关于与自检」那一页（`#/about`） | 只读 |
+| **概览** | 生效应用数（大数字）、第三方条目数、后端、事件监听方式、守护进程、目标文件与可写性、上次写入时间。**日志、属性开关、目标语法都不在这页上** —— 它们各自有页 | 立即同步 / 重新读取 |
 | **应用** | 目标名单与已安装应用的对照，**带桌面图标与显示名**（没有显示名时退成包名；没有启动器入口的应用走 `PackageManager` 取图标）；每行只留应用名，包名在 title 里（搜索仍同时匹配应用名与包名）。名单外的已装应用行尾是 **+**（加入），被你手动删过的另标中性「已排除」；顶部用 **名单 / 已安装 / 未纳入** 三个视图切换：在「未纳入」点「选择」只列可加入的，在「名单」点「选择」只列可移出的；多选后一次写入（名单至少保留一个），移出后 6 秒内可在提示条撤销 | 加入 / 加回（单条或一批）、移出（一批，可撤销） |
 | **日志** | `ts_auto.log` 末尾 30/60/120/300 行，按级别着色，可清空缓冲、可开 5 秒自动刷新（默认关） | 清空日志 |
 | **属性** | 17 项属性按「构建 / 调试与安全 / 启动与验证 / 保修位」分组，只在不符/未定义时标出期望值与状态；另有 Verified Boot 哈希的当前值与保存值 | 开关开机伪装、立即应用一次、保存 / 清除 verifiedBootHash |
-| **关于** | 界面自检、设备与后端、外观、路径四块：桥接与契约、设备、图标加载、执行身份、工具、后端模块、取色/字体/深浅，以及模块/命令/数据/目标/日志路径；只列值与来源 | 只读 |
+| **关于** | 两块：「界面」（桥接与契约、应用图标加载统计、执行身份、工具、取色/字体/深浅、生效值）与「设备与路径」（设备、模块/命令/数据/目标/日志路径）；只列值与来源 | 只读 |
 
 几点需要知道：
 
 - **调 `enableEdgeToEdge(true)`，不调 `fullScreen(true)`**：状态栏那条缝是宿主窗口的底色（`Theme.KernelSU.WebUI` 里既没有 `statusBarColor` 也没有 `windowBackground`），页面改 CSS 碰不到它，所以让页面画到状态栏下面 —— 宿主的让位 padding 归零后，那条缝就是页面的 `--surface`，两处终于同色。内容位置不变（`appbar`/`.wrap` 吃 `env(safe-area-inset-*)`，viewport 是 `viewport-fit=cover`）。真机实测（2026-10-27）：状态栏与页面同色、顶栏没有被状态栏压住、底部没有再出现手势把手。`fullScreen(true)` 仍然不调 —— 它只是把状态栏藏掉，那根把手还在，还白白丢了时钟与电量。
 - 顶栏与系统栏无关：`<meta name="theme-color">` 主线 KernelSU 根本不读（dex 里 0 次出现），所以状态栏那条缝不是改它就能接上的。
-- 底部有页脚收尾（`TS-AUTO-ADD · 只在开机与文件变化时同步 · 界面不联网`），`body` 竖排 + `.wrap` 撑满 + 页脚 `margin-top:auto`：内容短时页脚贴视口底部，内容长时跟在内容后面；页面内容结束时有个明确收口。
-- **没有底栏，导航就是概览页上的四行入口**：每行只有标题（图标位与副标题已删——它们在这个单文件里从未真正渲染出来，只留下缩进）。底栏那条横滑轨道（`scroll-snap` + 指示胶囊插值 + 容器高度同步）正是「抽搐」和「切页闪」的来源，连同它一起删掉了。
+- 底部给底栏让位（`.wrap` 的 `padding-bottom` = 104px + 安全区），所以滚到最后一屏时最后一行也完全露得出来；页面背景一直铺到屏幕底边（让位只加在内容容器上，`body` 不留空白带）。
+- **底栏是悬浮药丸、六格并列**：`概览 / 应用 / 后端 / 日志 / 属性 / 关于`。非选中只留图标（六个图标 + 一个展开的名字在 417 CSS px 下放得下，实测药丸 350 ≤ 401），选中那格展开成胶囊；横滑切页不做，宽度只在点按那一下变一次。多选时整条底栏让位给批量条 —— 它们占同一条底边。原先那条 `scroll-snap` 横滑轨道（指示胶囊插值 + 容器高度同步）正是「抽搐」和「切页闪」的来源，仍然没有回来。
 - **页内返回拿不到「可预测返回」的预览**：反汇编宿主可以看到它用的是普通 `BackHandler` —— 全 dex 里 `startBackProgress`、`getBackProgress` **0 次**，也就是宿主根本没实现应用内预览；系统能画的那种预览只覆盖**跨 Activity**（从 WebUI 退回管理器就是这一种，所以那一下有预览、页内那一下没有）。网页这层也没有接口：屏幕边缘的拖动被系统手势接管，页面收不到，也没有任何 API 能把「上一页长什么样」喂给系统。所以页内返回的动效上限就是方向一致的滑入（下钻从右、返回从左）。
-- **二级页的顶栏钉住**（`position:sticky`）：返回箭头是那一屏唯一的出口，长列表滚到一半不能让它滚走；概览不钉，让内容照常滚。二级页隐藏英雄卡，一屏只有标题 + 内容。下钻与返回都只滑当前面板（24px / 200ms，WAAPI 在合成器上跑，不碰高度、不盖遮罩）；返回时英雄卡跟着一起滑，否则它会硬蹦出来。
-- **导航状态写在地址栏的 hash 上**（`#/over`、`#/apps`…），顶栏箭头与 `popstate` 是同一条路；宿主的返回是「`doUpdateVisitedHistory` 里读 `webView.canGoBack()` 写进状态 → 返回回调执行 `webView.goBack()`」（dex 实测），但**这条链在实测里没被走通过**：直接指定组件起第二个实例会被它自己 finish（`Displayed +61ms` 紧跟 `type=CLOSE numActivities=0`），走管理器的 `ksu://webui/…` 则是管理器起来了、却没替我们起 WebUI —— 所以系统边缘返回目前**就是关掉整个界面**，页内返回请用顶栏箭头。⚠ **也没有安卓的可预测返回预览**：预览要宿主实现 `OnBackAnimationCallback` 并驱动 `startBackProgress`，全 dex 里 `startBackProgress` / `getBackProgress` 各 **0 次** —— 系统只会为**跨 Activity**（WebUI → 管理器）那一下自己截图，页内这一档它没有画面可画，页面也没有接口能喂。滚动位置自己管（`history.scrollRestoration = 'manual'`），回概览时还原 —— 否则浏览器会把下钻前已归零的位置再恢复一次，把还原抹掉（实测 52 → 0）。
+- **二级页的顶栏钉住**（`position:sticky`）：页名要一直在视野里，长列表滚到一半不能让它滚走；概览不钉，让内容照常滚。二级页隐藏英雄卡，一屏只有标题 + 内容。切页只滑当前面板（24px / 200ms，WAAPI 在合成器上跑，不碰高度、不盖遮罩），方向跟底栏的左右排布一致：往右切从右滑入、往左切从左滑入。
+- **导航状态写在地址栏的 hash 上**（`#/over`、`#/apps`…），但用 `replaceState` 更新、不往历史里堆条目 —— 宿主是「`doUpdateVisitedHistory` 里读 `webView.canGoBack()` 写进状态 → 返回回调执行 `webView.goBack()`」（dex 实测），堆了历史系统返回就会变成逐页后退而不是退出界面。现在 `canGoBack()` 保持原样，**系统返回一次直接退回管理器**；页面之间的移动全在底栏上，`popstate` 只接真正的前进/后退（重载后回退、深链）。⚠ **页内没有安卓的可预测返回预览**：预览要宿主实现 `OnBackAnimationCallback` 并驱动 `startBackProgress`，全 dex 里 `startBackProgress` / `getBackProgress` 各 **0 次** —— 系统只会为**跨 Activity**（WebUI → 管理器）那一下自己截图。概览的滚动位置在切走前记下、切回时还原（`history.scrollRestoration = 'manual'`，否则浏览器默认恢复会把它抹成 0）。
 - 视觉只有一套语言：**静止形状全部对称**（按钮默认胶囊、卡片与格子单一圆角，切角与「叶子形」已收掉），**主色只出现在两处**——生效数字与主行动按钮；正常状态不上色（一个点即可），只有需要处理的才着色。界面控件由 `@material/web` 2.5.0 的 `labs/gb` Expressive 组件驱动：`md-gb-button` / `md-gb-icon-button` / `md-gb-list(-item)` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`；卡片、分组、日志台和提示条仍是模块自己的布局。按钮按下时圆角收缩使用组件自带的 350ms 过冲曲线；列表行 56px、头像 40px，选中用 `secondary-container`。这需要 **Chromium 111+ 的 WebView**（本机 WebView 156）。
 - **每个板块一块底**（`.grp`）：比它所在卡面抬一档（`--surface-high`，与卡面比 1.143 深 / 1.116 浅 —— 和"页底 vs 卡面"那档同量级）。色块往外铺 12、内边距补回 12，所以文字左缘还是那条 41；板块之间外距 20 > 块内 12。格子内部与图标仍然不着色。底色定义在 `:root` 而不是 `.grp` 上 —— 写在 `.grp` 上会盖掉别处的覆盖（自定义属性也是元素自己的声明赢过继承）。
 - 布局按**自适应网格**排，不写断点：本机 WebView 是 **417 CSS px** 宽（1644px @630dpi；低分辨率模式 1096px @420dpi 换算后同样是 417.5dp，两套模式都是 417）。概览与「关于」的四个板块在这台机器上各排 **两列**（格子下限 `--cell:150`，列宽 158）—— 值按真机字符串最宽的 142 定，注释行改成换行而不是裁字。改布局后用 CDP 在顶层文档扫溢出（5 页 × 320/360/417 × 浅/深），别只信 `--headless --screenshot`——它给出过与真实渲染不一致的读数。
@@ -208,8 +208,28 @@ sh /data/adb/modules/ts-auto-add/action.sh
 | 后端 | 文件 | 改哪里 |
 |------|------|--------|
 | TEE Simulator | `/data/adb/teesim/config.json` 的 `profiles.default.apps` | 直接改数组；其它字段与其它 profile 原样保留 |
-| Tricky Store / OSS | `/data/adb/tricky_store/target.txt` | 每行一个包名 |
+| Tricky Store / OSS | `/data/adb/tricky_store/target.txt` | 每行一个包名；可带 `?` / `!` 模式与 `#` 注释 |
 | OhMyKeymint | `/data/misc/keystore/omk/injector.toml` 的 `scoop` | 直接改数组；`config.toml` 与本文件的其它段不碰 |
+
+三个后端的条目语法并不相同，模块按各自上游的解析规则处理，而不是把它们都当成裸包名：
+
+- **Tricky Store OSS**：`pkg` / `pkg?`（强制叶证书破解）/ `pkg!`（强制证书生成），`#` 之后是行内注释；同一个包名出现多次时后出现的模式生效。界面「名单」行尾可直接切换模式，只改这一行的后缀，注释与其它行保留。
+- **TEE Simulator**：`apps` 支持 `pkg` / `pkg@用户` / `uid:数字`，模块原样保留这些 token；卸载一个包时连同它的 `@用户` 变体一起移除，`uid:` 条目因为无法反查包名而保留。
+- **OhMyKeymint**：`scoop` 只接受包名。
+- 同步的「加入 / 删除」按**基础包名**判断：`pkg?`、`pkg@10` 都算 `pkg` 已在名单里，不会因为换了个写法被重复加入或误删。
+
+### 后端配置（WebUI 手动编辑）
+
+「后端与格式」页的配置区按当前后端渲染可编辑字段，只提交改动过的项；未知字段、非法枚举/日期/包名会在写盘前拒绝，写前备份到后端数据目录：
+
+| 后端 | 可编辑项 | 备份 / 生效 |
+|------|----------|-------------|
+| TEE Simulator | default profile：`mode`、`keybox`、`patchLevel.system/vendor/boot`、`osVersion`、`autoIncludeNewApps`；brand / device / product / manufacturer / model / serial / imei / meid / imei2 | `config.json.bak`；TEE Simulator 的目录 watcher 自动重载 |
+| Tricky Store OSS | `security_patch.txt` 全局 `system / vendor / boot / all`（包级段保留）；keybox.xml | `security_patch.txt.bak` / `keybox.xml.bak`；文件 watcher 自动重载 |
+| OhMyKeymint | injector.toml：`[main]` 开关与日志、`[filter]` 开关/拒绝包、`[intercept]` 10 项；config.toml：`[main]` 日志与两个开关、`[trust]` 补丁/密钥/验证开关、`[device]` 身份 | `injector.toml.bak` / `config.toml.bak`；写后请求 `restart.injector` / `restart.keymint`（OMK 自己的机制） |
+
+- keybox 用「粘贴替换」：接受 `<AndroidAttestation>…</AndroidAttestation>`，上限 128KB；TEE Simulator 写到 config 当前指定的文件名，选择其它已存在的 `*.xml` 改 keybox 文件名即可。
+- 名单与 Tricky 的条目模式仍在「应用列表」维护；配置页不写 `apps` / `scoop`，避免和自动同步互相覆盖。
 
 - **装上自动进、卸载自动出**；你手动加的条目会保留，手动删掉的不会被自动加回来。
 - 算法是**快照差分**：`加入 = 本轮已装 − 上次已装`，`删除 = 上次已装 − 本轮已装`，其余（目标文件里的现有条目）原样保留。手动删掉的包仍然装着、但不在"新装"里，所以结构上就不会被回填 —— 没有墓碑文件。想恢复就把它加回文件；应用页里名单外的行尾有一个 **+**（加入）、「已排除」的行另有中性标签和 **+**（加回），等价于写回文件；在「名单」视图点「选择」可以多选移出（一次写入、至少保留一条），移出前会把当前名单并入 `.ts_ever`，所以移出的包仍显示为「已排除」而不会被自动加回；移出后 6 秒内可在提示条点「撤销」精确恢复。卸载后再装一次也会重新加入。

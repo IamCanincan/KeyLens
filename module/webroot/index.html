@@ -231,24 +231,14 @@ button,input,textarea,select{font:inherit;color:inherit}
 .sr{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0 0 0 0);white-space:nowrap}
 
 /* ================= 顶栏 ================= */
-/* 概览的顶栏随内容滚走；二级页的顶栏钉住（下面 .is-sub），因为返回箭头在它里面。 */
+/* 概览的顶栏随内容滚走；二级页的顶栏钉住（下面 .is-sub），让页名一直在视野里。 */
 .appbar{padding:calc(var(--inset-top) + var(--sp2)) var(--sp4) var(--sp1);
   max-width:var(--measure);margin:0 auto;width:100%}
-/* 二级页的顶栏钉住：返回箭头是那一屏唯一的出口，长列表滚到一半不能让它滚走。
+/* 二级页的顶栏钉住：那一屏没有英雄卡，标题就是它的页名，长列表滚到一半不能跟着滚走。
    概览不钉 —— 在概览上要的是让内容滚出去，顶栏没有要够的东西。 */
 .appbar.is-sub{position:sticky;top:0;z-index:30;background:var(--surface);
   box-shadow:0 1px 0 var(--card-line)}
 .appbar-row{display:flex;align-items:center;gap:var(--sp2)}
-/* 二级页的返回：顶栏最左，40 的圆钮。它是「返回」而不是「回概览」——
-   从概览下钻到某一页后，返回回到上一级。 */
-.back{flex:none;width:40px;height:40px;margin-left:-10px;border:0;border-radius:var(--r-full);
-  background:transparent;color:var(--on-surface);display:grid;place-items:center;cursor:pointer;
-  transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
-.back:active{transform:scale(.9)}
-.back svg{width:24px;height:24px;display:block;fill:currentColor}
-/* 返回钮视觉仍是 40 的圆，可点区补到 48（上下各 4，落在顶栏留白里）。 */
-.back::after{content:"";position:absolute;top:50%;left:50%;width:var(--hit);height:var(--hit);
-  transform:translate(-50%,-50%)}
 /* 按钮与分段：高度补到 48，宽度不越给自己的槽位（相邻分段会互抢）。 */
 .btn::after,.seg button::after{content:"";position:absolute;top:50%;left:0;right:0;
   height:var(--hit);transform:translateY(-50%)}
@@ -258,15 +248,38 @@ button,input,textarea,select{font:inherit;color:inherit}
 .back[hidden]{display:none}
 .appbar h1{font-size:var(--fs22);font-weight:700;letter-spacing:-.3px;line-height:1.25;color:var(--on-surface)}
 
+/* ================= 底栏 ================= */
+/* 六个目的地重新并排：下钻那一版把五个页藏在概览的一张入口列表后面，
+   概览只剩「门」而没有内容。非选中只留图标、选中才展开名字，
+   六个图标 + 一个名字在 417 CSS px 下放得下（实测药丸 350 ≤ 401）。 */
+.tabs{position:fixed;left:50%;transform:translateX(-50%);z-index:40;
+  bottom:calc(var(--inset-bottom) + 20px);
+  display:flex;align-items:center;gap:4px;padding:6px 8px;
+  background:var(--surface-high);border:1px solid var(--card-line);border-radius:var(--r-2xl);
+  box-shadow:0 2px 16px rgba(0,0,0,.22);max-width:calc(100vw - 16px)}
+.tab{flex:none;display:flex;align-items:center;justify-content:center;min-height:44px;
+  padding:10px 12px;border:0;border-radius:var(--r-full);background:transparent;
+  color:var(--on-variant);font-size:var(--fs14);font-weight:500;letter-spacing:.1px;cursor:pointer;
+  transition:background var(--d2) var(--e-emph),color var(--d2) var(--e-emph),transform var(--d2) var(--e-spring)}
+.tab:active{transform:scale(.92)}
+.tab.is-active{background:var(--secondary-container);color:var(--on-secondary-container)}
+.tab .ico{display:flex;flex:none}
+.tab .ico svg{width:22px;height:22px;display:block;fill:currentColor}
+.tab .lb{max-width:0;overflow:hidden;white-space:nowrap;opacity:0;
+  transition:max-width var(--d3) var(--e-spring),opacity var(--d2) var(--e-emph),margin-left var(--d3) var(--e-spring)}
+.tab.is-active .lb{max-width:140px;opacity:1;margin-left:8px}
+/* 多选时底栏让位：批量条和它占同一条底边，两个浮层叠在一起没法点 */
+body.is-selecting .tabs{display:none}
+
 /* ================= 卡片 ================= */
-/* 整页滚动：底栏已经去掉，底部不再给药丸让位，只留一段普通收尾留白。
+/* 底部要给药丸底栏让位（离屏 20 + 自身 58 + 收尾气口），
    加在这里、不加在 body 上，页面背景才一直铺到屏幕底边 */
-.wrap{padding:0 var(--sp4) calc(32px + var(--inset-bottom));
+.wrap{padding:0 var(--sp4) calc(104px + var(--inset-bottom));
   display:flex;flex-direction:column;gap:var(--sp6);flex:1;
   max-width:var(--measure);margin:0 auto;width:100%}
 /* 面板竖着排，靠 hidden 切换 —— 没有滚动、没有容器高度变化，
    也没有"相邻页第一次进视口才绘制"那一帧。
-   概览自己不是卡片（里面是「入口 + 状态明细」两张卡），所以用 .panel 而不是 .card.panel。 */
+   概览自己不是卡片（里面还套着状态明细卡），所以用 .panel 而不是 .card.panel。 */
 .pages{display:block}
 .panel[hidden]{display:none}
 /* 二级页没有英雄卡，卡片离顶栏补一点气口（概览靠 .wrap 的 gap） */
@@ -453,6 +466,32 @@ button,input,textarea,select{font:inherit;color:inherit}
 .app-tag{flex:none;font-size:var(--fs11);font-weight:700;padding:1px 6px;border-radius:var(--r-full);
   background:var(--surface-high);color:var(--on-variant)}
 .app-tag[data-tone=na]{background:var(--surface-highest);color:var(--on-variant);font-weight:600}
+.app-tag[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
+.app-tag[data-tone=ok]{background:var(--primary-container);color:var(--on-primary-container)}
+/* 名单里的后端语法标签：Tricky 的 ?/! 模式与 TEESim 的用户/UID。
+   用文字而不是图标 —— ? 和 ! 只靠图标说不清各自是哪种证书模式。 */
+.blk-code{font-family:var(--mono);font-size:var(--fs12);font-weight:500;line-height:1.55;word-break:break-word}
+/* 后端配置表单：一列，字段之间松一档；每组底部一个保存按钮 */
+.form{display:flex;flex-direction:column;gap:var(--sp3)}
+.form md-outlined-text-field{width:100%}
+.form .switch-row{margin:0;padding:0}
+.field-label{display:block;font-size:var(--fs12);font-weight:600;color:var(--on-variant);margin-bottom:6px}
+select.sel{appearance:none;-webkit-appearance:none;width:100%;min-height:48px;padding:0 12px;
+  border:1px solid var(--outline);border-radius:var(--r-s);background:var(--surface);color:var(--on-surface);
+  font:inherit;font-size:var(--fs14)}
+select.sel:focus{outline:2px solid var(--primary);outline-offset:-1px}
+.form-actions{display:flex;justify-content:flex-end;margin-top:var(--sp3)}
+.form-sub{font-size:var(--fs12);font-weight:700;color:var(--on-variant);
+  margin-top:var(--sp2);padding-top:var(--sp3);border-top:1px solid var(--outline-variant)}
+.keybox-meta{display:flex;flex-direction:column;gap:6px;margin-bottom:var(--sp3)}
+#keyboxDialog [slot="content"]{width:min(80vw,360px)}
+#keyboxDialog md-outlined-text-field{display:block;width:100%}
+.app-mode{flex:none;border:0;background:transparent;color:var(--on-variant);font:inherit;
+  font-size:var(--fs11);font-weight:600;min-height:28px;padding:0 10px;border-radius:var(--r-full);
+  cursor:pointer;transition:background var(--d1) var(--e-emph),transform var(--d2) var(--e-spring)}
+.app-mode:active{transform:scale(.94)}
+.app-mode[data-tone=warn]{background:var(--secondary-container);color:var(--on-secondary-container)}
+.app-mode[data-tone=ok]{background:var(--primary-container);color:var(--on-primary-container)}
 /* 列表里的 + 是高频动作：不加底色和边框，只在按/悬停时给一层浅底，避免 100 多行
    变成一排按钮。命中区仍由 .icon-add::after 撑到 48。 */
 .icon-add{flex:none;width:32px;height:32px;border:0;border-radius:var(--r-s);background:transparent;
@@ -581,7 +620,10 @@ body.is-selecting #appsBody{padding-bottom:96px}
 .sheet h3{font-size:var(--fs16);font-weight:700;letter-spacing:-.2px;margin-bottom:var(--sp2)}
 .sheet p{font-size:var(--fs14);color:var(--on-variant);line-height:1.55}
 .sheet-actions{display:flex;justify-content:flex-end;gap:var(--sp2);margin-top:var(--sp4)}
-.snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 16px);z-index:70;
+/* 提示条要浮在底栏之上（药丸占掉离屏 20 + 自身 58，实测停稳下沿 812、药丸上沿 822，
+   中间留 10px），否则它一出现就盖住导航。
+   多选时它同样落在批量条上沿之上，两种浮层不用分开算。 */
+.snackbar{position:fixed;left:50%;bottom:calc(var(--inset-bottom) + 88px);z-index:70;
   transform:translate(-50%,140%);opacity:0;max-width:min(92vw,520px);display:flex;align-items:center;gap:var(--sp2);
   padding:var(--sp2) var(--sp4);border-radius:var(--r-l);
   background:var(--surface-bright);color:var(--on-surface);box-shadow:var(--shadow);font-size:var(--fs13);
@@ -622,8 +664,6 @@ md-gb-button[hidden],md-gb-icon-button[hidden],md-outlined-text-field[hidden],
 md-gb-switch[hidden],md-gb-list-item[hidden],md-dialog[hidden]{display:none!important}
 md-gb-button>span{white-space:nowrap}
 md-gb-button svg,md-gb-icon-button svg{width:18px;height:18px;fill:currentColor}
-.appbar .app-back{margin-left:-10px}
-.appbar .app-back svg{width:24px;height:24px}
 .hero-actions md-gb-button{flex:1 1 0;min-width:0}
 .toolbar md-outlined-segmented-button-set{flex:1 1 auto;min-width:0}
 .search-row{display:flex;align-items:center;gap:var(--sp3);margin-top:var(--sp4)}
@@ -644,8 +684,6 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
   border-radius:var(--md-sys-shape-corner-medium)}
 .app-item.is-selected::part(list-item){background:var(--md-sys-color-secondary-container);
   color:var(--md-sys-color-on-secondary-container);border-radius:var(--md-sys-shape-corner-large)}
-.home-menu .menu-title{font-size:var(--fs16);font-weight:600;line-height:1.4}
-.home-menu .menu-chev{font-size:22px;line-height:1;color:var(--on-variant);opacity:.6}
 .switch-row md-gb-switch{flex:none}
 .dlg-title{font-size:var(--fs16);font-weight:700;letter-spacing:-.2px}
 .dlg-text{font-size:var(--fs14);color:var(--on-variant);line-height:1.55}
@@ -1128,9 +1166,9 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 
 <header class="appbar">
   <!-- 顶栏不放配色与深浅开关：颜色一律跟随系统（见「关于 → 取色 / 深浅」）。
-       原先那两个按钮会让人不小心把界面调成和系统不一样的东西。 -->
+       原先那两个按钮会让人不小心把界面调成和系统不一样的东西。
+       也不放返回箭头：六个页都在底栏并列，没有上一级可言。 -->
   <div class="appbar-row">
-    <md-gb-icon-button class="app-back" id="btnBack" size="sm" aria-label="返回上一级" hidden></md-gb-icon-button>
     <div style="min-width:0">
       <h1 id="pageTitle">概览</h1>
     </div>
@@ -1161,30 +1199,6 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 
   <main class="pages" id="pages">
     <section class="panel" id="p-over">
-      <!-- 二级页入口：底栏去掉之后，三个子页都从这里进；返回在顶栏最左。
-           行现在由 md-gb-list 提供，点击/焦点/涟漪都由组件处理。 -->
-      <nav class="card home-menu" aria-label="二级页">
-        <md-gb-list id="homeMenu">
-          <md-gb-list-item data-go="apps">
-            <span class="menu-title">应用列表</span>
-            <span slot="trailing-text" class="menu-chev">›</span>
-          </md-gb-list-item>
-          <md-gb-list-item data-go="log">
-            <span class="menu-title">运行日志</span>
-            <span slot="trailing-text" class="menu-chev">›</span>
-          </md-gb-list-item>
-          <md-gb-list-item data-go="props">
-            <span class="menu-title">系统属性伪装</span>
-            <span slot="trailing-text" class="menu-chev">›</span>
-          </md-gb-list-item>
-          <!-- 四个入口现在走同一条路：都是 goTab + hash，都有返回箭头。
-               「关于」以前是浮层，那一行看着一样、点下去行为不一样。 -->
-          <md-gb-list-item data-go="about">
-            <span class="menu-title">关于与自检</span>
-            <span slot="trailing-text" class="menu-chev">›</span>
-          </md-gb-list-item>
-        </md-gb-list>
-      </nav>
       <section class="card home-card">
         <!-- 不再放「运行状态」小标题：下面两组（同步链路 / 配置与写入）已经是同级小标题，
              叠两层同样式的标签只是多一行、多一层没有信息的层级 -->
@@ -1214,6 +1228,11 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
         <md-gb-button id="btnBulkAdd" color="filled" size="sm" disabled>加入名单</md-gb-button>
         <md-gb-button id="btnBulkExit" color="text" size="sm">取消</md-gb-button>
       </div>
+    </section>
+
+    <section class="card panel" id="p-backend" hidden>
+      <p class="hint" id="backendStat">读取中…</p>
+      <div id="backendBody"></div>
     </section>
 
     <section class="card panel" id="p-log" hidden>
@@ -1274,6 +1293,18 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
 
 </div>
 
+<!-- 底栏：六个目的地并列，一级页不再藏在概览的入口列表后面。
+     未选中只留图标、选中才展开两个字的名字 —— 六个图标 + 一个名字实测 350px，
+     在 417 CSS px 屏（可用 401）放得下，长页名走 aria-label 而不占横向空间。 -->
+<nav class="tabs" aria-label="主导航" id="tabs">
+  <button type="button" class="tab is-active" data-tab="over" data-icon="home" aria-label="概览"><i class="ico"></i><span class="lb">概览</span></button>
+  <button type="button" class="tab" data-tab="apps" data-icon="apps" aria-label="应用列表"><i class="ico"></i><span class="lb">应用</span></button>
+  <button type="button" class="tab" data-tab="backend" data-icon="backend" aria-label="后端与格式"><i class="ico"></i><span class="lb">后端</span></button>
+  <button type="button" class="tab" data-tab="log" data-icon="logs" aria-label="运行日志"><i class="ico"></i><span class="lb">日志</span></button>
+  <button type="button" class="tab" data-tab="props" data-icon="tune" aria-label="系统属性伪装"><i class="ico"></i><span class="lb">属性</span></button>
+  <button type="button" class="tab" data-tab="about" data-icon="info" aria-label="关于与自检"><i class="ico"></i><span class="lb">关于</span></button>
+</nav>
+
 <div class="snackbar" id="snackbar" role="status" aria-live="polite"></div>
 <md-dialog id="dialog">
   <div slot="headline" id="dlgTitle" class="dlg-title"></div>
@@ -1281,6 +1312,33 @@ md-gb-list-item md-gb-icon-button svg{width:16px;height:16px}
   <div slot="actions" class="dlg-actions">
     <md-gb-button id="dlgCancel" color="text" size="sm">取消</md-gb-button>
     <md-gb-button id="dlgOk" color="filled" size="sm">确定</md-gb-button>
+  </div>
+</md-dialog>
+<md-dialog id="modeDialog">
+  <div slot="headline" id="modeTitle" class="dlg-title">证书模式</div>
+  <div slot="content">
+    <md-outlined-segmented-button-set id="modeSeg">
+      <md-outlined-segmented-button data-mode="auto" label="自动"></md-outlined-segmented-button>
+      <md-outlined-segmented-button data-mode="leaf" label="叶证书"></md-outlined-segmented-button>
+      <md-outlined-segmented-button data-mode="generate" label="证书生成"></md-outlined-segmented-button>
+    </md-outlined-segmented-button-set>
+    <p class="hint" id="modeHint" style="margin-top:10px"></p>
+  </div>
+  <div slot="actions" class="dlg-actions">
+    <md-gb-button id="modeCancel" color="text" size="sm">取消</md-gb-button>
+  </div>
+</md-dialog>
+<md-dialog id="keyboxDialog">
+  <div slot="headline" class="dlg-title">替换 keybox</div>
+  <div slot="content">
+    <md-outlined-text-field id="keyboxInput" type="textarea" rows="6"
+      label="keybox.xml 内容"></md-outlined-text-field>
+    <p class="hint" style="margin-top:10px">接受 &lt;AndroidAttestation&gt;…&lt;/AndroidAttestation&gt; 的
+      keybox.xml，上限 128KB；替换前会在后端数据目录留一份 keybox.xml.bak。</p>
+  </div>
+  <div slot="actions" class="dlg-actions">
+    <md-gb-button id="keyboxCancel" color="text" size="sm">取消</md-gb-button>
+    <md-gb-button id="keyboxSave" color="filled" size="sm">替换</md-gb-button>
   </div>
 </md-dialog>
 <div class="busy" id="busy" hidden><div><span class="spin"></span><span id="busyText">处理中</span></div></div>
@@ -1308,7 +1366,7 @@ var ICON = {
   apps: '<path d="M4 4h7v7H4Zm9 0h7v7h-7ZM4 13h7v7H4Zm9 0h7v7h-7Z"/>',
   logs: '<path d="M4 4h16v16H4Zm3 4v2h10V8Zm0 4v2h10v-2Zm0 4v2h6v-2Z"/>',
   tune: '<path d="M4 7h9v2H4Zm11 0h5v2h-5ZM4 15h4v2H4Zm6 0h10v2H10ZM9 5h2v6H9Zm6 8h2v6h-2Z"/>',
-  back: '<path d="M20 11H7.83l5.59-5.59L12 4l-8 8 8 8 1.41-1.41L7.83 13H20Z"/>',
+  backend: '<path d="M12 1 3 5v6c0 5.55 3.84 10.74 9 12 5.16-1.26 9-6.45 9-12V5Z"/>',
   chev: '<path d="M10 6 8.59 7.41 13.17 12l-4.58 4.59L10 18l6-6Z"/>'
 };
 function svg(name, size){
@@ -1499,6 +1557,13 @@ var KV_REQUIRED = {
   'restore-app': 'restored',
   'restore-apps': 'restored',
   'remove-apps': 'removed',
+  'set-mode': 'changed',
+  'teesim-save': 'saved fields',
+  'omk-save-injector': 'saved fields',
+  'omk-save-config': 'saved fields',
+  'tricky-save-patch': 'saved fields',
+  'keybox-save': 'saved keybox_file keybox_bytes',
+  'backend-info': 'backend backend_name target_file target_entries keybox_file keybox_exists',
   'props-apply': 'applied mismatch',
   'props-on': 'props_masking',
   'props-off': 'props_masking',
@@ -1680,10 +1745,10 @@ applyScheme();
    ========================================================= */
 /* 命令层契约：与 webui.sh 的 TAA_API 成对。改任何一侧的输出形状都要同时改这里，
    号不一致界面就拒绝写入（见 call()）。 */
-var EXPECT_API = 2;
+var EXPECT_API = 4;
 /* 会改到设备状态的命令：契约不匹配时一律拒绝。读的命令不拦 —— 出问题时
    最需要的恰恰是还能看到现场。 */
-var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app restore-apps remove-apps clear-log';
+var WRITE_CMDS = 'sync props-apply props-on props-off props-boot-hash restore-app restore-apps remove-apps set-mode teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save clear-log';
 
 /* 图标加载结果：包名 → ok / fail / none。
    "请求到了"和"画出来了"是两层 —— PNG 能不能被管理器的资源处理器喂出来，
@@ -1693,7 +1758,8 @@ var ICON_STATE = {};
 var S = {
   status: {}, env: {}, tab: 'over',
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
-  targets: [], apps: [], targetSet: null,
+  targets: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
+  backendInfo: {},
   appsSrc: 'targets', onlyMissing: false, search: '',
   icons: {}, iconAsked: {}, excluded: {},
   selectMode: false, selected: {}, selectable: [],
@@ -1907,26 +1973,18 @@ function renderOver(){
   box.textContent = '';
   var ino = !env.inotify_mode ? '读取中'
     : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
-  var have = !!S.loaded.lists;
 
+  /* 一屏只留一份事实：日志字节数在日志页、属性开关在属性页、目标语法与配置
+     在后端页。概览只回答「它还在跑吗、写进去没有」。 */
   box.appendChild(grp('运行', [
     blk('后端', st.backend_name || '—', st.conflict === '1' ? 'bad' : 'ok'),
     blk('事件监听', ino, !env.inotify_mode ? 'na' : (env.inotify_mode === 'none' ? 'bad' : 'ok')),
     blk('守护进程', st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个',
-      st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num')
-  ]));
-
-  box.appendChild(grp('目标', [
+      st.daemon_alive === '0' ? 'bad' : 'ok', '', 'blk-num'),
     blk('目标文件', (st.target_exists === '1' ? '存在' : '不存在') +
       (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
-      st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad'),
-    blk('上次写入', timeLabel(st.target_mtime))
-  ]));
-
-  box.appendChild(grp('日志与属性', [
-    blk('日志缓冲', bytesLabel(st.log_bytes), null, (st.log_lines || 0) + ' 行', 'blk-num'),
-    blk('属性伪装', st.props_masking === 'off' ? '已关闭' : '开启',
-      st.props_masking === 'off' ? 'na' : 'ok')
+      st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad',
+      '上次写入 ' + timeLabel(st.target_mtime))
   ]));
 }
 
@@ -1940,6 +1998,44 @@ function targetSetOf(){
     S.targets.forEach(function (p){ S.targetSet[p] = 1; });
   }
   return S.targetSet;
+}
+/* 目标条目不是纯包名：Tricky 带 ?/!，TEESim 带 @用户 / uid:。
+   token 集合用于名单勾选；base 集合用于判断「这个应用是否已纳入」。 */
+function baseOfToken(tok){
+  var m = S.targetMeta[tok];
+  if (m && typeof m.base === 'string' && m.base) return m.base;
+  var t = String(tok);
+  if (/^uid:/.test(t)) return '';
+  return t.replace(/[?!]$/, '').replace(/@[0-9]+$/, '');
+}
+function targetBaseSetOf(){
+  if (!S.targetBaseSet) {
+    S.targetBaseSet = {};
+    S.targets.forEach(function (t){
+      var b = baseOfToken(t);
+      if (b) S.targetBaseSet[b] = 1;
+    });
+  }
+  return S.targetBaseSet;
+}
+function metaOf(tok){
+  return S.targetMeta[tok] || { base: baseOfToken(tok), kind: 'plain', detail: '' };
+}
+var MODE_LABEL = { auto: '自动', leaf: '叶证书', generate: '证书生成' };
+var MODE_TONE = { auto: 'na', leaf: 'warn', generate: 'ok' };
+/* 行尾的模式按钮：点开三选一。用文字而不是图标 —— ? 和 ! 只靠图标说不清
+   各自是哪种证书模式，而上游把它们当作两个真实的分支。 */
+function modeButton(base, kind){
+  /* 名单可能有 120+ 行：这里用轻量原生按钮，不再为每一行造一个 Lit 组件 */
+  var b = el('button', 'app-mode');
+  b.type = 'button';
+  b.setAttribute('slot', 'trailing-text');
+  b.textContent = MODE_LABEL[kind] || MODE_LABEL.auto;
+  b.setAttribute('data-tone', MODE_TONE[kind] || 'na');
+  b.title = '点按切换证书模式（Tricky Store OSS）';
+  b.setAttribute('aria-label', base + ' 的证书模式：' + (MODE_LABEL[kind] || '自动'));
+  b.addEventListener('click', function (e){ e.stopPropagation(); openModePicker(base, kind); });
+  return b;
 }
 function monogram(s){
   var t = String(s || '');
@@ -1974,18 +2070,20 @@ function appAvatar(pkg, ic){
 }
 function renderApps(){
   var srcList = S.appsSrc === 'targets' ? S.targets : S.apps;
-  var inTarget = targetSetOf();
+  var tokenSet = targetSetOf();
+  var baseSet = targetBaseSetOf();
   var list = srcList;
-  if (S.onlyMissing && S.appsSrc === 'apps') list = list.filter(function (p){ return !inTarget[p]; });
+  if (S.onlyMissing && S.appsSrc === 'apps') list = list.filter(function (p){ return !baseSet[p]; });
   if (S.search) {
     var q = S.search.toLowerCase();
     /* 现在列表上显示的是应用名，搜索只匹配包名会让人搜不到眼前看到的东西 */
     list = list.filter(function (p){
-      return p.toLowerCase().indexOf(q) >= 0 ||
-        (S.icons[p] && S.icons[p].label.toLowerCase().indexOf(q) >= 0);
+      var bp = baseOfToken(p);
+      return p.toLowerCase().indexOf(q) >= 0 || bp.toLowerCase().indexOf(q) >= 0 ||
+        (S.icons[bp] && S.icons[bp].label.toLowerCase().indexOf(q) >= 0);
     });
   }
-  var missing = S.apps.filter(function (p){ return !inTarget[p]; }).length;
+  var missing = S.apps.filter(function (p){ return !baseSet[p]; }).length;
   var excl = Object.keys(S.excluded).length;
   var canRestore = hasCmd('restore-app');
   var canBatchAdd = hasCmd('restore-apps');
@@ -1998,7 +2096,7 @@ function renderApps(){
   }
   /* 批量模式只列当前视图中可操作的行：名单视图列可移出的，已安装视图列可加入的。 */
   if (S.selectMode) {
-    list = list.filter(function (p){ return S.appsSrc === 'targets' ? inTarget[p] : !inTarget[p]; });
+    list = list.filter(function (p){ return S.appsSrc === 'targets' ? tokenSet[p] : !baseSet[p]; });
   }
   S.selectable = S.selectMode ? list : [];
   if (S.selectMode) {
@@ -2006,7 +2104,7 @@ function renderApps(){
     Object.keys(S.selected).forEach(function (p){
       var keep = S.appsSrc === 'targets'
         ? S.targets.indexOf(p) >= 0
-        : (S.apps.indexOf(p) >= 0 && !inTarget[p]);
+        : (S.apps.indexOf(p) >= 0 && !baseSet[p]);
       if (keep) keepSel[p] = 1;
     });
     S.selected = keepSel;
@@ -2020,10 +2118,21 @@ function renderApps(){
   if (sig === S.appsSig) return;
   S.appsSig = sig;
   var parts;
+  var kinds = {};
+  if (S.appsSrc === 'targets') S.targets.forEach(function (t){
+    var k = metaOf(t).kind; kinds[k] = (kinds[k] || 0) + 1;
+  });
   if (S.selectMode) {
     parts = [(S.appsSrc === 'targets' ? '可移出 ' : '可加入 ') + list.length];
   } else if (S.appsSrc === 'targets') {
     parts = ['生效 ' + S.targets.length];
+    if (S.status.backend === 'tricky') {
+      if (kinds.leaf) parts.push('叶证书 ' + kinds.leaf);
+      if (kinds.generate) parts.push('生成 ' + kinds.generate);
+    } else if (S.status.backend === 'teesim') {
+      if (kinds.user) parts.push('按用户 ' + kinds.user);
+      if (kinds.uid) parts.push('UID ' + kinds.uid);
+    }
     if (S.search) parts.push('显示 ' + list.length);
   } else {
     parts = ['已安装 ' + S.apps.length];
@@ -2058,42 +2167,60 @@ function renderApps(){
   var frag = document.createDocumentFragment();
   var shown = Math.min(list.length, 800);
   for (var i = 0; i < shown; i++) {
-    var pkg = list[i];
-    var ic = S.icons[pkg];
-    /* 应用行用 static 列表项：行内还要放 + 按钮，不能再套一层内部 <button>。 */
+    var tok = list[i];
+    var meta = metaOf(tok);
+    var base = meta.base || tok;
+    var ic = S.icons[base];
+    /* 应用行用 static 列表项：行内还要放模式按钮/ + 按钮，不能再套一层内部 <button> */
     var row = document.createElement('md-gb-list-item');
     row.className = 'app-item';
     row.setAttribute('static', '');
     row.nonInteractive = true;
-    row.dataset.pkg = pkg;
-    row.title = pkg;
-    var av = appAvatar(pkg, ic);
+    row.dataset.pkg = tok;
+    row.title = tok;
+    var av;
+    if (meta.kind === 'uid') {
+      av = el('span', 'app-ic', '#');
+    } else {
+      av = appAvatar(base, ic);
+    }
     av.setAttribute('slot', 'avatar');
     row.appendChild(av);
     var nm;
-    if (ic && ic.label) {
+    if (meta.kind === 'uid') {
+      nm = el('span', 'app-name is-mono', 'UID ' + (meta.detail || ''));
+      nm.title = tok;
+    } else if (ic && ic.label) {
       /* 有显示名就只显示名字：每行再挂一排包名等于把文字量翻倍，
          包名在 title 里，搜索也仍然匹配包名。 */
       nm = el('span', 'app-name', ic.label);
-      nm.title = pkg;
+      nm.title = tok;
     } else {
-      nm = el('span', 'app-name is-mono', pkg);
-      nm.title = pkg;
+      nm = el('span', 'app-name is-mono', base);
+      nm.title = tok;
     }
     row.appendChild(nm);
     if (S.selectMode) {
       var sb = el('span', 'selbox');
       sb.innerHTML = svg('check');
-      sb.setAttribute('data-on', S.selected[pkg] ? '1' : '0');
+      sb.setAttribute('data-on', S.selected[tok] ? '1' : '0');
       sb.setAttribute('slot', 'trailing');
       row.classList.add('is-selectable');
-      row.classList.toggle('is-selected', !!S.selected[pkg]);
-      row.setAttribute('aria-selected', S.selected[pkg] ? 'true' : 'false');
+      row.classList.toggle('is-selected', !!S.selected[tok]);
+      row.setAttribute('aria-selected', S.selected[tok] ? 'true' : 'false');
       row.appendChild(sb);
-    } else if (S.appsSrc === 'apps' && !inTarget[pkg]) {
+    } else if (S.appsSrc === 'targets' && S.status.backend === 'tricky' && meta.kind !== 'plain') {
+      row.appendChild(modeButton(base, meta.kind));
+    } else if (S.appsSrc === 'targets' && meta.kind === 'user') {
+      var ut = el('span', 'app-tag', '用户 ' + meta.detail);
+      ut.setAttribute('data-tone', 'warn');
+      ut.setAttribute('slot', 'trailing-text');
+      ut.title = '只针对用户 ' + meta.detail + ' 的条目';
+      row.appendChild(ut);
+    } else if (S.appsSrc === 'apps' && !baseSet[tok]) {
       /* 未纳入不挂标签：整屏 100 多个红标签只会变成噪音，+ 本身已经说明它不在名单里。
          只有「已排除」保留中性标签 —— 那是你主动删的，值得说明。 */
-      var isExcluded = !!S.excluded[pkg];
+      var isExcluded = !!S.excluded[tok];
       if (isExcluded) {
         var tg = el('span', 'app-tag', '已排除');
         tg.setAttribute('data-tone', 'na');
@@ -2102,7 +2229,7 @@ function renderApps(){
           (canRestore ? '；点右侧的 + 可以立刻加回' : '');
         row.appendChild(tg);
       }
-      if (canRestore) row.appendChild(restoreButton(pkg, isExcluded));
+      if (canRestore) row.appendChild(restoreButton(tok, isExcluded));
     }
     frag.appendChild(row);
   }
@@ -2114,7 +2241,8 @@ function renderApps(){
      后面 82 条永远是首字块 —— 文件系统里躺着 PNG 也没用，页面只认这一次命令
      返回的行（"一大堆应用没图标"就是这么来的）。分批由 loadIcons 里的
      ICON_BATCH 负责；实测 122 个包整趟 414ms，放空闲里跑不抢首帧。 */
-  var pkgs = list;
+  var pkgs = [];
+  list.forEach(function (t){ var bp = baseOfToken(t); if (bp && pkgs.indexOf(bp) < 0) pkgs.push(bp); });
   var kick = function (){ ensureIcons(pkgs); };
   if (window.requestIdleCallback) requestIdleCallback(kick, { timeout: 800 });
   else setTimeout(kick, 60);
@@ -2428,7 +2556,7 @@ function renderAbout(){
   var st = S.status, env = S.env;
   var about = document.getElementById('aboutBody');
   about.textContent = '';
-  about.appendChild(grp('界面自检', [
+  about.appendChild(grp('界面', [
     blk('桥接接口', BRIDGE_LABEL + ' · ' + BRIDGE_KIND, BRIDGE ? 'ok' : 'bad'),
     blk('命令层契约', S.contract.checked
         ? ('api ' + (S.contract.api === null ? '读不到' : S.contract.api)
@@ -2446,18 +2574,7 @@ function renderAbout(){
     blk('工具可用性', [
       env.awk ? 'awk' : '无 awk', env.base64 ? 'base64' : '无 base64',
       env.resetprop ? 'resetprop' : '无 resetprop'
-    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn')
-  ]));
-  about.appendChild(grp('设备与后端', [
-    blk('设备', [env.brand, env.device, env.android ? 'Android ' + env.android : '']
-      .filter(Boolean).join(' · '), null),
-    blk('后端模块', st.conflict === '1' ? '多个同时启用'
-        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk')
-            ? (st.backend_name || st.backend || '已启用') : '无已启用后端'),
-      st.conflict === '1' ? 'bad'
-        : ((st.teesim_enabled === '1' || st.tricky_enabled === '1' || st.backend === 'omk') ? 'ok' : 'bad'))
-  ]));
-  about.appendChild(grp('外观', [
+    ].join(' / '), env.awk === '1' && env.base64 === '1' ? 'ok' : 'warn'),
     blk('取色', THEME.frroOk ? '系统 overlay'
         : (THEME.seedSrc !== 'none' ? '系统设置' : '平台默认'),
       (THEME.frroOk || THEME.seedSrc !== 'none') ? 'ok' : 'na'),
@@ -2466,8 +2583,10 @@ function renderAbout(){
     blk('生效值', THEME.applied || '—')
   ]));
 
+  /* 「后端模块」那一格删了：概览的后端与后端页的标题都在说同一件事。 */
   var paths = el('div', 'paths');
-  [['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
+  [['设备', [env.brand, env.device, env.android ? 'Android ' + env.android : ''].filter(Boolean).join(' · ')],
+   ['模块目录', MODDIR], ['命令层', env.webui_sh || (MODDIR + '/webui.sh')],
    ['数据目录', st.data_dir || '—'], ['目标文件', st.target_file || '—'],
    ['日志文件', st.log_file || '—']]
    .forEach(function (pair){
@@ -2479,10 +2598,354 @@ function renderAbout(){
     paths.appendChild(row);
   });
   var pathGrp = el('div', 'grp');
-  pathGrp.appendChild(el('h3', 'grp-t', '路径'));
+  pathGrp.appendChild(el('h3', 'grp-t', '设备与路径'));
   pathGrp.appendChild(paths);
   about.appendChild(pathGrp);
 
+}
+
+/* ---------- 后端与格式 ---------- */
+/* 三个后端的名单语法与配置字段都不一样。这一页：
+   · 按当前后端渲染可编辑表单（只提交改动过的字段）
+   · 走各自的写命令（白名单 + 类型校验 + 写前备份）
+   · keybox 用粘贴对话框替换（WebView 不一定有文件选择器，粘贴最可靠）
+   · 名单仍在「应用列表」维护，不在这里写 apps / scoop。 */
+function onoff(v){ return v === 'true' ? '开' : v === 'false' ? '关' : '—'; }
+/* 上游的配置值原样展示会给出一屏 patch / generation / auto / device_default；
+   只翻译有确定含义的词，日期模板（YYYY-MM-05）保持原样。 */
+var VALUE_LABEL = { auto: '自动', no: '不报告', device_default: '设备默认', prop: '系统属性',
+  today: '今天', harvested: '设备采集', system_property: '系统属性', patch: '修补', generation: '生成' };
+function valLabel(v){ return v === undefined || v === null || v === '' ? '—' : (VALUE_LABEL[v] || v); }
+
+var LOG_LEVELS = [['off', '关闭'], ['error', '错误'], ['warn', '警告'], ['info', '信息'],
+  ['debug', '调试'], ['trace', '跟踪']];
+var INTERCEPT_LABELS = {
+  get_security_level: '查询安全等级',
+  get_key_entry: '获取密钥条目',
+  update_subcomponent: '更新子组件',
+  list_entries: '列出条目',
+  delete_key: '删除密钥',
+  grant: '授权',
+  ungrant: '取消授权',
+  get_number_of_entries: '条目数量',
+  list_entries_batched: '批量列出',
+  get_supplementary_attestation_info: '补充证明信息'
+};
+function interceptFields(){
+  return Object.keys(INTERCEPT_LABELS).map(function (k){
+    return { key: 'intercept_' + k, label: INTERCEPT_LABELS[k],
+      from: 'intercept_' + k, type: 'switch' };
+  });
+}
+
+/* 一组 = 一个文件 = 一个保存按钮：改哪个文件就点哪一组 */
+var TEESIM_PROFILE_FIELDS = [
+  { key: 'mode', label: '模式', from: 'default_mode', type: 'seg',
+    options: [['patch', '修补'], ['generation', '生成']] },
+  { key: 'keybox', label: '密钥箱文件名', from: 'default_keybox', type: 'text',
+    hint: function (bi){ return bi.keybox_files ? ('目录内：' + bi.keybox_files) : 'TEE Simulator 数据目录内的 *.xml'; } },
+  { key: 'patch_system', label: 'system 补丁', from: 'default_patch_system', type: 'text',
+    placeholder: 'today / YYYY-MM-05 / no' },
+  { key: 'patch_vendor', label: 'vendor 补丁', from: 'default_patch_vendor', type: 'text',
+    placeholder: 'YYYY-MM-05 / no' },
+  { key: 'patch_boot', label: 'boot 补丁', from: 'default_patch_boot', type: 'text',
+    placeholder: 'YYYY-MM-05 / no' },
+  { key: 'os_version', label: 'OS 版本', from: 'default_os_version', type: 'text',
+    placeholder: 'harvested / system_property / 16' },
+  { key: 'auto_include', label: '自动纳入新应用', from: 'default_auto_include', type: 'switch' }
+];
+var TEESIM_IDENTITY_FIELDS = [
+  { key: 'brand', label: '品牌', from: 'default_brand', type: 'text', sub: '设备身份' },
+  { key: 'device', label: '设备', from: 'default_device', type: 'text' },
+  { key: 'product', label: '产品', from: 'default_product', type: 'text' },
+  { key: 'manufacturer', label: '制造商', from: 'default_manufacturer', type: 'text' },
+  { key: 'model', label: '型号', from: 'default_model', type: 'text' },
+  { key: 'serial', label: '序列号', from: 'default_serial', type: 'text' },
+  { key: 'imei', label: 'IMEI', from: 'default_imei', type: 'text' },
+  { key: 'meid', label: 'MEID', from: 'default_meid', type: 'text' },
+  { key: 'imei2', label: 'IMEI2', from: 'default_imei2', type: 'text' }
+];
+var OMK_INJECTOR_FIELDS = [
+  { key: 'inj_main_enabled', label: '启用 injector', from: 'injector_main_enabled', type: 'switch' },
+  { key: 'inj_log_level', label: '日志级别', from: 'injector_log_level', type: 'select', options: LOG_LEVELS },
+  { key: 'filter_enabled', label: '启用过滤器', from: 'filter_enabled', type: 'switch' },
+  { key: 'filter_block_android', label: '拦截 android 包', from: 'filter_block_android', type: 'switch' },
+  { key: 'filter_allow_unknown', label: '允许未知包', from: 'filter_allow_unknown', type: 'switch' },
+  { key: 'filter_deny', label: '拒绝包名（逗号分隔）', from: 'filter_deny_list', type: 'text',
+    hint: '留空表示不拒绝；只接受 Android 包名' }
+].concat(interceptFields());
+var OMK_CONFIG_FIELDS = [
+  { key: 'cfg_log_level', label: '日志级别', from: 'config_log_level', type: 'select', options: LOG_LEVELS },
+  { key: 'cfg_force_skip_biometric', label: '跳过生物识别校验（不推荐）',
+    from: 'cfg_force_skip_biometric', type: 'switch' },
+  { key: 'cfg_retire_stale_keys', label: '淘汰旧 keybox 绑定的密钥',
+    from: 'cfg_retire_stale_keys', type: 'switch' },
+  { key: 'trust_os_version', label: 'OS 版本', from: 'trust_os_version', type: 'text',
+    placeholder: 'auto / 16' },
+  { key: 'trust_security_patch', label: '安全补丁', from: 'trust_security_patch', type: 'text',
+    placeholder: 'auto / latest / YYYY-MM-DD' },
+  { key: 'trust_os_patchlevel', label: '系统补丁级别', from: 'trust_os_patchlevel', type: 'text',
+    placeholder: 'auto / latest / YYYY-MM-DD' },
+  { key: 'trust_vendor_patchlevel', label: 'vendor 补丁级别', from: 'trust_vendor_patchlevel', type: 'text',
+    placeholder: 'auto / latest / YYYY-MM-DD' },
+  { key: 'trust_boot_patchlevel', label: 'boot 补丁级别', from: 'trust_boot_patchlevel', type: 'text',
+    placeholder: 'auto / latest / YYYY-MM-DD' },
+  { key: 'trust_vb_key', label: 'vb_key', from: 'trust_vb_key', type: 'text',
+    placeholder: 'auto / random / 64 位十六进制' },
+  { key: 'trust_vb_hash', label: 'vb_hash', from: 'trust_vb_hash', type: 'text',
+    placeholder: 'auto / random / 64 位十六进制' },
+  { key: 'trust_verified_boot', label: '验证启动状态', from: 'trust_verified_boot', type: 'switch' },
+  { key: 'trust_device_locked', label: 'BL 锁定', from: 'trust_device_locked', type: 'switch' },
+  { key: 'dev_brand', label: '品牌', from: 'dev_brand', type: 'text', sub: '设备身份' },
+  { key: 'dev_device', label: '设备', from: 'dev_device', type: 'text' },
+  { key: 'dev_product', label: '产品', from: 'dev_product', type: 'text' },
+  { key: 'dev_manufacturer', label: '制造商', from: 'dev_manufacturer', type: 'text' },
+  { key: 'dev_model', label: '型号', from: 'dev_model', type: 'text' },
+  { key: 'dev_serial', label: '序列号', from: 'dev_serial', type: 'text' },
+  { key: 'dev_imei', label: 'IMEI', from: 'dev_imei', type: 'text' },
+  { key: 'dev_imei2', label: 'IMEI2', from: 'dev_imei2', type: 'text' },
+  { key: 'dev_meid', label: 'MEID', from: 'dev_meid', type: 'text' },
+  { key: 'dev_override_telephony', label: '覆盖电话属性', from: 'dev_override_telephony', type: 'switch' }
+];
+var TRICKY_PATCH_FIELDS = [
+  { key: 'patch_system', label: 'system', from: 'patch_system', type: 'text',
+    placeholder: 'YYYY-MM-05 / no / device_default' },
+  { key: 'patch_vendor', label: 'vendor', from: 'patch_vendor', type: 'text',
+    placeholder: 'YYYY-MM-05 / no / device_default' },
+  { key: 'patch_boot', label: 'boot', from: 'patch_boot', type: 'text',
+    placeholder: 'YYYY-MM-05 / no / device_default' },
+  { key: 'patch_all', label: 'all（三项共用）', from: 'patch_all', type: 'text',
+    placeholder: 'YYYY-MM-05 / no / 20241101' }
+];
+
+var BACKEND_FORMS = {
+  teesim: [
+    { title: 'config.json · default profile', cmd: 'teesim-save',
+      note: '，TEE Simulator 会自动重载',
+      fields: TEESIM_PROFILE_FIELDS.concat(TEESIM_IDENTITY_FIELDS) }
+  ],
+  tricky: [
+    { title: 'security_patch.txt · 全局', cmd: 'tricky-save-patch',
+      note: '，Tricky 会自动重载补丁表', fields: TRICKY_PATCH_FIELDS }
+  ],
+  omk: [
+    { title: 'injector.toml', cmd: 'omk-save-injector',
+      note: '，OMK 会重载 injector', fields: OMK_INJECTOR_FIELDS },
+    { title: 'config.toml', cmd: 'omk-save-config',
+      note: '，OMK 会重启 keymint', fields: OMK_CONFIG_FIELDS }
+  ]
+};
+
+function bformText(f, bi){
+  var wrap = el('div');
+  var tf = document.createElement('md-outlined-text-field');
+  tf.setAttribute('label', f.label);
+  tf.setAttribute('data-key', f.key);
+  if (f.placeholder) tf.setAttribute('placeholder', f.placeholder);
+  var h = typeof f.hint === 'function' ? f.hint(bi) : f.hint;
+  if (h) tf.setAttribute('supporting-text', h);
+  tf.value = bi[f.from] === undefined || bi[f.from] === null ? '' : String(bi[f.from]);
+  wrap.appendChild(tf);
+  return wrap;
+}
+function bformSwitch(f, bi){
+  var row = el('div', 'switch-row');
+  row.appendChild(el('span', 'txt', f.label));
+  var sw = document.createElement('md-gb-switch');
+  sw.setAttribute('data-key', f.key);
+  sw.selected = String(bi[f.from]) === 'true';
+  row.appendChild(sw);
+  return row;
+}
+function bformSeg(f, bi){
+  var wrap = el('div');
+  wrap.appendChild(el('span', 'field-label', f.label));
+  var set = document.createElement('md-outlined-segmented-button-set');
+  set.setAttribute('data-key', f.key);
+  f.options.forEach(function (o){
+    var b = document.createElement('md-outlined-segmented-button');
+    b.dataset.val = o[0];
+    b.setAttribute('label', o[1]);
+    b.selected = String(bi[f.from] || '') === o[0];
+    set.appendChild(b);
+  });
+  wrap.appendChild(set);
+  return wrap;
+}
+function bformSelect(f, bi){
+  var wrap = el('div');
+  wrap.appendChild(el('span', 'field-label', f.label));
+  var sel = document.createElement('select');
+  sel.className = 'sel';
+  sel.setAttribute('data-key', f.key);
+  f.options.forEach(function (o){
+    var op = el('option', null, o[1]);
+    op.value = o[0];
+    sel.appendChild(op);
+  });
+  sel.value = bi[f.from] || f.options[0][0];
+  wrap.appendChild(sel);
+  return wrap;
+}
+function collectBackendForm(form, spec, bi){
+  var payload = [];
+  spec.fields.forEach(function (f){
+    var node = form.querySelector('[data-key="' + f.key + '"]');
+    if (!node) return;
+    var val, initial = bi[f.from] === undefined || bi[f.from] === null ? '' : String(bi[f.from]);
+    if (f.type === 'switch') {
+      val = node.selected ? 'true' : 'false';
+      initial = initial === 'true' ? 'true' : 'false';
+    } else if (f.type === 'seg') {
+      var hit = null;
+      node.querySelectorAll('md-outlined-segmented-button').forEach(function (b){ if (b.selected) hit = b; });
+      if (!hit) return;
+      val = hit.dataset.val;
+    } else {
+      val = node.value;
+    }
+    if (String(val) !== String(initial)) payload.push(f.key + '=' + b64(String(val)));
+  });
+  return payload;
+}
+function saveBackendForm(cmd, payload, noteText){
+  if (!payload.length) { snackbar('没有改动'); return; }
+  busy(true, '保存中');
+  var note = { text: '', tone: 'info' };
+  call(cmd, b64(payload.join('\n'))).then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.saved === '1'
+        ? ('已保存 ' + (kv.fields || payload.length) + ' 项' + (noteText || ''))
+        : '没有实际改动';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
+}
+function buildBackendForm(spec, bi, box){
+  var g = el('div', 'grp');
+  g.appendChild(el('h3', 'grp-t', spec.title));
+  var form = el('div', 'form');
+  spec.fields.forEach(function (f){
+    if (f.sub) form.appendChild(el('div', 'form-sub', f.sub));
+    form.appendChild(f.type === 'switch' ? bformSwitch(f, bi)
+      : f.type === 'seg' ? bformSeg(f, bi)
+      : f.type === 'select' ? bformSelect(f, bi)
+      : bformText(f, bi));
+  });
+  g.appendChild(form);
+  var actions = el('div', 'form-actions');
+  var btn = document.createElement('md-gb-button');
+  btn.setAttribute('color', 'filled');
+  btn.setAttribute('size', 'sm');
+  btn.textContent = '保存';
+  btn.addEventListener('click', function (){
+    saveBackendForm(spec.cmd, collectBackendForm(form, spec, bi), spec.note);
+  });
+  actions.appendChild(btn);
+  g.appendChild(actions);
+  box.appendChild(g);
+}
+function openKeyboxDialog(){
+  var d = document.getElementById('keyboxDialog');
+  var input = document.getElementById('keyboxInput');
+  input.value = '';
+  d.returnValue = '';
+  d.show();
+}
+function saveKeybox(){
+  var d = document.getElementById('keyboxDialog');
+  var input = document.getElementById('keyboxInput');
+  var xml = String(input.value || '');
+  if (!xml) { snackbar('keybox 内容为空', 'bad'); return; }
+  if (xml.length > 180000) { snackbar('keybox 过大（上限约 128KB）', 'bad'); return; }
+  if (xml.indexOf('<AndroidAttestation') < 0 || xml.indexOf('</AndroidAttestation>') < 0) {
+    snackbar('不是 AndroidAttestation keybox.xml', 'bad');
+    return;
+  }
+  busy(true, '替换 keybox');
+  var note = { text: '', tone: 'info' };
+  call('keybox-save', b64(xml)).then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = 'keybox 已替换（' + bytesLabel(kv.keybox_bytes) + '）';
+      note.tone = 'ok';
+      try { d.close(); } catch (e) {}
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
+}
+function buildKeyboxGroup(bi, box){
+  var g = el('div', 'grp');
+  g.appendChild(el('h3', 'grp-t', 'keybox'));
+  var meta = el('div', 'keybox-meta');
+  var rows = [
+    ['路径', bi.keybox_file || '—'],
+    ['大小', bi.keybox_exists === '1' ? bytesLabel(bi.keybox_bytes) : '缺失'],
+    ['哈希', bi.keybox_hash ? (String(bi.keybox_hash).slice(0, 20) + '…') : '—']
+  ];
+  rows.forEach(function (pair){
+    var row = el('div', 'path-row');
+    row.appendChild(el('span', 'path-k', pair[0]));
+    var v = el('span', 'path-v mono', pair[1]);
+    v.title = String(pair[1]);
+    row.appendChild(v);
+    meta.appendChild(row);
+  });
+  if (bi.keybox_files) meta.appendChild(el('p', 'hint', 'TEE Simulator 目录内：' + bi.keybox_files));
+  g.appendChild(meta);
+  var actions = el('div', 'form-actions');
+  var btn = document.createElement('md-gb-button');
+  btn.setAttribute('color', 'tonal');
+  btn.setAttribute('size', 'sm');
+  btn.textContent = '粘贴替换 keybox.xml';
+  btn.addEventListener('click', openKeyboxDialog);
+  actions.appendChild(btn);
+  g.appendChild(actions);
+  box.appendChild(g);
+}
+
+function renderBackend(){
+  var bi = S.backendInfo || {};
+  var box = document.getElementById('backendBody');
+  var stat = document.getElementById('backendStat');
+  box.textContent = '';
+  if (!bi.backend) {
+    stat.textContent = '读不到后端配置';
+    box.appendChild(el('div', 'empty', '命令层没有返回 backend-info，或当前没有已启用的后端。'));
+    return;
+  }
+  var b = bi.backend;
+  var kinds = {};
+  S.targets.forEach(function (t){
+    var k = metaOf(t).kind;
+    kinds[k] = (kinds[k] || 0) + 1;
+  });
+  stat.textContent = (bi.backend_name || b) + (bi.module_version ? ' · ' + bi.module_version : '') + ' · 可编辑';
+
+  var fmtHint;
+  if (b === 'tricky') {
+    fmtHint = '条目：pkg / pkg? / pkg!（? 叶证书 · ! 证书生成 · # 后为注释） · 生效 '
+      + S.targets.length + '（自动 ' + (kinds.auto || 0) + ' · 叶证书 ' + (kinds.leaf || 0)
+      + ' · 生成 ' + (kinds.generate || 0) + '）';
+  } else if (b === 'teesim') {
+    fmtHint = '条目：pkg / pkg@用户 / uid:数字（default profile 的 apps） · 生效 '
+      + S.targets.length + '（普通 ' + (kinds.plain || 0) + ' · 用户 ' + (kinds.user || 0)
+      + ' · UID ' + (kinds.uid || 0) + '）';
+  } else {
+    fmtHint = '条目：scoop 只接受包名 · 生效 ' + S.targets.length;
+  }
+  box.appendChild(el('p', 'hint', fmtHint));
+
+  (BACKEND_FORMS[b] || []).forEach(function (spec){ buildBackendForm(spec, bi, box); });
+  buildKeyboxGroup(bi, box);
+
+  box.appendChild(el('p', 'hint',
+    '目标文件：' + orDash(bi.target_file) + ' · 只提交改动过的字段，写前备份到后端数据目录。'
+    + '名单与 Tricky 的模式在「应用列表」维护。'));
 }
 
 /* 两份列表一起取：概览的数字、应用页的对照全靠它们，取一次各页共用 */
@@ -2504,11 +2967,35 @@ function loadExcluded(){
   }, function (){ return false; });
 }
 
+/* 后端配置摘要：只读。命令层没有这条命令时（旧版）整页显示不可用，不报错。 */
+function loadBackendInfo(){
+  if (S.contract.checked && !hasCmd('backend-info')) {
+    S.backendInfo = {}; S.loaded.backend = true;
+    return Promise.resolve(false);
+  }
+  return call('backend-info').then(function (r){
+    S.backendInfo = r.ok ? parseKV(r.text) : {};
+    S.loaded.backend = true;
+    return r.ok;
+  }, function (){
+    S.backendInfo = {};
+    S.loaded.backend = true;
+    return false;
+  });
+}
+
 function loadLists(){
-  return Promise.all([call('targets'), call('apps')]).then(function (rs){
+  var meta = hasCmd('target-meta') ? call('target-meta') : Promise.resolve({ ok: false, text: '' });
+  return Promise.all([call('targets'), meta, call('apps')]).then(function (rs){
     S.targets = rs[0].ok ? split(rs[0].text) : [];
-    S.apps = rs[1].ok ? split(rs[1].text) : [];
+    S.targetMeta = {};
+    if (rs[1].ok) split(rs[1].text).forEach(function (line){
+      var f = line.split('\t');
+      if (f.length >= 3 && f[0]) S.targetMeta[f[0]] = { base: f[1] || '', kind: f[2] || 'plain', detail: f[3] || '' };
+    });
+    S.apps = rs[2].ok ? split(rs[2].text) : [];
     S.targetSet = null;                                   // 目标集合要重算
+    S.targetBaseSet = null;
     if (!rs[0].ok && rs[0].code !== 1) snackbar(failText(rs[0]), 'bad');
     /* 排除名单跟列表一起取；取不到就当空（界面退化成只显示「未生效」） */
     return loadExcluded().then(function (){ return rs; });
@@ -2595,7 +3082,10 @@ function ensure(tab){
   if (S.loaded[need]) return Promise.resolve(false);
   if (inflight[need]) return inflight[need];
 
-  var p = need === 'lists' ? loadLists() : (need === 'log' ? loadLog() : loadProps());
+  var p = need === 'lists' ? loadLists()
+    : need === 'log' ? loadLog()
+    : need === 'backend' ? loadBackendInfo()
+    : loadProps();
   inflight[need] = p.then(function (r){ S.loaded[need] = true; inflight[need] = null; return true; },
                          function (e){ inflight[need] = null; throw e; });
   return inflight[need];
@@ -2605,6 +3095,7 @@ function renderAll(){
   renderHero();
   if (S.tab === 'over') renderOver();
   else if (S.tab === 'apps') renderApps();
+  else if (S.tab === 'backend') renderBackend();
   else if (S.tab === 'log') renderLog();
   else if (S.tab === 'props') renderProps();
   else if (S.tab === 'about') renderAbout();
@@ -2624,7 +3115,7 @@ function runChain(withBase, quiet){
     S.iconAsked = {};                               // 图标问过的名单也重开：新装的应用该被认出来
     /* 列表随基础信息一起取：英雄卡的三个数字在任何一页都要显示，
        以前只按当前页懒加载，进「日志」页时英雄卡就是一片 —，看着像坏了。 */
-    chain = Promise.all([loadStatus(), loadEnv(), ensure(S.tab === 'log' || S.tab === 'props' ? 'lists' : S.tab)]);
+    chain = Promise.all([loadStatus(), loadEnv(), ensure(S.tab === 'log' || S.tab === 'props' || S.tab === 'backend' ? 'lists' : S.tab)]);
   } else {
     chain = Promise.resolve();
   }
@@ -2651,6 +3142,7 @@ function loadTab(){
   if (!S.loaded[need]) {
     if (need === 'log') logStat.textContent = '读取中…';
     else if (need === 'props') propsStat.textContent = '读取中…';
+    else if (need === 'backend') document.getElementById('backendStat').textContent = '读取中…';
   }
   runChain(false, true);
 }
@@ -2785,6 +3277,42 @@ function restoreApp(pkg){
     .then(function (){ finishWrite(note); });
 }
 
+/* Tricky 的模式选择：自动 / 叶证书破解 / 证书生成，直接写 target.txt 的后缀 */
+var modeBase = '', modeCurrent = '';
+function openModePicker(base, current){
+  var d = document.getElementById('modeDialog');
+  var seg = document.getElementById('modeSeg');
+  modeBase = base; modeCurrent = current || 'auto';
+  document.getElementById('modeTitle').textContent = '证书模式';
+  document.getElementById('modeHint').textContent = base + ' · ' + (modeCurrent === 'auto'
+    ? '自动：按设备的 TEE 状态选择破解或生成。'
+    : modeCurrent === 'leaf'
+      ? '叶证书破解：保留真实硬件密钥，只重签证明。'
+      : '证书生成：整把密钥都在软件里生成。');
+  seg.querySelectorAll('md-outlined-segmented-button').forEach(function (b){
+    b.selected = b.dataset.mode === modeCurrent;
+  });
+  d.returnValue = '';
+  d.show();
+}
+function applyMode(base, mode){
+  var d = document.getElementById('modeDialog');
+  try { d.close(); } catch (e) {}
+  busy(true, '切换模式');
+  var note = { text: '', tone: 'info' };
+  call('set-mode', base + ' ' + mode).then(function (r){
+    if (r.ok) {
+      var kv = parseKV(r.text);
+      note.text = kv.changed === '1'
+        ? ('已把 ' + base + ' 设为「' + (MODE_LABEL[mode] || mode) + '」')
+        : '模式没有变化';
+      note.tone = 'ok';
+    } else { note.text = failText(r); note.tone = 'bad'; }
+    return reloadAll();
+  }).catch(function (e){ note.text = String((e && e.message) || e); note.tone = 'bad'; })
+    .then(function (){ finishWrite(note); });
+}
+
 /* 确认对话框 */
 function confirm(title, text, okLabel){
   return new Promise(function (resolve){
@@ -2811,14 +3339,12 @@ function confirm(title, text, okLabel){
 /* =========================================================
    6. 交互装配
    ========================================================= */
-var homeMenu = document.getElementById('homeMenu');
-var btnBack = document.getElementById('btnBack');
+var tabs = document.getElementById('tabs');
 var btnAppsRefresh = document.getElementById('btnAppsRefresh');
-var PAGES = ['over', 'apps', 'log', 'props', 'about'];
-var TAB_LABEL = { over: '概览', apps: '应用列表', log: '运行日志',
+var PAGES = ['over', 'apps', 'backend', 'log', 'props', 'about'];
+var TAB_LABEL = { over: '概览', apps: '应用列表', backend: '后端与格式', log: '运行日志',
   props: '系统属性伪装', about: '关于与自检' };
-/* 只切状态：显隐目标页、标题、返回箭头、概览的英雄卡。
-   底栏没有了，这一层不再需要维护任何选中态。 */
+/* 只切状态：显隐目标页、标题、底栏选中态、概览的英雄卡。 */
 function applyPage(name){
   S.tab = name;
   if (name !== 'apps' && S.selectMode) { S.selectMode = false; S.selected = {}; updateBulkBar(); }
@@ -2830,13 +3356,19 @@ function applyPage(name){
   var pageTitle = document.getElementById('pageTitle');
   if (pageTitle) pageTitle.textContent = TAB_LABEL[name] || name;
   hero.hidden = !home;        // 二级页不重复英雄卡：那一屏只有标题 + 内容
-  btnBack.hidden = home;
+  var items = tabs.querySelectorAll('.tab');
+  for (var i = 0; i < items.length; i++){
+    var on = items[i].dataset.tab === name;
+    items[i].classList.toggle('is-active', on);
+    if (on) items[i].setAttribute('aria-current', 'page');
+    else items[i].removeAttribute('aria-current');
+  }
   document.querySelector('.appbar').classList.toggle('is-sub', !home);
 }
 /* 切页只滑自己的面板：不滚、不动容器高度、不做任何插值。
-   入场从进入的方向滑进来（下钻 +1 从右、返回 -1 从左）：位移 24px
+   入场从切的方向滑进来（底栏往右切 +1 从右、往左切 -1 从左）：位移 24px
    （窄屏按 5% 收，320 下 16px）、透明度 0.9→1、200ms，全在合成器上 ——
-   不碰高度、不盖遮罩，所以不会回到「闪」。返回概览时英雄卡一起滑，
+   不碰高度、不盖遮罩，所以不会回到「闪」。切回概览时英雄卡一起滑，
    否则它会硬蹦出来。 */
 var REDUCE_MOTION = !!(window.matchMedia && matchMedia('(prefers-reduced-motion: reduce)').matches);
 function pageSlide(el, dir){
@@ -2848,12 +3380,13 @@ function pageSlide(el, dir){
     { duration: 200, easing: 'cubic-bezier(.2,0,0,1)' }
   );
 }
-function showTab(name, back){
+function showTab(name){
   var prev = S.tab;
   var home = name === 'over';
-  /* 概览的滚动位置：下钻前记下，回来时还原 —— 不把人丢回顶部 */
+  /* 概览的滚动位置：切走前记下，回来时还原 —— 不把人丢回顶部 */
   if (prev === 'over' && !home) S.homeY = window.scrollY;
-  var dir = back ? -1 : 1;
+  /* 方向跟底栏的左右排布一致：往右切从右边滑进来，往左切反之 */
+  var dir = PAGES.indexOf(name) >= PAGES.indexOf(prev) ? 1 : -1;
   applyPage(name);
   renderAll();
   /* 回概览要还原位置时先强制按新页面布局，否则 scrollTo 拿到的还是上一页的
@@ -2865,48 +3398,40 @@ function showTab(name, back){
   if (home) pageSlide(hero, dir);
 }
 
-/* 导航状态写在地址栏的 hash 上（#/over、#/apps…），顶栏箭头与 popstate
-   合成一条路。
+/* 页名写在地址栏的 hash 上（#/over、#/apps…）方便重载后回到同一屏，
+   但切页不新增历史：六个页在底栏并列，彼此没有「上一级」，历史里堆一串
+   横向条目只会让系统返回变成「逐个退页」而不是退出 WebUI —— 所以 replaceState。
    宿主的返回是怎么决定的（dex 实测）：WebViewClient.doUpdateVisitedHistory 里读
-   webView.canGoBack() 写进一个状态，返回回调里执行 webView.goBack()。hash 跳转
-   下"回到概览"是通的。
-   ⚠ 我一度拿一条 {m=CLOSE WebUIActivity} 的 logcat 断言"边缘返回退不了级"，那是
+   webView.canGoBack() 写进一个状态，返回回调里执行 webView.goBack()。
+   replaceState 不进历史 → canGoBack 保持原样 → 返回直接退回管理器。
+   ⚠ 我一度拿一条 {m=CLOSE WebUIActivity} 的 logcat 断言「边缘返回退不了级」，那是
    过度推断：日志只证明那次关闭发生过，证明不了当时停在二级页。据此做的整文档
    跳转（每次换 URL 重载 + 一层缓存）已经回退，见 CHANGELOG。
-   真正缺的不是"退级"，是安卓的可预测预览：那要宿主实现 OnBackAnimationCallback
-   并驱动 startBackProgress —— 全 dex 里 startBackProgress / getBackProgress 各
-   0 次，所以页内返回没有预览，只有跨 Activity（退回管理器）那一下有。
-   滚动位置自己管：下钻前已经滚到 0，浏览器给这条历史记的也是 0，
-   不关掉自动恢复的话它会在 popstate 之后把我们还原的概览位置抹成 0。 */
+   滚动位置自己管：不关掉自动恢复的话它会在还原历史条目之后把我们刚还原的
+   概览位置抹回 0。 */
 try { history.scrollRestoration = 'manual'; } catch (e) {}
-var navDepth = 0, navSelf = false;
 function pageFromHash(){
-  var m = /^#\/(over|apps|log|props|about)$/.exec(location.hash || '');
+  var m = /^#\/(over|apps|backend|log|props|about)$/.exec(location.hash || '');
   return m ? m[1] : null;
 }
 function navTo(name){
   if (pageFromHash() === name) return;
-  navSelf = true;
-  navDepth++;
-  location.hash = '#/' + name;
+  /* file:// 下有的 WebView 会拒绝改历史条目，退回 location.hash 至少页名跟得上 */
+  try { history.replaceState(null, '', '#/' + name); }
+  catch (e) { location.hash = '#/' + name; }
 }
 function goTab(name){
   if (name === S.tab) { loadTab(); return; }
   navTo(name);
-}
-function goBack(){
-  if (navDepth > 0) { history.back(); return; }
-  showTab('over', true);
+  showTab(name);
   loadTab();
 }
+/* replaceState 不发事件；这条只服务真正走历史的场合（重载后的前进/后退、
+   以及上一条 fallback 里的 location.hash 赋值）。 */
 window.addEventListener('popstate', function (){
-  var back = !navSelf;
-  navSelf = false;
-  if (back && navDepth > 0) navDepth--;
   var name = pageFromHash() || 'over';
-  if (name === 'over') back = true;
   if (name === S.tab) return;
-  showTab(name, back);
+  showTab(name);
   loadTab();
 });
 
@@ -2922,22 +3447,44 @@ function setAuto(on){
 }
 
 function wire(){
-  btnBack.innerHTML = svg('back');
   btnSync.innerHTML = svg('sync') + '<span>立即同步</span>';
   btnReload.innerHTML = svg('reload') + '<span>重新读取</span>';
   btnPropsApply.innerHTML = svg('tune') + '<span>立即应用</span>';
   btnLogRefresh.innerHTML = svg('reload') + '<span>刷新</span>';
 
-  homeMenu.addEventListener('click', function (e){
+  var tabItems = tabs.querySelectorAll('.tab');
+  for (var ti = 0; ti < tabItems.length; ti++){
+    var t = tabItems[ti];
+    t.querySelector('.ico').innerHTML = svg(t.dataset.icon);
+  }
+  tabs.addEventListener('click', function (e){
+    var x = e.target && e.target.closest ? e.target.closest('.tab') : null;
+    if (x) goTab(x.dataset.tab);
+  });
+  btnSync.addEventListener('click', doSync);
+  btnReload.addEventListener('click', refresh);
+
+  /* 模式对话框：选中即写，不再多一次「确定」——三个选项就是全部信息 */
+  var modeDialog = document.getElementById('modeDialog');
+  var modeSeg = document.getElementById('modeSeg');
+  document.getElementById('modeCancel').addEventListener('click', function (){ modeDialog.close(); });
+  modeDialog.addEventListener('closed', function (){ modeBase = ''; });
+  modeSeg.addEventListener('click', function (e){
     var path = e.composedPath ? e.composedPath() : [];
     for (var i = 0; i < path.length; i++){
       var x = path[i];
-      if (x && x.dataset && x.dataset.go) { goTab(x.dataset.go); return; }
+      if (x && x.dataset && x.dataset.mode && modeBase){
+        if (x.dataset.mode === modeCurrent) { modeDialog.close(); return; }
+        applyMode(modeBase, x.dataset.mode);
+        return;
+      }
     }
   });
-  btnBack.addEventListener('click', goBack);
-  btnSync.addEventListener('click', doSync);
-  btnReload.addEventListener('click', refresh);
+
+  /* keybox 粘贴替换 */
+  var keyboxDialog = document.getElementById('keyboxDialog');
+  document.getElementById('keyboxCancel').addEventListener('click', function (){ keyboxDialog.close(); });
+  document.getElementById('keyboxSave').addEventListener('click', saveKeybox);
 
   /* 列表来源、分段高亮、「只看未纳入」的按下态必须一起变 —— 以前点「只看未纳入」
      会把列表切到已安装第三方，但高亮还停在「生效列表」，等于在说谎（实测过）。
@@ -3131,15 +3678,15 @@ function boot(){
   }
   wire();
 
-  // ?tab=over|apps|log|props 直接进某一页（预览与排查用）；取数交给下面的 refresh
-  /* 先把当前条目定在 #/over（replace 不产生历史、也不惊动宿主），
-     之后所有导航都是干净的 hash 条目 */
+  // ?tab=over|apps|backend|log|props|about 直接进某一页（预览与排查用）；取数交给下面的 refresh
+  /* 先把当前条目定在 #/over（replace 不产生历史、也不惊动宿主） */
   try { history.replaceState(history.state, '', '#/over'); } catch (e) {}
   var want = QUERY.get('tab');
   if (want && PAGES.indexOf(want) >= 0 && want !== 'over') {
-    navTo(want);          // 深链（预览与排查用）：走同一条 popstate 路
+    navTo(want);          // 深链：页名跟上
+    showTab(want);        // replaceState 不发 popstate，切页要自己调
   } else {
-    applyPage('over');    // 初始状态也要定死标题 / 英雄卡 / 返回箭头，不依赖标记默认值
+    applyPage('over');    // 初始状态也要定死标题 / 英雄卡 / 底栏选中态，不依赖标记默认值
   }
 
   if (DEMO) { checkContract().then(refresh); return; }
@@ -3157,25 +3704,126 @@ function boot(){
 }
 
 /* ---------- 演示数据：?demo=1，用于在桌面浏览器里预览界面 ---------- */
-var DEMO_STATE = { masking: 'on', hash: '', restored: {}, removed: {} };   /* 开关、boot hash 与「加入/移出」状态要留住 */
+var DEMO_STATE = { masking: 'on', hash: '', restored: {}, removed: {}, modes: {}, cfg: {} };
 var DEMO_HASH = '8c8c039f6c9ac24d21fa89aa867c668da0e519aab2f1675c5d6794dce3314d1e';
+/* ?backend=tricky|teesim|omk 用来在桌面上分别预览三种名单语法与后端页 */
+var DEMO_BACKEND = QUERY.get('backend') === 'tricky' || QUERY.get('backend') === 'omk'
+  ? QUERY.get('backend') : 'teesim';
+var DEMO_BACKEND_INFO = {
+  teesim: { name: 'TEE Simulator', file: '/data/adb/teesim/config.json' },
+  tricky: { name: 'Tricky Store OSS', file: '/data/adb/tricky_store/target.txt' },
+  omk: { name: 'OhMyKeymint', file: '/data/misc/keystore/omk/injector.toml' }
+};
 function demoTargets(){
   var base = ['com.android.vending', 'com.google.android.gms', 'com.google.android.gsf', 'ai.x.grok', 'app.mihon',
     'com.MobileTicket', 'com.tencent.mm', 'com.termux', 'me.mugzone.emiria', 'com.netflix.mediaclient'];
   var out = base.filter(function (p){ return !DEMO_STATE.removed[p]; })
     .concat(Object.keys(DEMO_STATE.restored).filter(function (p){ return !DEMO_STATE.removed[p]; }));
-  return out.filter(function (p, i){ return out.indexOf(p) === i; });
+  out = out.filter(function (p, i){ return out.indexOf(p) === i; });
+  if (DEMO_BACKEND === 'tricky') {
+    out = out.map(function (p){
+      var m = DEMO_STATE.modes[p] || (p === 'com.google.android.gms' ? 'leaf'
+        : p === 'com.android.vending' ? 'generate' : '');
+      return m === 'leaf' ? p + '?' : m === 'generate' ? p + '!' : p;
+    });
+  } else if (DEMO_BACKEND === 'teesim') {
+    out = out.concat(['com.termux@10', 'uid:10123']);
+  }
+  return out;
+}
+function demoMeta(){
+  return demoTargets().map(function (t){
+    var base = t, kind = 'plain', detail = '';
+    if (DEMO_BACKEND === 'tricky') {
+      if (/\?$/.test(t)) { kind = 'leaf'; base = t.slice(0, -1); }
+      else if (/!$/.test(t)) { kind = 'generate'; base = t.slice(0, -1); }
+      else kind = 'auto';
+    } else if (DEMO_BACKEND === 'teesim') {
+      if (/^uid:/.test(t)) { kind = 'uid'; detail = t.slice(4); base = ''; }
+      else if (/@[0-9]+$/.test(t)) { kind = 'user'; detail = t.split('@')[1]; base = t.split('@')[0]; }
+    }
+    return [t, base, kind, detail].join('\t');
+  }).join('\n');
+}
+function demoBackendInfo(){
+  var b = DEMO_BACKEND, out = [
+    'backend=' + b, 'backend_name=' + DEMO_BACKEND_INFO[b].name,
+    'module_dir=/data/adb/modules/' + (b === 'omk' ? 'oh_my_keymint' : b === 'tricky' ? 'tricky_store' : 'teesim'),
+    'module_version=' + (b === 'teesim' ? 'v2.2.6' : b === 'tricky' ? 'v1.4.1' : 'v1.1.0'),
+    'target_file=' + DEMO_BACKEND_INFO[b].file, 'target_entries=' + demoTargets().length,
+    'keybox_file=' + (b === 'omk' ? '/data/misc/keystore/omk/keybox.xml'
+      : b === 'tricky' ? '/data/adb/tricky_store/keybox.xml' : '/data/adb/teesim/keybox.xml'),
+    'keybox_exists=1', 'keybox_bytes=5573', 'keybox_mtime=1793001033',
+    'keybox_hash=9f2c4d8e7a1b3c5d6e8f0a2b4c6d8e0f1a3b5c7d9e1f3a5b7c9d1e3f5a7b9c1d'
+  ];
+  if (b === 'tricky') {
+    out = out.concat(['patch_file=/data/adb/tricky_store/security_patch.txt', 'patch_exists=1',
+      'patch_lines=8', 'patch_packages=2', 'patch_system=YYYY-MM-05', 'patch_boot=no']);
+  } else if (b === 'teesim') {
+    out = out.concat(['config_version=1', 'profiles=2', 'default_mode=patch', 'default_keybox=keybox.xml',
+      'keybox_files=keybox.xml,test.xml',
+      'default_patch_system=today', 'default_patch_vendor=YYYY-MM-05', 'default_patch_boot=YYYY-MM-05',
+      'default_os_version=', 'default_auto_include=false',
+      'default_brand=Sony', 'default_device=XQ-DQ72', 'default_product=XQ-DQ72_CN',
+      'default_manufacturer=Sony', 'default_model=XQ-DQ72', 'default_serial=FAKE0000',
+      'default_imei=000000000000000', 'default_meid=', 'default_imei2=000000000000001']);
+  } else {
+    out = out.concat(['injector_version=1', 'injector_main_enabled=true', 'injector_log_level=debug',
+      'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false',
+      'intercept_true=10', 'filter_deny=0', 'filter_deny_list=',
+      'intercept_get_security_level=true', 'intercept_get_key_entry=true',
+      'intercept_update_subcomponent=true', 'intercept_list_entries=true',
+      'intercept_delete_key=true', 'intercept_grant=true', 'intercept_ungrant=true',
+      'intercept_get_number_of_entries=true', 'intercept_list_entries_batched=true',
+      'intercept_get_supplementary_attestation_info=true',
+      'config_version=2', 'config_log_level=debug',
+      'cfg_force_skip_biometric=false', 'cfg_retire_stale_keys=true',
+      'trust_os_version=auto', 'trust_security_patch=auto', 'trust_os_patchlevel=auto',
+      'trust_vendor_patchlevel=auto', 'trust_boot_patchlevel=auto',
+      'trust_vb_key=auto', 'trust_vb_hash=auto',
+      'trust_verified_boot=true', 'trust_device_locked=true',
+      'dev_brand=Sony', 'dev_device=XQ-DQ72', 'dev_product=XQ-DQ72_CN',
+      'dev_manufacturer=Sony', 'dev_model=XQ-DQ72', 'dev_serial=FAKE0000',
+      'dev_imei=000000000000000', 'dev_imei2=000000000000001', 'dev_meid=',
+      'dev_override_telephony=false']);
+  }
+  var ov = DEMO_STATE.cfg || {};
+  return out.map(function (line){
+    var i = line.indexOf('=');
+    if (i < 0) return line;
+    var k = line.slice(0, i);
+    return Object.prototype.hasOwnProperty.call(ov, k) ? k + '=' + ov[k] : line;
+  }).join('\n');
+}
+/* 演示里的 payload 解码：外 base64 -> 每行 key=base64(value) */
+function demoB64Decode(str){
+  try {
+    var bin = atob(String(str || ''));
+    var bytes = new Uint8Array(bin.length);
+    for (var i = 0; i < bin.length; i++) bytes[i] = bin.charCodeAt(i);
+    return new TextDecoder().decode(bytes);
+  } catch (e) { return ''; }
+}
+function demoDecodePayload(payload){
+  var out = {};
+  demoB64Decode(payload).split('\n').forEach(function (line){
+    if (!line) return;
+    var i = line.indexOf('=');
+    if (i < 0) return;
+    out[line.slice(0, i)] = demoB64Decode(line.slice(i + 1));
+  });
+  return out;
 }
 function demoResult(cmd, arg){
   /* boot hash 与「加入/移出」是可变状态，不走静态表 */
   if (cmd === 'restore-apps') {
     String(arg == null ? '' : arg).split(',').forEach(function (p){
-      if (p) { DEMO_STATE.restored[p] = 1; delete DEMO_STATE.removed[p]; }
+      if (p) { var bp = p.replace(/[?!]$/, '').replace(/@[0-9]+$/, ''); DEMO_STATE.restored[bp] = 1; delete DEMO_STATE.removed[bp]; }
     });
     return { errno: 0, stdout: 'restored=1' };
   }
   if (cmd === 'restore-app') {
-    var rp = String(arg == null ? '' : arg);
+    var rp = String(arg == null ? '' : arg).replace(/[?!]$/, '').replace(/@[0-9]+$/, '');
     DEMO_STATE.restored[rp] = 1;
     delete DEMO_STATE.removed[rp];
     return { errno: 0, stdout: 'restored=1' };
@@ -3183,9 +3831,52 @@ function demoResult(cmd, arg){
   if (cmd === 'remove-apps') {
     var req = String(arg == null ? '' : arg).split(',').filter(Boolean);
     var base = demoTargets();
-    var hit = req.filter(function (p, i){ return req.indexOf(p) === i && base.indexOf(p) >= 0; });
-    hit.forEach(function (p){ DEMO_STATE.removed[p] = 1; });
+    var hit = req.filter(function (p, i){
+      if (req.indexOf(p) !== i) return false;
+      var b = p.replace(/[?!]$/, '').replace(/@[0-9]+$/, '');
+      return base.indexOf(p) >= 0 || (b && base.some(function (x){
+        return x.replace(/[?!]$/, '').replace(/@[0-9]+$/, '') === b;
+      }));
+    });
+    hit.forEach(function (p){
+      DEMO_STATE.removed[p.replace(/[?!]$/, '').replace(/@[0-9]+$/, '')] = 1;
+    });
     return { errno: 0, stdout: 'removed=' + hit.length + '\nremoved_list=' + hit.join(',') };
+  }
+  if (cmd === 'set-mode') {
+    var f = String(arg == null ? '' : arg).split(' ');
+    if (f[0] && f[1]) DEMO_STATE.modes[f[0]] = f[1];
+    return { errno: 0, stdout: 'changed=1' };
+  }
+  if (cmd === 'target-meta') return { errno: 0, stdout: demoMeta() };
+  if (cmd === 'backend-info') return { errno: 0, stdout: demoBackendInfo() };
+  if (cmd === 'teesim-save' || cmd === 'omk-save-injector' || cmd === 'omk-save-config' || cmd === 'tricky-save-patch') {
+    var map = cmd === 'teesim-save'
+      ? { mode: 'default_mode', keybox: 'default_keybox', patch_system: 'default_patch_system',
+          patch_vendor: 'default_patch_vendor', patch_boot: 'default_patch_boot',
+          os_version: 'default_os_version', auto_include: 'default_auto_include',
+          brand: 'default_brand', device: 'default_device', product: 'default_product',
+          manufacturer: 'default_manufacturer', model: 'default_model', serial: 'default_serial',
+          imei: 'default_imei', meid: 'default_meid', imei2: 'default_imei2' }
+      : cmd === 'omk-save-injector'
+        ? { inj_main_enabled: 'injector_main_enabled', inj_log_level: 'injector_log_level',
+            filter_enabled: 'filter_enabled', filter_block_android: 'filter_block_android',
+            filter_allow_unknown: 'filter_allow_unknown', filter_deny: 'filter_deny_list' }
+        : cmd === 'omk-save-config'
+          ? { cfg_log_level: 'config_log_level', cfg_force_skip_biometric: 'cfg_force_skip_biometric',
+              cfg_retire_stale_keys: 'cfg_retire_stale_keys' }
+          : {};
+    var fields = demoDecodePayload(arg), n = 0;
+    Object.keys(fields).forEach(function (k){
+      DEMO_STATE.cfg[map[k] || k] = fields[k];
+      n++;
+    });
+    return { errno: 0, stdout: 'saved=1\nfields=' + n };
+  }
+  if (cmd === 'keybox-save') {
+    DEMO_STATE.cfg.keybox_bytes = String(demoB64Decode(arg).length);
+    DEMO_STATE.cfg.keybox_hash = 'demo0000000000000000000000000000';
+    return { errno: 0, stdout: 'saved=1\nkeybox_file=/demo/keybox.xml\nkeybox_bytes=' + DEMO_STATE.cfg.keybox_bytes };
   }
   if (cmd === 'boot-hash') {
     var bh = DEMO_STATE.hash || '';
@@ -3202,18 +3893,21 @@ function demoResult(cmd, arg){
   }
   var T = {
     status: [
-      'state=ok', 'description=✅ [TEE Simulator | 应用: 125 | 更新: 17:50]', 'mod_id=ts-auto-add',
-      'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator', 'conflict=0',
-      'teesim_enabled=1', 'tricky_enabled=0', 'data_dir=/data/adb/teesim',
-      'target_file=/data/adb/teesim/config.json',
+      'state=ok', 'description=✅ [' + DEMO_BACKEND_INFO[DEMO_BACKEND].name + ' | 应用: ' + demoTargets().length + ' | 更新: 17:50]',
+      'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu',
+      'backend=' + DEMO_BACKEND, 'backend_name=' + DEMO_BACKEND_INFO[DEMO_BACKEND].name, 'conflict=0',
+      'teesim_enabled=' + (DEMO_BACKEND === 'teesim' ? 1 : 0), 'tricky_enabled=' + (DEMO_BACKEND === 'tricky' ? 1 : 0),
+      'data_dir=' + DEMO_BACKEND_INFO[DEMO_BACKEND].file.replace(/\/[^/]+$/, ''),
+      'target_file=' + DEMO_BACKEND_INFO[DEMO_BACKEND].file,
       'target_exists=1', 'target_writable=1', 'target_mtime=1793001033',
       'props_masking=on',
       'props_off_file=/data/adb/ts_auto.props_off', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
       'log_lines=1109', 'log_bytes=64061'
     ].join('\n'),
     contract: ['api=' + (QUERY.get('badapi') || String(EXPECT_API)),
-      'commands=status env targets apps icons log clear-log props props-apply' +
-      ' props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps' +
+      'commands=status env targets target-meta apps icons log clear-log props props-apply' +
+      ' props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode' +
+      ' backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save' +
       ' sync help contract excluded'].join('\n'),
     /* ?seed=RRGGBB 与 ?dark=1|0 用来验系统取色与深浅两条链路（真机取不到时也能先看效果） */
     /* ?badapi=99：让契约对不上，用来验横幅与"写入被拒"确实会响 */

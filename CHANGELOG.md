@@ -6,6 +6,27 @@
 
 #### 新增
 
+* **底栏回来了：六格悬浮药丸，替代「概览 → 四个二级页」的下钻**。下钻那一版把五个页藏在概览的一张入口列表后面，概览只剩「门」而没有内容；现在六个目的地并列在底栏上，每一页都能直接到。
+  * **形态照 Opticon 的 FloatingNavBar**：`surface-high` 药丸 + 1px `card-line` 描边 + 8px 投影，离底 20 + 安全区；**非选中只留图标，选中那格展开成「图标 + 名字」的胶囊**（`max-width` + opacity 过渡，340ms 过冲曲线），按压缩到 0.92。六个图标 + 一个展开的名字在 417 CSS px 下放得下：实测药丸 350 ≤ 401，三后端 × 六页横向溢出都是 0。
+  * **顶栏撤掉返回箭头与下钻语义**：六页平级，没有上一级；`applyPage` 只管页名、英雄卡显隐、底栏选中态（`is-active` + `aria-current`）和二级页的 sticky 标题。概览的滚动位置仍在切走前记下、切回时还原。
+  * **切页只改 `#/` hash，并且走 `replaceState`**：不往历史里堆条目，`webView.canGoBack()` 保持原样 —— 系统返回（手势/返回键）一次就退回管理器，而不是逐页后退。`popstate` 只接真正的前进/后退与深链（`#/props`）。面板入场方向跟底栏的左右排布一致（往右切从右滑入），仍是 24px / 200ms 的 WAAPI 位移，不碰高度、不盖遮罩。
+  * **浮层让位重新量过**：`.wrap` 的 `padding-bottom` 改成 104px + 安全区（药丸离底 20 + 高 58 + 气口），提示条抬到 `bottom: 88px + 安全区`（实测与药丸上沿留 10px）；多选时底栏整条 `display:none` 让给批量条（两者占同一条底边，叠在一起没法点）。
+  * `tests/ui-shape.js` 增加「底栏导航」一组断言（PAGES 六项、tab 与 PAGES 一一对应、每个 tab 图标都在 ICON 表里、`.tabs` 钉底、选中用 `secondary-container`、`.wrap` 让位 ≥96、提示条 ≥72、`applyPage` 同步选中态、`goTab` 自己完成切页、多选让位、`replaceState`、入口列表与返回钮无残骸），共 **48 条**全绿。
+  * CDP 实测（417×900）：六页 `hash / 标题 / 英雄卡 / 选中态 / 面板` 一一对应，`history.length` 点完六页仍为 1；药丸 350×58 落在视口内，选中项标签宽 28.2、其余 0；提示条 757–812 对药丸 822（间隙 10）；滚到底时内容最后一行与药丸上沿的最小间隙 26px。
+
+* **界面整合：同一件事只留一处**。概览的「运行 / 目标 / 日志与属性」三组合成一组（日志字节数归日志页、属性开关归属性页，目标文件与上次写入并进「运行」）；「关于」的界面自检与外观合成「界面」，设备并入「设备与路径」，删掉重复的「后端模块」格；「后端与格式」的配置表单改成**一个文件一组**（TEE Simulator 一组、Tricky 一组、OMK injector/config 各一组），目标格式与路径摘要压成两行提示，设备身份用组内小标题分隔。417 宽下三后端 × 六页横向溢出仍为 0。
+
+* **按三个后端分别适配上可视化界面（api 4）**：名单不再把目标文件当成清一色的裸包名，而是按各上游自己的语法解析、展示与写回。
+  * **Tricky Store OSS**：`target.txt` 的行内 `#` 注释、`pkg?`（强制叶证书破解）与 `pkg!`（强制证书生成）都被识别；同一个包名出现多次时按上游语义取最后一个模式。名单行尾新增 `自动 / 叶证书 / 证书生成` 模式按钮，点开即写，只改这一行的后缀并保留注释与缩进。新增命令 `set-mode <包名> <auto|leaf|generate>`（写命令，走 `webui_lock`）。
+  * **TEE Simulator**：`apps` 里的 `pkg@用户` 与 `uid:数字` 原样保留；界面把前者显示成「用户 N」标签、后者显示成 `UID N` 行；按用户条目移出时只删对应 token，卸载一个包时连同它的 `@用户` 变体一起移除，`uid:` 因无法反查包名而保留。
+  * **OhMyKeymint**：`scoop` 仍只接受包名；后端页展示 injector 的 filter / intercept 与 config.toml 的 trust 摘要。
+  * **新增「后端与格式」二级页（可编辑）**：按当前后端分别渲染目标语法/条目分布与**可手动配置**的表单 —— TEE Simulator 的 default profile（mode、keybox、patchLevel、osVersion、autoInclude、设备身份）、Tricky 的全局补丁表、OMK 的 injector（main/filter/deny/intercept）与 config.toml（main/trust/device）；三家共用 keybox 粘贴替换。只提交改动过的字段，未知键/非法枚举/日期/包名在写盘前拒绝，写前备份；TEE Simulator/Tricky 由各自 watcher 重载，OMK 写后请求 `restart.injector` / `restart.keymint`。
+  * **命令层**：新增 `target-meta`（token + 基础包名 + 类型 + 细节）、`set-mode`、`backend-info`；`targets` 对 Tricky 返回有效 token 而不是带注释的原始行。配置写回新增 `teesim-save` / `omk-save-injector` / `omk-save-config` / `tricky-save-patch` / `keybox-save`，全部走白名单+类型校验+写前备份+原子替换。契约号 2 → 4。
+  * **写回实现**：`teesim_set.awk` 只改 default profile 的标量/嵌套 patchLevel，其它 profile 与 apps 原样；`omk_set.awk` 按段改 TOML 标量、把多行 deny_packages 收成单行、缺段则新建；`tricky_patch_set.awk` 只改全局段并把裸值转成 `all = …`。三个 writer 重复写返回 same 且文件逐字节不变；OMK 有改动才请求重启 injector/keymint。
+  * **同步按基础包名**：`build_app_list` 的卸载判定与新装判重都用基础包名，`pkg?` / `pkg@10` 不会被当成另一个应用；`.ts_ever` 与 `excluded` 也只记基础包名。修复了带后缀/用户变体的条目在卸载后残留、新装时重复追加的问题。
+  * `tests/target-tokens.sh`（接进 CI，**55 条断言**）：三个后端的解析、增删、模式改写、快照差分、ever/excluded、三个 `backend-info` 解析器与 `is_target_entry`；`tests/config-write.sh`（**39 条断言**）：三个 writer 的替换/插入/嵌套/多行数组/新段/带注释段头/幂等。`ui-shape` 48 条；`contract-pair`（api=4）全绿。
+  * 桌面 417 宽（CDP `Emulation.setDeviceMetricsOverride`）实测：三后端 × 六页横向溢出均为 0；Tricky 模式按钮与对话框、TEESim 用户/UID 标签、批量选择把 token 原样带进确认框；三后端表单可编辑并保存（演示状态回读）、keybox 粘贴对话框可用；演示数据新增 `?backend=tricky|teesim|omk`。设备上用一份临时模块副本跑通五条写命令：TEESim 模式/身份、Tricky 全局补丁与 keybox、OMK injector/config，含备份、重载请求、非法值拒绝与重复保存不落盘。
+
 * **字体改为 `system-ui`（学习机上其它 WebUI）**：参考 `nomount` 模块的 `--nm-font-family: system-ui` —— 本机 WebView 156 下 system-ui 就按系统字体（Google Sans Flex）渲染。删掉整套字体探测/复制/hash 文件/`@font-face`/`fetch` 镜像：`env` 不再输出 `sys_font*`，不再往 `webroot/fonts` 或 `webroot/icons` 写 4MB 字体文件；关于页只写「跟随系统（system-ui）」。Material Web 的 `--md-ref-typeface-plain` 仍映射到 `var(--font)`。`tests/ui-font.js` 改为 **9 条断言**，专门防止再引入 `@font-face`/字体文件管线；8 个 shell 测试与 `ui-shape` 19 条全绿。
 
 * **全量重构 WebUI：接入 `@material/web` 2.5.0（labs/gb Expressive）**：界面控件不再自己仿 Material，直接用组件；仍是单文件、不联网。
