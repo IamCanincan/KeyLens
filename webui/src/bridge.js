@@ -22,16 +22,34 @@ export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restor
 remove-apps set-mode teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
 sync clear-log omk-restart';
 
-/* 每条命令必须出现的键。缺一个就说明两边不是同一版。 */
+/* 每条命令必须出现的键 —— 这张表是从线上那版抄的，键名以真机 `webui.sh status`
+   的实际输出为准。自己凭想象写一份的后果：每条命令都会被判"形状不符"，
+   契约闸门随即停写，整个界面变成只读。
+   TSV 输出的命令（props / targets / apps / icons / log / teesim-profiles /
+   tricky-patches / excluded）没有键，一律留空 —— 给它们编一个 required 键
+   等于永远判失败。 */
 export const KV_REQUIRED = {
-  status: 'state mod_version target_file target_exists target_writable target_entries daemon_alive log_bytes conflict',
-  env: 'inotify_mode awk_present magisk_ver ksu_ver apatch_ver android_ver sdk_ver',
+  status: 'state backend mod_version target_file target_exists daemon_alive',
+  env: 'resetprop awk base64 inotify_mode root_user',
   contract: 'api commands',
+  'boot-hash': 'configured current status',
+  sync: 'rc count description',
+  'restore-app': 'restored',
+  'restore-apps': 'restored',
+  'remove-apps': 'removed',
+  'set-mode': 'changed',
+  'teesim-save': 'saved fields',
+  'omk-save-injector': 'saved fields',
+  'omk-save-config': 'saved fields',
+  'tricky-save-patch': 'saved fields',
+  'keybox-save': 'saved keybox_file keybox_bytes',
   'backend-info': 'backend backend_name target_file target_entries keybox_file keybox_exists',
-  props: 'rows',
-  'teesim-profiles': '',
+  'props-apply': 'applied mismatch',
+  'props-on': 'props_masking',
+  'props-off': 'props_masking',
+  'props-boot-hash': 'saved applied current',
+  'clear-log': 'cleared',
   'tee-status': 'present',
-  'tricky-patches': '',
   'omk-restart': 'restarted trigger',
 };
 
@@ -70,7 +88,9 @@ export const S = {
   bridge: { kind: '', label: '', seen: [] },
   targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null,
   backendInfo: {}, profiles: [], teeStatus: null, trickyPatches: [],
+  appsSrc: 'targets', view: 'targets', search: '', selectMode: false, selected: {},
   icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
+  excluded: [], theme: 'auto',
   loaded: {}, seq: 0, theme: 'auto',
 };
 
@@ -236,11 +256,39 @@ export function loadTrickyPatches() {
   }, function () { S.trickyPatches = []; });
 }
 
+export function loadProps() {
+  return call('props').then(function (r) {
+    S.props = r.ok ? splitLines(r.text).map(function (line) {
+      var f = line.split('\t');
+      return { name: f[0] || '', cur: f[1] || '', want: f[2] || '', st: f[3] || 'missing' };
+    }) : [];
+  }, function () { S.props = []; });
+}
+export function loadIcons(pkgs) {
+  if (!pkgs.length || (S.contract.checked && !hasCmd('icons'))) return Promise.resolve();
+  return call('icons', pkgs.join(',')).then(function (r) {
+    if (!r.ok) return;
+    splitLines(r.text).forEach(function (line) {
+      var f = line.split('\t');
+      if (f.length >= 3 && f[0]) S.icons[f[0]] = { label: f[1] || '', src: f[2] };
+    });
+  }, function () {});
+}
+export function loadExcluded() {
+  if (S.contract.checked && !hasCmd('excluded')) { S.excluded = []; return Promise.resolve(); }
+  return call('excluded').then(function (r) { S.excluded = r.ok ? splitLines(r.text) : []; },
+    function () { S.excluded = []; });
+}
+
 export function ensure(what) {
   if (S.loaded[what]) return Promise.resolve(false);
   if (inflight[what]) return inflight[what];
   var fn = {
     base: loadBase, lists: loadLists, log: loadLog, backend: loadBackend,
+    props: function () { return Promise.all([loadProps(), call('boot-hash').then(function (r) {
+      S.boot = r.ok ? parseKV(r.text) : null;
+    }, function () { S.boot = null; })]); },
+    excluded: loadExcluded,
     teesim: function () { return Promise.all([loadBackend(), loadTeesimProfiles()]); },
     tricky: function () { return Promise.all([loadBackend(), loadTeeStatus(), loadTrickyPatches()]); },
     omk: loadBackend,
@@ -252,18 +300,26 @@ export function ensure(what) {
 }
 
 /* ── 演示数据：让台架在没有 root 的桌面 Chrome 上也能跑完全部路径 ─────── */
-/* 说明：这份语料必须带上 profiles / tee_status 这些"新版才有"的形状 ——
-   上一轮的教训就是台架语料缺显示名，我据此把产品误诊成"只有包名"。 */
+/* 键名与真机 `webui.sh status|env|backend-info` 的实际输出对齐（2026-10-29 从
+   QV7709NLJ7 上抓的），不再凭想象编 —— 上一版这里编的键和 KV_REQUIRED 编的键
+   互相自证一致，两边一起错，台架全绿而真机会停写。
+   语料也带上三家后端各自才有的形状（profiles 表、tee_status、按包补丁块），
+   否则那几条分支等于没测过。 */
 function demoResult(cmd, arg) {
   var T = '\t';
   var body = {
     contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart',
-    status: ['state=ok', 'mod_version=v2.2.19.5-yuzu', 'backend=teesim', 'backend_name=TEE Simulator',
-      'target_file=/data/adb/teesim/config.json',
-      'target_exists=1', 'target_writable=1', 'target_entries=12', 'daemon_alive=1',
-      'log_bytes=64104', 'conflict=0', 'target_mtime=1764000000'].join('\n'),
-    env: ['inotify_mode=inotifyd', 'awk_present=1', 'magisk_ver=-', 'ksu_ver=v3.3.1',
-      'apatch_ver=-', 'android_ver=16', 'sdk_ver=36'].join('\n'),
+    status: ['state=ok', 'description=✅ [OhMyKeymint | 应用: 128 | 更新: 16:52]',
+      'mod_id=ts-auto-add', 'mod_version=v2.2.19.5-yuzu', 'backend=omk', 'backend_name=OhMyKeymint',
+      'conflict=0', 'teesim_enabled=0', 'tricky_enabled=0',
+      'data_dir=/data/adb/omk', 'target_file=/data/misc/keystore/omk/injector.toml',
+      'target_exists=1', 'target_writable=1', 'target_mtime=1793263964',
+      'props_masking=on', 'daemon_alive=1', 'log_file=/data/adb/ts_auto.log',
+      'log_lines=492', 'log_bytes=33933'].join('\n'),
+    env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
+      'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
+      'vbstate=green', 'sys_dark=1', 'sys_dark_src=mComputedNightMode',
+      'sys_seed_raw=', 'sys_seed_src=none'].join('\n'),
     targets: ['com.android.vending', 'com.google.android.gms@11', 'uid:10123', 'app.mihon'].join('\n'),
     apps: ['com.android.vending', 'app.mihon', 'com.tencent.mm', 'io.legado.app'].join('\n'),
     'target-meta': ['com.android.vending' + T + 'com.android.vending' + T + 'plain' + T + '',
@@ -274,8 +330,22 @@ function demoResult(cmd, arg) {
       '10-29 19:30:50 ℹ️ 源数据与上次一致（指纹 905773947），跳过同步',
       '10-26 17:38:02 ⚠️ 未找到 awk，暂时无法维护 TEE Simulator 配置',
       '10-26 17:55:20 ❌ 写入失败：/data/adb/teesim/config.json 不可替换'].join('\n'),
-    'backend-info': ['backend=teesim', 'backend_name=TEE Simulator', 'target_file=/data/adb/teesim/config.json',
-      'target_entries=12', 'keybox_file=/data/adb/teesim/keybox.xml', 'keybox_exists=1'].join('\n'),
+    'backend-info': ['backend=omk', 'backend_name=OhMyKeymint',
+      'module_dir=/data/adb/modules/oh_my_keymint', 'module_version=1.2.0-a1f3241',
+      'target_file=/data/misc/keystore/omk/injector.toml', 'target_entries=128',
+      'keybox_file=/data/misc/keystore/omk/keybox.xml', 'keybox_exists=1', 'keybox_bytes=5573',
+      'keybox_hash_algo=sha256', 'keybox_hash=4166677843448ea03fa5983c9cba5543',
+      'injector_version=1', 'injector_main_enabled=true', 'injector_log_level=debug',
+      'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false'].join('\n'),
+    /* props 是 TSV「名字<TAB>当前<TAB>期望<TAB>状态」，没有键 —— 台架必须用
+       真形状，否则解析分支等于没测。 */
+    props: ['ro.product.brand' + T + 'Sony' + T + 'Sony' + T + 'ok',
+      'ro.product.model' + T + 'XQ-DQ72' + T + 'XQ-DQ72' + T + 'ok',
+      'ro.build.fingerprint' + T + 'Sony/XQ-DQ72/XQ-DQ72:17' + T + 'Sony/XQ-DQ72/XQ-DQ72:16' + T + 'diff',
+      'ro.boot.verifiedbootstate' + T + 'green' + T + 'green' + T + 'ok',
+      'ro.serialno' + T + '' + T + 'FAKE0000' + T + 'missing'].join('\n'),
+    'boot-hash': 'configured=\ncurrent=9f2c4d8e7a1b3c5d\nstatus=unset',
+    excluded: 'io.legado.app',
     'teesim-profiles': ['default' + T + 'keybox.xml' + T + 'patch' + T + '10' + T + '1',
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
     'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',

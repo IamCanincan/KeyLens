@@ -6,7 +6,7 @@
  *  - Tricky 有 tee_status（为什么只能走 leaf hack）与按包 [包名] 补丁块；
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
-import { S, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText } from './bridge.js';
+import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons } from './bridge.js';
 
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
@@ -109,7 +109,27 @@ export function renderOver() {
   box.appendChild(run);
 
   box.appendChild(recentCard());
+  box.appendChild(selfCheck());
   return box;
+}
+
+/* 界面自检：不再是独立的一格目的地 —— 它是排障材料，跟着状态页走更顺手。
+   报的是"界面自己看到了什么"：桥接扫过哪些名字、契约号与命令数、当前视口。 */
+function selfCheck() {
+  const c = card();
+  const s = section('界面自检', ICON.about);
+  s.appendChild(list([
+    item({ headline: '桥接', trailing: S.bridge.kind || '未找到', tone: S.bridge.kind ? 'ok' : 'bad',
+      supporting: '扫过：' + (S.bridge.seen.join(' ') || '无') }),
+    item({ headline: '命令层契约', trailing: 'api ' + (S.contract.api === null ? '读不到' : S.contract.api),
+      tone: S.contract.bad ? 'bad' : 'ok',
+      supporting: '命令 ' + S.contract.commands.split(' ').filter(Boolean).length + ' 条 · 界面要 api=' + EXPECT_API }),
+    item({ headline: '执行身份', trailing: S.env.root_user === '0' ? 'root' : 'uid ' + (S.env.root_user || '?') }),
+    item({ headline: '设备与系统', supporting: (S.env.device || '?') + ' · Android ' + (S.env.android || '?') + ' (sdk ' + (S.env.sdk || '?') + ', ' + (S.env.build_type || '?') + ')' }),
+    item({ headline: '主题', trailing: S.theme, supporting: '视口 ' + Math.round(document.documentElement.clientWidth) + ' CSS px · 系统深色 ' + (S.env.sys_dark === '1' ? '是' : '否') }),
+  ]));
+  c.appendChild(s);
+  return c;
 }
 
 /* 最近动态：与日志页共用同一个行渲染器，两处不会长得不一样 */
@@ -125,6 +145,157 @@ export function recentCard() {
   }
   c.appendChild(box);
   return c;
+}
+
+/* ── 名单页：语法按后端分叉，这是文档里最实在的差异 ─────────────────── */
+/* Tricky 只吃包名 + ?/!；TEESim 额外认 pkg@用户 与 uid:数字；OMK 的 scoop
+   只吃精确包名（明确不支持 @user / uid / 后缀）。用同一套输入框去接三家，
+   就会让用户写出某一后端根本读不懂的条目。 */
+export const SYNTAX = {
+  tricky: { label: '包名，结尾 ? = 叶证书、! = 证书生成', users: false, uid: false, modes: true },
+  teesim: { label: '包名 / 包名@用户号 / uid:数字', users: true, uid: true, modes: false },
+  omk: { label: '只吃精确包名（不支持 @用户、uid、后缀）', users: false, uid: false, modes: false },
+};
+export const MODE_LABEL = { auto: '自动', leaf: '叶证书', generate: '证书生成' };
+
+export function baseOf(tok) {
+  var t = String(tok);
+  if (/^uid:/.test(t)) return '';
+  return t.replace(/[?!]$/, '').replace(/@[0-9]+$/, '');
+}
+export function tokenValidFor(backend, tok) {
+  var s = SYNTAX[backend] || SYNTAX.omk;
+  if (!tok) return '空的';
+  if (/^uid:/.test(tok)) return s.uid ? '' : '这个后端不认 uid: 条目';
+  if (/[?!]$/.test(tok)) return s.modes ? '' : '这个后端没有证书模式后缀';
+  var m = tok.match(/^(.*)@(\d+)$/);
+  if (m) return s.users ? (/^[A-Za-z_][A-Za-z0-9_.]*$/.test(m[1]) ? '' : '包名部分不合法') : '这个后端不认 @用户 写法';
+  return /^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)*$/.test(tok) ? '' : '不是合法包名';
+}
+
+export function renderTargets() {
+  const box = h('div', 'stack');
+  const bi = S.backendInfo, syn = SYNTAX[bi.backend] || SYNTAX.omk;
+  const baseSet = {};
+  S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
+
+  const head = card();
+  const hs = section('目标名单', ICON.list);
+  hs.appendChild(h('p', 'hint', '当前后端接受的写法：' + syn.label));
+  const seg = h('div', 'acts');
+  [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
+   ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
+   ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
+    seg.appendChild(button(v[1], { variant: v[0] === S.view ? 'filled' : 'text',
+      on: function () { S.view = v[0]; draw(); } }));
+  });
+  hs.appendChild(seg);
+  head.appendChild(hs);
+  box.appendChild(head);
+
+  const src = S.view === 'apps' ? S.apps
+    : S.view === 'missing' ? S.apps.filter(function (a) { return !baseSet[a]; })
+    : S.view === 'excluded' ? S.excluded : S.targets;
+  const q = (S.search || '').toLowerCase();
+  const shown = q ? src.filter(function (t) {
+    return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
+      || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
+  }) : src;
+
+  const listCard = card();
+  const ls = section((S.view === 'targets' ? '生效条目' : S.view === 'apps' ? '已装第三方'
+    : S.view === 'missing' ? '已装但未纳入' : '被手动排除') + ' · ' + shown.length + ' 条', ICON.read);
+  const l = h('md-list');
+  shown.slice(0, 200).forEach(function (tok) {
+    const b = baseOf(tok), ic = S.icons[b];
+    const meta = (S.targetMeta || {})[tok];
+    const it = item({
+      icon: ic && ic.src ? undefined : (meta && meta.kind === 'uid' ? 'label' : 'group'),
+      headline: (ic && ic.label) || b || tok,
+      supporting: (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : ''),
+      trailing: meta && meta.kind !== 'plain' ? '' : (S.view === 'targets' ? '' : '可加入'),
+      interactive: true,
+    });
+    if (ic && ic.src) {
+      const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
+      img.loading = 'lazy'; img.decoding = 'async';
+      it.appendChild(img);
+    }
+    if (S.view === 'targets' && bi.backend === 'tricky' && syn.modes) {
+      it.appendChild(modeButton(tok, meta));
+    } else {
+      it.appendChild(S.view === 'targets'
+        ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
+        : button('加入', { variant: 'text', on: function () { write('restore-apps', b || tok, '已加入：' + (b || tok)); } }));
+    }
+    l.appendChild(it);
+  });
+  if (!shown.length) l.appendChild(h('p', 'empty', '这一类现在是空的。'));
+  ls.appendChild(l);
+  listCard.appendChild(ls);
+  box.appendChild(listCard);
+  loadIconsFor(shown);
+  return box;
+}
+
+function modeButton(tok, meta) {
+  const b = button(MODE_LABEL[(meta && meta.kind) || 'auto'] || '自动',
+    { variant: 'text', on: function () {
+        const order = ['auto', 'leaf', 'generate'];
+        const next = order[(order.indexOf((meta && meta.kind) || 'auto') + 1) % 3];
+        write('set-mode', baseOf(tok) + ' ' + next, '已切换为' + MODE_LABEL[next]);
+      } });
+  b.setAttribute('data-tone', (meta && meta.kind) === 'generate' ? 'ok' : (meta && meta.kind) === 'leaf' ? 'warn' : 'none');
+  return b;
+}
+
+let askedIcons = {};
+function loadIconsFor(shown) {
+  const need = [];
+  shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
+  if (need.length) loadIcons(need.slice(0, 120));
+}
+
+/* ── 伪装页：属性对照 + Verified Boot（这两件事不受后端影响，独立成一格）── */
+export function renderProps() {
+  const box = h('div', 'stack');
+  const diff = S.props.filter(function (p) { return p.st !== 'ok'; });
+
+  const c1 = card();
+  const s1 = section('系统属性 · ' + (diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);
+  s1.appendChild(list([
+    item({ headline: '开机重置属性', trailing: S.status.props_masking === 'on' ? '已开启' : '已关闭',
+      tone: S.status.props_masking === 'on' ? 'ok' : 'warn',
+      supporting: '关闭后下次开机不再写入' }),
+    button(S.status.props_masking === 'on' ? '关闭开机写入' : '开启开机写入',
+      { variant: 'tonal', on: function () { write(S.status.props_masking === 'on' ? 'props-off' : 'props-on', '', '已切换'); } }),
+    button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }),
+  ]));
+  const l = h('md-list');
+  S.props.forEach(function (p) {
+    l.appendChild(item({
+      headline: p.name,
+      supporting: '期望 ' + (p.want || '—'),
+      trailing: p.st === 'ok' ? '一致' : p.st === 'missing' ? '读不到' : '不符',
+      tone: p.st === 'ok' ? '' : (p.st === 'missing' ? 'warn' : 'bad'),
+    }));
+    if (p.st === 'diff') l.appendChild(h('div', 'prop-cur', '当前 ' + p.cur));
+  });
+  s1.appendChild(l);
+  c1.appendChild(s1);
+  box.appendChild(c1);
+
+  const bt = S.boot;
+  const c2 = card();
+  const s2 = section('Verified Boot 哈希', ICON.tee);
+  s2.appendChild(list([
+    item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到' }),
+    item({ headline: '模块应用值', supporting: (bt && bt.configured) || '未设置（不写 vbmeta.digest）',
+      tone: bt && bt.configured ? 'ok' : 'warn' }),
+  ]));
+  c2.appendChild(s2);
+  box.appendChild(c2);
+  return box;
 }
 
 /* ── 日志行（时间 · 级别图标 · 正文） ───────────────────────────────── */
@@ -281,22 +452,6 @@ export function renderLog() {
   if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
   else S.log.forEach(function (l) { console_.appendChild(logRow(l)); });
   s.appendChild(console_);
-  c.appendChild(s);
-  box.appendChild(c);
-  return box;
-}
-
-/* ── 关于页：界面自检（桥接、契约、执行身份） ───────────────────────── */
-export function renderAbout() {
-  const box = h('div', 'stack');
-  const c = card();
-  const s = section('界面自检', ICON.about);
-  s.appendChild(list([
-    item({ headline: '桥接', trailing: S.bridge.kind || '未找到', tone: S.bridge.kind ? 'ok' : 'bad', supporting: '扫过：' + (S.bridge.seen.join(' ') || '无') }),
-    item({ headline: '命令层契约', trailing: 'api ' + (S.contract.api === null ? '读不到' : S.contract.api), tone: S.contract.bad ? 'bad' : 'ok', supporting: '命令 ' + S.contract.commands.split(' ').filter(Boolean).length + ' 条' }),
-    item({ headline: '主题', trailing: S.theme }),
-    item({ headline: '视口', trailing: Math.round(document.documentElement.clientWidth) + ' CSS px' }),
-  ]));
   c.appendChild(s);
   box.appendChild(c);
   return box;

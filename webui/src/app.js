@@ -17,15 +17,19 @@ import {
   S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
 } from './bridge.js';
 import {
-  ICON, h, renderOver, renderBackend, renderLog, renderAbout, recentCard,
+  ICON, h, renderOver, renderTargets, renderBackend, renderProps, renderLog,
   onToast, onReload,
 } from './screens.js';
 
+/* 五格，按"用户来这儿要办的事"分，不按上一版的"功能二级菜单"分：
+   名单是最高频、后端配置是三家里差异最大的、属性伪装与后端无关所以独立一格。
+   界面自检收进"状态"页底部 —— 它不是一个目的地，是一屏说明。 */
 const PAGES = [
-  { id: 'over', label: '主页', icon: ICON.over },
-  { id: 'func', label: '功能', icon: ICON.func },
-  { id: 'log', label: '日志', icon: ICON.log },
-  { id: 'about', label: '关于', icon: ICON.about },
+  { id: 'over', label: '状态', icon: ICON.over, need: ['base', 'lists', 'log'] },
+  { id: 'targets', label: '名单', icon: ICON.list, need: ['lists', 'backend', 'excluded'] },
+  { id: 'backend', label: '后端', icon: ICON.backend, need: ['backend'] },
+  { id: 'props', label: '伪装', icon: ICON.tune, need: ['props'] },
+  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },
 ];
 
 const bar = document.getElementById('bar');
@@ -74,23 +78,25 @@ function show(name) {
 function draw() {
   view.textContent = '';
   const body = {
-    over: renderOver, func: renderBackend, log: renderLog, about: renderAbout,
+    over: renderOver, targets: renderTargets, backend: renderBackend,
+    props: renderProps, log: renderLog,
   }[S.tab] || renderOver;
   view.appendChild(body());
 }
+function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[0] || PAGES[0]; }
 function load(name) {
-  const need = { over: ['base', 'lists', 'log'], func: [S.backendInfo.backend === 'teesim' ? 'teesim' : (S.backendInfo.backend === 'tricky' ? 'tricky' : 'backend')], log: ['log'], about: ['base'] }[name] || [];
+  let need = pageOf(name).need.slice();
+  if (name === 'backend') {
+    const b = S.backendInfo.backend;
+    need = need.concat([b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : 'omk']);
+  }
   return Promise.all(need.map(ensure)).then(draw, function () { draw(); });
 }
 function reloadAll() {
   S.loaded = {};
   return loadBase().then(function () { return checkContract(); }).then(function () {
-    return Promise.all([ensure('lists'), ensure('log'), ensure(backendNeed())]);
-  }).then(draw, draw);
-}
-function backendNeed() {
-  const b = S.backendInfo.backend;
-  return b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : b === 'omk' ? 'omk' : 'backend';
+    return load(S.tab);
+  });
 }
 onReload(reloadAll);
 
@@ -108,9 +114,9 @@ function boot() {
   attachBridge(hit);
   const start = (location.hash || '').replace(/^#\//, '');
   view.appendChild(h('md-loading-indicator'));
+  /* 首屏只走一条路：契约 → 基础状态 → show()。show() 自己会按目标页取数，
+     这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
-    return Promise.all([ensure('lists'), ensure('log'), ensure(backendNeed())]);
-  }).then(function () {
     show(PAGES.some(function (p) { return p.id === start; }) ? start : 'over');
   }, function () {
     show('over');
