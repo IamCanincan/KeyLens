@@ -579,6 +579,10 @@
 
 #### 兼容范围
 
+* **两件事查过上游源码，确认不做**（记在这里是为了下次不再凭"应该有"的直觉去造控件）：
+  * **Tricky 没有 RKP 面**：全树 `rkp|RKP|RemoteProvisioning|rkp.json|verifiedBootState` 只有一个假命中（README 里的 `FrameworkPatch`），既无实现也无文档；它也没有任何面板可触发的 canary/自检 —— 最接近的是启动时那次 `AttestUtils.probe()`（`Main.kt:24`），外部无法调用。以前计划里那条"RKP 三属性"是把 `security_patch.txt` 的**三档补丁级别**（os/vendor/boot）记错了名字 —— 那三档界面早就有了。
+  * **OMK 没有密钥管理 CLI**：只装两个二进制（`keymint`、`injector`），都不解析 argv，没有 `--help`、没有子命令。密钥管理面是 binder 服务（`IOhMyKsService` / `IOhMyMaintenanceService`），而 `src/main.rs:169-178` 只放行 `uid == KEYSTORE_UID(1017)` 的对端 —— root 也调不动。所谓"KeyAdmin 15 个操作"是**测试工具** `tests/src/bin/keyadmin.rs` 的用法表，不是产品接口。顺带两条事实值得进界面文案：`clear` 与 `deleteAllKeys` 是对**真 TEE/StrongBox** 的不可逆删除；换 keybox 默认就会把它绑定的旧密钥全部作废（`retire_stale_keybox_bound_keys` 默认 true，`keybox.rs:523-532`）—— 这句已写进 keybox 卡的说明。
+  * 唯一还能走的路是 `log -p e -t KeyAdmin "<op>"`（守护进程从 logd 环形缓冲里按标签取行），但它要求日志开着（README.md:104 说关了就永久关着），属于"能跑但不可靠"，本轮不做。
 * 界面依赖管理器提供的 root shell 桥接（`window.ksu`（KernelSU 主线，异步回调）/ `window.bridge` / `window.kernelsu` / `window.apatch` / `window.Magisk` 任一）；无桥接时界面显示明确提示、列出扫描到的注入对象与方法，并给出等价的 `webui.sh` 命令，模块自身行为完全不变。
 * 界面不做后台轮询：数据只在进入页面、点「重新读取」或执行写操作后各取一次。
 * 监听目标从「`rules.txt` 文件」改为「其所在目录」：`/data/adb/teesim` 与 `/data/adb/tricky_store` 目录里的其它文件写入会产生少量事件，但都按文件名过滤掉、不触发同步；实测该目录 10 秒内 4 条事件、命中过滤 0 条。

@@ -171,7 +171,10 @@ async function main() {
       'attestation 侧安全等级', '留空 = 删掉这一项', 'TrustedEnvironment', '只记录，不上线',
       'deviceLocked', 'supplement', '本模块不提供写入'] , tail: 'overrides.json ·' },
     { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml',
-      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'],
+      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家',
+      /* 换 keybox 会作废它绑定的旧密钥 —— 这句必须画出来，不然用户是事后
+         才发现应用要重新注册。 */
+      '旧密钥全部作废'],
       tail: 'config.toml ·' },
   ];
   console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');

@@ -784,7 +784,7 @@ function omkReload() {
 const KEYBOX_HINT = {
   tricky: 'Tricky 的解析器要求根元素是 <AndroidAttestation>，里面要有 <Keybox>、<Key algorithm>、<PrivateKey> 与 <CertificateChain>。解析不过会留用上一份，不会覆盖。',
   teesim: 'TEESim 运行时不看根元素名，只认 <Key algorithm="rsa"|"ecdsa">（小写）、<PrivateKey> 与至少两张 <Certificate>；读不懂就跳过这个 profile，名单里的应用退回真硬件。',
-  omk: 'OMK 按整块正则取每个 <Key algorithm="…">…</Key>：必须有 EC 密钥，且每块自带 <NumberOfCertificates>N</NumberOfCertificates>、本块证书数正好等于 N。解析不过时守护进程会把自带模板【覆盖回这个文件】（本模块覆盖前留 keybox.xml.bak，可还原）。',
+  omk: 'OMK 按整块正则取每个 <Key algorithm="…">…</Key>：必须有 EC 密钥，且每块自带 <NumberOfCertificates>N</NumberOfCertificates>、本块证书数正好等于 N。解析不过时守护进程会把自带模板【覆盖回这个文件】（本模块覆盖前留 keybox.xml.bak，可还原）。另：换 keybox 会把它绑定的旧密钥全部作废（默认 retire_stale_keybox_bound_keys = true），应用要重新注册一次才能再用。',
 };
 function keyboxCard() {
   const bi = S.backendInfo;
