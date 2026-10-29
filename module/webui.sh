@@ -382,7 +382,7 @@ cmd_status() {
 #       安装模块/换工具/换设备时才变，所以与 status 分开 —— 界面每次打开只问一次，
 #       省下 status 里约 400ms。
 cmd_env() {
-    local ino uimode hex seed wc
+    local ino uimode hex seed wc fontpkg sys_font sys_font_file fontapk reg ff src fontdir fhash dst old tmp d
 
     kv resetprop "$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)"
     kv awk "$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)"
@@ -440,7 +440,8 @@ cmd_env() {
     fi
     # 族名写进 CSS 未必生效：Chromium 有自己的字体映射表，实测把族名写进去界面仍是 Roboto。
     # 所以补一条不依赖名字的路 —— 按字体注册表找到那个 ttf，拷进 webroot，
-    # 由界面用 @font-face 直接加载。拷一次就够：大小一致就跳过，别每次开界面都搬 4MB。
+    # 由界面用 @font-face 直接加载。文件名带内容哈希：换字体时 URL 一定变，
+    # WebView 不会拿旧 URL 的缓存继续用；同名文件只搬一次。
     sys_font_file=""
     if [ -n "$sys_font" ]; then
         ff=$(awk -v fam="name=\"$sys_font\"" '
@@ -456,14 +457,35 @@ cmd_env() {
             if [ -n "$ff" ] && [ -f "$d/$ff" ]; then src="$d/$ff"; break; fi
         done
         if [ -n "$src" ]; then
-            dst="$MODDIR/webroot/fonts/sys.ttf"
-            mkdir -p "$MODDIR/webroot/fonts" 2>/dev/null
-            if [ ! -f "$dst" ] || [ "$(wc -c < "$src")" != "$(wc -c < "$dst")" ]; then
-                cp -f "$src" "$dst" 2>/dev/null \
-                    && chmod 644 "$dst" 2>/dev/null \
-                    && chcon u:object_r:system_file:s0 "$dst" 2>/dev/null
+            fontdir="$MODDIR/webroot/fonts"
+            fhash=""
+            command -v md5sum >/dev/null 2>&1 \
+                && fhash=$(md5sum "$src" 2>/dev/null | cut -d' ' -f1)
+            [ -n "$fhash" ] || fhash=$(wc -c < "$src" 2>/dev/null | tr -d ' ')
+            if [ -n "$fhash" ]; then
+                dst="$fontdir/font-$fhash.ttf"
+                mkdir -p "$fontdir" 2>/dev/null
+                if [ ! -s "$dst" ]; then
+                    # 先写临时名，确认大小完整再换上去：拷贝失败时旧字体还得能用。
+                    tmp="$fontdir/.font.$$.tmp"
+                    rm -f "$tmp" 2>/dev/null
+                    if cp -f "$src" "$tmp" 2>/dev/null \
+                        && [ -s "$tmp" ] \
+                        && [ "$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')" = "$(wc -c < "$src" 2>/dev/null | tr -d ' ')" ]; then
+                        chmod 644 "$tmp" 2>/dev/null
+                        chcon u:object_r:system_file:s0 "$tmp" 2>/dev/null
+                        mv -f "$tmp" "$dst" 2>/dev/null
+                    fi
+                    rm -f "$tmp" 2>/dev/null
+                fi
+                # 新文件就位后再清旧名（含上一版的 sys.ttf）；失败则保留旧文件。
+                if [ -s "$dst" ]; then
+                    for old in "$fontdir"/font-*.ttf "$fontdir"/sys.ttf; do
+                        [ -f "$old" ] && [ "$old" != "$dst" ] && rm -f "$old" 2>/dev/null
+                    done
+                fi
+                [ -s "$dst" ] && sys_font_file="fonts/font-$fhash.ttf"
             fi
-            [ -s "$dst" ] && sys_font_file="fonts/sys.ttf"
         fi
     fi
     kv sys_font_file "$sys_font_file"

@@ -59,6 +59,11 @@ jobs:
         # 超时标记已带到 call()、内联脚本可解析。不需要设备。
         run: node tests/ui-shape.js
 
+      - name: WebUI Font Chain Self-Test
+        # 抽出 applyFont 执行：按文件哈希生成唯一族名、换文件不复用旧族名、
+        # 加载失败落到 THEME.fontLoaded、可见时重读 env。不需要设备。
+        run: node tests/ui-font.js
+
       - name: Verified Boot Hash Self-Test
         # 校验/保存/应用三条路径，resetprop 换成计次桩：只接受 64/128 位
         # 十六进制、只补空 hash_alg、读回不一致要报失败。不需要设备。
