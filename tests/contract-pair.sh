@@ -8,12 +8,18 @@
 #       必须在命令层清单里"变成一条静态断言，不必等真机看见横幅。
 #
 # 用法：sh tests/contract-pair.sh [webui.sh] [index.html]
+#
+# 契约常量现在有两种写法：旧产物里是 `var EXPECT_API = 4;`，新版源码
+# （webui/src/bridge.js）是 `export const EXPECT_API = 4;`。两边都要认 ——
+# 只认一种的话，换产物的那一刻这个套子会静默读不到值，而"读不到"在它眼里
+# 和"对不上"是同一种失败，容易误判成契约漂移。
 #=============================================================================
 set -u
 
 ROOT=$(cd "$(dirname "$0")/.." && pwd)
 SH_FILE=${1:-$ROOT/module/webui.sh}
 HTML=${2:-$ROOT/module/webroot/index.html}
+UI_SRC=$ROOT/webui/src/bridge.js
 
 fail=0
 chk() {   # chk <标签> <期望> <实际>
@@ -31,8 +37,16 @@ chk_has() {   # chk_has <标签> <清单(空格分隔)> <名字>
     esac
 }
 
+# 双写法抽取：先问源码（可读、带 export），再退回产物（旧版 var）
+grab() {   # grab <名字> <正则号=1>
+    local name="$1" v=""
+    [ -f "$UI_SRC" ] && v=$(sed -n "s/.*export const ${name} *= *\([^;]*\);.*/\1/p" "$UI_SRC" | head -1)
+    [ -n "$v" ] || v=$(sed -n "s/.*var ${name} *= *'\{0,1\}\([^';]*\)'\{0,1\};.*/\1/p" "$HTML" | head -1)
+    printf '%s' "$v"
+}
+
 api_sh=$(sed -n 's/^TAA_API=\([0-9][0-9]*\).*/\1/p' "$SH_FILE" | head -1)
-api_ui=$(sed -n 's/.*var EXPECT_API *= *\([0-9][0-9]*\);.*/\1/p' "$HTML" | head -1)
+api_ui=$(grab EXPECT_API)
 
 # TAA_COMMANDS 跨行续写：从开引号攒到闭引号
 cmds=$(awk '/^TAA_COMMANDS="/ {
@@ -44,7 +58,7 @@ cmds=$(awk '/^TAA_COMMANDS="/ {
     exit
 }' "$SH_FILE")
 
-writes=$(sed -n "s/.*var WRITE_CMDS *= *'\([^']*\)'.*/\1/p" "$HTML" | head -1)
+writes=$(grab WRITE_CMDS)
 
 echo "── 契约号 ──"
 chk "webui.sh TAA_API 读得到" 1 "$([ -n "$api_sh" ] && echo 1 || echo 0)"
