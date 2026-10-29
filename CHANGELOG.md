@@ -6,6 +6,12 @@
 
 #### 新增
 
+* **按 Material Web 2.5.0 的 Expressive 模板调整交互形状**：只取 `labs/gb` 的令牌与组件解剖，不把 Lit/组件库打进单文件界面（官方 All 组件包约 455KB minified，且 MWC 已进入维护模式）。
+  * 按钮按下时圆角从胶囊收成 8px，350ms 使用官方 `cubic-bezier(.42, 1.67, .21, .9)` 过冲曲线，松开弹回；FAB 保留自己的 50% 形状。
+  * 分段选中与列表选中改用 `secondary-container / on-secondary-container`；列表选中头像用 `primary-container`。
+  * 应用列表行最小 56px、头像 40px 圆形（官方 list-item 尺寸）；入口行最小 56px。
+  * 417 宽复测：横向溢出 0；行高 56、头像 40、分段/列表选中颜色取到 `secondary-container`；`.btn:active` 解析为 `border-radius: var(--r-xs)`，过渡含 350ms 官方曲线。全部静态测试与 JS 语法通过。
+
 * **换系统字体后界面不跟：字体文件按内容哈希 + 回到界面重读**：
   * 原因：字体文件之前固定叫 `webroot/fonts/sys.ttf`，WebView 会按同一个 URL 继续用缓存；`env` 也只在打开页面时读一次，换字体后回到已经开着的界面不会重读。
   * 现在 `webui.sh env` 按源 ttf 的 md5 生成 `fonts/font-<hash>.ttf`，换字体 URL 必变；新文件就位后清理旧版 `sys.ttf`，同名文件只搬一次。界面 `@font-face` 的族名也带文件哈希，避免复用已经加载过的旧 FontFace。
