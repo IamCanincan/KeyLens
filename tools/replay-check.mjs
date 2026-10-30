@@ -252,6 +252,38 @@ async function main() {
         : '✗ 屏上末尾是：' + JSON.stringify((q.text || '').slice(-90))));
     if (!hasNeedle) bad++;
   }
+
+  /* 切页手感：数据已缓存时"二次进入后端页"要多久（含同步渲染与组件布局）。
+     真机名单 128 条，这一页是全场最重的一页 —— 手机上的耗时只会比这里更长。 */
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
+  await sleep(150);
+  const mt = await ev(`(function(){ return new Promise(function(res){
+    var n=document.getElementById('nav'), t0=performance.now();
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}));
+    var sync=performance.now()-t0;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
+            nodes: document.querySelectorAll('#view *').length });
+    });});
+  }); })()`);
+  console.log(`     二次进入后端页 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
+  if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
+
+  /* 分批挂载的两个风险，都要有断言：
+     ① 打到一半切走 —— 不许往已经卸掉的列表里继续 append，也不许抛异常；
+     ② 不打断时最后必须补齐到全部条目（不能悄悄停在 40 条）。 */
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+  await sleep(40);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
+  await sleep(900);
+  const afterCut = await ev(`document.getElementById('view').textContent.length`);
+  chk('分批加载被打断后不炸（切到自动更新页仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+  await sleep(2500);
+  const done = await ev(`(function(){ return {
+    items: document.querySelectorAll('#view md-list-item').length,
+    hint: (document.getElementById('view').textContent.match(/共 \\d+ 条[^|]*/) || [''])[0] }; })()`);
+  chk('分批加载最终补齐到全部条目', done.items >= Math.min(realTargets.length, 200), done.hint);
   const shot = await ws.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, 'replay.png'), Buffer.from(shot.data, 'base64'));
   console.log('\n截图：' + path.join(OUT, 'replay.png'));

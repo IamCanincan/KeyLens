@@ -140,7 +140,25 @@ for (const k of bracketKeys) {
   if (!KNOWN.has(k)) { console.log(`✗   界面按 st['${k}'] 读，命令层没有输出过这个键名`); bad++; }
 }
 
-/* 命令层的输出键有没有被界面用到（只报数量，不要求全用：help/restore 等本来就只读一次） */
+/* 表单规格里的"读键"也要对账：F_* 表每项是 ['提交键', '读键', 标签, …]，读键是
+   间接传给 biValue(spec, from) 的 —— 上面那种 `S.x.y` 的扫描看不见它。这一格漏过真 bug：
+   两条开关的读键写成 config_force_skip_biometric / config_retire_stale_keys，
+   而命令层输出的是 cfg_* —— 于是这两个开关在真机上永远显示为"关"。 */
+const formReads = [];
+for (const m of screensRaw.matchAll(/const (F_[A-Z_]+) = \[([\s\S]*?)\n\];/g)) {
+  /* 只认"字段项"：['提交键', '读键', '标签', '类型', …]。不这么限定的话，
+     select 的选项对 ['warning','warning'] 也会被当成字段 —— 第一版就这么报了个假警。 */
+  for (const r of m[2].matchAll(/\['([a-z_]+)',\s*'([a-z_]+)',\s*'[^']*',\s*'(?:text|switch|select|seg)'/g)) {
+    formReads.push({ table: m[1], post: r[1], read: r[2] });
+  }
+}
+/* 这些读键来自 JS 侧自己算出来的值，不是命令层输出（目前没有；留着这条口子时要写清理由） */
+const FORM_READ_OK = new Set([]);
+for (const f of formReads) {
+  if (KNOWN.has(f.read) || FORM_READ_OK.has(f.read)) continue;
+  console.log(`✗   ${f.table} 的读键 "${f.read}"（提交键 ${f.post}）命令层从没输出过 —— 这格在真机上永远是空`);
+  bad++;
+}
 const used = new Set(reads.map((r) => r.key));
 const unused = [...KNOWN].filter((k) => !used.has(k) && !k.startsWith('ok') && !['present', 'restored', 'applied', 'cleared', 'saved', 'written', 'removed', 'added', 'restarted', 'cleared_log'].includes(k));
 

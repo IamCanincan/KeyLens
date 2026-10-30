@@ -15,7 +15,7 @@ export const ICON = {
   over: 'home', func: 'category', log: 'article', about: 'info',
   sync: 'refresh', read: 'download', backend: 'settings', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
-  addPkg: 'add', moon: 'dark_mode',
+  addPkg: 'add', moon: 'dark_mode', edit: 'edit',
   ok: 'check', warn: 'warning', bad: 'error', none: 'help',
 };
 
@@ -155,6 +155,9 @@ function modeButton(tok, meta, tee) {
 }
 
 let askedIcons = {};
+/* 名单分批挂载的令牌：换页/重画时 +1，正在跑的分批循环看到它不是自己那批就停手
+   （否则会往已经卸掉的列表里继续 append，白烧一帧还可能报错）。 */
+let listToken = 0;
 function loadIconsFor(shown) {
   const need = [];
   shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
@@ -329,7 +332,10 @@ function listSection() {
   tf.addEventListener('input', function () { S.search = String(tf.value || ''); draw(); });
   s.appendChild(tf);
   const l = h('md-list');
-  shown.slice(0, 200).forEach(function (tok) {
+  const LIMIT = 200;
+  const CHUNK = 40;
+  const page = shown.slice(0, LIMIT);
+  function rowOf(tok) {
     const b = baseOf(tok), ic = S.icons[b];
     const meta = (S.targetMeta || {})[tok];
     const isTrickyTargets = S.view === 'targets' && bi.backend === 'tricky' && syn.modes;
@@ -352,13 +358,37 @@ function listSection() {
         ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
         : button('加入', { variant: 'text', on: function () { write('restore-apps', b || tok, '已加入：' + (b || tok)); } }));
     }
-    l.appendChild(it);
-  });
+    return it;
+  }
+  page.slice(0, CHUNK).forEach(function (t) { l.appendChild(rowOf(t)); });
   if (!shown.length) l.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
   s.appendChild(l);
-  s.appendChild(h('p', 'hint', '共 ' + shown.length + ' 条' + (shown.length > 200 ? '（只画前 200 条）' : '')));
+  const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
+  const countHint = h('p', 'hint', '共 ' + shown.length + ' 条' + overLimit);
+  s.appendChild(countHint);
   c.appendChild(s);
-  loadIconsFor(shown);
+  /* 剩下的分批挂上去。为什么：一次建 144 个 md-list-item 会让"点底栏切页"卡到 1 秒
+     —— 实测 1010ms / 448 节点，采样分析器显示耗时在组件自己 getBoundingClientRect /
+     contentSize / 读 CSS 变量，不在我们的渲染函数里。先画 40 条让这一页立刻可交互，
+     其余每帧 40 条补齐；换页或重画时 token 变了就停，不会往已经卸掉的列表里塞节点。 */
+  if (page.length > CHUNK) {
+    const token = ++listToken;
+    let i = CHUNK;
+    const step = function () {
+      if (token !== listToken) return;
+      const end = Math.min(i + CHUNK, page.length);
+      const frag = document.createDocumentFragment();
+      for (; i < end; i++) frag.appendChild(rowOf(page[i]));
+      l.appendChild(frag);
+      loadIconsFor(page.slice(0, i));
+      countHint.textContent = '共 ' + shown.length + ' 条' + overLimit + ' · 已显示 ' + i;
+      if (i < page.length) setTimeout(step, 16);
+      else countHint.textContent = '共 ' + shown.length + ' 条' + overLimit;
+    };
+    setTimeout(step, 16);
+  } else {
+    loadIconsFor(page);
+  }
   return c;
 }
 
@@ -509,8 +539,8 @@ const F_TRICKY = [
 const LOG_LEVELS = [['off', 'off'], ['error', 'error'], ['warn', 'warn'], ['info', 'info'], ['debug', 'debug'], ['trace', 'trace']];
 const F_OMK_CONFIG = [
   ['cfg_log_level', 'config_log_level', '日志级别', 'select', null, LOG_LEVELS],
-  ['cfg_force_skip_biometric', 'config_force_skip_biometric', '跳过生物识别校验（不推荐）', 'switch'],
-  ['cfg_retire_stale_keys', 'config_retire_stale_keys', '淘汰旧 keybox 绑定的密钥', 'switch'],
+  ['cfg_force_skip_biometric', 'cfg_force_skip_biometric', '跳过生物识别校验（不推荐）', 'switch'],
+  ['cfg_retire_stale_keys', 'cfg_retire_stale_keys', '淘汰旧 keybox 绑定的密钥', 'switch'],
   ['trust_os_version', 'trust_os_version', 'OS 版本（auto 或 0–99）', 'text', '信任链 [trust]'],
   ['trust_security_patch', 'trust_security_patch', '安全补丁（auto|latest|YYYY-MM-DD）', 'text'],
   ['trust_os_patchlevel', 'trust_os_patchlevel', '系统补丁级别', 'text'],
@@ -725,6 +755,29 @@ function trickyBlocks() {
 }
 
 /* OMK：两份 toml 分开编辑，因为它们的生效代价不同 */
+/* 折叠块：默认只给一个「编辑」按钮，点开才建控件。
+   为什么不在进页面时就建：真机 128 条名单下切到后端页要 1010ms，采样分析器显示
+   大头是 md-text-field / md-switch 自己的布局测量（getBoundingClientRect 8%、
+   contentSize/measure 11%），不是我们的渲染函数。这两块表单 30 多个控件，
+   用户不点「编辑」时没必要付这笔钱；顺便也让这一页从 7000px 缩回可读长度。 */
+function fold(build, openText) {
+  const wrap = h('div', 'fold');
+  const head = h('div', 'acts');
+  const btn = button(openText || '编辑', { variant: 'tonal', icon: ICON.edit });
+  const body = h('div', 'fold-body');
+  body.hidden = true;
+  let built = false;
+  btn.addEventListener('click', function () {
+    if (!built) { body.appendChild(build()); built = true; }
+    body.hidden = !body.hidden;
+    btn.textContent = body.hidden ? (openText || '编辑') : '收起';
+  });
+  head.appendChild(btn);
+  wrap.appendChild(head);
+  wrap.appendChild(body);
+  return wrap;
+}
+
 function omkReload() {
   const box = h('div', 'stack');
   const c = card();
@@ -748,32 +801,54 @@ function omkReload() {
   const i = card();
   const is = section('injector.toml · 名单与路由', ICON.backend);
   is.appendChild(h('p', 'hint', 'scoop 就是目标名单本身，只吃精确包名 —— 加/减包请在「名单」那一格做。'));
+  const onN = OMK_INTERCEPTS.filter(function (m) { return String(S.backendInfo['intercept_' + m]) === 'true'; }).length;
+  is.appendChild(list([
+    item({ headline: '拦截方法', trailing: onN + ' / ' + OMK_INTERCEPTS.length + ' 开启' }),
+    item({ headline: '主开关', trailing: S.backendInfo.injector_main_enabled || '—' }),
+    item({ headline: '日志级别', trailing: S.backendInfo.injector_log_level || '—' }),
+  ]));
   i.appendChild(is);
-  i.appendChild(form(S.backendInfo, F_OMK_INJECTOR, 'omk-save-injector', null, '已保存 injector.toml'));
-  const ic = h('div', 'acts');
-  ic.appendChild(h('div', 'form-sub', '拦截方法 [intercept] · 10 项独立开关'));
-  OMK_INTERCEPTS.forEach(function (m) {
-    const row = h('div', 'row');
-    row.appendChild(h('span', 'row-t', m));
-    const sw = h('md-switch');
-    sw.checked = String(S.backendInfo['intercept_' + m]) === 'true';
-    sw.addEventListener('change', function () {
-      write('omk-save-injector', b64('intercept_' + m + '=' + b64(sw.checked ? 'true' : 'false')), m + ' → ' + (sw.checked ? '拦' : '不拦'));
+  i.appendChild(fold(function () {
+    const f = h('div');
+    f.appendChild(form(S.backendInfo, F_OMK_INJECTOR, 'omk-save-injector', null, '已保存 injector.toml'));
+    const ic = h('div', 'acts');
+    ic.appendChild(h('div', 'form-sub', '拦截方法 [intercept] · 10 项独立开关'));
+    OMK_INTERCEPTS.forEach(function (m) {
+      const row = h('div', 'row');
+      row.appendChild(h('span', 'row-t', m));
+      const sw = h('md-switch');
+      sw.checked = String(S.backendInfo['intercept_' + m]) === 'true';
+      sw.addEventListener('change', function () {
+        write('omk-save-injector', b64('intercept_' + m + '=' + b64(sw.checked ? 'true' : 'false')), m + ' → ' + (sw.checked ? '拦' : '不拦'));
+      });
+      row.appendChild(sw);
+      ic.appendChild(row);
     });
-    row.appendChild(sw);
-    ic.appendChild(row);
-  });
-  i.appendChild(ic);
+    f.appendChild(ic);
+    return f;
+  }, '编辑 injector.toml'));
   box.appendChild(i);
 
   const k = card();
   const ks = section('config.toml · 信任链与设备身份', ICON.tune);
-  ks.appendChild(h('p', 'hint', '生效代价按**这一单里动了哪些字段**算，不是固定重启（CONFIGURATION.md:415-425）：'
-    + '只动 security_patch / os_patchlevel / vendor_patchlevel / boot_patchlevel 这四个 → keymint 运行中整组热生效，'
-    + '已有 TA 原地更新、在途操作与 per-boot 计数不丢；掺进任何别的字段 → 重启 keymint；'
-    + 'vb_key 或 vb_hash 从 random 改成 auto → 要重启【整机】。保存后的真实结果以提示条为准。'));
+  ks.appendChild(h('p', 'hint', '生效代价按这一单里动了哪些字段算（CONFIGURATION.md:415-425）：'
+    + '只动四个补丁级别 → keymint 运行中整组热生效；掺进别的字段 → 重启 keymint；'
+    + 'vb_key / vb_hash 从 random 改成 auto → 要重启【整机】。保存后的真实结果以提示条为准。'));
+  ks.appendChild(list([
+    item({ headline: '日志级别', trailing: S.backendInfo.config_log_level || '—' }),
+    item({ headline: '跳过生物识别', trailing: S.backendInfo.cfg_force_skip_biometric || '未设置' }),
+    /* 这一项在真机的 config.toml 里**本来就没有那一行**（上游默认 true），
+       命令层如实不输出。把空值显示成"关"就是错的事实 —— 如实写"未设置（默认 true）"。 */
+    item({ headline: '回收旧 keybox 绑定的密钥', trailing: S.backendInfo.cfg_retire_stale_keys || '未设置（上游默认 true）' }),
+    item({ headline: '补丁级别', supporting: 'security ' + (S.backendInfo.trust_security_patch || '—')
+      + ' · os ' + (S.backendInfo.trust_os_patchlevel || '—')
+      + ' · vendor ' + (S.backendInfo.trust_vendor_patchlevel || '—')
+      + ' · boot ' + (S.backendInfo.trust_boot_patchlevel || '—') }),
+  ]));
   k.appendChild(ks);
-  k.appendChild(form(S.backendInfo, F_OMK_CONFIG, 'omk-save-config', null, '已保存 config.toml'));
+  k.appendChild(fold(function () {
+    return form(S.backendInfo, F_OMK_CONFIG, 'omk-save-config', null, '已保存 config.toml');
+  }, '编辑 config.toml'));
   box.appendChild(k);
   return box;
 }

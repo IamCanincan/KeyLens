@@ -151,6 +151,13 @@ async function main() {
     p0.missFam ? '落空: ' + p0.missFam : '已声明: ' + p0.declared);
 
   console.log('── 逐页驱动（真的点导航）──');
+  /* 切页三件事一起量，都是用户在手机上真正会感觉到的：
+       ① 底栏（md-navigation-bar）在切页前后的 rect 会不会变 —— "点底栏时底栏上下跳"
+          那类 bug 只在切页瞬间出现，静态截图看不出来；
+       ② 切过去是不是停在页首（scrollTop 必须回 0，否则你会落在上页滚到的位置）；
+       ③ 二次进入同一页要多久（数据已缓存，这条最接近真机上点底栏的手感）。 */
+  const navRects = [];
+  const switchMs = [];
   for (let i = 0; i < PAGES.length; i++) {
     const want = PAGES[i];
     await ev(`(function(){ var n=document.getElementById('nav');
@@ -164,8 +171,47 @@ async function main() {
     console.log(`${ok ? 'ok  ' : '✗   '} 第 ${i} 格 → ${want.title}  标题=${p.title} 列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
       + (miss.length ? '  缺区块: ' + miss.join('、') : '')
       + (p.missFam ? '  字体落空: ' + p.missFam : ''));
+
+    /* 量"二次进入"：先切走再切回来，此时数据已在 S 里，量到的就是渲染本身 */
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:${(i + 1) % PAGES.length}},bubbles:true})); return 1; })()`);
+    await sleep(120);
+    const m = await ev(`(function(){ return new Promise(function(res){
+      var n = document.getElementById('nav');
+      var before = n.getBoundingClientRect();
+      var t0 = performance.now();
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true}));
+      var sync = performance.now() - t0;      /* 同步渲染：我们的 draw() 本身 */
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        var after = n.getBoundingClientRect();
+        var view = document.getElementById('view');
+        res({ ms: Math.round(performance.now() - t0), syncMs: Math.round(sync),
+              topBefore: +before.top.toFixed(1), topAfter: +after.top.toFixed(1),
+              hBefore: +before.height.toFixed(1), hAfter: +after.height.toFixed(1),
+              scrollTop: view ? Math.round(view.scrollTop) : -1,
+              nodes: document.querySelectorAll('#view *').length });
+      });});
+    }); })()`);
+    navRects.push([m.topBefore, m.topAfter, m.hBefore, m.hAfter]);
+    switchMs.push([want.id, m.ms, m.nodes, m.syncMs]);
+    const stable = m.topBefore === m.topAfter && m.hBefore === m.hAfter;
+    const atTop = m.scrollTop === 0;
+    if (!stable || !atTop) bad++;
+    console.log(`     ${stable ? 'ok  ' : '✗   '} 底栏不跳  y ${m.topBefore}→${m.topAfter} · 高 ${m.hBefore}→${m.hAfter}`
+      + `  ${atTop ? 'ok  ' : '✗   '} 停在页首 scrollTop=${m.scrollTop}`
+      + `  ·  二次进入 ${m.ms}ms（同步 ${m.syncMs}ms）/ ${m.nodes} 节点`);
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-' + want.id + '.png'), Buffer.from(shot.data, 'base64'));
+  }
+  {
+    const ys = navRects.map(r => r[0]).concat(navRects.map(r => r[1]));
+    const hs = navRects.map(r => r[2]).concat(navRects.map(r => r[3]));
+    const dy = Math.max(...ys) - Math.min(...ys);
+    const dh = Math.max(...hs) - Math.min(...hs);
+    chk('底栏几何在整个切页过程里恒定', dy === 0 && dh === 0, `y 范围 ${dy}px · 高范围 ${dh}px`);
+    const slow = switchMs.filter(s => s[1] > 400);
+    chk('二次进入没有超过 400ms 的页', slow.length === 0,
+      switchMs.map(s => `${s[0]}=${s[1]}ms/${s[2]}节点`).join(' '));
   }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
