@@ -831,6 +831,13 @@ cmd_tricky_save_patch() {
     done < "$pairs"
 
     target="$TSTORE_DIR/security_patch.txt"
+    # 全新装的 Tricky 还没有这张表（它只在用户第一次保存时才存在）。awk 打不开
+    # 输入文件会**在 END 之前就退出**，"文件不存在时按请求新建"那段根本跑不到 ——
+    # 真机上第一次保存直接报"补丁表写入失败"。先落一个空文件让 awk 有得读。
+    if [ ! -f "$target" ]; then
+        mkdir -p "$TSTORE_DIR" 2>/dev/null
+        : > "$target" 2>/dev/null || { echo "补丁表不存在且无法创建：$target" >&2; rm -rf "$dir"; return 1; }
+    fi
     webui_lock || { rm -rf "$dir"; return 1; }
     out="$TSTORE_DIR/.security_patch.txt.keylens.$$"
     status="$dir/status"
