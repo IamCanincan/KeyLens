@@ -140,6 +140,23 @@ async function main() {
   const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
 
   const p0 = await ev(PROBE);
+  /* 需要看底栏内部时：DUMP_NAV=1 node tools/md3e-build/verify.mjs
+     底栏是自定义元素，光看截图分不清"图标没画"和"整项没建" —— 转储直接给结论。 */
+  if (process.env.DUMP_NAV) {
+    const nav = await ev(`(function(){ var n=document.getElementById('nav'); if(!n) return 'no nav';
+      var o={items:n.items, selected:n.selected, kids:[], shadow:[]};
+      [].forEach.call(n.children,function(c,i){o.kids.push(i+':'+c.tagName+':icon='+(c.getAttribute('icon')||'-')+':label='+(c.getAttribute('label')||'-')+':active='+(c.hasAttribute('active')?'y':'n'))});
+      if (n.shadowRoot) {
+        [].forEach.call(n.shadowRoot.querySelectorAll('*'), function(e){
+          var t=(e.textContent||'').trim();
+          var ff=(getComputedStyle(e).fontFamily||'').split(',')[0];
+          if (t && t.length < 16) o.shadow.push(e.tagName+'['+t+'] ff='+ff+' w='+Math.round(e.getBoundingClientRect().width));
+        });
+      }
+      return o; })()`);
+    console.log('── 底栏转储 ──');
+    console.log(JSON.stringify(nav, null, 1).slice(0, 3000));
+  }
   chk('组件全部注册', p0.missing.length === 0, p0.missing.join(','));
   chk('视口钉在 417', p0.vw === 417, 'vw=' + p0.vw);
   chk('主页横向不溢出', p0.scrollW - p0.vw <= 0, '溢出 ' + (p0.scrollW - p0.vw) + 'px');

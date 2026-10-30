@@ -57,7 +57,7 @@ const store = {};
 for (const c of READ) store[c] = cap(c, c === 'log' ? '300' : '');
 /* icons 要包名参数：拿 targets 的头几个真包名去要，形状才是屏幕上会看到的形状 */
 const pkgs = (store.targets.stdout || '').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12);
-store.icons = pkgs.length ? cap('icons', pkgs.join(' ')) : { errno: 0, stdout: '', stderr: '' };
+store.icons = pkgs.length ? cap('icons', pkgs.join(',')) : { errno: 0, stdout: '', stderr: '' };
 const okN = Object.values(store).filter(r => r.errno === 0).length;
 console.log(`  ${serial}：${Object.keys(store).length} 条命令现读完成，${okN} 条退 0`
   + `（读命令失败的那几条本来就该失败，比如后端不是 TEESim）`);
@@ -280,6 +280,30 @@ async function main() {
   }); })()`);
   console.log(`     二次进入后端页 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
   if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
+
+  /* 图标：旧版靠 webroot/icons/*.png，新版用 <img> 指同一批文件。加载失败就是
+     一个个空白块 —— 只看"有没有 img 元素"不算验过，必须看 naturalWidth。 */
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+  await sleep(2500);
+  const ic = await ev(`(function(){
+    var imgs = [].slice.call(document.querySelectorAll('#view img.app-ic'));
+    var ok = imgs.filter(function (i) { return i.naturalWidth > 0; }).length;
+    return { total: imgs.length, ok: ok,
+      sample: imgs.slice(0, 3).map(function (i) { return i.getAttribute('src') + '=' + i.naturalWidth; }) };
+  })()`);
+  /* 本地只有几张贴图（webroot/icons/ 是运行时产物、已 gitignore），所以判据分两截：
+     ① 每个包都建出了 <img> 且 src 是 icons/<包名>.png —— 这一条永远可判；
+     ② 本地真有那张图时，像素必须 > 0（证明路径解析对）。缺图不假装通过，报出来。 */
+  const iconsDir = path.join(repo, 'module', 'webroot', 'icons');
+  const local = fs.existsSync(iconsDir) ? fs.readdirSync(iconsDir) : [];
+  chk('名单里的应用都建出了 <img>（src 指向 icons/<包名>.png）',
+    ic.total > 0, `${ic.total} 个 img · ${ic.sample.join(' ')}`);
+  chk('本地有贴图的图标真的渲染出了像素', ic.ok > 0 || local.length === 0,
+    `本地贴图 ${local.length} 张 · 有像素的 img ${ic.ok}/${ic.total}`);
+  {
+    const s0 = await ws.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(OUT, 'replay-list.png'), Buffer.from(s0.data, 'base64'));
+  }
 
   /* 分批挂载的两个风险，都要有断言：
      ① 打到一半切走 —— 不许往已经卸掉的列表里继续 append，也不许抛异常；

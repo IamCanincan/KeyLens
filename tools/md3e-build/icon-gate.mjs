@@ -60,9 +60,30 @@ for (const f of fs.readdirSync(SRC)) {
   });
 }
 
+/* 第二件：`ICON.xxx` 引用的键必须在表里存在。缺键**不报错**——取出来是 undefined，
+   组件就把那一格画成空槽。2026-10-30 底栏「伪装」整格空了，就是 PAGES 里写了
+   ICON.tune 而表里只有 restart:'tune'；上面那三种字符串写法一个都盖不到它。 */
+const iconKeys = new Set();
+const iconUses = [];
+for (const f of fs.readdirSync(SRC)) {
+  const text = fs.readFileSync(path.join(SRC, f), 'utf8');
+  const rel = 'webui/src/' + f;
+  const tbl = text.match(/export const ICON = \{([\s\S]*?)\n\};/);
+  if (tbl) for (const m of tbl[1].matchAll(/([A-Za-z]+)\s*:/g)) iconKeys.add(m[1]);
+  text.split('\n').forEach((line, i) => {
+    for (const m of line.matchAll(/ICON\.([A-Za-z]+)/g)) iconUses.push(rel + ':' + (i + 1) + '  ICON.' + m[1]);
+  });
+}
+const missingKeys = iconUses.filter(u => !iconKeys.has(u.split('ICON.')[1]));
+
 const bad = [...used.entries()].filter(([n]) => !allow.has(n)).sort();
-console.log(`子集 ${allow.size} 个连字；界面用到 ${used.size} 个名字`);
-if (!bad.length) { console.log('ok 全部在子集内'); process.exit(0); }
+console.log(`子集 ${allow.size} 个连字；界面用到 ${used.size} 个名字；ICON 表 ${iconKeys.size} 个键、引用 ${iconUses.length} 处`);
+if (missingKeys.length) {
+  console.log('✗ 引用了 ICON 表里不存在的键（取出来是 undefined，那一格会画成空槽）：');
+  for (const m of missingKeys) console.log('   ' + m);
+  process.exit(1);
+}
+if (!bad.length) { console.log('ok 全部在子集内，ICON 引用都能对上'); process.exit(0); }
 console.log('✗ 这些名字不在子集里，界面上会画成字面词：');
 for (const [n, wh] of bad) console.log(`   ${n.padEnd(22)} ${[...wh].join(', ')}`);
 console.log('\n可选做法：换成子集内的名字（--list 看全表），或改用 slot 自己画 SVG。');

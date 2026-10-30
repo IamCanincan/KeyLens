@@ -32,3 +32,6 @@ desktop.ini
 
 # 界面源码的构建中间物（产物是 module/webroot/index.html）
 webui/dist/
+
+# 运行时由 webui.sh icons 写进 webroot/icons/（不是源码；设备上才有）
+module/webroot/icons/

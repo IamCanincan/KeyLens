@@ -15,7 +15,7 @@ export const ICON = {
   over: 'home', func: 'category', log: 'article', about: 'info',
   sync: 'refresh', read: 'download', backend: 'settings', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
-  addPkg: 'add', moon: 'dark_mode', edit: 'edit',
+  addPkg: 'add', moon: 'dark_mode', edit: 'edit', tune: 'tune',
   ok: 'check', warn: 'warning', bad: 'error', none: 'help',
 };
 
@@ -66,6 +66,19 @@ export function button(label, o) {
   b.textContent = label;
   if (o && o.on) b.addEventListener('click', o.on);
   return b;
+}
+
+/* 筛选芯片：四颗 md-button 在 417px 里放不下，会折成两排（截图里第四颗掉到第二行）。
+   md-chip 的 filter 变体正是 MD3 里做筛选的标准控件，宽度也只到按钮的三分之二。 */
+export function chip(label, selected, on) {
+  const c = h('md-chip');
+  c.setAttribute('variant', 'filter');
+  /* 只设 label 属性：md-chip 会把属性**和**槽里的文本都画出来，两样都设就变成
+     "名单 3名单 3"（md-button 不会，它只认属性 —— 两者别混着抄）。 */
+  c.setAttribute('label', label);
+  if (selected) c.setAttribute('selected', '');
+  if (on) c.addEventListener('click', on);
+  return c;
 }
 
 /* 状态 → 语气。规则沿用上一版：正常不上色（一个点就够），只有要处理的才着色。 */
@@ -183,11 +196,13 @@ export function renderProps() {
   S.props.forEach(function (p) {
     l.appendChild(item({
       headline: p.name,
-      supporting: '期望 ' + (p.want || '—'),
+      /* "当前"这行必须写在 supporting-text 里（组件是 white-space:pre-wrap，换行会
+         正常显示、行高自己长）。以前是往 md-list 里 append 一个裸 div —— 它不在
+         md-list 的白底表面里，于是第二行字漏到卡片外面、压在下一行上。 */
+      supporting: '期望 ' + (p.want || '—') + (p.st === 'diff' ? '\n当前 ' + (p.cur || '—') : ''),
       trailing: p.st === 'ok' ? '一致' : p.st === 'missing' ? '读不到' : '不符',
       tone: p.st === 'ok' ? '' : (p.st === 'missing' ? 'warn' : 'bad'),
     }));
-    if (p.st === 'diff') l.appendChild(h('div', 'prop-cur', '当前 ' + p.cur));
   });
   s1.appendChild(l);
   c1.appendChild(s1);
@@ -315,17 +330,19 @@ function listSection() {
   const baseSet = {};
   S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
   const c = card();
-  const s = section('目标名单 · ' + (bi.target_file || '—'), ICON.list);
+  const s = section('目标名单', ICON.list);
   /* 读不到时不许说"是空的" —— 命令层在目标文件缺失时就是 return 1，
      这条错误必须在名单卡的第一行，而不是滚到页尾的黄条里。 */
   if (S.listErr) s.appendChild(h('p', 'read-err', '名单读不到：' + S.listErr));
+  /* 路径不再塞进标题：`/data/misc/keystore/omk/injector.toml` 会把标题折成三行，
+     而且从词中间断开（截图里 "injector.to" / "ml"）。放说明行里整条给。 */
+  s.appendChild(h('p', 'hint', '目标文件：' + (bi.target_file || '—')));
   s.appendChild(h('p', 'hint', '这个后端接受的写法：' + syn.label));
-  const seg = h('div', 'acts');
+  const seg = h('div', 'acts filter-grid');
   [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
    ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
    ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
-    seg.appendChild(button(v[1], { variant: v[0] === S.view ? 'filled' : 'text',
-      on: function () { S.view = v[0]; draw(); } }));
+    seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; draw(); }));
   });
   s.appendChild(seg);
   const src = S.view === 'apps' ? S.apps
@@ -356,8 +373,18 @@ function listSection() {
       interactive: true,
     });
     if (ic && ic.src) {
+      /* 必须进 start 槽并给尺寸：裸 img 落在默认槽里会按原图 256px 渲染，
+         整行被一个巨大图标撑开（截图里 Grok 那张就是这样）。 */
       const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
+      img.setAttribute('slot', 'start');
       img.loading = 'lazy'; img.decoding = 'async';
+      /* 图标文件缺失时不要留浏览器的破图符：退回"首字块"（旧版就是这个退路）。 */
+      img.addEventListener('error', function () {
+        const letter = ((ic.label || b || tok).trim().charAt(0) || '?').toUpperCase();
+        const fb = h('span', 'app-ic-fallback', letter);
+        fb.setAttribute('slot', 'start');
+        if (img.parentNode) img.parentNode.replaceChild(fb, img);
+      });
       it.appendChild(img);
     }
     if (m) {
@@ -370,8 +397,9 @@ function listSection() {
     return it;
   }
   page.slice(0, CHUNK).forEach(function (t) { l.appendChild(rowOf(t)); });
-  if (!shown.length) l.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
   s.appendChild(l);
+  /* 空态也放 md-list **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
+  if (!shown.length) s.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
   const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
   const countHint = h('p', 'hint', '共 ' + shown.length + ' 条' + overLimit);
   s.appendChild(countHint);

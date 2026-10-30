@@ -506,6 +506,14 @@
 
 #### 修复
 
+* **上机后四处版式是坏的，逐个修掉**（都是"看着能用、上屏才发现"的那一类）：
+  * **底栏第三格「伪装」是空的**：PAGES 里写 `icon: ICON.tune`，而 ICON 表里只有 `restart: 'tune'`、没有 `tune` 这个键 —— 取出来是 undefined，组件就把那格画成一个空槽。以前的 icon 闸只认三种字符串写法（icon="x" / icon:'x' / setAttribute），盖不到 `ICON.xxx` 这种表引用；`icon-gate.mjs` 现在逐个校验 `ICON.<键>` 必须存在。
+  * **属性页第二行文字漏到卡片外面、压在下一行上**：`renderProps` 往 `md-list` 里 append 了一个裸 `div.prop-cur`（而且它没有任何 CSS）—— 它不在列表的白底表面里。改成把"当前 …"写进 supporting-text：组件是 `white-space:pre-wrap`，换行正常显示、行高自己长。空态那行 `<p>` 同样从列表里挪进卡片。
+  * **目标名单的标题被长路径折成三行**：`目标名单 · /data/misc/keystore/omk/injector.toml` 会在词中间断开（`injector.to` / `ml`）。标题只留「目标名单」，完整路径移到下面一行说明。
+  * **四个筛选按钮挤成 3+1 两排**：换成 `md-chip variant="filter"`（MD3 里做筛选的标准控件，也窄得多）+ 两列等宽网格。顺带记一笔：md-chip 的 label **属性**和槽文本会**同时**渲染，两样都设就成了"名单 3名单 3"（md-button 只认属性，两者别混着抄）。
+  * **应用图标按原图 256px 渲染，把整行撑成一个巨大方块**：图片既没进 `md-list-item` 的 `start` 槽，也没有 `.app-ic` 尺寸样式。补 32px 圆图 + 缺图时退回"首字块"（旧版本来就有这个退路，浏览器破图符不能见人）。
+  * 回放台架补两条：**底栏转储**（`DUMP_NAV=1`，直接给 items/selected/渲染项 —— 光看截图分不清"图标没画"和"整项没建"）与**图标像素断言**（只看有没有 `<img>` 不算验过，要看 `naturalWidth`；本地只有两张贴图，缺的不假装通过）。`module/webroot/icons/` 是运行时产物，已加进 .gitignore。
+
 * **改名迁移在真机上静默失效**：`migrate_legacy_paths` 原来用 `for pair in "旧|新"` 再 `${pair%%|*}` / `${pair##*|}` 切分 —— **Android 的 sh 把 `|` 当成"或"**，两个展开都变成空串，于是 `/data/adb/ts_auto.*` 那三个文件一个都不搬。本机 dash/bash 一切正常，**只有把套子推到机上跑才看得出来**。改成 `_mig 旧 新` 两条参数直传，并在 `tests/legacy-migrate.sh` 里加一条静态禁令（判代码不判注释：解释这个坑的注释里就写着这种写法，连注释一起查会自己绊自己 —— 这类假阳性本轮犯了第三次）。
   * 后果本来很实在：`ts_auto.props_off` 存在 = 用户关掉了属性伪装，`ts_auto.boot_hash` 是配置好的启动哈希 —— 不搬就是升级后静默回到默认。
   * 同轮把 20 个 shell 套子全部推到 `/data/local/tmp` 用**设备 toybox sh** 跑了一遍：修前 18 过 2 红，修后 20 全绿。

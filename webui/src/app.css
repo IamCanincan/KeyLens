@@ -54,6 +54,9 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+/* 名单筛选：四颗 chip 在 417px 里放不下，3+1 参差；两列等宽比让它们挤成两排好看 */
+.acts.filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
+.acts.filter-grid md-chip{width:100%}
 /* 状态条：芯片与几段小字一行排开。之前只加了 DOM 没加样式，
    结果 "OhMyKeymint" 和版本号、条数直接连成一串读不断的字。 */
 .strip-row{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
@@ -64,6 +67,10 @@ md-list{display:block}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
 .hint{font-size:12px;line-height:1.55;color:var(--md-sys-color-on-surface-variant);margin:10px 0 0}
+/* 应用图标：只给尺寸，别的东西交给 md-list-item 的 start 槽去排 */
+md-list-item img.app-ic{width:32px;height:32px;border-radius:50%;object-fit:cover;display:block}
+/* 图标缺失时的首字块：同尺寸同圆，用容器色，不抢眼 */
+md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
 .read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 10px;border-radius:8px}
 .warn-card{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}

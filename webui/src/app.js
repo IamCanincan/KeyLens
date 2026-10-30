@@ -10,6 +10,7 @@ import '@materialwebunofficial/md3e-web/components/md-navigation-bar.js';
 import '@materialwebunofficial/md3e-web/components/md-card.js';
 import '@materialwebunofficial/md3e-web/components/md-list.js';
 import '@materialwebunofficial/md3e-web/components/md-button.js';
+import '@materialwebunofficial/md3e-web/components/md-chip.js';
 import '@materialwebunofficial/md3e-web/components/md-switch.js';
 import '@materialwebunofficial/md3e-web/components/md-text-field.js';
 import '@materialwebunofficial/md3e-web/components/md-select.js';
