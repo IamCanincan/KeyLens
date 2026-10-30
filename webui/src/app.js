@@ -375,12 +375,24 @@ window.addEventListener('popstate', function () {
 });
 onOpenSub(openSub);
 let lastPageKey = '';
+let lastTabIndex = -1;
+let lastSub = '';
 function draw() {
   const key = S.tab + '/' + S.sub;
-  view.textContent = '';
-  /* 页标题是内容的第一行（随页滚走）；顶栏里那份标题只在滚动后出现。 */
+  const changed = key !== lastPageKey;
+  const toIdx = PAGES.findIndex(function (p) { return p.id === S.tab; });
+  /* 同页重画（数据异步回来 / 搜索输入）复用同一个 .page 容器：
+     否则 show() 先 draw、缓存命中后再 draw，第二次会把正在入场的整页
+     换掉，动画就永远看不见。换页时才建新容器并重新触发动画。 */
+  const prev = view.firstElementChild;
+  const reuse = !changed && prev && prev.classList && prev.classList.contains('page');
+  const page = reuse ? prev : h('div', 'page');
+  if (reuse) page.textContent = '';
+  else { view.textContent = ''; view.appendChild(page); }
+  /* 页标题、内容、页脚包在同一个 .page 里一起入场 —— 只动内容不动标题
+     会让人以为"没有动画"。方向按 tab 顺序 / 进出二级页决定。 */
   const title = S.sub ? FUNC_PAGES[S.sub] : pageOf(S.tab).label;
-  view.appendChild(h('h1', 'page-title', title));
+  page.appendChild(h('h1', 'page-title', title));
   let body = {
     home: renderHome,
     func: renderFunc,
@@ -388,10 +400,21 @@ function draw() {
     settings: renderSettings,
   }[S.tab] || renderHome;
   if (S.tab === 'func' && S.sub) body = function () { return renderFuncSub(S.sub); };
-  const node = body();
-  if (key !== lastPageKey && node.classList) { node.classList.add('page-in'); lastPageKey = key; }
-  view.appendChild(node);
-  view.appendChild(pageFoot());
+  page.appendChild(body());
+  page.appendChild(pageFoot());
+  if (changed) {
+    let dx = 16;
+    if (S.sub && !lastSub) dx = 22;              /* 进二级页：从右侧推入 */
+    else if (!S.sub && lastSub) dx = -22;        /* 返回菜单：从左侧回来 */
+    else if (lastTabIndex >= 0 && toIdx !== lastTabIndex) {
+      dx = toIdx > lastTabIndex ? 22 : -22;
+    }
+    page.style.setProperty('--page-dx', dx + 'px');
+    page.classList.add('page-in');
+    lastPageKey = key;
+  }
+  lastTabIndex = toIdx;
+  lastSub = S.sub;
 }
 /* 页脚：版本 + 契约号 + 机型。短页下半屏的空白因此是有意留的，
    也把排障最常用的三个事实放在每页都能看到的位置。 */

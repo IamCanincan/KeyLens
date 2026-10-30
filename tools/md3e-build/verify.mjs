@@ -273,6 +273,15 @@ async function main() {
     const want = PAGES[i];
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
+    if (i === 1) {
+      const an = await ev(`(function(){ var p=document.querySelector('#view > .page');
+        if (!p) return null; var s=getComputedStyle(p);
+        return { cls:p.classList.contains('page-in'), name:s.animationName, dur:s.animationDuration,
+          title:!!p.querySelector('.page-title'), dx:p.style.getPropertyValue('--page-dx') }; })()`);
+      chk('切页有入场动画，标题/内容一起动', !!an && an.cls && an.name === 'page-in'
+        && parseFloat(an.dur) > 0 && an.title && Math.abs(parseFloat(an.dx)) > 0,
+        an ? an.name + ' ' + an.dur + ' · title=' + an.title + ' dx=' + an.dx : '没读到');
+    }
     await sleep(900);
     const p = await ev(PROBE);
     const miss = want.must.filter(s => p.text.indexOf(s) < 0);

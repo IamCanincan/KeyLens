@@ -311,6 +311,11 @@ chk('页标题由 draw() 插进内容，滚动切换顶栏状态',
   /appendChild\(h\('h1', 'page-title', title\)\)/.test(app)
   && /addEventListener\('scroll'/.test(app)
   && /resetScrollState\(\)/.test(app));
+chk('换页动画包住标题/内容/页脚，并按方向推入',
+  /\.page\{display:flex;flex-direction:column/.test(css)
+  && /#view > \.page\.page-in\{animation:page-in/.test(css)
+  && /var\(--page-dx/.test(css) && /--page-dx/.test(app)
+  && /h\('div', 'page'\)/.test(app) && /page\.appendChild\(pageFoot\(\)\)/.test(app));
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */
