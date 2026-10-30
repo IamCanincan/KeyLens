@@ -220,6 +220,16 @@ chk('桥接候选表在（连不上要能自证扫了什么）', /BRIDGE_CANDIDA
 chk('深浅翻的是 data-theme，且 env 落地后重涂（boot 与 reloadAll 各一次）',
   /setAttribute\('data-theme', want \? 'dark' : 'light'\)/.test(app)
   && (app.match(/applyTheme\(\);/g) || []).length >= 2);
+/* 安全区：管理器把 insets 注入成自定义属性 --safe-area-inset-*（dex 里挖出来的
+   生成格式），这个 WebView 里 env() 恒 0 —— 只读 env 顶栏就伸不进状态栏。 */
+chk('安全区读注入值与 env 的较大者',
+  /--inset-top: max\(var\(--safe-area-inset-top/.test(css)
+  && /--inset-bottom: max\(var\(--safe-area-inset-bottom/.test(css));
+/* 顶/底栏组件把颜色画在 shadow 的 .bar 上、宿主透明，而让位 padding 加在宿主上
+   —— 宿主不涂底色，padding 那条就是透明带（上机"状态栏缺一块"的另一半）。 */
+chk('顶栏与底栏宿主有底色',
+  /md-top-app-bar\{[^}]*background:var\(--md-sys-color-surface\)/.test(css)
+  && /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
 chk('crypto 种子不渲染', !/root_kek_seed|kak_seed|shared_secret_seed|shared_secret_nonce|auth_token_hmac_key/.test(screens));
 chk('serial/imei/meid 不进日志或提示', !/console\.log\(.*(serial|imei)/.test(screens));
 chk('命令参数走单引号转义（防注入）', /String\(arg\)\.replace\(\/'\/g, "'\\\\''"\)/.test(bridge));

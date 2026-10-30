@@ -50,6 +50,12 @@
 
 #### 修复
 
+* **状态栏那条是透明的，像缺了一块**（用户上机报的）。两个半截原因叠加，各自只造成"看不见的带子"：
+  ① 换 MD3E 时 `app.css` 重写，安全区改成了只读 `env(safe-area-inset-*)` —— 而管理器注入 insets 用的是**自定义属性**（从管理器 APK 的 dex 里挖出 `insets.css` 的生成格式：`:root{--safe-area-inset-*: …; --window-inset-*: var(--safe-area-inset-*, 0px)}`），这个 WebView 里 `env()` 恒 0。上一版读的正是 `var(--window-inset-top, env(…))`，重写时丢了。现在两边取大者：`max(var(--safe-area-inset-*), var(--window-inset-*, env(…)))`。
+  ② 顶/底栏组件把颜色画在 shadow 里的 `.bar` 上，**宿主元素是透明的**，而让位 padding 恰恰加在宿主上 —— 不给宿主涂底色，padding 那条就是透明带。给两个宿主补上与内层一致的背景。
+  * 还有第三处容易踩：组件把宿主高度钉死在内容的 64px（行全是绝对定位，`height:auto` 会让宿主塌成只剩 padding），border-box 下 `padding-top` 又是从这 64 里抠 —— `.bar` 溢出宿主、正好压住页头。用 `min-height: calc(64px + inset)` 压过显式 height，padding 让给内容，不挤不溢。
+  * 台架钉死（`verify.mjs`）：往 `:root` 塞假 inset —— 顶栏必须长高 40 且宿主背景不是 `rgba(0,0,0,0)`；底栏吃 `--safe-area-inset-bottom` 同理；拿掉后回原高。静态侧 `ui-shape` 钉"读注入值与 env 的较大者 + 两个宿主有底色"。
+
 * **界面不跟随系统深色模式**（换 MD3E 时引入，用户上机当天报的）。两层叠加：
   ① MD3E 的暗色盘挂在 `[data-theme=dark]` 上（tokens.min.css 里唯一的一块），而 `applyTheme()` 只设了 `color-scheme` —— 它翻的是表单控件与滚动条，界面自己画的 99% 是 custom properties，一个都不动；换成 MD3E 前的旧版是自己映射 `--md-sys-color-*` 的，这步在换版时丢了。
   ② 就算涂对了地方也白涂：`applyTheme()` 只在 boot 跑一次，而那时 `env` 还没回来，`S.env.sys_dark` 是 undefined —— 永远停在首次判断（demo 数据里 `sys_dark=1`，台架截图却全是亮色，就是这个时序在自证）。现在 boot 与 `reloadAll` 各在 env 落地后重涂一遍。

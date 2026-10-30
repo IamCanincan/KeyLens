@@ -255,6 +255,35 @@ async function main() {
     const au = await surf();
     chk('点回「跟随系统」→ sys_dark=1 赢，仍是暗色', back === 1 && au.t === 'dark' && au.s === dk.s, JSON.stringify(au));
   }
+  /* ── 安全区：管理器注入的是**自定义属性** --safe-area-inset-*，不是 env() ──
+     往 :root 塞一个假 inset：顶栏必须跟着长高（让位 padding 在吃这个值），
+     且宿主自身有底色（组件把颜色画在 shadow 的 .bar 上，宿主透明的话
+     padding 那条就是透明带 —— 2026-10-30 上机"状态栏缺一块"的症状）。 */
+  {
+    const barInfo = () => ev(`(function(){ var b=document.getElementById('bar');
+      var r=b.getBoundingClientRect(), cs=getComputedStyle(b);
+      return { h: Math.round(r.height), bg: cs.backgroundColor }; })()`);
+    const before = await barInfo();
+    await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-top','40px'); return 1; })()`);
+    const grown = await barInfo();
+    await ev(`(function(){ document.documentElement.style.removeProperty('--safe-area-inset-top'); return 1; })()`);
+    const after = await barInfo();
+    chk('顶栏吃得到注入的 --safe-area-inset-top（+40px → 长高 40）',
+      grown.h === before.h + 40, `before=${before.h} grown=${grown.h} after=${after.h}`);
+    chk('顶栏宿主有底色（padding 那条不是透明带）',
+      before.bg !== 'rgba(0, 0, 0, 0)' && before.bg !== 'transparent', before.bg);
+    chk('拿掉假 inset 后顶栏回原高', after.h === before.h, `after=${after.h} before=${before.h}`);
+    /* 底栏同一类：fixed + padding-bottom，宿主也要有底色，手势条那一条不能透明 */
+    const navInfo = () => ev(`(function(){ var n=document.getElementById('nav'); var cs=getComputedStyle(n);
+      return { h: Math.round(n.getBoundingClientRect().height), bg: cs.backgroundColor }; })()`);
+    const nb = await navInfo();
+    await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-bottom','24px'); return 1; })()`);
+    const ng = await navInfo();
+    await ev(`(function(){ document.documentElement.style.removeProperty('--safe-area-inset-bottom'); return 1; })()`);
+    chk('底栏吃得到注入的 --safe-area-inset-bottom 且宿主有底色',
+      ng.h === nb.h + 24 && nb.bg !== 'rgba(0, 0, 0, 0)' && nb.bg !== 'transparent',
+      `before=${nb.h} grown=${ng.h} bg=${nb.bg}`);
+  }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
   /* ── 逐后端驱动：三家各自的能力面只在 backend=<家> 时才画得出来 ──────

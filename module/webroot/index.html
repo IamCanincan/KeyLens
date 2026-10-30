@@ -21,8 +21,13 @@
    就会把 "expand_more" 这种字面词画在界面上，那种失败肉眼可查。 */
 :root{
   --md-sys-typescale-font-family: system-ui, -apple-system, "Segoe UI", "Noto Sans SC", sans-serif;
-  --inset-top: env(safe-area-inset-top, 0px);
-  --inset-bottom: env(safe-area-inset-bottom, 0px);
+  /* 安全区：管理器把 insets 注入成**自定义属性**（/internal/insets.css 生成
+     --safe-area-inset-*，--window-inset-* 是它的别名），这个 WebView 里
+     env(safe-area-inset-*) 恒 0 —— 只读 env 的话顶栏就不再伸到状态栏底下，
+     那条缝会露成"透明缺一块"（2026-10-30 上机症状）。所以两边取大者：
+     管理器注入的优先，浏览器/台架里没有注入值时退回 env()。 */
+  --inset-top: max(var(--safe-area-inset-top, 0px), var(--window-inset-top, env(safe-area-inset-top, 0px)));
+  --inset-bottom: max(var(--safe-area-inset-bottom, 0px), var(--window-inset-bottom, env(safe-area-inset-bottom, 0px)));
   --bar-h: 64px;
   --nav-h: 80px;
   --gap: var(--md-sys-spacing-l, 16px);
@@ -33,14 +38,23 @@ html,body{margin:0;padding:0;background:var(--md-sys-color-surface);color:var(--
 body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-font-smoothing:antialiased}
 
 /* 壳：顶栏贴顶、底栏贴底，中间可滚动。
-   用 dvh 不用 vh —— WebView 工具栏收展时 vh 会把底栏顶到屏幕外。 */
-md-top-app-bar{position:sticky;top:0;z-index:20;padding-top:var(--inset-top)}
+   用 dvh 不用 vh —— WebView 工具栏收展时 vh 会把底栏顶到屏幕外。
+   背景必须涂在**宿主**上：组件把颜色画在 shadow 里的 .bar 上，宿主自己
+   是透明的，而让位 padding 加在宿主上 —— 不涂的话 padding 那条就是透明带。 */
+md-top-app-bar{position:sticky;top:0;z-index:20;padding-top:var(--inset-top);
+  min-height:calc(var(--bar-h) + var(--inset-top));
+  background:var(--md-sys-color-surface)}
+/* min-height 别换成 height:auto：组件把宿主高度钉在内容的 64px（行全是绝对定位，
+   height:auto 会让宿主塌成只剩 padding），而 border-box 下 padding-top 又是从这
+   64 里抠的 —— .bar 溢出宿主、压住页头。min-height 压得过显式 height：
+   宿主长到 64+inset，padding 让给内容，.bar 不挤不溢。 */
 .view{
   box-sizing:border-box;width:100%;max-width:600px;margin:0 auto;
   padding:var(--gap) var(--gap) calc(var(--nav-h) + var(--inset-bottom) + 16px);
   min-height:calc(100dvh - var(--bar-h));
 }
-md-navigation-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding-bottom:var(--inset-bottom)}
+md-navigation-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding-bottom:var(--inset-bottom);
+  background:var(--navigation-container, var(--md-sys-color-surface-container))}
 md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
 .stack{display:flex;flex-direction:column;gap:var(--gap)}
