@@ -1458,7 +1458,7 @@ cmd_env() {
     case "$sbh" in ''|*[!0-9]*) sbh=0 ;; esac
     case "$dens" in ''|*[!0-9]*) dens=0 ;; esac
     if [ "$sbh" -gt 0 ] && [ "$dens" -gt 0 ]; then
-        kv sys_statusbar_dp $(( sbh * 160 / dens ))
+        kv sys_statusbar_dp $(( (sbh * 160 + dens - 1) / dens ))
     fi
 
     # 强调色第一优先：SystemUI 运行时生成的 Material You overlay。

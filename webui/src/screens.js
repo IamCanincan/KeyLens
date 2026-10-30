@@ -139,6 +139,15 @@ export function toneOfState(st) {
   return ['none', '状态未知'];
 }
 
+/* 顶部让位到底用了哪个数 —— 自检卡照实报：生效值、管理器注入值、dumpsys 兜底。
+   "头被切"这类问题没有这行就只能靠猜（哪一路给了多少 px）。 */
+function insetNote() {
+  const cs = getComputedStyle(document.documentElement);
+  const g = k => (cs.getPropertyValue(k) || '').trim() || '—';
+  return '顶部让位 ' + g('--inset-top') + '（注入 ' + g('--safe-area-inset-top')
+    + ' / 兜底 ' + g('--statusbar-fallback') + '）';
+}
+
 /* 界面自检：不再是独立的一格目的地 —— 它是排障材料，跟着状态页走更顺手。
    报的是"界面自己看到了什么"：桥接扫过哪些名字、契约号与命令数、当前视口。 */
 function selfCheck() {
@@ -152,7 +161,7 @@ function selfCheck() {
       supporting: '命令 ' + S.contract.commands.split(' ').filter(Boolean).length + ' 条 · 界面要 api=' + EXPECT_API }),
     item({ headline: '执行身份', trailing: S.env.root_user === '0' ? 'root' : 'uid ' + (S.env.root_user || '?') }),
     item({ headline: '设备与系统', supporting: (S.env.device || '?') + ' · Android ' + (S.env.android || '?') + ' (sdk ' + (S.env.sdk || '?') + ', ' + (S.env.build_type || '?') + ')' }),
-    item({ headline: '主题', trailing: S.theme, supporting: '视口 ' + Math.round(document.documentElement.clientWidth) + ' CSS px · 系统深色 ' + (S.env.sys_dark === '1' ? '是' : '否') }),
+    item({ headline: '主题', trailing: S.theme, supporting: '视口 ' + Math.round(document.documentElement.clientWidth) + ' CSS px · 系统深色 ' + (S.env.sys_dark === '1' ? '是' : '否') + ' · ' + insetNote() }),
   ]));
   c.appendChild(s);
   return c;
