@@ -264,8 +264,20 @@ chk('顶栏让位在外层包壳上，组件保持原生 64px',
   /#barwrap\{[^}]*padding-top:var\(--inset-top\)[^}]*background:var\(--md-sys-color-surface\)/.test(css)
   && !/md-top-app-bar\{[^}]*padding-top/.test(css)
   && /<div id="barwrap"><md-top-app-bar id="bar"/.test(tpl));
-chk('底栏宿主有底色',
-  /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
+chk('底栏宿主是半透明模糊面（NoMount 式）',
+  /md-navigation-bar\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
+  && /md-navigation-bar\{[^}]*backdrop-filter:blur/.test(css));
+chk('底栏只给当前项显示文字（shadow 注入）',
+  /aria-selected="false"\] \.label\{opacity:0/.test(app)
+  && /aria-selected="false"\] \.icon\{top:20px/.test(app));
+chk('页标题在内容里（28px），顶栏只在滚动后出 22px 小标题',
+  /\.page-title\{font-size:28px/.test(css)
+  && /\.headline\{font-size:22px!important/.test(app)
+  && /:host\(\.scrolled\) \.titles/.test(app));
+chk('页标题由 draw() 插进内容，滚动切换顶栏状态',
+  /appendChild\(h\('h1', 'page-title', title\)\)/.test(app)
+  && /addEventListener\('scroll'/.test(app)
+  && /resetScrollState\(\)/.test(app));
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */
@@ -274,7 +286,7 @@ chk('分组圆角：首行上角、末行下角大圆角',
   && /md-list-item:last-child\{border-bottom-left-radius:22px/.test(css)
   && /#view md-list md-list-item\{border-radius:6px;margin-bottom:2px\}/.test(css));
 chk('行面的底色与圆角用 !important 压过组件行内样式',
-  /\.item\{background:var\(--md-sys-color-surface-container-high\)!important;border-radius:inherit!important\}/.test(screens));
+  /\.item\{background:var\(--md-sys-color-surface-container\)!important;border-radius:inherit!important\}/.test(screens));
 chk('图标在行中轴（leading/trailing 钉到 50%）',
   /\.leading-slot\{top:50%!important;transform:translateY\(-50%\)!important\}/.test(screens)
   && /\.trailing\{top:50%!important/.test(screens));

@@ -6,6 +6,15 @@
 
 #### 新增
 
+* **视觉语言按 NoMount 重做一版**（用户指出"还是不够优雅美观"）。保留四格信息架构，换掉上一版从 Android 设置抄来的重样式：
+  * 页标题 28px 移到**内容层**（随页滚走）；顶栏不再常驻大标题，滚动过 8px 才浮现 22px 小标题与底边线；二级页的返回箭头常驻。主页英雄卡改用 `secondary-container` 底色，和 NoMount 的状态卡一样是页面主色块。
+  * 行标题从 19px 收到 **16px/500**、supporting 14px；行高由组件自己的 72px 保持。
+  * 行首不再是一人一个粉彩圆底，改成 **40px 单色轮廓图标**（无底色块）；应用列表的真实图标改为 12px 圆角。
+  * 分组标签改成 **14px/500 主色、无图标**；删掉「功能 / 功能」「目标名单 / 目标名单」「自动同步 / 自动同步」这类同名重复层级。
+  * 底栏改成半透明模糊面；**只给当前项显示文字**，活动图标留在组件的 secondary-container 胶囊里。
+  * 页面过渡改成 280ms 弹性曲线；主页矩阵的说明从长句压成 `target.txt + keybox.xml` 这种短摘要。
+  * **组件层发现**：`md-navigation-bar.alwaysShowLabel` 在这一版是兼容存根（getter 恒 true），所以"只显示当前项"只能在 shadow 里做；顶栏标题第一次把 `.titles` 的宽度也覆盖成 `max-content`，组件量到 8px 宽、标题直接消失 —— 改成只放大字号、让组件自己量宽度。两条都写进 `tests/ui-shape.js` / `verify.mjs` 的断言（28px 内容标题、非活动标签 hidden、行标题 16px、滚动后顶栏标题可见、回到页首再隐藏）。真机回放也在 129 条名单页上验过滚动前后的两态。
+
 * **OMK 1.2.5 适配面补齐：主页出后端版本，OMK 配置页新增「运行状态」**（设备上的 OMK 升到 `1.2.5-17b0eb6` 后做的兼容收口）。1.2.5 把 keymint 与 injector 拆成两个独立 daemon，keystore2 由 injector 注入；界面此前只看得到本模块自己的守护进程数，后端 daemon 真死了也显示正常。现在：
   * 主页状态条在后端名旁显示后端 `module.prop` 的版本（与 KeyLens 版本分开），换/升后端后第一眼能确认设备上跑的是哪版。
   * OMK 配置页顶部新增「运行状态」：keymint daemon、injector daemon（pid + 存活；pid 文件里的 pid 还要核对 cmdline，防 PID 复用）、keystore2 是否已注入（`injector.payload` 的 pid 必须等于当前 keystore2）；底部注明 `OMK 版本 · config v3 · 后端 injector`。任一异常显示红条并指向 `/data/misc/keystore/omk/logs/`。

@@ -274,6 +274,10 @@ async function main() {
     const beVer = ((store['backend-info'].stdout || '').match(/^module_version=(.*)$/m) || [])[1] || '';
     chk('主页显示后端版本', !beVer || (p.text || '').indexOf(beVer) >= 0,
       beVer ? '找「' + beVer + '」' : 'backend-info 没给 module_version');
+    const tt = await ev(`(function(){ var t=document.querySelector('#view .page-title');
+      return t ? { text: (t.textContent||'').trim(), fs: getComputedStyle(t).fontSize } : null; })()`);
+    chk('真机页标题在内容里且是 28px', !!tt && tt.text === '主页' && tt.fs === '28px',
+      tt ? tt.text + ' / ' + tt.fs : '没读到');
   }
   chk('主页画的是真数（生效名单 ' + entries + ' 条）', !entries || (p.text || '').indexOf(entries + ' 条') >= 0,
     entries ? '找「' + entries + ' 条」' : 'backend-info 没给 target_entries');
@@ -309,6 +313,23 @@ async function main() {
     '列表项 ' + pb.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
   chk('画的是真包名，不是占位', !firstPkg || (pb.text || '').indexOf(firstPkg) >= 0, firstPkg);
   chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
+  /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。 */
+  {
+    const barState = () => ev(`(function(){ var b=document.getElementById('bar');
+      var t=b&&b.shadowRoot&&b.shadowRoot.querySelector('.titles');
+      return { c: b.classList.contains('scrolled'), vis: t?getComputedStyle(t).visibility:'', op: t?getComputedStyle(t).opacity:'' }; })()`);
+    const before = await barState();
+    await ev('window.scrollTo(0, 260)');
+    await sleep(300);
+    const after = await barState();
+    chk('滚动后顶栏才出小标题', after.c && after.vis === 'visible' && after.op === '1',
+      'before ' + before.vis + '/' + before.op + ' → after ' + after.vis + '/' + after.op);
+    await ev('window.scrollTo(0, 0)');
+    await sleep(250);
+    const back = await barState();
+    chk('回到页首顶栏标题再次让位', !back.c && back.vis === 'hidden' && back.op === '0',
+      back.vis + '/' + back.op);
+  }
 
   /* 逐格点一遍：每格都要有**那一格该出现的真东西** */
   const androidVer = (store['env'].stdout.match(/^android=(.*)$/m) || [])[1] || '';

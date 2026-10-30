@@ -28,14 +28,11 @@ export function h(tag, cls, text) {
   if (text != null) e.textContent = String(text);
   return e;
 }
-export function attr(e, o) { for (const k in o) e.setAttribute(k, o[k]); return e; }
-
 export function card(cls) { const c = h('md-card', 'card ' + (cls || '')); return c; }
 
-export function section(title, icon) {
+export function section(title) {
   const wrap = h('section', 'sec');
   const head = h('div', 'sec-h');
-  if (icon) head.appendChild(attr(h('span', 'sec-i'), { 'aria-hidden': 'true' })).textContent = icon;
   head.appendChild(h('b', null, title));
   wrap.appendChild(head);
   return wrap;
@@ -49,10 +46,9 @@ export function item(o) {
   if (o.trailing != null) it.setAttribute('trailing-text', String(o.trailing));
   if (o.tone) it.setAttribute('data-tone', o.tone);
   if (o.interactive) it.setAttribute('interactive', '');
-  /* 行标题 19px/400：照系统设置的行（用户给的对照图）。组件的 headline 字号是
-     shadow 里写死的 16px，四个 typescale 变量都撬不动（var-probe 逐个试过），
-     只能往 shadow 里注一张构造样式表 —— item() 是所有行的唯一出口，这里注一次
-     全部的行都生效。 */
+  /* 行标题 16px/500：照 NoMount 的行（比系统设置的 19px 安静一档）。
+     组件的 headline 字号写死在 shadow 里，四个 typescale 变量都撬不动
+     （var-probe 逐个试过），只能注入构造样式表 —— item() 是所有行的唯一出口。 */
   try { it.shadowRoot.adoptedStyleSheets = it.shadowRoot.adoptedStyleSheets.concat([rowSkin()]); } catch (e) {}
   return it;
 }
@@ -61,15 +57,16 @@ function rowSkin() {
   if (!skinSheet) {
     skinSheet = new CSSStyleSheet();
     /* 三件事（都只能从 shadow 里改，外层够不到）：
-       ① 行标题 19px —— 组件写死 16px，typescale 变量逐个试过都撬不动；
+       ① 行标题 16px/500 —— 组件写死 16px/400，typescale 变量逐个试过都撬不动；
        ② 行底色 surface-container、圆角继承宿主 —— 参考图的行是一块面，
           分组圆角（首/末行大角）由外层按 :first-child/:last-child 设给宿主；
        ③ 图标与行尾垂直居中 —— 组件把 leading/trailing 绝对定位并对着
           **首行**排，多行行里图标就偏上（探针量到 -22px）；钉到 50% 才对得上
           "图标在中轴上"。 */
     skinSheet.replaceSync(
-      '.headline{font-size:19px;font-weight:400;line-height:26px;letter-spacing:0}'
-      + '.item{background:var(--md-sys-color-surface-container-high)!important;border-radius:inherit!important}'
+      '.headline{font-size:16px;font-weight:500;line-height:22px;letter-spacing:0}'
+      + '.supporting-text{font-size:14px;line-height:20px}'
+      + '.item{background:var(--md-sys-color-surface-container)!important;border-radius:inherit!important}'
       + '.leading-slot{top:50%!important;transform:translateY(-50%)!important}'
       + '.trailing{top:50%!important;transform:translateY(-50%)!important;font:500 13px/18px system-ui,sans-serif}'
     );
@@ -87,20 +84,12 @@ export function list(items) {
    配色不用 tonal 容器色 —— 那套在深色下又暗又灰，跟参考图对不上；参考图是
    **亮圆底 + 深色图形，深浅两态同一套**（Android 设置正是这么干的），所以这里
    放固定色值。interactive 的主色（按钮/选中态）仍走动态配色。 */
-const AVATAR_COLORS = [
-  ['#8ab4f8', '#0d3050'],  // 蓝
-  ['#9ba8f5', '#262e6e'],  // 长春花
-  ['#f8a8c0', '#6e1f3d'],  // 粉
-  ['#ffb37d', '#6b3410'],  // 橙
-  ['#ffd66e', '#5c430a'],  // 黄
-  ['#93d694', '#1c4f26'],  // 绿
-];
-export function avatar(iconName, colorIdx) {
-  const pair = AVATAR_COLORS[(colorIdx == null ? 0 : colorIdx) % AVATAR_COLORS.length];
+/* 行首图标：单色小方块（NoMount 的语言）。以前每个入口一种粉彩色，
+   五个入口并排时颜色比内容还抢眼；彩色只留给状态与操作。 */
+export function avatar(iconName) {
   const s = h('span', 'ic-avatar', iconName);
   s.setAttribute('slot', 'start');
-  s.style.setProperty('--av-bg', pair[0]);
-  s.style.setProperty('--av-fg', pair[1]);
+  s.setAttribute('aria-hidden', 'true');
   return s;
 }
 
@@ -377,33 +366,32 @@ export const FUNC_PAGES = {
    用户不开进二级页就该看到"现在是什么情况"）。二级页里才是长列表与表单。 */
 export function renderFunc() {
   const bi = S.backendInfo, st = S.status;
-  const cfgDesc = { teesim: 'Profile 表 + overrides.json', tricky: 'TEE 探测 + 全局与按包补丁', omk: 'config.toml + injector.toml + 生效代价' }[bi.backend] || '';
+  const cfgDesc = { teesim: 'Profile 表 + overrides.json', tricky: 'TEE 探测 + 补丁表', omk: 'config.toml + injector.toml' }[bi.backend] || '';
   /* 摘要里只放文件名不放全路径：/data/misc/keystore/... 会从词中间折成三行，
      全路径在二级页的第一行 hint 里本来就有。 */
   const base = p => String(p || '').split('/').filter(Boolean).pop() || '—';
   const entries = [
-    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file), 0],
-    ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc, 1],
+    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
+    ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
     ['sync', 'refresh', '自动同步',
-      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime), 2],
-    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置', 3],
-    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭', 4],
+      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
+    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
+    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
   ];
-  const c = card();
-  const s = section('功能', ICON.func);
+  /* 页标题已经在顶栏（28px），菜单不再套一层同名分组标题 —— 那会变成
+     "功能 / 功能" 两行，信息重复而层级反而更浅。 */
+  const box = h('div', 'stack');
   const l = h('md-list');
   entries.forEach(function (e) {
     const it = item({ headline: e[2], supporting: e[3], interactive: true });
-    it.appendChild(avatar(e[1], e[4]));
+    it.appendChild(avatar(e[1]));
     const ic = h('span', 'nav-ic', ICON.next);
     ic.setAttribute('slot', 'end');
     it.appendChild(ic);
-    it.addEventListener('click', function () { openSubFn(e[0]); });    l.appendChild(it);
+    it.addEventListener('click', function () { openSubFn(e[0]); });
+    l.appendChild(it);
   });
-  s.appendChild(l);
-  c.appendChild(s);
-  const box = h('div', 'stack');
-  box.appendChild(c);
+  box.appendChild(l);
   return box;
 }
 
@@ -447,9 +435,9 @@ export function renderSettings() {
    没装是去装，被禁是把 disable 删掉。以前命令层只报 teesim/tricky 两家、
    而 backends_conflict() 把 OMK 也数进去了 —— 于是横幅能亮却说不清是哪几家。 */
 const BACKENDS = [
-  ['tricky', 'Tricky Store', 'tricky_state', '证书改写走它自己的 target.txt 与 keybox.xml', 'label'],
-  ['teesim', 'TEE Simulator', 'teesim_state', '多 profile，配置在 config.json + overrides.json', 'verified'],
-  ['omk', 'OhMyKeymint', 'omk_state', '名单在 injector.toml 的 scoop 段，另有 config.toml', 'extension'],
+  ['tricky', 'Tricky Store', 'tricky_state', 'target.txt + keybox.xml', 'label'],
+  ['teesim', 'TEE Simulator', 'teesim_state', '多 profile · config.json', 'verified'],
+  ['omk', 'OhMyKeymint', 'omk_state', 'injector.toml + config.toml', 'extension'],
 ];
 const BSTATE = { active: ['ok', '启用'], disabled: ['warn', '已禁用（模块目录里有 disable）'], absent: ['none', '未安装'] };
 function backendMatrix() {
@@ -460,8 +448,8 @@ function backendMatrix() {
   const sv = { tricky: st.tricky_state, teesim: st.teesim_state, omk: st.omk_state };
   const on = BACKENDS.filter(function (b) { return sv[b[0]] === 'active'; });
   const c = card();
-  const s = section('三家后端 · 同一时刻只能一家在跑', ICON.func);
-  s.appendChild(list(BACKENDS.map(function (b, bi2) {
+  const s = section('三家后端');
+  s.appendChild(list(BACKENDS.map(function (b) {
     const cur = st.backend === b[0];
     const rep = BSTATE[sv[b[0]]] || ['none', '读不到状态'];
     const it = item({
@@ -470,7 +458,7 @@ function backendMatrix() {
       trailing: (cur ? '● ' : '') + (sv[b[0]] ? rep[1] : '读不到'),
       tone: cur ? 'ok' : rep[0],
     });
-    it.appendChild(avatar(b[4], bi2));
+    it.appendChild(avatar(b[4]));
     return it;
   })));
   if (st.conflict === '1') {
@@ -525,7 +513,9 @@ function listSection() {
   const baseSet = {};
   S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
   const c = card();
-  const s = section('目标名单', ICON.list);
+  /* 二级页标题已经是「目标名单」，这里不再重复同名分组标题；
+     第一行直接给目标文件与写法，信息密度更自然。 */
+  const s = h('div');
   /* 读不到时不许说"是空的" —— 命令层在目标文件缺失时就是 return 1，
      这条错误必须在名单卡的第一行，而不是滚到页尾的黄条里。 */
   if (S.listErr) s.appendChild(h('p', 'read-err', '名单读不到：' + S.listErr));
@@ -727,7 +717,8 @@ function teesimOverrides() {
 function autoSyncCard() {
   const st = S.status, env = S.env;
   const c = card();
-  const s = section('自动同步', ICON.sync);
+  /* 二级页标题就是「自动同步」，不再套同名分组标题。 */
+  const s = h('div');
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
     + '当前后端的名单文件（「目标名单」里那份）。后端自己的配置在「后端配置」里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
@@ -740,8 +731,8 @@ function autoSyncCard() {
     item({ headline: '日志', trailing: bytesLabel(st.log_bytes),
       supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
   ]);
-  rows.children[0].appendChild(avatar('refresh', 0));
-  rows.children[1].appendChild(avatar('article', 5));
+  rows.children[0].appendChild(avatar('refresh'));
+  rows.children[1].appendChild(avatar('article'));
   s.appendChild(rows);
   const acts = h('div', 'acts');
   acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
@@ -1298,8 +1289,7 @@ export function renderTheme() {
     seg.appendChild(chip(v[1], v[0] === S.theme, function () { S.theme = v[0]; applyThemeFn(); redraw(); }));
   });
   s.appendChild(seg);
-  s.appendChild(h('p', 'hint', '跟随系统时读 env 的 sys_dark（管理器报告的 mComputedNightMode），'
-    + '不是只看 CSS 的 prefers-color-scheme。'));
+  s.appendChild(h('p', 'hint', '跟随系统时用管理器报告的系统深浅；强调色自动取系统主题色。'));
   if (S.env.sys_seed_src && S.env.sys_seed_src !== 'none') {
     s.appendChild(h('p', 'hint', '系统强调色来源：' + S.env.sys_seed_src));
   }

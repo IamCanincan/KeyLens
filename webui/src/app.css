@@ -35,15 +35,23 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
    被自己的裁切框切掉上沿（2026-10-31 用户截图）。`--inset-top` 只算管理器
    注入值与 dumpsys 兜底，**不含 env()**：env 由组件内部的 .bar 自己吃，
    两边都算就是双倍。 */
-#barwrap{position:sticky;top:0;z-index:20;padding-top:var(--inset-top);
-  background:var(--md-sys-color-surface)}
+/* 顶栏固定覆盖在内容之上：大标题在内容里，随页滚走；滚动后顶栏才露出
+   小标题与返回箭头（NoMount 的阅读节奏）。状态栏让位仍在包壳上。 */
+#barwrap{position:fixed;inset:0 0 auto;z-index:20;padding-top:var(--inset-top);
+  background:var(--md-sys-color-surface);
+  box-shadow:0 1px 0 transparent;transition:box-shadow .2s ease}
+#barwrap.scrolled{box-shadow:0 1px 0 color-mix(in srgb, var(--md-sys-color-outline-variant) 34%, transparent)}
 .view{
   box-sizing:border-box;width:100%;max-width:600px;margin:0 auto;
-  padding:var(--gap) var(--gap) calc(var(--nav-h) + var(--inset-bottom) + 16px);
-  min-height:calc(100dvh - var(--bar-h));
+  /* 固定顶栏占 inset+64；内容从它下面 4px 开始，页标题是内容的第一行。 */
+  padding:calc(var(--inset-top) + 68px) var(--gap) calc(var(--nav-h) + var(--inset-bottom) + 16px);
+  min-height:calc(100dvh - var(--nav-h));
 }
+.page-title{font-size:28px;font-weight:500;line-height:36px;letter-spacing:-.2px;
+  margin:0 0 12px;padding-inline-start:4px;overflow-wrap:anywhere}
 md-navigation-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding-bottom:var(--inset-bottom);
-  background:var(--navigation-container, var(--md-sys-color-surface-container))}
+  background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 80%, transparent);
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
 md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
 .stack{display:flex;flex-direction:column;gap:var(--gap)}
@@ -51,14 +59,13 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
    页面背景直接露出来，行才是唯一的面。只有主页英雄卡保留自己的面。 */
 md-card.card{--md-card-container-color:transparent;--md-card-padding:0}
 .card{display:block;padding:0}
-md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high);
-  --md-card-padding:18px;border-radius:22px}
+md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
+  --md-card-padding:18px;border-radius:22px;color:var(--md-sys-color-on-secondary-container)}
 .sec{display:block}
-/* 分组标题 = 安静的小标签（14px/500/次要色），主角让给行；
-   组与组之间 20px（--gap），标题离自己的组 8px。 */
+/* 分组标题 = NoMount 式的短标签：14px/500/主色，不带图标。
+   图标留给行首，一个区块标题不再占一个彩色圆点。 */
 .sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
-.sec-h b{font-size:15px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-on-surface-variant)}
-.sec-i{font-family:var(--md-icon-font-family);font-size:18px;line-height:1;color:var(--md-sys-color-primary)}
+.sec-h b{font-size:14px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-primary)}
 
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
@@ -97,11 +104,11 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .hero-name{font-size:var(--md-sys-typescale-size-headline-small, 24px);line-height:1.25;
   letter-spacing:-.3px;min-width:0;overflow-wrap:anywhere}
 .hero-ver{font-size:12px;line-height:18px;padding:2px 8px;border-radius:999px;white-space:nowrap;
-  background:var(--md-sys-color-surface-container-highest);color:var(--md-sys-color-on-surface-variant);
-  font-variant-numeric:tabular-nums}
+  background:color-mix(in srgb, var(--md-sys-color-surface) 30%, transparent);
+  color:var(--md-sys-color-on-secondary-container);font-variant-numeric:tabular-nums}
 .hero-stats{display:flex;gap:28px;margin-top:14px;flex-wrap:wrap}
 .hero-stat{display:flex;flex-direction:column;gap:2px}
-.hero-k{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
+.hero-k{font-size:13px;color:color-mix(in srgb, var(--md-sys-color-on-secondary-container) 72%, transparent)}
 .hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 .sec-h b{min-width:0;overflow-wrap:anywhere}
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
@@ -130,18 +137,19 @@ md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-contai
 /* 切页淡入：只在合成层做 opacity/transform，慢机上也不掉帧；系统要求减少动效时关掉 */
 /* 只在**换页**时播（draw() 里按 tab/sub 变化加 .page-in）：搜索框每次按键都会
    重画同一个 stack，若无条件播动画就会闪。 */
-#view > .stack.page-in{animation:page-in 160ms cubic-bezier(.2,0,0,1)}
-@keyframes page-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+#view > .stack.page-in{animation:page-in 280ms cubic-bezier(.175,.885,.32,1.275)}
+@keyframes page-in{from{opacity:0;transform:translateY(8px) scale(.995)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){#view > .stack.page-in{animation:none}}
-/* 系统设置那种行首：彩色圆底 + 图标（底/前景色由 .ic-avatar 的两个自定义属性给）。
-   48px 圆 + 24px 图形，与参考图一致；list-item 的 leading 槽给 52px 宽，放得下。 */
-.ic-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+/* 行首图标：NoMount 式的单色轮廓图标，无底色块。
+   彩色只留给状态与操作按钮；应用列表里的真实图标是内容，不在此列。 */
+.ic-avatar{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
   flex:none;font-family:var(--md-icon-font-family);font-size:24px;line-height:1;
-  color:var(--av-fg, #0d3050);background:var(--av-bg, #8ab4f8)}
-/* 名单的应用图标走 img/首字块，与这个类共用 32px 尺寸 */
-md-list-item img.app-ic{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block}
-/* 图标缺失时的首字块：同尺寸同圆，用容器色，不抢眼 */
-md-list-item .app-ic-fallback{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+  font-variation-settings:'FILL' 0,'wght' 400;
+  color:var(--md-sys-color-on-surface-variant);background:transparent}
+/* 名单的应用图标走 img/首字块，与行首图标同一尺寸/圆角 */
+md-list-item img.app-ic{width:40px;height:40px;border-radius:12px;object-fit:cover;display:block}
+/* 图标缺失时的首字块：同尺寸同圆角，用容器色，不抢眼 */
+md-list-item .app-ic-fallback{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
 .read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 12px;border-radius:12px}
 .warn-text{margin:0;font-size:14px;line-height:1.5}

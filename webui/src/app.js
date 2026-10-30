@@ -49,6 +49,44 @@ const view = document.getElementById('view');
 const nav = document.getElementById('nav');
 nav.items = PAGES.map(function (p) { return { icon: p.icon, label: p.label }; });
 
+/* 参照 NoMount 的两处版式：顶栏标题用 28px 大标题；底栏只给当前项显示文字，
+   活动图标收进 secondary-container 胶囊。字号与标签布局都写死在组件 shadow 里，
+   外层 CSS 够不到 —— 照 rowSkin 的办法注入两张构造样式表，不动组件 API。
+   （已验证这批样式只在 shadow 里生效，不会外溢到 md-list-item 的行皮肤。） */
+function injectSheet(el, css) {
+  if (!el || !el.shadowRoot) return false;
+  try {
+    const sh = new CSSStyleSheet();
+    sh.replaceSync(css);
+    el.shadowRoot.adoptedStyleSheets = el.shadowRoot.adoptedStyleSheets.concat([sh]);
+    return true;
+  } catch (e) { return false; }
+}
+function whenDefined(tag, fn) {
+  if (customElements.get(tag)) fn(); else customElements.whenDefined(tag).then(fn);
+}
+whenDefined('md-top-app-bar', function () {
+  injectSheet(bar, [
+    ':host(:not(.has-back)) .titles{left:16px!important}',
+    '.titles{opacity:0!important;visibility:hidden!important;transition:opacity .18s ease}',
+    ':host(.scrolled) .titles{opacity:1!important;visibility:visible!important}',
+    '.headline{font-size:22px!important;line-height:28px!important;font-weight:500!important;letter-spacing:-.1px!important}',
+  ].join(''));
+});
+whenDefined('md-navigation-bar', function () {
+  /* alwaysShowLabel 在这个版本里只是个兼容存根（getter 恒 true），所以
+     "只给当前项显示文字"只能在 shadow 里做：非活动标签淡出，图标下移居中。 */
+  injectSheet(nav, [
+    '.bar{background:transparent!important}',
+    '.item .label{font-weight:650!important;transition:opacity .18s,transform .18s}',
+    '.item[aria-selected="false"] .label{opacity:0!important;visibility:hidden!important;transform:translateY(-4px)}',
+    '.item[aria-selected="true"] .label{opacity:1!important;visibility:visible!important}',
+    '.item[aria-selected="false"] .icon{top:20px!important}',
+    '.item[aria-selected="false"] .glyph{font-variation-settings:"FILL" 0,"wght" 400}',
+    '.item[aria-selected="true"] .glyph{font-variation-settings:"FILL" 1,"wght" 500}',
+  ].join(''));
+});
+
 /* 深/浅：跟随系统时优先用管理器报的 sys_dark —— CSS 的 prefers-color-scheme
    在部分 WebView 里不跟着系统的"深色模式"开关走，而 env.sys_dark 是它自己的真值。
    两处都别省：
@@ -126,7 +164,28 @@ function syncBackBtn() {
   const on = !!S.sub;
   if (on && !backBtn.parentNode) bar.appendChild(backBtn);
   if (!on && backBtn.parentNode) backBtn.parentNode.removeChild(backBtn);
+  /* 无返回箭头时把标题左缘对齐到内容（20px）；有箭头时让组件按 leading 槽排。 */
+  bar.classList.toggle('has-back', on);
 }
+function resetScrollState() {
+  try { window.scrollTo(0, 0); } catch (e) { /* 启动早期没有 scrollTo 也不该带崩 */ }
+  const w = document.getElementById('barwrap');
+  if (w) w.classList.remove('scrolled');
+  bar.classList.remove('scrolled');
+}
+let scrollTick = false;
+window.addEventListener('scroll', function () {
+  if (scrollTick) return;
+  scrollTick = true;
+  requestAnimationFrame(function () {
+    const on = window.scrollY > 8;
+    const w = document.getElementById('barwrap');
+    if (w) w.classList.toggle('scrolled', on);
+    bar.classList.toggle('scrolled', on);
+    scrollTick = false;
+  });
+}, { passive: true });
+
 function show(name) {
   const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'home';
   /* S.tab 存**校正过**的那一格：存原始 hash 的话，draw() 里的表查不到会悄悄画主页，
@@ -137,6 +196,7 @@ function show(name) {
   syncBackBtn();
   nav.selected = String(PAGES.findIndex(function (x) { return x.id === p; }));
   try { history.replaceState(null, '', '#/' + p); } catch (e) { location.hash = '#/' + p; }
+  resetScrollState();
   draw();
   load(p);
 }
@@ -149,6 +209,7 @@ function openSub(sub) {
   headline();
   syncBackBtn();
   try { history.pushState(null, '', '#/func/' + sub); } catch (e) { location.hash = '#/func/' + sub; }
+  resetScrollState();
   draw();
   loadSub(sub);
 }
@@ -163,6 +224,7 @@ window.addEventListener('popstate', function () {
   S.sub = m && FUNC_PAGES[m[1]] ? m[1] : '';
   headline();
   syncBackBtn();
+  resetScrollState();
   draw();
   loadSub(S.sub);
 });
@@ -171,6 +233,9 @@ let lastPageKey = '';
 function draw() {
   const key = S.tab + '/' + S.sub;
   view.textContent = '';
+  /* 页标题是内容的第一行（随页滚走）；顶栏里那份标题只在滚动后出现。 */
+  const title = S.sub ? FUNC_PAGES[S.sub] : pageOf(S.tab).label;
+  view.appendChild(h('h1', 'page-title', title));
   let body = {
     home: renderHome,
     func: renderFunc,

@@ -39,7 +39,7 @@ const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
   /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵。 */
-  { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'], items: true },
+  { id: 'home', title: '主页', must: ['三家后端', '未安装', '当前生效的就是这一家'], items: true },
   /* 功能格是一张菜单：所有功能集中在这里，每项带状态摘要；
      长列表在二级页里，菜单页本身落地即用。 */
   { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '自动同步', '密钥箱 keybox', '属性伪装'], items: true },
@@ -165,6 +165,29 @@ async function main() {
   chk('主页画出状态条与三家矩阵', p0.cards >= 2 && p0.items >= 3, 'cards=' + p0.cards + ' items=' + p0.items);
   chk('主页显示后端版本（不是 KeyLens 自己的版本）', (p0.text || '').indexOf('1.2.5-17b0eb6') >= 0,
     '找「1.2.5-17b0eb6」');
+  {
+    const pageTitle = await ev(`(function(){ var t=document.querySelector('#view .page-title');
+      return t ? { fs: getComputedStyle(t).fontSize, text: (t.textContent||'').trim() } : null; })()`);
+    chk('页标题在内容里且是 28px 大标题（随页滚走）',
+      !!pageTitle && pageTitle.fs === '28px' && pageTitle.text === '主页',
+      pageTitle ? pageTitle.fs + ' / ' + pageTitle.text : '没读到');
+    const barTitles = await ev(`(function(){ var b=document.getElementById('bar');
+      var t=b&&b.shadowRoot&&b.shadowRoot.querySelector('.titles');
+      return t ? { vis: getComputedStyle(t).visibility, op: getComputedStyle(t).opacity } : null; })()`);
+    chk('页首顶栏标题让位（滚动后才出现）',
+      !!barTitles && barTitles.vis === 'hidden' && barTitles.op === '0',
+      barTitles ? barTitles.vis + '/' + barTitles.op : '没读到');
+    const navLbl = await ev(`(function(){ var n=document.getElementById('nav');
+      return [].slice.call(n.shadowRoot.querySelectorAll('.item')).map(function(b){
+        var l=b.querySelector('.label'); var s=getComputedStyle(l);
+        return s.visibility + ':' + s.opacity; }); })()`);
+    chk('底栏只给当前项显示文字', (navLbl[0] === 'visible:1')
+      && navLbl.slice(1).every(function(x){ return x === 'hidden:0'; }), (navLbl || []).join(' / '));
+    const rowSize = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
+      var h=it&&it.shadowRoot&&it.shadowRoot.querySelector('.headline');
+      return h ? getComputedStyle(h).fontSize : ''; })()`);
+    chk('行标题 16px（NoMount 式的密度）', rowSize === '16px', rowSize || '没读到');
+  }
   chk('图标字体生效（子集内名字 = 一个字形）', p0.inSet > 0 && p0.inSet <= 34, 'home=' + p0.inSet + 'px');
   chk('负对照成立（子集外名字 = 字面词）', p0.outSet > p0.inSet * 2, 'security=' + p0.outSet + 'px，' + (p0.outSet / Math.max(p0.inSet, 1)).toFixed(1) + ' 倍');
   chk('组件内部解析到符号字体', /Material Symbols/i.test(p0.fam), p0.fam || '没找到');
@@ -490,7 +513,7 @@ async function main() {
     n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
   await sleep(900);
   const pc = await ev(PROBE);
-  const mustC = ['三家后端 · 同一时刻只能一家在跑', '抢同一个 keymint HAL，模块已经停在这里',
+  const mustC = ['三家后端', '抢同一个 keymint HAL，模块已经停在这里',
     'Tricky Store、TEE Simulator、OhMyKeymint', '已停止'];
   const missC = mustC.filter(s => pc.text.indexOf(s) < 0);
   chk('三家同时启用 → 矩阵点名是哪几家', missC.length === 0 && pc.scrollW - pc.vw <= 0,
