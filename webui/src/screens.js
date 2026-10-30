@@ -60,7 +60,19 @@ let skinSheet = null;
 function rowSkin() {
   if (!skinSheet) {
     skinSheet = new CSSStyleSheet();
-    skinSheet.replaceSync('.headline{font-size:19px;font-weight:400;line-height:26px;letter-spacing:0}');
+    /* 三件事（都只能从 shadow 里改，外层够不到）：
+       ① 行标题 19px —— 组件写死 16px，typescale 变量逐个试过都撬不动；
+       ② 行底色 surface-container、圆角继承宿主 —— 参考图的行是一块面，
+          分组圆角（首/末行大角）由外层按 :first-child/:last-child 设给宿主；
+       ③ 图标与行尾垂直居中 —— 组件把 leading/trailing 绝对定位并对着
+          **首行**排，多行行里图标就偏上（探针量到 -22px）；钉到 50% 才对得上
+          "图标在中轴上"。 */
+    skinSheet.replaceSync(
+      '.headline{font-size:19px;font-weight:400;line-height:26px;letter-spacing:0}'
+      + '.item{background:var(--md-sys-color-surface-container-high)!important;border-radius:inherit!important}'
+      + '.leading-slot{top:50%!important;transform:translateY(-50%)!important}'
+      + '.trailing{top:50%!important;transform:translateY(-50%)!important}'
+    );
   }
   return skinSheet;
 }

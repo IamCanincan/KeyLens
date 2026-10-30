@@ -258,6 +258,18 @@ chk('安全区读注入值与 env 的较大者',
 chk('顶栏与底栏宿主有底色',
   /md-top-app-bar\{[^}]*background:var\(--md-sys-color-surface\)/.test(css)
   && /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
+/* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
+   行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
+   （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */
+chk('分组圆角：首行上角、末行下角大圆角',
+  /md-list-item:first-child\{border-top-left-radius:22px/.test(css)
+  && /md-list-item:last-child\{border-bottom-left-radius:22px/.test(css)
+  && /#view md-list md-list-item\{border-radius:6px;margin-bottom:2px\}/.test(css));
+chk('行面的底色与圆角用 !important 压过组件行内样式',
+  /\.item\{background:var\(--md-sys-color-surface-container-high\)!important;border-radius:inherit!important\}/.test(screens));
+chk('图标在行中轴（leading/trailing 钉到 50%）',
+  /\.leading-slot\{top:50%!important;transform:translateY\(-50%\)!important\}/.test(screens)
+  && /\.trailing\{top:50%!important/.test(screens));
 /* 动态配色：FRRO 解析 + tonal 单调自检必须住在 theme.js（纯函数，tests/accent-theme.mjs
    在 node 里单测），app 在 data-theme 之后调 applyAccent（角色明度跟档走）。
    兜底必须是平台默认 #4b5d8b，不许退回 MD3E 自己那支紫 —— 上一版的结论。 */
