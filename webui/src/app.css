@@ -70,11 +70,15 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
 /* 表单节奏：字段之间 14px；开关/下拉行两端对齐、给足触控高度（以前 .row 一点样式都没有） */
-.form{display:flex;flex-direction:column;gap:14px;margin-top:12px}
+/* 表单是一块"面"：编辑区与只读行面、分组标题拉开层次（以前字段裸在页面底上） */
+.form{display:flex;flex-direction:column;gap:14px;margin-top:12px;
+  background:var(--md-sys-color-surface-container);border-radius:16px;padding:16px 14px}
 .form-sub{font-size:13px;font-weight:500;color:var(--md-sys-color-on-surface-variant);margin-top:6px}
 .row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
-.row-t{font-size:15px;min-width:0;white-space:nowrap;overflow-wrap:anywhere}
-.row md-select{flex:1 1 auto;min-width:0;margin-left:12px}
+/* 长标签（如"日志级别（可写 warning/off/prop）"）折行而不是被 nowrap 挤出去：
+   下拉固定一个舒适宽度，标签自己占剩下的。 */
+.row-t{font-size:15px;min-width:0;overflow-wrap:anywhere}
+.row md-select{flex:0 1 210px;min-width:0;margin-left:12px}
 /* 属性行的状态点：一行一个色点，ok=主色 / 读不到=tertiary / 不符=error */
 .dot{width:10px;height:10px;border-radius:50%;flex:none;display:block;margin:0 6px 0 2px}
 .dot-ok{background:var(--md-sys-color-primary)}
@@ -100,6 +104,11 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
 .nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
 md-list{display:block}
+/* 搜索框与第一行之间留一口气（以前 2px 的缝，看着像粘住） */
+md-text-field + md-list{margin-top:12px}
+.acts.filter-grid + md-text-field{margin-top:10px}
+/* keybox 的多行框占满整行 */
+.kb-field{width:100%;margin-top:12px}
 /* 分组列表（2026-10-31 用户给的参考图，一比一）：
    · 一个 md-list = 一组：首行只把**上角**放大、末行只把**下角**放大，中间行小圆角 ——
      整组看起来是一个大圆角容器被行切开的样子；
@@ -127,9 +136,9 @@ md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-contai
   flex:none;font-family:var(--md-icon-font-family);font-size:24px;line-height:1;
   color:var(--av-fg, #0d3050);background:var(--av-bg, #8ab4f8)}
 /* 名单的应用图标走 img/首字块，与这个类共用 32px 尺寸 */
-md-list-item img.app-ic{width:32px;height:32px;border-radius:50%;object-fit:cover;display:block}
+md-list-item img.app-ic{width:40px;height:40px;border-radius:50%;object-fit:cover;display:block}
 /* 图标缺失时的首字块：同尺寸同圆，用容器色，不抢眼 */
-md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+md-list-item .app-ic-fallback{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
 .read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 12px;border-radius:12px}
 .warn-text{margin:0;font-size:14px;line-height:1.5}

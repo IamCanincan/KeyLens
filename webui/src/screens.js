@@ -244,7 +244,12 @@ let listToken = 0;
 function loadIconsFor(shown) {
   const need = [];
   shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
-  if (need.length) loadIcons(need.slice(0, 120));
+  if (!need.length) return;
+  /* 图标是异步取回来的：第一批先画的是首字块，到货后重画一次把 img 换上。
+     只在还停在名单二级页时重画（用户可能已经走了）；askedIcons 保证不会循环。 */
+  loadIcons(need.slice(0, 120)).then(function () {
+    if (S.tab === 'func' && S.sub === 'targets') redraw();
+  }, function () {});
 }
 
 /* ── 设置页里的"伪装"两块：属性对照 + Verified Boot ───────────────────── */
@@ -302,6 +307,8 @@ function propsCards() {
   /* 这个值要能改：旧版有 props-boot-hash 这条写命令，新版不给入口就是退步。
      校验按十六进制 64 位来，与命令层一致；清空 = 不应用。 */
   const tf = h('md-text-field');
+  tf.setAttribute('variant', 'filled');
+  tf.setAttribute('single-line', '');
   tf.setAttribute('label', '要应用的 digest（64 位十六进制，留空 = 不应用）');
   tf.value = (bt && bt.configured) || '';
   s2.appendChild(tf);
@@ -513,6 +520,8 @@ function listSection() {
       || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
   }) : src;
   const tf = h('md-text-field');
+  tf.setAttribute('variant', 'filled');
+  tf.setAttribute('single-line', '');
   tf.setAttribute('label', '搜索包名或应用名');
   tf.addEventListener('input', function () { S.search = String(tf.value || ''); redraw(); });
   s.appendChild(tf);
@@ -545,6 +554,13 @@ function listSection() {
         if (img.parentNode) img.parentNode.replaceChild(fb, img);
       });
       it.appendChild(img);
+    } else if (b || tok) {
+      /* 首帧这个包的图标还没取回来（icons 是异步命令）：先画首字块，别留空。
+         不画的话第一次进名单整列都是空的，看起来像"没有图标"。图标到了
+         由 loadIconsFor 触发一次重画把 img 换上来。 */
+      const fb = h('span', 'app-ic-fallback', ((ic && ic.label ? ic.label : b || tok).trim().charAt(0) || '?').toUpperCase());
+      fb.setAttribute('slot', 'start');
+      it.appendChild(fb);
     }
     if (m) {
       it.appendChild(m.el);
@@ -812,6 +828,8 @@ function form(spec, fields, cmd, extra, note) {
       ctrls.push({ key: key, get: function () { return String(sel.value || ''); }, init: String(sel.value || '') });
     } else {
       const tf = h('md-text-field');
+  tf.setAttribute('variant', 'filled');
+  tf.setAttribute('single-line', '');
       tf.setAttribute('label', label);
       tf.value = cur == null ? '' : String(cur);
       wrap.appendChild(tf);
@@ -1021,7 +1039,9 @@ function omkReload() {
   i.appendChild(fold(function () {
     const f = h('div');
     f.appendChild(form(S.backendInfo, F_OMK_INJECTOR, 'omk-save-injector', null, '已保存 injector.toml'));
-    const ic = h('div', 'acts');
+    /* 10 个独立开关放在自己的 .form 面里纵向排 —— 原来用的是 .acts（横向换行
+       flex），每一行成了 flex 项，于是两三个开关挤在同一行、宽度参差。 */
+    const ic = h('div', 'form');
     ic.appendChild(h('div', 'form-sub', '拦截方法 [intercept] · 10 项独立开关'));
     OMK_INTERCEPTS.forEach(function (m) {
       const row = h('div', 'row');
@@ -1084,9 +1104,15 @@ function keyboxCard() {
     item({ headline: '指纹', supporting: bi.keybox_hash || '—' }),
   ]));
   s.appendChild(h('p', 'hint', KEYBOX_HINT[bi.backend] || KEYBOX_HINT.tricky));
-  const ta = h('textarea', 'kb-paste');
-  ta.placeholder = '粘贴新的 keybox.xml 全文，覆盖前会自动备份';
-  ta.spellcheck = false;
+  /* 多行输入也走 MD3 文本框（min/max-lines 决定高度），不再用裸 textarea ——
+     裸标签在深色主题下是浏览器默认样式：灰底、字被裁、和整页不是一个语言。 */
+  const ta = h('md-text-field');
+  ta.setAttribute('variant', 'filled');
+  ta.setAttribute('min-lines', '6');
+  ta.setAttribute('max-lines', '14');
+  ta.setAttribute('label', '粘贴新的 keybox.xml 全文');
+  ta.setAttribute('supporting-text', '覆盖前会自动备份为 keybox.xml.bak');
+  ta.setAttribute('class', 'kb-field');
   s.appendChild(ta);
   const acts = h('div', 'acts');
   acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
