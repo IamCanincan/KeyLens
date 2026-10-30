@@ -329,22 +329,38 @@ async function main() {
       rowCenter ? '行中心 ' + rowCenter.row + ' / 文字中心 ' + rowCenter.text : '没读到');
   }
   chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
-  /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。 */
+  /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。
+     底栏是悬浮药丸：长页向下滑时下沉缩小消失，向上滑/回顶再回来。 */
   {
     const barState = () => ev(`(function(){ var b=document.getElementById('bar');
       var t=b&&b.shadowRoot&&b.shadowRoot.querySelector('.titles');
       return { c: b.classList.contains('scrolled'), vis: t?getComputedStyle(t).visibility:'', op: t?getComputedStyle(t).opacity:'' }; })()`);
+    const navState = () => ev(`(function(){ var n=document.getElementById('nav'); var s=getComputedStyle(n);
+      return { hidden:n.classList.contains('nav-hidden'), op:s.opacity, pe:s.pointerEvents }; })()`);
+    const pill = await ev(`(function(){ var n=document.getElementById('nav'); var r=n.getBoundingClientRect(); var s=getComputedStyle(n);
+      return { pos:s.position, left:Math.round(r.left), right:Math.round(r.right), radius:s.borderRadius,
+        vw:Math.round(document.documentElement.clientWidth) }; })()`);
+    chk('真机底栏是悬浮药丸（不贴边）',
+      pill.pos === 'fixed' && pill.left >= 8 && pill.right <= pill.vw - 8 && pill.radius.indexOf('999px') >= 0,
+      'left=' + pill.left + ' right=' + pill.right + ' vw=' + pill.vw + ' radius=' + pill.radius);
     const before = await barState();
+    const navBefore = await navState();
     await ev('window.scrollTo(0, 260)');
     await sleep(300);
     const after = await barState();
+    const navAfter = await navState();
     chk('滚动后顶栏才出小标题', after.c && after.vis === 'visible' && after.op === '1',
       'before ' + before.vis + '/' + before.op + ' → after ' + after.vis + '/' + after.op);
+    chk('长页下滑后底栏收缩消失', navAfter.hidden && navAfter.op === '0' && navAfter.pe === 'none',
+      'before hidden=' + navBefore.hidden + ' → after op=' + navAfter.op + ' pe=' + navAfter.pe);
     await ev('window.scrollTo(0, 0)');
     await sleep(250);
     const back = await barState();
+    const navBack = await navState();
     chk('回到页首顶栏标题再次让位', !back.c && back.vis === 'hidden' && back.op === '0',
       back.vis + '/' + back.op);
+    chk('回到顶部底栏回来', !navBack.hidden && navBack.op === '1',
+      'hidden=' + navBack.hidden + ' op=' + navBack.op);
   }
 
   /* 逐格点一遍：每格都要有**那一格该出现的真东西** */

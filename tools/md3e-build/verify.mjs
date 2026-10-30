@@ -191,6 +191,12 @@ async function main() {
         return s.visibility + ':' + s.opacity; }); })()`);
     chk('底栏只给当前项显示文字', (navLbl[0] === 'visible:1')
       && navLbl.slice(1).every(function(x){ return x === 'hidden:0'; }), (navLbl || []).join(' / '));
+    const pill = await ev(`(function(){ var n=document.getElementById('nav'); var r=n.getBoundingClientRect();
+      var s=getComputedStyle(n); return { pos:s.position, left:Math.round(r.left), right:Math.round(r.right),
+        radius:s.borderRadius, vw:Math.round(document.documentElement.clientWidth) }; })()`);
+    chk('底栏是悬浮药丸（不贴边）',
+      pill.pos === 'fixed' && pill.left >= 8 && pill.right <= pill.vw - 8 && pill.radius.indexOf('999px') >= 0,
+      'left=' + pill.left + ' right=' + pill.right + ' vw=' + pill.vw + ' radius=' + pill.radius);
     const rowSize = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
       var h=it&&it.shadowRoot&&it.shadowRoot.querySelector('.headline');
       return h ? getComputedStyle(h).fontSize : ''; })()`);
@@ -326,16 +332,17 @@ async function main() {
       grown.wrapH === 124 && grown.barH === 64, `wrap=${grown.wrapH} bar=${grown.barH}`);
     chk('包壳有底色（让位那条不是透明带）', before.bg !== 'rgba(0, 0, 0, 0)' && before.bg !== 'transparent', before.bg);
     chk('拿掉假 inset 后回兜底高度', after.wrapH === before.wrapH, `after=${after.wrapH} before=${before.wrapH}`);
-    /* 底栏同一类：fixed + padding-bottom，宿主也要有底色，手势条那一条不能透明 */
-    const navInfo = () => ev(`(function(){ var n=document.getElementById('nav'); var cs=getComputedStyle(n);
-      return { h: Math.round(n.getBoundingClientRect().height), bg: cs.backgroundColor }; })()`);
+    /* 悬浮药丸不是靠 padding-bottom 长高，而是整体抬离手势条：
+       注入了 --safe-area-inset-bottom 时，药丸的底边应再上移同样的距离。 */
+    const navInfo = () => ev(`(function(){ var n=document.getElementById('nav'); var r=n.getBoundingClientRect(); var cs=getComputedStyle(n);
+      return { h: Math.round(r.height), bottom: Math.round(window.innerHeight - r.bottom), bg: cs.backgroundColor }; })()`);
     const nb = await navInfo();
     await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-bottom','24px'); return 1; })()`);
     const ng = await navInfo();
     await ev(`(function(){ document.documentElement.style.removeProperty('--safe-area-inset-bottom'); return 1; })()`);
-    chk('底栏吃得到注入的 --safe-area-inset-bottom 且宿主有底色',
-      ng.h === nb.h + 24 && nb.bg !== 'rgba(0, 0, 0, 0)' && nb.bg !== 'transparent',
-      `before=${nb.h} grown=${ng.h} bg=${nb.bg}`);
+    chk('悬浮底栏吃得到注入的 --safe-area-inset-bottom 且宿主有底色',
+      ng.bottom === nb.bottom + 24 && ng.h === nb.h && nb.bg !== 'rgba(0, 0, 0, 0)' && nb.bg !== 'transparent',
+      `bottom ${nb.bottom}→${ng.bottom} h=${nb.h} bg=${nb.bg}`);
   }
 
   /* ── 动态配色：强调色要落到 MD3E 的角色上，不是库默认那支紫 ──────────
@@ -427,6 +434,20 @@ async function main() {
         pg ? '列表→输入 ' + pg.input + 'px / 输入→保存 ' + pg.save + 'px' : '没找到输入框');
       const shotP = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-props.png'), Buffer.from(shotP.data, 'base64'));
+      /* 长页阅读模式：向下滑 → 药丸下沉缩小消失；向上滑/回顶 → 回来 */
+      const navState = () => ev(`(function(){ var n=document.getElementById('nav'); var s=getComputedStyle(n);
+        return { hidden:n.classList.contains('nav-hidden'), op:s.opacity, pe:s.pointerEvents,
+          scroll:Math.round(window.scrollY), long:document.documentElement.scrollHeight > window.innerHeight + 160 }; })()`);
+      await ev('window.scrollTo(0, 420)');
+      await sleep(350);
+      const navH = await navState();
+      chk('长页下滑后底栏收缩消失', navH.hidden && navH.op === '0' && navH.pe === 'none',
+        'scroll=' + navH.scroll + ' long=' + navH.long + ' op=' + navH.op + ' pe=' + navH.pe);
+      await ev('window.scrollTo(0, 0)');
+      await sleep(350);
+      const navS = await navState();
+      chk('回到顶部底栏回来', !navS.hidden && navS.op === '1',
+        'scroll=' + navS.scroll + ' op=' + navS.op);
     }
     await tapBack(); await sleep(400);
     /* keybox 二级页单验一条：换 keybox 作废旧密钥的警告必须画出来 */

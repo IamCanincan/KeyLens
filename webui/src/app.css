@@ -58,9 +58,17 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
 }
 .page-title{font-size:28px;font-weight:500;line-height:36px;letter-spacing:-.2px;
   margin:0 0 12px;padding-inline-start:4px;overflow-wrap:anywhere}
-md-navigation-bar{position:fixed;left:0;right:0;bottom:0;z-index:30;padding-bottom:var(--inset-bottom);
-  background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 80%, transparent);
-  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px)}
+/* 悬浮药丸底栏：不贴边、不铺满，靠模糊+阴影浮在内容上。
+   长页向下滑时整体下沉缩小消失，向上滑/回顶再回来（状态由 app.js 切）。 */
+md-navigation-bar{position:fixed;left:0;right:0;bottom:calc(var(--inset-bottom) + 12px);z-index:30;
+  width:min(calc(100% - 32px), 480px);margin-inline:auto;height:64px;padding-bottom:0;
+  border-radius:999px;border:1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 38%, transparent);
+  background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 86%, transparent);
+  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  box-shadow:0 10px 30px color-mix(in srgb, var(--md-sys-color-shadow, #000) 30%, transparent);
+  transition:transform .26s cubic-bezier(.2,.9,.25,1),opacity .18s ease}
+md-navigation-bar.nav-hidden{transform:translateY(calc(100% + var(--inset-bottom) + 18px)) scale(.94);
+  opacity:0;pointer-events:none}
 md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
 .stack{display:flex;flex-direction:column;gap:var(--gap)}

@@ -264,9 +264,17 @@ chk('顶栏让位在外层包壳上，组件保持原生 64px',
   /#barwrap\{[^}]*padding-top:var\(--inset-top\)[^}]*background:var\(--md-sys-color-surface\)/.test(css)
   && !/md-top-app-bar\{[^}]*padding-top/.test(css)
   && /<div id="barwrap"><md-top-app-bar id="bar"/.test(tpl));
-chk('底栏宿主是半透明模糊面（NoMount 式）',
-  /md-navigation-bar\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
-  && /md-navigation-bar\{[^}]*backdrop-filter:blur/.test(css));
+chk('底栏是悬浮药丸（不贴边 + 模糊 + 阴影）',
+  /md-navigation-bar\{[^}]*position:fixed/.test(css)
+  && /md-navigation-bar\{[^}]*width:min\(calc\(100% - 32px\)/.test(css)
+  && /md-navigation-bar\{[^}]*border-radius:999px/.test(css)
+  && /md-navigation-bar\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
+  && /md-navigation-bar\{[^}]*backdrop-filter:blur/.test(css)
+  && /md-navigation-bar\{[^}]*box-shadow:/.test(css));
+chk('长页下滑时药丸收缩消失、上滑/回顶回来',
+  /md-navigation-bar\.nav-hidden\{[^}]*translateY/.test(css)
+  && /nav\.classList\.toggle\('nav-hidden'/.test(app)
+  && /document\.documentElement\.scrollHeight/.test(app));
 chk('底栏只给当前项显示文字（shadow 注入）',
   /aria-selected="false"\] \.label\{opacity:0/.test(app)
   && /aria-selected="false"\] \.icon\{top:20px/.test(app));

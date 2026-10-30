@@ -173,21 +173,39 @@ function syncBackBtn() {
   /* 无返回箭头时把标题左缘对齐到内容（20px）；有箭头时让组件按 leading 槽排。 */
   bar.classList.toggle('has-back', on);
 }
+let navHidden = false;
+let lastScrollY = 0;
+function setNavHidden(hidden) {
+  navHidden = hidden;
+  nav.classList.toggle('nav-hidden', hidden);
+  nav.setAttribute('aria-hidden', hidden ? 'true' : 'false');
+}
 function resetScrollState() {
   try { window.scrollTo(0, 0); } catch (e) { /* 启动早期没有 scrollTo 也不该带崩 */ }
   const w = document.getElementById('barwrap');
   if (w) w.classList.remove('scrolled');
   bar.classList.remove('scrolled');
+  setNavHidden(false);
+  lastScrollY = 0;
 }
 let scrollTick = false;
 window.addEventListener('scroll', function () {
   if (scrollTick) return;
   scrollTick = true;
   requestAnimationFrame(function () {
-    const on = window.scrollY > 8;
+    const y = window.scrollY;
+    const dy = y - lastScrollY;
+    const on = y > 8;
     const w = document.getElementById('barwrap');
     if (w) w.classList.toggle('scrolled', on);
     bar.classList.toggle('scrolled', on);
+    /* 长页阅读模式：向下滑（手指上推）让药丸下沉缩小消失，向上滑/回顶再出来。
+       短页不藏 —— 页面没多少内容时底栏消失只会让人以为界面坏了。 */
+    const longPage = document.documentElement.scrollHeight > window.innerHeight + 160;
+    if (!longPage || y < 24) setNavHidden(false);
+    else if (dy > 6) setNavHidden(true);
+    else if (dy < -6) setNavHidden(false);
+    lastScrollY = y;
     scrollTick = false;
   });
 }, { passive: true });
