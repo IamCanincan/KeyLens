@@ -33,8 +33,10 @@ function restore() { for (const k in files) fs.writeFileSync(files[k], orig[k]);
 
 /* [点名哪条断言必须响, 文件, 原文, 改成, 预期命中处数, 附带要响的第二把闸] */
 const cases = [
-  ['自动同步是主页里的一张卡', files.screens,
-    '  box.appendChild(autoSyncCard());\n', '\n', 1],
+  ['自动同步是后端格里的一张卡', files.screens,
+    '    frag.appendChild(autoSyncCard());\n', '\n', 1],
+  ['自动同步不在主页', files.screens,
+    '  box.appendChild(statusStrip());', '  box.appendChild(statusStrip());\n  box.appendChild(autoSyncCard());', 1],
   ['主页不推迟挂载（落地页晚一帧就是"先空一下"）', files.screens,
     '  box.appendChild(statusStrip());', '  setTimeout(function () { }, 0);\n  box.appendChild(statusStrip());', 1],
   ['外观与界面自检在设置格，不在别处', files.screens,
@@ -48,7 +50,7 @@ const cases = [
   ['三个页渲染函数都在，且按 主页→后端→设置 相邻（切片前提）', files.screens,
     'export function renderSettings()', 'function renderSettingsX()', 1],
   ['keybox 卡在后端格里', files.screens,
-    '    box.appendChild(keyboxCard());', '', 1],
+    '    frag.appendChild(keyboxCard());', '', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

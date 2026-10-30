@@ -242,23 +242,23 @@ function propsCards() {
 
 /* ── 三个目的地各一个 render*（ui-shape 按这段的相邻次序切函数体，别打散）── */
 
-/* 主页：打开就看到"还在不在跑、哪一家在跑、附加的自动同步上一次做了什么"。
-   三张卡都是十几二十个节点，没有一项需要推迟挂载 —— 推迟是给名单那种
-   上百行的列表用的，这里推迟只会让落地页"先空一帧再长出来"。 */
+/* 主页：打开就看到"还在不在跑、哪一家在跑"。两张卡都是十几二十个节点，
+   没有一项需要推迟挂载 —— 推迟是给名单那种上百行的列表用的，这里推迟
+   只会让落地页"先空一帧再长出来"。
+   自动同步 2026-10-30 用户定稿进了【后端】格：它维护的就是那一格的名单文件，
+   跟"这一家的配置面"放在一起才是它的语境；主页只保留状态。 */
 export function renderHome() {
   const box = h('div', 'stack');
   box.appendChild(statusStrip());
   box.appendChild(backendMatrix());
-  box.appendChild(autoSyncCard());
   return box;
 }
 
-/* 后端控制面板：名单 + 这一家的配置面 + keybox。
+/* 后端控制面板：名单 + 自动同步 + 这一家的配置面 + keybox。
    层级说明：本模块首先是一个**后端控制面板** —— 名单（target.txt / apps[] /
    scoop）本来就是三家后端自己的配置文件之一，控制它属于面板职责；"自动更新
-   应用列表"才是我们附加上去的功能，那张卡现在在主页。上一版把整个面板放在
-   落地页，打开先看到的是一屏配置表，而"模块到底在不在跑"要往下翻 —— 现在
-   落地页只回答那一个问题，配置面按家分在后端格里。 */
+   应用列表"是我们附加上去的功能，写的也正是这一格的名单文件，所以跟配置面
+   同格而不是独立目的地。 */
 export function renderBackend() {
   const bi = S.backendInfo;
   const box = h('div', 'stack');
@@ -266,12 +266,15 @@ export function renderBackend() {
   if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
-  /* keybox 卡在名单与配置面之下，975px 视口里它在折叠线以下：推迟一帧再挂，
-     把它的 md-text-field / md-button 从切页关键路径上摘掉。
-     box 已经不在页面上（换页或重画了）就整批放弃 —— 不往卸掉的树里塞节点。 */
+  /* 自动同步与 keybox 卡都在折叠线以下：推迟一帧再挂，把它们的控件从切页
+     关键路径上摘掉。box 已经不在页面上（换页或重画了）就整批放弃 ——
+     不往卸掉的树里塞节点。 */
   setTimeout(function () {
     if (!box.isConnected) return;
-    box.appendChild(keyboxCard());
+    const frag = document.createDocumentFragment();
+    frag.appendChild(autoSyncCard());
+    frag.appendChild(keyboxCard());
+    box.appendChild(frag);
   }, 0);
   return box;
 }
@@ -528,16 +531,16 @@ function teesimOverrides() {
 
 /* ── 自动更新：本模块附加的功能，不是后端自带的 ─────────────────────── */
 /* 自动同步：本模块附加的功能，不是后端自带的能力。
-   2026-10-30 四格重排后它是**主页**上的一张卡 —— 不给它独立位格（那是把附加功能
-   摆在主体前面），也不塞回后端页（用户打开模块最先问的是"它在不在跑"，
-   这一卡回答的正是那个问题）。这里同时吸掉了原来那张"自动纳入"卡：
+   2026-10-30 用户定稿：它在**后端格里**、配置面之后 —— 它维护的就是这一格的
+   名单文件，跟"这一家的配置面"同格才是它的语境；不占独立目的地（附加功能
+   占一格 = 摆到主体前面）。这里同时吸掉了原来那张"自动纳入"卡：
    只有 TEESim 有这个概念，用一段说明带过即可。 */
 function autoSyncCard() {
   const st = S.status, env = S.env;
   const c = card();
   const s = section('自动同步 · 本模块附加', ICON.sync);
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
-    + '当前后端的名单文件。后端自己的配置在【后端】那一格里。'));
+    + '当前后端的名单文件 —— 就是本格最上面那张卡的名单。后端自己的配置在上方几张卡里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
   s.appendChild(list([
@@ -554,7 +557,7 @@ function autoSyncCard() {
   s.appendChild(acts);
   s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
   if (S.backendInfo.backend === 'teesim') {
-    s.appendChild(h('p', 'hint', '「自动纳入新应用」在下方 profile 编辑里逐份设置（profile 级 autoIncludeNewApps）。'));
+    s.appendChild(h('p', 'hint', '「自动纳入新应用」在上方 profile 编辑里逐份设置（profile 级 autoIncludeNewApps）。'));
   }
   c.appendChild(s);
   return c;

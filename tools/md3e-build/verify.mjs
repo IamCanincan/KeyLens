@@ -38,13 +38,13 @@ const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
 /* 顺序 = 底栏四格的顺序（主页 / 后端 / 日志 / 设置）。
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
-  /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵 + 自动同步卡（附加功能，不占位格）。
-     后两条是矩阵**行**的值（demo 默认 omk：本家"当前生效"，另两家"未安装"）——
-     只看区块标题的话，矩阵三行画成空壳也照样绿。 */
-  { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家',
-    '自动同步', '本模块附加'], items: true },
-  /* 后端格是这一家的配置面：名单（后端自己的配置文件之一）+ 各家能力面 + keybox。 */
-  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '密钥箱 keybox'], items: true },
+  /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵（自动同步在【后端】格，
+     是它维护的名单文件的语境）。后两条是矩阵**行**的值（demo 默认 omk：
+     本家"当前生效"，另两家"未安装"）—— 只看区块标题的话，矩阵三行画成
+     空壳也照样绿。 */
+  { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'], items: true },
+  /* 后端格是这一家的配置面：名单 + 自动同步（附加功能）+ 各家能力面 + keybox。 */
+  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '自动同步', '本模块附加', '密钥箱 keybox'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
   /* 设置格收的是与后端无关的模块自身开关：属性伪装 / Verified Boot / 外观 / 自检。 */
   { id: 'settings', title: '设置', must: ['系统属性', 'Verified Boot 哈希', '外观', '界面自检'], items: true },
@@ -164,7 +164,7 @@ async function main() {
   chk('组件全部注册', p0.missing.length === 0, p0.missing.join(','));
   chk('视口钉在 417', p0.vw === 417, 'vw=' + p0.vw);
   chk('主页横向不溢出', p0.scrollW - p0.vw <= 0, '溢出 ' + (p0.scrollW - p0.vw) + 'px');
-  chk('主页画出卡片与列表项', p0.cards >= 3 && p0.items >= 4, 'cards=' + p0.cards + ' items=' + p0.items);
+  chk('主页画出状态条与三家矩阵', p0.cards >= 2 && p0.items >= 3, 'cards=' + p0.cards + ' items=' + p0.items);
   chk('图标字体生效（子集内名字 = 一个字形）', p0.inSet > 0 && p0.inSet <= 34, 'home=' + p0.inSet + 'px');
   chk('负对照成立（子集外名字 = 字面词）', p0.outSet > p0.inSet * 2, 'security=' + p0.outSet + 'px，' + (p0.outSet / Math.max(p0.inSet, 1)).toFixed(1) + ' 倍');
   chk('组件内部解析到符号字体', /Material Symbols/i.test(p0.fam), p0.fam || '没找到');

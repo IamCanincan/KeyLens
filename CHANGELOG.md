@@ -50,6 +50,8 @@
 
 #### 修复
 
+* **自动同步并进【后端】格**（用户定稿，同日第二次挪这张卡）。它维护的就是后端格最上面那张名单文件，跟"这一家的配置面"同格才是它的语境 —— 位置在配置面之后、keybox 之前，与 keybox 一起推迟一帧挂载（都在折叠线以下）。主页只剩状态条 + 三家矩阵，落地页更轻；主页/后端取数不变（自动同步卡的 status/env 本来就在 base 里）。台架与变异台同步：verify 的 home must 移出自动同步两条、backend must 移入；replay 冷启动判据从"三张卡"改"两张卡"；`mutate-ui-shape` 换刀（从后端批里摘掉自动同步必须点名响、往主页塞回一张也要响）。
+
 * **界面不是动态配色**（换 MD3E 时整套丢了的第三发，用户报的）。命令层一直在报 `sys_frro`（SystemUI overlay 的 base64）与 `sys_seed_raw`，界面这头却没人读 —— 上一版的 FRRO 解析、tonal 自检、四级回退与"明度取内置、彩度按实测比值"的映射全在换版时没了，界面退回 MD3E 库默认的静态紫。
   * 新增 `webui/src/theme.js`：解析与映射照上一版搬回（判据一字未动），落点从自绘 `--hue/--sat` 换成 MD3E 的 `--md-sys-color-*` 角色 —— 只重着 accent 染出来的六个角色（primary ×4 + secondary-container ×2），primary 的彩度精确落到系统实测值，其余按"内置彩度/内置 primary 彩度"的比例跟随；角色明度用**当前深浅档**的内置令牌（所以 `applyAccent` 挂在 `data-theme` 之后，切档重算；内置值按档缓存，落 overrides 前先抄走库的值，不然读到的是自己的 override）。
   * `applyAccent` 优先级不变：frro（tonal 阶梯明度必须单调，不单调整份丢）→ `theme_custom_color` → 壁纸 `colorValue0` → 平台默认 `system_accent1`（framework-res 的 **#4b5d8b**，不是库的紫）。外观卡照报来源与落点色相。

@@ -204,7 +204,7 @@ async function main() {
     const r = await ws.send('Runtime.evaluate', {
       expression: `(function(){ var v=document.getElementById('view'); if(!v) return 0;
         var c=v.querySelectorAll('md-card').length, t=(v.textContent||'').length;
-        return (c >= 3 && t > 40) ? 1 : 0; })()`,
+        return (c >= 2 && t > 40) ? 1 : 0; })()`,
       returnByValue: true,
     });
     if (r.result.value === 1) { coldMs = Date.now() - tNav; break; }
@@ -247,7 +247,7 @@ async function main() {
   chk('打开落在主页', (await headline()) === '主页', '顶栏=' + (await headline()));
   chk('视口钉在 417', p.vw === 417, 'vw=' + p.vw);
   chk('真的把命令发出去了', p.calls >= 6, 'exec 调用 ' + p.calls + ' 次');
-  chk('主页画出三家矩阵与自动同步', p.cards >= 3 && p.items >= 5, 'cards=' + p.cards + ' items=' + p.items);
+  chk('主页画出状态条与三家矩阵', p.cards >= 2 && p.items >= 3, 'cards=' + p.cards + ' items=' + p.items);
   chk('主页画的是真数（生效 ' + entries + ' 条）', !entries || (p.text || '').indexOf('生效 ' + entries + ' 条') >= 0,
     entries ? '找「生效 ' + entries + ' 条」' : 'backend-info 没给 target_entries');
   chk('没有"命令超时"', (p.text || '').indexOf('超时') < 0, '');

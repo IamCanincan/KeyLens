@@ -157,11 +157,13 @@ const setBody = RI[2] >= 0 && endSet > RI[2] ? screens.slice(RI[2], endSet) : ''
 chk('三页函数体都切得到（切片没落空）',
   homeBody.length > 60 && backBody.length > 60 && setBody.length > 60,
   [homeBody.length, backBody.length, setBody.length].join('/'));
-/* 2026-10-30：自动同步不占位格 —— 给它一格等于把附加功能摆在主体前面。 */
+/* 2026-10-30 用户定稿：自动同步进后端格（它维护的就是那格的名单文件），
+   但仍旧不占位格 —— 附加功能占一格 = 摆到主体前面。 */
 chk('自动同步不占一个目的地', !pages.some(p => p[1] === 'autosync'));
-chk('自动同步是主页里的一张卡', /function autoSyncCard\(\)/.test(screens)
-  && /box\.appendChild\(autoSyncCard\(\)\)/.test(homeBody)
+chk('自动同步是后端格里的一张卡', /function autoSyncCard\(\)/.test(screens)
+  && /frag\.appendChild\(autoSyncCard\(\)\)/.test(backBody)
   && !/autosync:\s*render/.test(app));
+chk('自动同步不在主页', !/autoSyncCard/.test(homeBody));
 chk('附加功能仍然自报身份', /本模块附加/.test(screens));
 chk('三家互斥矩阵与状态条在主页',
   /box\.appendChild\(backendMatrix\(\)\)/.test(homeBody) && /box\.appendChild\(statusStrip\(\)\)/.test(homeBody));
