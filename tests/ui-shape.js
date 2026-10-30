@@ -224,16 +224,58 @@ chk('重画走注册的回调，不写跨模块自由变量',
   /* 判"裸 draw()"：`redraw();` 里就含着 `draw();`，所以要求前面不是字母 ——
      不然这条断言会在自己人身上假红。 */
   && !/(?:^|[^A-Za-z])draw\(\);/.test(screens) && /function redraw\(\)/.test(screens));
-/* 目标名单首进预取：lists 到手后先把应用名/图标取齐，再画第一帧。
-   没有这条，第一帧画包名+首字块、图标到货再原位替换 —— 看起来就是闪一下。 */
+/* 首进等数据：先画占位卡，数据到齐后整页画一次。名单还要额外等图标预取。 */
 chk('目标名单首次进入先预取应用名/图标再画（无首帧闪动）',
-  /export function listIconsPending\(/.test(screens)
+  /export function targetsPending\(/.test(screens)
   && /export function prefetchListIcons\(/.test(screens)
-  && /export function renderListLoading\(/.test(screens)
-  && /listPending = sub === 'targets' && listIconsPending\(\)/.test(app)
-  && /prefetchListIcons\(\)\.then\(function \(\) \{ listPending = false; draw\(\); \}\)/.test(app)
-  && /renderListLoading\(\)/.test(app)
-  && /\.list-load\{[^}]*background:var\(--md-sys-color-surface-container\)/.test(css));
+  && /prefetchListIcons\(\)\.then\(function \(\) \{ finishLoad\(key\); \}\)/.test(app)
+  && /setPagePending\(!subReady\(sub\)\)/.test(app)
+  && /export function renderPending\(/.test(screens)
+  && /\.load-card\{[^}]*background:var\(--md-sys-color-surface-container\)/.test(css));
+/* 慢页面回来得晚时，不能把用户已经切过去的新页面占位一起撤掉。 */
+chk('取数只清自己那一页的占位（按页 key 归属）',
+  /let pendingKey = '';/.test(app)
+  && /pendingKey = on \? S\.tab \+ '\/' \+ S\.sub : '';/.test(app)
+  && /if \(pendingKey === key\) \{ pagePending = false; pendingKey = ''; \}/.test(app)
+  && /const key = 'func\/' \+ sub;/.test(app));
+chk('切页后不被旧页面的取数结果重画（不打断输入）',
+  /if \(key !== S\.tab \+ '\/' \+ S\.sub\) return;/.test(app));
+/* 属性 / 后端配置 / keybox 的数据也是异步的：首帧不能拿空数组画成
+   "全部一致" / "读不到 profile"。进页前先看 ensure 做过没有，没做过就挂占位。 */
+chk('其余二级页首进也等数据再画（不先画"读不到/全部一致"）',
+  /if \(sub === 'props'\) return !!S\.loaded\.props;/.test(app)
+  && /b === 'teesim' \? S\.loaded\.teesim : b === 'tricky' \? S\.loaded\.tricky : S\.loaded\.backend/.test(app)
+  && /if \(sub === 'keybox'\) return !!S\.loaded\.backend;/.test(app)
+  && /return pagePending \? renderPending\(pendingText\(\)\) : renderFuncSub\(sub\)/.test(app));
+chk('加载态覆盖日志，文案说清在等什么',
+  /setPagePending\(p === 'log' && !S\.loaded\.log && !S\.log\.length\)/.test(app)
+  && /if \(S\.tab === 'log' && pagePending\)/.test(app)
+  && /targets: '正在加载应用名与图标…'/.test(app)
+  && /props: '正在读取属性对照…'/.test(app)
+  && /config: '正在读取后端配置…'/.test(app)
+  && /keybox: '正在读取 keybox…'/.test(app));
+/* Tricky 的「自动 →」判定读 tee_status；名单页不取它就会首进"未探测"、
+   逛过一次后端配置再回来才正确 —— 典型的"一进二进不一样"。 */
+chk('Tricky 名单与 tee_status 一起取（自动→首进就判定）',
+  /teestatus: loadTeeStatus/.test(bridge)
+  && /if \(S\.backendInfo\.backend === 'tricky'\) need\.push\('teestatus'\)/.test(app)
+  && /S\.backendInfo\.backend === 'tricky' && !S\.loaded\.teestatus/.test(screens));
+/* 落地首帧还要 backend-info：主页版本胶囊、菜单条数、keybox 状态都读它。 */
+chk('boot 首画前取 backend-info（版本/条数/keybox 不空一拍）',
+  /then\(loadBase\)\.then\(function \(\) \{[\s\S]*?ensure\('backend'\)[\s\S]*?show\(start\)/.test(app));
+/* 写完名单/属性/配置后必须重取当前二级页，否则屏上停在旧值。 */
+chk('写后 reloadAll 重取当前二级页',
+  /return S\.sub \? loadSub\(S\.sub\) : load\(S\.tab\)/.test(app));
+/* 名单增删会改 backend-info 的 target_entries：写后刷新也要重取它，
+   否则主页/菜单的"生效 N 条"停在旧数。 */
+chk('写后 reloadAll 也重取 backend-info（条数不落后）',
+  /function reloadAll\(\) \{[\s\S]*?ensure\('backend'\)[\s\S]*?S\.sub \? loadSub/.test(app));
+/* ensure 命中缓存时不会再 fork：日志自动刷新要直接 loadLog()。 */
+chk('日志自动刷新真的重读（不是命中 ensure 缓存）',
+  /loadLog\(\)\.then\(function \(\) \{ if \(S\.tab === 'log'\) draw\(\); \}/.test(app)
+  && !/ensure\('log'\)\.then\(draw\)/.test(app));
+chk('功能菜单不把未读取的属性对照报成 0 项',
+  /S\.props\.length \? ' · ' \+ S\.props\.length \+ ' 项对照'/.test(screens));
 
 /* ── ⑥ 三家语法差异有单一出处 ───────────────────────────────────── */
 console.log('── 语法分叉 ──');

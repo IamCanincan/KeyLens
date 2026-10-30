@@ -362,6 +362,9 @@ export function ensure(what) {
       S.boot = r.ok ? parseKV(r.text) : null;
     }, function () { S.boot = null; })]); },
     excluded: loadExcluded,
+    /* 名单页也要 tee_status（Tricky 行尾「自动 →」的判定），但不值得为它
+       把补丁表一起拖进来 —— 单独一组，配置页的 tricky 仍取全套。 */
+    teestatus: loadTeeStatus,
     teesim: function () { return Promise.all([loadBackend(), loadTeesimProfiles(), loadOverrides()]); },
     tricky: function () { return Promise.all([loadBackend(), loadTeeStatus(), loadTrickyPatches()]); },
     omk: loadBackend,

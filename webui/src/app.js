@@ -18,12 +18,12 @@ import '@materialwebunofficial/md3e-web/components/md-loading-indicator.js';
 import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 
 import {
-  S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
+  S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, loadLog,
 } from './bridge.js';
 import { applyAccent } from './theme.js';
 import {
   ICON, h, renderHome, renderFunc, renderFuncSub, renderLog, renderSettings, FUNC_PAGES,
-  renderListLoading, listIconsPending, prefetchListIcons,
+  renderPending, targetsPending, prefetchListIcons,
   onToast, onReload, onAuto, onApplyTheme, onDraw, onOpenSub,
 } from './screens.js';
 
@@ -253,7 +253,9 @@ onAuto(function (on) {
   if (!on) return;
   S.autoTimer = setInterval(function () {
     if (S.tab !== 'log') { clearInterval(S.autoTimer); S.autoTimer = null; return; }
-    ensure('log').then(draw);
+    /* 直接重读：ensure('log') 命中缓存时不会重新 fork，自动刷新会永远画同一批行。 */
+    loadLog().then(function () { if (S.tab === 'log') draw(); },
+      function () { if (S.tab === 'log') draw(); });
   }, 5000);
 });
 
@@ -332,13 +334,55 @@ window.addEventListener('scroll', function () {
   });
 }, { passive: true });
 
+/* 首进一页时哪些数据必须在第一帧之前到齐：没到就画占位卡，到了再整页画一次。
+   不这么做的话，首帧会拿空数组/空对象去画 —— "全部一致"、"读不到"、
+   "还没有日志"这种假状态先闪一下，数据回来再被替换。
+   名单还额外等图标预取（targetsPending）；这里只判"取数做过没有"。 */
+let pagePending = false;
+/* 占位归属哪一页：取数回来时只清自己那一页的占位。
+   否则先开的慢页面（如属性）在用户已经切到另一页后才回来，
+   会把新页面的占位也撤掉，让新页面拿空数据画一帧。 */
+let pendingKey = '';
+function setPagePending(on) {
+  pagePending = on;
+  pendingKey = on ? S.tab + '/' + S.sub : '';
+}
+function finishLoad(key) {
+  /* 页面已经切走：数据留在 S 里，下次进那一页直接命中；这里不画 ——
+     拿旧页的结果重画当前页会清掉用户正在另一个二级页输入的内容。 */
+  if (key !== S.tab + '/' + S.sub) return;
+  if (pendingKey === key) { pagePending = false; pendingKey = ''; }
+  draw();
+}
+function subReady(sub) {
+  if (sub === 'targets') return !targetsPending();
+  if (sub === 'props') return !!S.loaded.props;
+  if (sub === 'config') {
+    const b = S.backendInfo.backend;
+    return !!(b === 'teesim' ? S.loaded.teesim : b === 'tricky' ? S.loaded.tricky : S.loaded.backend);
+  }
+  if (sub === 'keybox') return !!S.loaded.backend;
+  /* 自动同步读的是启动时就取好的 status/env，不需要额外等 */
+  return true;
+}
+function pendingText() {
+  if (S.tab === 'log') return '正在读取日志…';
+  return {
+    targets: '正在加载应用名与图标…',
+    props: '正在读取属性对照…',
+    config: '正在读取后端配置…',
+    keybox: '正在读取 keybox…',
+  }[S.sub] || '正在读取…';
+}
+
 function show(name) {
   const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'home';
   /* S.tab 存**校正过**的那一格：存原始 hash 的话，draw() 里的表查不到会悄悄画主页，
      而顶栏标题、取数、#hash 说的是另一格 —— 四格各说各话。 */
   S.tab = p;
   S.sub = '';
-  listPending = false;
+  /* 日志首进没有行可画时也给载入态；已有旧行（刷新/切回）则先显示旧行。 */
+  setPagePending(p === 'log' && !S.loaded.log && !S.log.length);
   headline();
   syncBackBtn();
   setNavSelected(PAGES.findIndex(function (x) { return x.id === p; }));
@@ -353,9 +397,9 @@ function openSub(sub) {
   if (!FUNC_PAGES[sub]) return;
   S.tab = 'func';
   S.sub = sub;
-  /* 名单首进先挂"载入中"：lists 到手后一次性预取应用名/图标再画，
-     否则第一帧是包名+首字块，随后原位替换，看起来就是闪一下。 */
-  listPending = sub === 'targets' && listIconsPending();
+  /* 数据没到先挂"载入中"：等到的第一帧就是完整内容（名单还包括图标预取），
+     不会先画一张"读不到/全部一致/0 项"的假页面再被替换。 */
+  setPagePending(!subReady(sub));
   headline();
   syncBackBtn();
   try { history.pushState(null, '', '#/func/' + sub); } catch (e) { location.hash = '#/func/' + sub; }
@@ -372,7 +416,7 @@ window.addEventListener('popstate', function () {
   const raw = (location.hash || '').replace(/^#\//, '');
   const m = /^func\/([a-z]+)$/.exec(raw);
   S.sub = m && FUNC_PAGES[m[1]] ? m[1] : '';
-  listPending = S.sub === 'targets' && listIconsPending();
+  setPagePending(!!S.sub && !subReady(S.sub));
   headline();
   syncBackBtn();
   resetScrollState();
@@ -380,8 +424,6 @@ window.addEventListener('popstate', function () {
   loadSub(S.sub);
 });
 onOpenSub(openSub);
-/* 名单首次进入时是否还在等预取（只影响"目标名单"这一页的占位态） */
-let listPending = false;
 let lastPageKey = '';
 let lastTabIndex = -1;
 let lastSub = '';
@@ -408,9 +450,11 @@ function draw() {
     settings: renderSettings,
   }[S.tab] || renderHome;
   if (S.tab === 'func' && S.sub) {
-    body = function () {
-      return S.sub === 'targets' && listPending ? renderListLoading() : renderFuncSub(S.sub);
-    };
+    const sub = S.sub;
+    body = function () { return pagePending ? renderPending(pendingText()) : renderFuncSub(sub); };
+  }
+  if (S.tab === 'log' && pagePending) {
+    body = function () { return renderPending('正在读取日志…'); };
   }
   page.appendChild(body());
   page.appendChild(pageFoot());
@@ -439,31 +483,45 @@ function pageFoot() {
 function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[0] || PAGES[0]; }
 function load(name) {
   const need = pageOf(name).need.slice();
-  return Promise.all(need.map(ensure)).then(draw, function () { draw(); });
+  const key = name + '/';
+  return Promise.all(need.map(ensure)).then(function () { finishLoad(key); },
+    function () { finishLoad(key); });
 }
-/* 二级页取数：名单要 lists+excluded+各家的能力面命令；伪装要 props。 */
+/* 二级页取数：名单要 lists+excluded（Tricky 还要 tee_status）；伪装要 props。 */
 function loadSub(sub) {
   const need = [];
-  if (sub === 'targets') need.push('lists', 'excluded');
+  const key = 'func/' + sub;
+  if (sub === 'targets') {
+    need.push('lists', 'excluded');
+    /* Tricky 行尾「自动 →」的判定读 tee_status：跟名单一起取，首帧就画对，
+       不必等用户先进一次后端配置。 */
+    if (S.backendInfo.backend === 'tricky') need.push('teestatus');
+  }
   if (sub === 'props') need.push('props');
   if (sub === 'config' || sub === 'keybox') {
     const b = S.backendInfo.backend;
     need.push(b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : 'omk');
   }
-  if (!need.length) return Promise.resolve();
+  if (!need.length) { finishLoad(key); return Promise.resolve(); }
   return Promise.all(need.map(ensure)).then(function () {
     /* 名单：lists 到手后先把前 200 个包的应用名/图标取齐，再画第一帧；
        画占位页的这段时间正好用来取。取不到也照常画（退回首字块）。 */
-    if (sub !== 'targets') { draw(); return Promise.resolve(); }
-    return prefetchListIcons().then(function () { listPending = false; draw(); });
-  }, function () { listPending = false; draw(); });
+    if (sub !== 'targets') { finishLoad(key); return Promise.resolve(); }
+    return prefetchListIcons().then(function () { finishLoad(key); });
+  }, function () { finishLoad(key); });
 }
 function reloadAll() {
   S.loaded = {};
   return loadBase().then(function () { return checkContract(); }).then(function () {
     applyTheme();
     applyInsets();
-    return load(S.tab);
+    /* 名单增删也会改目标文件的条数（backend-info 报的 target_entries）；
+       不管当前在哪一页，写后刷新都把 backend-info 一并重取。 */
+    return ensure('backend').then(function () {}, function () {});
+  }).then(function () {
+    /* 当前在二级页就重取这一页 —— 以前只重取基本状态，写完名单/属性/配置后
+       界面还停在旧值，要退出去再进来才看得到新数据。 */
+    return S.sub ? loadSub(S.sub) : load(S.tab);
   });
 }
 onReload(reloadAll);
@@ -492,9 +550,18 @@ function boot() {
   const start = PAGES.some(function (p) { return p.id === m[1]; }) ? m[1] : 'home';
   const startSub = start === 'func' && m[2] && FUNC_PAGES[m[2]] ? m[2] : '';
   view.appendChild(h('md-loading-indicator'));
-  /* 首屏只走一条路：契约 → 基础状态 → show()。show() 自己会按目标页取数，
-     这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
+  /* 首屏只走一条路：契约 → 基础状态 → 后端信息 → show()。show() 自己会按目标页取数，
+     这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。
+     backend-info 也要在首画前取：主页的版本胶囊、菜单的条数/keybox 状态都读它，
+     否则落地页会先露出 "—"/“未设置”再被替换。取不到也照常画（load 会再试一次）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
+    /* 800ms 只是兜底：backend-info 卡住时（桥接的 30s 超时）不能让整页一直停在
+       启动转圈上。正常几十毫秒就回来，超时则先画、由 load('home') 后再补。 */
+    return Promise.race([
+      ensure('backend').then(function () {}, function () {}),
+      new Promise(function (res) { setTimeout(res, 800); }),
+    ]);
+  }).then(function () {
     applyTheme();   /* env.sys_dark 这时才到 —— boot 里第一次涂色时它还是 undefined */
     applyInsets();  /* 状态栏高度也是 env 带回来的 */
     show(start);

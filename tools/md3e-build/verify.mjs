@@ -444,12 +444,20 @@ async function main() {
       return b && b.querySelector('md-icon-button[label="返回功能菜单"]') ? 1 : 0; })()`);
     await gotoFunc(); await sleep(700);
     chk('菜单页没有返回箭头（它不是二级页）', await backArrow() === 0);
+    /* 属性对照表进过属性页才读。没读过时摘要不能把未知报成"0 项对照"——
+       那是个会一直停在屏上的错数，不是一闪而过。 */
+    {
+      const pf = await ev(PROBE);
+      chk('功能菜单不把未读取的属性对照报成 0 项',
+        !/0 项对照/.test(pf.text || ''),
+        (pf.text.match(/开机写入[^|\n]*/g) || []).slice(0, 2).join(' / '));
+    }
     chk('点「目标名单」真的进二级', await tapEntry('目标名单') === 1);
     /* 预取的行为证据：进去后的第一帧只能是"载入占位"或"已带应用名"，
        不能先画包名、等图标到货再原位替换（用户看到的闪一下）。 */
     {
       const early = await ev(`(function(){
-        if (document.querySelector('#view .list-load')) return { loading: 1 };
+        if (document.querySelector('#view .load-card')) return { loading: 1 };
         var it = document.querySelector('#view md-list-item[data-base="com.android.vending"]');
         return { loading: 0, head: it ? it.getAttribute('headline') : '' };
       })()`);
@@ -607,6 +615,24 @@ async function main() {
       await sleep(400);
       const s2 = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '-tail.png'), Buffer.from(s2.data, 'base64'));
+    }
+    /* Tricky 名单行尾的「自动 →」要 tee_status 才能判定：只有首进名单时就把
+       tee-status 和 lists 一起取到，才会显示"不匹配"而不是"未探测"。 */
+    if (b.id === 'tricky') {
+      const back = await ev(`(function(){ var br=document.getElementById('bar');
+        var e=br && br.querySelector('md-icon-button[label="返回功能菜单"]'); if(!e) return null;
+        var r=e.getBoundingClientRect(); return { x:Math.round(r.left+r.width/2), y:Math.round(r.top+r.height/2) }; })()`);
+      if (back) {
+        await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: back.x, y: back.y, button: 'left', clickCount: 1 });
+        await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: back.x, y: back.y, button: 'left', clickCount: 1 });
+        await sleep(500);
+      }
+      await tapEntry('目标名单');
+      await sleep(900);
+      const pt = await ev(PROBE);
+      chk('Tricky 名单的「自动→」首进就判定（tee_status 与名单一起取）',
+        /自动 → 不匹配/.test(pt.text || '') && !/未探测/.test(pt.text || ''),
+        '屏上：' + ((pt.text.match(/自动 → [^|\n]*/g) || []).slice(0, 2).join(' / ')));
     }
   }
 

@@ -288,9 +288,13 @@ function listBases() {
   });
   return bases;
 }
-/* 返回 true = 这次进入还需要等预取（lists 还没到，或这一档前 200 个包还没被问过） */
-export function listIconsPending() {
+/* 返回 true = 这次进入还需要等：lists 还没到、Tricky 的 tee_status 还没到，
+   或这一档前 200 个包的应用名/图标还没被问过。 */
+export function targetsPending() {
   if (!S.loaded || !S.loaded.lists) return true;
+  /* Tricky 行尾「自动 →」的判定读 tee_status：名单页也要等它，
+     否则首进显示"未探测"、逛过一次后端配置再回来才正确。 */
+  if (S.backendInfo.backend === 'tricky' && !S.loaded.teestatus) return true;
   const bases = listBases().slice(0, PREFETCH_ICONS);
   for (let i = 0; i < bases.length; i++) if (!askedIcons[bases[i]]) return true;
   return false;
@@ -305,12 +309,14 @@ export function prefetchListIcons() {
   if (!need.length) return Promise.resolve();
   return loadIcons(need).then(function () {}, function () {});
 }
-export function renderListLoading() {
+/* 首进等数据的通用占位：名单、属性、配置、日志共用。
+   文案由调用方给 —— 同一个转圈，说的得是"正在等什么"。 */
+export function renderPending(text) {
   const box = h('div', 'stack');
   const c = card();
-  const w = h('div', 'list-load');
+  const w = h('div', 'load-card');
   w.appendChild(h('md-loading-indicator'));
-  w.appendChild(h('p', 'hint', '正在加载应用名与图标…'));
+  w.appendChild(h('p', 'hint', text || '正在读取…'));
   c.appendChild(w);
   box.appendChild(c);
   return box;
@@ -454,7 +460,11 @@ export function renderFunc() {
     ['sync', 'refresh', '自动同步',
       (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
     ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
-    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
+    /* 对照表进过属性页才有数据；没读过时不能把未知报成 0 项。
+       用行数而不是 loaded：写入后 reloadAll 会清 loaded，但已读到的对照表仍然有效。 */
+    ['props', 'verified', '属性伪装', st.props_masking === 'on'
+      ? '开机写入已开启' + (S.props.length ? ' · ' + S.props.length + ' 项对照' : '')
+      : '开机写入已关闭'],
   ];
   /* 页标题已经在顶栏（28px），菜单不再套一层同名分组标题 —— 那会变成
      "功能 / 功能" 两行，信息重复而层级反而更浅。 */

@@ -212,12 +212,12 @@ md-list + .form{margin-top:20px}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-warn) 38%, transparent);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
-/* 名单预取中的占位：list-load 自己是一块面和一行提示，别让首进看起来像一张空卡。
-   预取（lists → 图标/显示名）完成后整页一次性重画，列表第一帧就是应用名 + 图标。 */
-.list-load{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
+/* 首进等数据的占位：自己是一块面和一行"正在…"，别让首进看起来像一张空卡。
+   名单（预取图标后才画）、属性、后端配置、日志共用；数据到齐后整页重画一次。 */
+.load-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
   min-height:168px;padding:28px 16px;border-radius:22px;
   background:var(--md-sys-color-surface-container)}
-.list-load .hint{margin:0;font-size:14px}
+.load-card .hint{margin:0;font-size:14px}
 /* 页脚：短页下半屏的空白因此显得是有意留的，也顺手报出版本/契约/机型 */
 .page-foot{font-size:13px;color:var(--md-sys-color-outline);text-align:center;margin:28px 0 8px}
 .page-foot::before{content:"";display:inline-block;width:7px;height:7px;border:1.5px solid currentColor;
