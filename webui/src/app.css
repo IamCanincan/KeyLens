@@ -212,12 +212,26 @@ md-list + .form{margin-top:20px}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-warn) 38%, transparent);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
-/* 首进等数据的占位：自己是一块面和一行"正在…"，别让首进看起来像一张空卡。
-   名单（预取图标后才画）、属性、后端配置、日志共用；数据到齐后整页重画一次。 */
-.load-card{display:flex;flex-direction:column;align-items:center;justify-content:center;gap:14px;
-  min-height:168px;padding:28px 16px;border-radius:22px;
+/* 过渡加载页（骨架屏）：骨架填满首屏、形状与真实内容一致，数据到齐后整页替换。
+   只做很轻的呼吸，不做扫光 —— 扫光在长页上像进度条，反而让人误以为卡住。 */
+.load-card{display:flex;flex-direction:column;gap:16px;animation:sk-pulse 1.6s ease-in-out infinite}
+.sk-hints{display:flex;flex-direction:column;gap:9px;padding:0 4px}
+.sk-line{display:block;height:11px;border-radius:6px;background:var(--md-sys-color-surface-container-highest)}
+.sk-chips{display:flex;gap:8px}
+.sk-chip{height:32px;border-radius:999px;flex:none;background:var(--md-sys-color-surface-container-high)}
+.sk-search{height:56px;border-radius:12px;background:var(--md-sys-color-surface-container-highest)}
+.sk-rows{display:flex;flex-direction:column;gap:2px}
+.sk-row{height:72px;display:flex;align-items:center;gap:16px;padding:0 16px;border-radius:6px;
   background:var(--md-sys-color-surface-container)}
-.load-card .hint{margin:0;font-size:14px}
+.sk-rows > .sk-row:first-child{border-top-left-radius:22px;border-top-right-radius:22px}
+.sk-rows > .sk-row:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px}
+.sk-ic{width:40px;height:40px;border-radius:12px;flex:none;background:var(--md-sys-color-surface-container-highest)}
+.sk-lines{flex:1;display:flex;flex-direction:column;gap:9px;min-width:0}
+.sk-console{height:46vh;min-height:220px;border-radius:16px;border:1px solid var(--line);
+  background:var(--md-sys-color-surface-container-lowest);padding:12px;display:flex;flex-direction:column;gap:11px}
+.sk-cline{display:block;height:10px;border-radius:5px;background:var(--md-sys-color-surface-container-high)}
+@keyframes sk-pulse{0%,100%{opacity:.55}50%{opacity:1}}
+@media (prefers-reduced-motion: reduce){.load-card{animation:none}}
 /* 页脚：短页下半屏的空白因此显得是有意留的，也顺手报出版本/契约/机型 */
 .page-foot{font-size:13px;color:var(--md-sys-color-outline);text-align:center;margin:28px 0 8px}
 .page-foot::before{content:"";display:inline-block;width:7px;height:7px;border:1.5px solid currentColor;

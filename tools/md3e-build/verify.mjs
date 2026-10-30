@@ -741,6 +741,35 @@ async function main() {
   const shotC2 = await send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(SHOT_DIR, 'new-conflict-matrix.png'), Buffer.from(shotC2.data, 'base64'));
 
+  /* 过渡加载页：把 icons 命令延后 900ms（?slow=icons），点进名单先看到骨架屏，
+     数据到齐后换成完整名单 —— 等待时不是一小张转圈卡，也不会先画包名。 */
+  await send('Page.navigate', { url: URL0 + '&slow=icons' });
+  await sleep(1600);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(600);
+  await tapEntry('目标名单');
+  await sleep(120);
+  const sk = await ev(`(function(){ return {
+    load: !!document.querySelector('#view .load-card'),
+    rows: document.querySelectorAll('#view .sk-row').length,
+    search: !!document.querySelector('#view .sk-search'),
+    chips: document.querySelectorAll('#view .sk-chip').length,
+    items: document.querySelectorAll('#view md-list-item').length }; })()`);
+  chk('名单首进先显示骨架加载页（不是一小张转圈卡）',
+    sk.load && sk.rows >= 5 && sk.search && sk.chips >= 3 && sk.items === 0, JSON.stringify(sk));
+  {
+    const sS = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-loading-skeleton.png'), Buffer.from(sS.data, 'base64'));
+  }
+  await sleep(1200);
+  const sk2 = await ev(`(function(){ var it=document.querySelector('#view md-list-item[data-base="com.android.vending"]');
+    return { load: !!document.querySelector('#view .load-card'),
+      items: document.querySelectorAll('#view md-list-item').length,
+      head: it ? (it.getAttribute('headline')||'') : '' }; })()`);
+  chk('骨架页在数据到齐后换成完整名单',
+    !sk2.load && sk2.items > 0 && sk2.head === 'Google Play 商店', JSON.stringify(sk2));
+
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

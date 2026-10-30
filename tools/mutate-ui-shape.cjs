@@ -90,6 +90,8 @@ const cases = [
   ['长页入场不缩放/不上下位移（切页动画只横向）', files.css,
     '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),0,0)}to{opacity:1;transform:none}}',
     '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),10px,0) scale(.992)}to{opacity:1;transform:none}}', 1],
+  ['首进是过渡骨架页（名单/日志/表单各有形状）', files.screens,
+    '    w.appendChild(skRows(7));\n', '    w.appendChild(skRows(2));\n', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

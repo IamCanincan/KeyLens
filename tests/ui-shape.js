@@ -234,8 +234,14 @@ chk('目标名单首次进入先预取应用名/图标再画（无首帧闪动�
   && /export function prefetchListIcons\(/.test(screens)
   && /prefetchListIcons\(\)\.then\(function \(\) \{ finishLoad\(key\); \}\)/.test(app)
   && /setPagePending\(!subReady\(sub\)\)/.test(app)
-  && /export function renderPending\(/.test(screens)
-  && /\.load-card\{[^}]*background:var\(--md-sys-color-surface-container\)/.test(css));
+  && /export function renderPending\(/.test(screens));
+/* 等待期间不是一小张转圈卡：骨架屏填满首屏、和真实内容同构，数据到齐整页替换。 */
+chk('首进是过渡骨架页（名单/日志/表单各有形状）',
+  /skRows\(7\)/.test(screens) && /skConsole\(\)/.test(screens)
+  && /renderPending\(pendingText\(\), pendingKind\(\)\)/.test(app)
+  && /renderPending\('正在读取日志…', 'console'\)/.test(app)
+  && /\.sk-search\{/.test(css) && /\.sk-console\{/.test(css)
+  && /\.sk-row\{[^}]*background:var\(--md-sys-color-surface-container\)/.test(css));
 /* 慢页面回来得晚时，不能把用户已经切过去的新页面占位一起撤掉。 */
 chk('取数只清自己那一页的占位（按页 key 归属）',
   /let pendingKey = '';/.test(app)
@@ -250,7 +256,7 @@ chk('其余二级页首进也等数据再画（不先画"读不到/全部一致"
   /if \(sub === 'props'\) return !!S\.loaded\.props;/.test(app)
   && /b === 'teesim' \? S\.loaded\.teesim : b === 'tricky' \? S\.loaded\.tricky : S\.loaded\.backend/.test(app)
   && /if \(sub === 'keybox'\) return !!S\.loaded\.backend;/.test(app)
-  && /return pagePending \? renderPending\(pendingText\(\)\) : renderFuncSub\(sub\)/.test(app));
+  && /return pagePending \? renderPending\(pendingText\(\), pendingKind\(\)\) : renderFuncSub\(sub\)/.test(app));
 chk('加载态覆盖日志，文案说清在等什么',
   /setPagePending\(p === 'log' && !S\.loaded\.log && !S\.log\.length\)/.test(app)
   && /if \(S\.tab === 'log' && pagePending\)/.test(app)

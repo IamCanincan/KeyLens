@@ -23,6 +23,8 @@ export const DEMO_CONFLICT = DEMO && QUERY.get('conflict') === '1';
 /* ?omk=dead：把 OMK 两个 daemon 与 keystore2 注入都打成异常，验运行状态卡的红态。
    真机上故意杀 daemon 才能造，台架里不值得为它动设备。 */
 const DEMO_OMK_DEAD = DEMO && QUERY.get('omk') === 'dead';
+/* ?slow=<命令>：只给台架看加载页 —— 把某条读命令延后 900ms，骨架屏才有机会上屏。 */
+const DEMO_SLOW = DEMO ? (QUERY.get('slow') || '') : '';
 
 /* 界面期望的契约号。命令层只加命令、不改输出形状时这个号不动 —— 涨号会让手机上
    正在跑的旧界面当场判"契约不符"并停写。 */
@@ -168,7 +170,14 @@ export function failText(r) {
 var cbSeq = 0;
 
 function run(cmd, arg) {
-  if (DEMO) return Promise.resolve(demoResult(cmd, arg));
+  if (DEMO) {
+    var r = demoResult(cmd, arg);
+    /* 台架专用：把指定命令延后 900ms，骨架加载页才会被拍到/断言到 */
+    if (DEMO_SLOW && DEMO_SLOW === cmd) {
+      return new Promise(function (res) { setTimeout(function () { res(r); }, 900); });
+    }
+    return Promise.resolve(r);
+  }
   if (!BRIDGE) return Promise.resolve({ errno: 1, stdout: '', stderr: '桥接未就绪' });
   var full = SH + ' ' + cmd + (arg != null && arg !== '' ? " '" + String(arg).replace(/'/g, "'\\''") + "'" : '');
   return new Promise(function (resolve) {

@@ -374,6 +374,11 @@ function pendingText() {
     keybox: '正在读取 keybox…',
   }[S.sub] || '正在读取…';
 }
+/* 骨架页按目的地换形状：名单=筛选/搜索/行，日志=控制条/日志台，其余=分组行 */
+function pendingKind() {
+  if (S.tab === 'log') return 'console';
+  return S.sub === 'targets' ? 'list' : 'rows';
+}
 
 function show(name) {
   const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'home';
@@ -451,10 +456,12 @@ function draw() {
   }[S.tab] || renderHome;
   if (S.tab === 'func' && S.sub) {
     const sub = S.sub;
-    body = function () { return pagePending ? renderPending(pendingText()) : renderFuncSub(sub); };
+    body = function () {
+      return pagePending ? renderPending(pendingText(), pendingKind()) : renderFuncSub(sub);
+    };
   }
   if (S.tab === 'log' && pagePending) {
-    body = function () { return renderPending('正在读取日志…'); };
+    body = function () { return renderPending('正在读取日志…', 'console'); };
   }
   page.appendChild(body());
   page.appendChild(pageFoot());

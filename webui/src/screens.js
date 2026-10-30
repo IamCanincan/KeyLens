@@ -309,16 +309,69 @@ export function prefetchListIcons() {
   if (!need.length) return Promise.resolve();
   return loadIcons(need).then(function () {}, function () {});
 }
-/* 首进等数据的通用占位：名单、属性、配置、日志共用。
-   文案由调用方给 —— 同一个转圈，说的得是"正在等什么"。 */
-export function renderPending(text) {
+/* 过渡加载页（骨架屏）：不是一小张转圈卡 —— 骨架填满首屏、和真实内容同构，
+   数据到齐后整页替换，等待时看起来是"正在长出一页"而不是"卡住了"。
+   名单 / 日志 / 表单各有自己的形状。 */
+function skLine(width) {
+  const l = h('span', 'sk-line');
+  l.style.width = width;
+  return l;
+}
+function skRow() {
+  const r = h('div', 'sk-row');
+  r.appendChild(h('span', 'sk-ic'));
+  const lines = h('div', 'sk-lines');
+  lines.appendChild(skLine('54%'));
+  lines.appendChild(skLine('32%'));
+  r.appendChild(lines);
+  return r;
+}
+function skRows(n) {
+  const w = h('div', 'sk-rows');
+  for (let i = 0; i < n; i++) w.appendChild(skRow());
+  return w;
+}
+function skChips() {
+  const w = h('div', 'sk-chips');
+  [64, 64, 72, 64].forEach(function (px) {
+    const c = h('span', 'sk-chip');
+    c.style.width = px + 'px';
+    w.appendChild(c);
+  });
+  return w;
+}
+function skConsole() {
+  const c = h('div', 'sk-console');
+  [62, 44, 78, 55, 38, 70, 48, 60, 36, 52].forEach(function (pct) {
+    const l = h('span', 'sk-cline');
+    l.style.width = pct + '%';
+    c.appendChild(l);
+  });
+  return c;
+}
+export function renderPending(text, kind) {
   const box = h('div', 'stack');
-  const c = card();
   const w = h('div', 'load-card');
-  w.appendChild(h('md-loading-indicator'));
-  w.appendChild(h('p', 'hint', text || '正在读取…'));
-  c.appendChild(w);
-  box.appendChild(c);
+  if (kind === 'list') {
+    /* 与名单页同构：两行说明 → 筛选芯片 → 搜索框 → 分组行 */
+    const hints = h('div', 'sk-hints');
+    hints.appendChild(skLine('72%'));
+    hints.appendChild(skLine('46%'));
+    w.appendChild(hints);
+    w.appendChild(skChips());
+    w.appendChild(h('div', 'sk-search'));
+    w.appendChild(skRows(7));
+  } else if (kind === 'console') {
+    w.appendChild(skChips());
+    w.appendChild(skConsole());
+  } else {
+    const hints = h('div', 'sk-hints');
+    hints.appendChild(skLine('34%'));
+    w.appendChild(hints);
+    w.appendChild(skRows(5));
+  }
+  box.appendChild(w);
+  box.appendChild(h('p', 'hint', text || '正在读取…'));
   return box;
 }
 
