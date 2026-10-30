@@ -293,8 +293,9 @@ chk('分组圆角：首行上角、末行下角大圆角',
   && /#view md-list md-list-item\{border-radius:6px;margin-bottom:2px\}/.test(css));
 chk('行面的底色与圆角用 !important 压过组件行内样式',
   /\.item\{background:var\(--md-sys-color-surface-container\)!important;border-radius:inherit!important\}/.test(screens));
-chk('图标在行中轴（leading/trailing 钉到 50%）',
+chk('行内文字、图标、行尾都在行中轴（钉到 50%）',
   /\.leading-slot\{top:50%!important;transform:translateY\(-50%\)!important\}/.test(screens)
+  && /\.content\{top:50%!important;transform:translateY\(-50%\)!important\}/.test(screens)
   && /\.trailing\{top:50%!important/.test(screens));
 /* 动态配色：FRRO 解析 + tonal 单调自检必须住在 theme.js（纯函数，tests/accent-theme.mjs
    在 node 里单测），app 在 data-theme 之后调 applyAccent（角色明度跟档走）。

@@ -195,6 +195,13 @@ async function main() {
       var h=it&&it.shadowRoot&&it.shadowRoot.querySelector('.headline');
       return h ? getComputedStyle(h).fontSize : ''; })()`);
     chk('行标题 16px（NoMount 式的密度）', rowSize === '16px', rowSize || '没读到');
+    const rowCenter = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
+      if (!it||!it.shadowRoot) return null; var r=it.shadowRoot.querySelector('.item'), c=it.shadowRoot.querySelector('.content');
+      if (!r||!c) return null; var a=r.getBoundingClientRect(), b=c.getBoundingClientRect();
+      return { row: Math.round(a.top+a.height/2), text: Math.round(b.top+b.height/2) }; })()`);
+    chk('行内文字与行中心对齐（不靠上）',
+      !!rowCenter && Math.abs(rowCenter.row - rowCenter.text) <= 2,
+      rowCenter ? '行中心 ' + rowCenter.row + ' / 文字中心 ' + rowCenter.text : '没读到');
   }
   chk('图标字体生效（子集内名字 = 一个字形）', p0.inSet > 0 && p0.inSet <= 34, 'home=' + p0.inSet + 'px');
   chk('负对照成立（子集外名字 = 字面词）', p0.outSet > p0.inSet * 2, 'security=' + p0.outSet + 'px，' + (p0.outSet / Math.max(p0.inSet, 1)).toFixed(1) + ' 倍');

@@ -320,6 +320,14 @@ async function main() {
     chk('真机搜索框与名单之间有分组间距', gap != null && gap >= 18,
       gap == null ? '没找到搜索框或名单' : gap + 'px');
   }
+  {
+    const rowCenter = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
+      if (!it||!it.shadowRoot) return null; var r=it.shadowRoot.querySelector('.item'), c=it.shadowRoot.querySelector('.content');
+      if (!r||!c) return null; var a=r.getBoundingClientRect(), b=c.getBoundingClientRect();
+      return { row: Math.round(a.top+a.height/2), text: Math.round(b.top+b.height/2) }; })()`);
+    chk('真机行内文字与行中心对齐', !!rowCenter && Math.abs(rowCenter.row - rowCenter.text) <= 2,
+      rowCenter ? '行中心 ' + rowCenter.row + ' / 文字中心 ' + rowCenter.text : '没读到');
+  }
   chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
   /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。 */
   {

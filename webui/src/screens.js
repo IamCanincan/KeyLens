@@ -76,6 +76,9 @@ function rowSkin() {
       + ':host([data-tone="bad"]) .trailing{color:var(--kl-bad)!important}'
       + '.item{background:var(--md-sys-color-surface-container)!important;border-radius:inherit!important}'
       + '.leading-slot{top:50%!important;transform:translateY(-50%)!important}'
+      /* 组件把正文块按 top:14px 定死：单行行只剩上半截字，双行也偏上。
+         和图标/行尾一样在 50% 处居中，行高变化时文字仍在视觉中轴。 */
+      + '.content{top:50%!important;transform:translateY(-50%)!important}'
       + '.trailing{top:50%!important;transform:translateY(-50%)!important;font:500 13px/18px system-ui,sans-serif}'
     );
   }
