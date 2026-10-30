@@ -312,6 +312,14 @@ async function main() {
   chk('真机名单画到屏上（不是只有框架）', pb.items >= wantItems,
     '列表项 ' + pb.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
   chk('画的是真包名，不是占位', !firstPkg || (pb.text || '').indexOf(firstPkg) >= 0, firstPkg);
+  {
+    const gap = await ev(`(function(){ var tf=document.querySelector('#view md-text-field'),
+      l=document.querySelector('#view md-list'); if(!tf||!l) return null;
+      var a=tf.getBoundingClientRect(), b=l.getBoundingClientRect();
+      return Math.round(b.top - a.bottom); })()`);
+    chk('真机搜索框与名单之间有分组间距', gap != null && gap >= 18,
+      gap == null ? '没找到搜索框或名单' : gap + 'px');
+  }
   chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
   /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。 */
   {

@@ -126,10 +126,15 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 .nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
 md-list{display:block}
 /* 搜索框与第一行之间留一口气（以前 2px 的缝，看着像粘住） */
-md-text-field + md-list{margin-top:12px}
-.acts.filter-grid + md-text-field{margin-top:10px}
-/* keybox 的多行框占满整行 */
-.kb-field{width:100%;margin-top:12px}
+/* 版块间距：同类行/芯片贴紧（2–8px），不同类的内容之间至少 16–20px。
+   搜索框、筛选芯片、名单、日志台是四种东西，粘在一起时分不清边界。 */
+md-text-field + md-list{margin-top:20px}
+.acts.filter-grid + md-text-field{margin-top:16px}
+.hint + .acts{margin-top:16px}
+md-list + .hint{margin-top:12px}
+.acts + .row{margin-top:12px}
+/* keybox 的多行框占满整行，和上方的说明/列表分开 */
+.kb-field{width:100%;margin-top:18px}
 /* 分组列表（2026-10-31 用户给的参考图，一比一）：
    · 一个 md-list = 一组：首行只把**上角**放大、末行只把**下角**放大，中间行小圆角 ——
      整组看起来是一个大圆角容器被行切开的样子；
@@ -167,7 +172,7 @@ md-list-item .app-ic-fallback{width:40px;height:40px;border-radius:12px;display:
 
 /* 日志台：三列网格，图标列恒占宽 —— 没有级别的行也要把正文对齐到同一条竖线 */
 .console{
-  margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:16px;
+  margin-top:16px;padding:8px;border:1px solid var(--line);border-radius:16px;
   background:var(--md-sys-color-surface-container-lowest);
   font-family:ui-monospace, SFMono-Regular, Cutive Mono, Menlo, monospace;font-size:12px;line-height:1.7;
   max-height:46vh;overflow:auto;-webkit-overflow-scrolling:touch}

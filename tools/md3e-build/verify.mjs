@@ -371,6 +371,14 @@ async function main() {
       '标题=' + (await headlineText()) + ' 箭头=' + (await backArrow()));
     chk('名单二级页画出了真实的数据行', pT.items >= 2 && /目标文件：|这个后端接受的写法/.test(pT.text || ''),
       'items=' + pT.items + '（这两行 hint 的值来自 backend-info，空壳画不出）');
+    {
+      const gap = await ev(`(function(){ var tf=document.querySelector('#view md-text-field'),
+        l=document.querySelector('#view md-list'); if(!tf||!l) return null;
+        var a=tf.getBoundingClientRect(), b=l.getBoundingClientRect();
+        return Math.round(b.top - a.bottom); })()`);
+      chk('搜索框与名单之间有分组间距（不同类版块不紧贴）',
+        gap != null && gap >= 18, gap == null ? '没找到搜索框或名单' : gap + 'px');
+    }
     await tapBack();
     await sleep(500);
     chk('返回箭头把人送回菜单', (await headlineText()) === '功能' && /目标名单/.test((await ev(PROBE)).text || ''));
