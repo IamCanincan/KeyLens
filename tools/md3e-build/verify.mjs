@@ -465,6 +465,19 @@ async function main() {
         return s ? getComputedStyle(s).fontFamily : ''; })()`);
       chk('包名等技术值走等宽字', /mono/i.test(mono), mono || '没找到 data-mono 行');
     }
+    const captureRows = () => ev(`(function(){ var out=[];
+      [].slice.call(document.querySelectorAll('#view md-list-item[data-base]')).slice(0, 5).forEach(function(it){
+        out.push([it.getAttribute('headline')||'', it.getAttribute('supporting-text')||'']); });
+      return out; })()`);
+    const rows1 = await captureRows();
+    await tapBack();
+    await sleep(500);
+    await tapEntry('目标名单');
+    await sleep(1200);
+    const rows2 = await captureRows();
+    chk('第一次进入与第二次进入的名单文字一致（图标到货后标题要原位更新）',
+      JSON.stringify(rows1) === JSON.stringify(rows2),
+      '第一次 ' + JSON.stringify(rows1).slice(0, 100) + ' / 第二次 ' + JSON.stringify(rows2).slice(0, 100));
     await tapBack();
     await sleep(500);
     chk('返回箭头把人送回菜单', (await headlineText()) === '功能' && /目标名单/.test((await ev(PROBE)).text || ''));

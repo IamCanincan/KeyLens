@@ -263,10 +263,20 @@ function loadIconsFor(shown) {
 function swapIcons() {
   if (S.tab !== 'func' || S.sub !== 'targets') return;
   [].forEach.call(document.querySelectorAll('#view md-list-item[data-base]'), function (it) {
-    if (it.querySelector('img.app-ic')) return;
-    const ic = S.icons[it.getAttribute('data-base')];
+    const b = it.getAttribute('data-base');
+    const ic = S.icons[b];
+    if (!ic) return;
+    /* 显示名也一起补：首次进入若先画了包名，图标到货后标题要原位变成应用名，
+       否则会和第二次进入（缓存命中、直接画应用名）长得不一样。 */
+    if (ic.label) {
+      const tok = it.getAttribute('data-tok') || b || '';
+      const note = it.getAttribute('data-note') || '';
+      it.setAttribute('headline', ic.label);
+      it.setAttribute('supporting-text', [tok, note].filter(Boolean).join(' · '));
+    }
+    if (!ic.src || it.querySelector('img.app-ic')) return;
     const fb = it.querySelector('.app-ic-fallback');
-    if (!ic || !ic.src || !fb) return;
+    if (!fb) return;
     const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
     img.setAttribute('slot', 'start'); img.loading = 'lazy'; img.decoding = 'async';
     img.addEventListener('error', function () { /* 贴图打不开就保持首字块 */ });
@@ -580,8 +590,11 @@ function listSection() {
       interactive: true,
       mono: true,
     });
-    /* 记住基础包名：图标异步到货后据此原位换上 <img>（见 swapIcons） */
+    /* 记住基础包名与 token/模式说明：图标与显示名异步到货后原位更新，
+       不能只换图不换标题（否则第一次进是包名、第二次进才是应用名）。 */
     it.setAttribute('data-base', b || tok);
+    it.setAttribute('data-tok', tok);
+    it.setAttribute('data-note', m ? (m.note || '') : '');
     if (ic && ic.src) {
       /* 必须进 start 槽并给尺寸：裸 img 落在默认槽里会按原图 256px 渲染，
          整行被一个巨大图标撑开（截图里 Grok 那张就是这样）。 */
