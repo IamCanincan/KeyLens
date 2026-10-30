@@ -23,17 +23,15 @@
   --nav-h: 80px;
   --gap: 20px;
   --line: var(--md-sys-color-outline-variant, #cac4d0);
-  /* KeyLens 的信号色：只给状态用，不跟动态主色走 —— 动态色管交互，
-     青/琥珀/红管“正常/注意/问题”，两套语义分开。 */
-  --kl-ok: #0b7a5e;
-  --kl-warn: #9a6400;
-  --kl-bad: #b3261e;
+  /* 状态色不再另起一套青绿：正常态用动态主色（和按钮同一族），
+     只有“注意”用固定琥珀、“问题”用主题 error —— 页面不再出现第三四种主色。 */
+  --kl-ok: var(--md-sys-color-primary);
+  --kl-warn: #b7791f;
+  --kl-bad: var(--md-sys-color-error);
   --kl-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
 }
 [data-theme=dark]{
-  --kl-ok: #57e3b7;
   --kl-warn: #f2c35c;
-  --kl-bad: #ff9aa2;
 }
 
 html,body{margin:0;padding:0;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)}
@@ -70,8 +68,8 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
    页面背景直接露出来，行才是唯一的面。只有主页英雄卡保留自己的面。 */
 md-card.card{--md-card-container-color:transparent;--md-card-padding:0}
 .card{display:block;padding:0}
-md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
-  --md-card-padding:18px;border-radius:22px;color:var(--md-sys-color-on-secondary-container)}
+md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high);
+  --md-card-padding:18px;border-radius:22px;color:var(--md-sys-color-on-surface)}
 .sec{display:block}
 /* 分组标题 = NoMount 式的短标签：14px/500/主色，不带图标。
    图标留给行首，一个区块标题不再占一个彩色圆点。 */
@@ -85,9 +83,9 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
   background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant)}
-.chip-ok{background:color-mix(in srgb, var(--kl-ok) 16%, transparent);color:var(--kl-ok)}
+.chip-ok{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)}
 .chip-warn{background:color-mix(in srgb, var(--kl-warn) 18%, transparent);color:var(--kl-warn)}
-.chip-bad{background:color-mix(in srgb, var(--kl-bad) 18%, transparent);color:var(--kl-bad)}
+.chip-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -115,31 +113,23 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 /* 主页英雄卡：状态芯片 + 大字后端名 + 三个小统计。
    以前是四段小字用 · 连成一行（.strip-*），信息都在但要凑近读。 */
 .hero .hero-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-/* KeyLens 的镜头 + 钥匙孔标识：外圈颜色 = 当前状态色 */
-.lens-badge{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;
-  flex:none;background:color-mix(in srgb, var(--md-sys-color-surface) 22%, transparent)}
-.lens-mark{width:38px;height:38px;display:block}
-.lens-ring{fill:none;stroke:currentColor;stroke-width:2.4;stroke-dasharray:104 16;stroke-linecap:round;
-  transform:rotate(-38deg);transform-origin:24px 24px;opacity:.9}
-.lens-key{fill:none;stroke:currentColor;stroke-width:2.4}
-.lens-stem{fill:none;stroke:currentColor;stroke-width:4;stroke-linecap:round}
-.lens-ok{color:var(--kl-ok)}
-.lens-warn{color:var(--kl-warn)}
-.lens-bad{color:var(--kl-bad)}
-.lens-none{color:var(--md-sys-color-on-secondary-container)}
+/* 品牌标识：Opticon 同模板（淡粉底 + 墨色 KL），只换字符；图片构建时内联 */
+.kl-logo{box-sizing:border-box;width:56px;height:56px;border-radius:16px;flex:none;display:block;
+  object-fit:cover;background:#FCE4EC;
+  border:1px solid color-mix(in srgb, #031019 14%, transparent)}
 .hero-id{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
 .brand-eyebrow{font-size:10px;line-height:14px;font-weight:650;letter-spacing:.18em;
-  color:color-mix(in srgb, var(--md-sys-color-on-secondary-container) 62%, transparent)}
+  color:var(--md-sys-color-on-surface-variant)}
 .hero-name{font-size:var(--md-sys-typescale-size-headline-small, 24px);line-height:1.25;
   letter-spacing:-.3px;min-width:0;overflow-wrap:anywhere}
 .hero-ver{font-size:12px;line-height:18px;padding:2px 8px;border-radius:999px;white-space:nowrap;
   align-self:flex-start;margin-top:2px;
-  background:color-mix(in srgb, var(--md-sys-color-surface) 30%, transparent);
-  color:var(--md-sys-color-on-secondary-container);font-variant-numeric:tabular-nums}
+  background:var(--md-sys-color-surface-container-highest);
+  color:var(--md-sys-color-on-surface-variant);font-variant-numeric:tabular-nums}
 .hero-state{margin-inline-start:auto;flex:none}
 .hero-stats{display:flex;gap:28px;margin-top:14px;flex-wrap:wrap}
 .hero-stat{display:flex;flex-direction:column;gap:2px}
-.hero-k{font-size:13px;color:color-mix(in srgb, var(--md-sys-color-on-secondary-container) 72%, transparent)}
+.hero-k{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
 .hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 .sec-h b{min-width:0;overflow-wrap:anywhere}
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */

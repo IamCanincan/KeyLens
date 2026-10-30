@@ -399,12 +399,13 @@ chk('冲突横幅点名是哪几家', /on\.map\(function \(b\) \{ return b\[1\];
 /* OMK 1.2.5：主页要显示后端自己的版本；配置页要有两个 daemon 与 keystore2 注入的
    **只读**状态。三条状态都来自 backend-info，界面不自己探测进程。 */
 chk('主页状态条显示后端版本', /h\('span', 'hero-ver'/.test(screens) && /backendInfo\.module_version/.test(screens));
-chk('主页英雄卡有 KeyLens 镜头标识与品牌眉题',
-  /function lensMark\(\)/.test(screens) && /'brand-eyebrow', 'KEYLENS'/.test(screens)
-  && /lens-badge/.test(screens) && /lens-mark/.test(screens));
-chk('状态色独立于动态主色（信号色变量 + chip/dot）',
-  /--kl-ok:/.test(css) && /--kl-warn:/.test(css) && /--kl-bad:/.test(css)
-  && /\.chip-ok\{background:color-mix\(in srgb, var\(--kl-ok\)/.test(css)
+chk('主页英雄卡有 Opticon 模板的 KL 标识与品牌眉题',
+  /import logoUrl from '\.\/logo\.png'/.test(screens) && /'kl-logo'/.test(screens)
+  && /badge\.alt = 'KL'/.test(screens) && /'brand-eyebrow', 'KEYLENS'/.test(screens));
+chk('正常态用动态主色，注意用琥珀、问题用 error（不再另起青绿）',
+  /--kl-ok: var\(--md-sys-color-primary\)/.test(css)
+  && /--kl-warn: #b7791f/.test(css) && /--kl-bad: var\(--md-sys-color-error\)/.test(css)
+  && /\.chip-ok\{background:var\(--md-sys-color-primary-container\)/.test(css)
   && /\.dot-ok\{background:var\(--kl-ok\)\}/.test(css));
 chk('分组标签有同源光圈点', /\.sec-h::before\{/.test(css) && /radial-gradient/.test(css));
 chk('包名/摘要等技术值走等宽字', /if \(o\.mono\)/.test(screens) && /data-mono/.test(screens)

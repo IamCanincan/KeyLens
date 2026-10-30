@@ -58,6 +58,8 @@ await build({
      从导入方往上找 node_modules，跨目录就找不到，所以显式给它一条解析路径。 */
   nodePaths: [path.join(here, 'node_modules')],
   bundle: true, format: 'iife', minify: true, target: 'chrome111',
+  /* 品牌 KL 图随 JS 内联成 data URL —— 产物仍是单文件，webroot 不需要多推一张 PNG */
+  loader: { '.png': 'dataurl' },
   legalComments: 'none', logLevel: 'warning',
 });
 const js0 = fs.readFileSync(bundleOut, 'utf8');

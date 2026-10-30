@@ -172,9 +172,13 @@ async function main() {
       !!pageTitle && pageTitle.fs === '28px' && pageTitle.text === '主页',
       pageTitle ? pageTitle.fs + ' / ' + pageTitle.text : '没读到');
     const brand = await ev(`(function(){ var b=document.querySelector('#view .brand-eyebrow');
-      return { text: b ? (b.textContent||'').trim() : '', lens: document.querySelectorAll('#view .lens-mark').length }; })()`);
-    chk('主页有 KeyLens 镜头标识与品牌眉题', brand.text === 'KEYLENS' && brand.lens === 1,
-      brand.text + ' / lens=' + brand.lens);
+      var img=document.querySelector('#view .kl-logo');
+      return { text: b ? (b.textContent||'').trim() : '',
+        alt: img ? (img.getAttribute('alt')||'') : '',
+        src: img ? (img.getAttribute('src')||'') : '' }; })()`);
+    chk('主页有 Opticon 模板的 KL 标识与品牌眉题',
+      brand.text === 'KEYLENS' && brand.alt === 'KL' && brand.src.indexOf('data:image/png') === 0,
+      brand.text + ' / alt=' + brand.alt + ' / src=' + brand.src.slice(0, 22));
     const barTitles = await ev(`(function(){ var b=document.getElementById('bar');
       var t=b&&b.shadowRoot&&b.shadowRoot.querySelector('.titles');
       return t ? { vis: getComputedStyle(t).visibility, op: getComputedStyle(t).opacity } : null; })()`);

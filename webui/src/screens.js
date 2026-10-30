@@ -9,6 +9,8 @@
 import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
+/* Opticon 同模板的 KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
+import logoUrl from './logo.png';
 
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
@@ -96,25 +98,6 @@ export function avatar(iconName) {
   const s = h('span', 'ic-avatar', iconName);
   s.setAttribute('slot', 'start');
   s.setAttribute('aria-hidden', 'true');
-  return s;
-}
-
-/* KeyLens 自己的标识：外圈是镜头，中心是钥匙孔。颜色跟状态走（ok/warn/bad），
-   让主页英雄卡读作“镜头对准当前后端”，而不是一张通用统计卡。 */
-function lensMark() {
-  const ns = 'http://www.w3.org/2000/svg';
-  const s = document.createElementNS(ns, 'svg');
-  s.setAttribute('viewBox', '0 0 48 48');
-  s.setAttribute('class', 'lens-mark');
-  s.setAttribute('aria-hidden', 'true');
-  const el = function (tag, attrs) {
-    const n = document.createElementNS(ns, tag);
-    for (const k in attrs) n.setAttribute(k, attrs[k]);
-    s.appendChild(n);
-  };
-  el('circle', { cx: '24', cy: '24', r: '19', class: 'lens-ring' });
-  el('circle', { cx: '24', cy: '20.5', r: '5.4', class: 'lens-key' });
-  el('path', { d: 'M24 26v9', class: 'lens-stem' });
   return s;
 }
 
@@ -506,9 +489,10 @@ function statusStrip() {
   const [tone, label] = toneOfState(st.state);
   const c = card('hero');
   const top = h('div', 'hero-top');
-  /* 镜头 + 钥匙孔：外圈颜色就是状态色；KEYLENS 是品牌眉题，后端名才是正文。 */
-  const badge = h('span', 'lens-badge lens-' + tone);
-  badge.appendChild(lensMark());
+  /* 品牌标识直接沿用 Opticon 的图标模板：淡粉底 + 墨色 KL，只换字符。 */
+  const badge = h('img', 'kl-logo');
+  badge.src = logoUrl;
+  badge.alt = 'KL';
   top.appendChild(badge);
   const id = h('div', 'hero-id');
   id.appendChild(h('span', 'brand-eyebrow', 'KEYLENS'));
