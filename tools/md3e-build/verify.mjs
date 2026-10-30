@@ -239,6 +239,28 @@ async function main() {
   chk('画出来的图标都有对应字体面（没有族名落空）', !p0.missFam,
     p0.missFam ? '落空: ' + p0.missFam : '已声明: ' + p0.declared);
 
+  /* 长按底栏活动圆 → 横向拖到第二格 → 松手切页。用真实鼠标事件走
+     pointerdown/move/up，不是直接 dispatch change —— 那样测不到手势。 */
+  {
+    const pts = await ev(`(function(){ var n=document.getElementById('nav');
+      var a=n.children[0].querySelector('.nav-halo').getBoundingClientRect();
+      var b=n.children[1].getBoundingClientRect();
+      return { x1:Math.round(a.left+a.width/2), y1:Math.round(a.top+a.height/2),
+        x2:Math.round(b.left+b.width/2), y2:Math.round(b.top+b.height/2) }; })()`);
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pts.x1, y: pts.y1, button: 'left', clickCount: 1 });
+    await sleep(380);
+    await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pts.x2, y: pts.y2, button: 'left', buttons: 1 });
+    await sleep(80);
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pts.x2, y: pts.y2, button: 'left', clickCount: 1 });
+    await sleep(800);
+    const pd = await ev(PROBE);
+    chk('长按活动圆拖到第二格 → 切页', pd.title === '功能', '标题=' + pd.title);
+    chk('拖拽后没有残留 ghost', (await ev(`document.querySelectorAll('.nav-ghost').length`)) === 0);
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+    await sleep(700);
+  }
+
   console.log('── 逐页驱动（真的点导航）──');
   /* 切页三件事一起量，都是用户在手机上真正会感觉到的：
        ① 底栏（md-navigation-bar）在切页前后的 rect 会不会变 —— "点底栏时底栏上下跳"

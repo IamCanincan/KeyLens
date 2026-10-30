@@ -67,6 +67,7 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
   background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 86%, transparent);
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   box-shadow:0 10px 30px color-mix(in srgb, var(--md-sys-color-shadow, #000) 30%, transparent);
+  touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
   transition:transform .26s cubic-bezier(.2,.9,.25,1),opacity .18s ease}
 .bottom-nav.nav-hidden{transform:translateY(calc(100% + var(--inset-bottom) + 18px)) scale(.94);
   opacity:0;pointer-events:none}
@@ -91,6 +92,18 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
   padding:4px 16px 4px 4px}
 .nav-item.active .nav-halo{background:color-mix(in srgb, var(--md-sys-color-surface) 22%, transparent)}
 .nav-item.active .nav-label{max-width:64px;opacity:1;transform:none}
+/* 长按拿起活动圆：源格变淡，拖动的圆浮在导航之上；目标格的光圈亮起 */
+.bottom-nav.nav-dragging .nav-item.active{background:color-mix(in srgb, var(--md-sys-color-secondary-container) 42%, transparent)}
+.bottom-nav.nav-dragging .nav-item.active .nav-halo{opacity:.25}
+.bottom-nav.nav-dragging .nav-item.active .nav-label{opacity:0!important}
+.nav-item.drag-over{background:color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent)}
+.nav-item.drag-over .nav-halo{background:color-mix(in srgb, var(--md-sys-color-primary) 22%, transparent)}
+.nav-item.drag-over .nav-icon{color:var(--md-sys-color-primary)}
+.nav-ghost{position:fixed;z-index:45;width:44px;height:44px;border-radius:50%;pointer-events:none;
+  display:flex;align-items:center;justify-content:center;
+  background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container);
+  box-shadow:0 10px 26px color-mix(in srgb, var(--md-sys-color-shadow, #000) 38%, transparent);
+  transform:scale(1.06);will-change:left,top}
 md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
 .stack{display:flex;flex-direction:column;gap:var(--gap)}

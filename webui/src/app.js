@@ -75,6 +75,119 @@ function buildNav() {
 }
 buildNav();
 
+/* 长按活动圆横向拖拽切页：320ms 长按拿起活动圆，拖到任意一格松手切过去。
+   拿起时源格变淡、活动圆浮在导航上；拖过目标格时光圈亮起；松手才切页，
+   不在拖动过程中反复 load 页面。 */
+const NAV_HOLD_MS = 320;
+let navDrag = null;
+let suppressNavClick = false;
+let suppressTimer = 0;
+
+function navIndexAt(x) {
+  let best = 0, dist = Infinity;
+  [].forEach.call(nav.children, function (el, i) {
+    const r = el.getBoundingClientRect();
+    const d = Math.abs(x - (r.left + r.width / 2));
+    if (d < dist) { dist = d; best = i; }
+  });
+  return best;
+}
+function navGhostPos(g, x) {
+  const nr = nav.getBoundingClientRect();
+  const left = Math.max(nr.left + 6, Math.min(nr.right - 6 - 44, x - 22));
+  g.style.left = Math.round(left) + 'px';
+  g.style.top = Math.round(nr.top + (nr.height - 44) / 2) + 'px';
+}
+function markNavTarget(i) {
+  [].forEach.call(nav.children, function (el, j) { el.classList.toggle('drag-over', j === i); });
+  if (navDrag) navDrag.target = i;
+}
+function cleanupNavDrag(clickGuard) {
+  if (!navDrag) return;
+  const d = navDrag;
+  clearTimeout(d.timer);
+  window.removeEventListener('pointermove', d.move);
+  window.removeEventListener('pointerup', d.up);
+  window.removeEventListener('pointercancel', d.cancel);
+  if (d.ghost) d.ghost.remove();
+  nav.classList.remove('nav-dragging');
+  [].forEach.call(nav.children, function (el) { el.classList.remove('drag-over'); });
+  navDrag = null;
+  if (clickGuard) {
+    suppressNavClick = true;
+    clearTimeout(suppressTimer);
+    suppressTimer = setTimeout(function () { suppressNavClick = false; }, 450);
+  }
+}
+function beginNavDrag() {
+  if (!navDrag || navDrag.fired) return;
+  navDrag.fired = true;
+  navDrag.target = navDrag.active;
+  const g = h('div', 'nav-ghost');
+  g.appendChild(h('span', 'nav-icon', PAGES[navDrag.active].icon));
+  document.body.appendChild(g);
+  navDrag.ghost = g;
+  navGhostPos(g, navDrag.x);
+  markNavTarget(navDrag.active);
+  nav.classList.add('nav-dragging');
+  if (navigator.vibrate) { try { navigator.vibrate(8); } catch (e) {} }
+}
+function onNavMove(e) {
+  if (!navDrag) return;
+  navDrag.x = e.clientX;
+  navDrag.y = e.clientY;
+  if (!navDrag.fired) {
+    if (Math.abs(e.clientX - navDrag.startX) > 8 || Math.abs(e.clientY - navDrag.startY) > 8) {
+      cleanupNavDrag(false);
+    }
+    return;
+  }
+  if (e.cancelable) e.preventDefault();
+  navGhostPos(navDrag.ghost, e.clientX);
+  markNavTarget(navIndexAt(e.clientX));
+}
+function onNavUp(e) {
+  if (!navDrag) return;
+  if (!navDrag.fired) { cleanupNavDrag(false); return; }
+  const from = navDrag.active;
+  const target = navIndexAt(e.clientX);
+  cleanupNavDrag(true);
+  if (target !== from && PAGES[target]) show(PAGES[target].id);
+}
+function onNavCancel() {
+  if (!navDrag) return;
+  const fired = navDrag.fired;
+  cleanupNavDrag(fired);
+}
+nav.addEventListener('pointerdown', function (e) {
+  if (e.button != null && e.button !== 0) return;
+  if (navDrag || nav.classList.contains('nav-hidden')) return;
+  const item = e.target && e.target.closest ? e.target.closest('.nav-item') : null;
+  if (!item || !item.classList.contains('active')) return;
+  const idx = [].indexOf.call(nav.children, item);
+  const d = {
+    id: e.pointerId, active: idx, x: e.clientX, y: e.clientY,
+    startX: e.clientX, startY: e.clientY,
+    timer: 0, fired: false, target: idx, ghost: null,
+    move: onNavMove, up: onNavUp, cancel: onNavCancel
+  };
+  navDrag = d;
+  d.timer = setTimeout(beginNavDrag, NAV_HOLD_MS);
+  window.addEventListener('pointermove', d.move, { passive: false });
+  window.addEventListener('pointerup', d.up);
+  window.addEventListener('pointercancel', d.cancel);
+});
+nav.addEventListener('contextmenu', function (e) {
+  if (navDrag || suppressNavClick) e.preventDefault();
+});
+nav.addEventListener('click', function (e) {
+  if (!suppressNavClick) return;
+  e.preventDefault();
+  e.stopPropagation();
+  suppressNavClick = false;
+  clearTimeout(suppressTimer);
+}, true);
+
 /* 顶栏标题的 28px / 滚动后浮现在组件 shadow 里，外层 CSS 够不到 ——
    照 rowSkin 的办法注入一张构造样式表，不动组件 API。 */
 function injectSheet(el, css) {

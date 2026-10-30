@@ -289,6 +289,11 @@ chk('底栏图标在中轴、文字在侧边、活动圆与边缘同心',
 chk('底栏文字切到侧边是过渡而不是瞬切',
   /\.nav-label\{[^}]*transition:max-width[^}]*opacity[^}]*transform/.test(css)
   && /\.nav-item\.active\{[^}]*padding:4px 16px 4px 4px/.test(css));
+chk('长按活动圆可横向拖拽切页',
+  /NAV_HOLD_MS/.test(app) && /addEventListener\('pointerdown'/.test(app)
+  && /nav-ghost/.test(app) && /markNavTarget/.test(app) && /nav-dragging/.test(app)
+  && /\.nav-ghost\{/.test(css) && /\.bottom-nav\.nav-dragging/.test(css)
+  && /\.nav-item\.drag-over/.test(css) && /touch-action:none/.test(css));
 /* 真机 WebView 的 env(safe-area-inset-*) 不是 0，顶栏组件 shadow 里还有一条
    env padding；外层包壳已经让位，组件内部必须归零，否则真机上会双倍让位
    （顶栏多 28px 把内容标题切掉，台架 env=0 看不见）。 */
