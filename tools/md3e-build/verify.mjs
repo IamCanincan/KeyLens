@@ -382,6 +382,32 @@ async function main() {
     await tapBack();
     await sleep(500);
     chk('返回箭头把人送回菜单', (await headlineText()) === '功能' && /目标名单/.test((await ev(PROBE)).text || ''));
+    /* 属性伪装页：列表 → 两按钮 → 属性列表 → 列表 → 输入框 → 保存。
+       用户点名"按钮贴属性列表、输入框贴应用值"；这里直接量四段异类间距。 */
+    chk('点「属性伪装」进二级', await tapEntry('属性伪装') === 1);
+    await sleep(900);
+    {
+      const pg = await ev(`(function(){
+        var ls=[].slice.call(document.querySelectorAll('#view md-list'));
+        var as=[].slice.call(document.querySelectorAll('#view .acts'));
+        var tf=document.querySelector('#view md-text-field');
+        if (ls.length < 3 || as.length < 2 || !tf) return null;
+        var r=function(e){ return e.getBoundingClientRect(); };
+        return { above: Math.round(r(as[0]).top - r(ls[0]).bottom),
+          below: Math.round(r(ls[1]).top - r(as[0]).bottom),
+          input: Math.round(r(tf).top - r(ls[2]).bottom),
+          save: Math.round(r(as[1]).top - r(tf).bottom) };
+      })()`);
+      chk('属性伪装的按钮与上下两段列表都分开',
+        !!pg && pg.above >= 18 && pg.below >= 18,
+        pg ? '上 ' + pg.above + 'px / 下 ' + pg.below + 'px' : '没找到列表或按钮');
+      chk('Verified Boot 输入框与应用值列表、保存按钮都分开',
+        !!pg && pg.input >= 18 && pg.save >= 12,
+        pg ? '列表→输入 ' + pg.input + 'px / 输入→保存 ' + pg.save + 'px' : '没找到输入框');
+      const shotP = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(path.join(SHOT_DIR, 'new-props.png'), Buffer.from(shotP.data, 'base64'));
+    }
+    await tapBack(); await sleep(400);
     /* keybox 二级页单验一条：换 keybox 作废旧密钥的警告必须画出来 */
     chk('点「密钥箱 keybox」进二级', await tapEntry('密钥箱 keybox') === 1);
     await sleep(900);
