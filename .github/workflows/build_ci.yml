@@ -56,13 +56,14 @@ jobs:
       - name: Static gates（界面源码 ↔ 命令层对账）
         # 全是纯静态、不装依赖、不需要设备：
         #   tests/ui-shape.js                     表单字段 ↔ webui.sh 的 case、结构底线
+        #   tests/accent-theme.mjs                动态配色：FRRO 解析 / tonal 自检 / 种子与 OKLCH
         #   tools/kv-shape-check.mjs              界面读的键 ⊆ 命令层输出的键（含假数据）
         #   tools/md3e-build/icon-gate.mjs        图标名必须在 257 连字子集内
         #   tools/md3e-build/check-artifact.mjs   产物无占位符 / 字体已内联 / 源码可达
         #   tools/json-flat-set-check.cjs         扁平 JSON 定点改写 19 例（含删除）
         run: |
           fail=0
-          for g in tests/ui-shape.js tools/kv-shape-check.mjs \
+          for g in tests/ui-shape.js tests/accent-theme.mjs tools/kv-shape-check.mjs \
                    tools/md3e-build/icon-gate.mjs tools/md3e-build/check-artifact.mjs \
                    tools/json-flat-set-check.cjs tools/name-residue-check.mjs; do
             printf '\n══ %s\n' "$g"

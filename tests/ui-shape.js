@@ -27,6 +27,7 @@ const app = read('webui/src/app.js');
 const css = read('webui/src/app.css');
 const tpl = read('webui/src/index.html');
 const sh = read('module/webui.sh');
+const theme = fs.existsSync(SRC('webui/src/theme.js')) ? read('webui/src/theme.js') : '';
 
 let fail = 0;
 const chk = (name, ok, detail) => {
@@ -230,6 +231,17 @@ chk('安全区读注入值与 env 的较大者',
 chk('顶栏与底栏宿主有底色',
   /md-top-app-bar\{[^}]*background:var\(--md-sys-color-surface\)/.test(css)
   && /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
+/* 动态配色：FRRO 解析 + tonal 单调自检必须住在 theme.js（纯函数，tests/accent-theme.mjs
+   在 node 里单测），app 在 data-theme 之后调 applyAccent（角色明度跟档走）。
+   兜底必须是平台默认 #4b5d8b，不许退回 MD3E 自己那支紫 —— 上一版的结论。 */
+chk('动态配色在 theme.js：FRRO 解析 + tonal 自检 + 平台默认兜底',
+  /export function parseFrro/.test(theme) && /mono/.test(theme)
+  /* 兜底色整条认：{ r/g/b } 的键名 g、b 本身是十六进制字母，字符类排不掉 */
+  && /FALLBACK_RGB = \{ r: 0x4b, g: 0x5d, b: 0x8b \}/.test(theme));
+chk('applyAccent 接在 data-theme 之后（切深浅要重算角色明度）',
+  /applyAccent\(S\.env\)/.test(app)
+  && app.indexOf('applyAccent(S.env)') > app.indexOf("setAttribute('data-theme'"));
+chk('外观卡照报强调色来源（accentNote）', /accentNote\(\)/.test(screens));
 chk('crypto 种子不渲染', !/root_kek_seed|kak_seed|shared_secret_seed|shared_secret_nonce|auth_token_hmac_key/.test(screens));
 chk('serial/imei/meid 不进日志或提示', !/console\.log\(.*(serial|imei)/.test(screens));
 chk('命令参数走单引号转义（防注入）', /String\(arg\)\.replace\(\/'\/g, "'\\\\''"\)/.test(bridge));

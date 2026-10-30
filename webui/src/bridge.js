@@ -452,7 +452,9 @@ function demoResult(cmd, arg) {
     env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
       'vbstate=green', 'sys_dark=1', 'sys_dark_src=mComputedNightMode',
-      'sys_seed_raw=', 'sys_seed_src=none'].join('\n'),
+      /* seed=…（?demo=1 专用）：台架的种子注入路 —— 不带它就是"系统没有可读强调色"，
+         走平台默认那条兜底；带它走 parseSeed + 映射，verify 用它验端到端。 */
+      'sys_seed_raw=' + (QUERY.get('seed') || ''), 'sys_seed_src=' + (QUERY.get('seed') ? 'theme_custom_color' : 'none')].join('\n'),
     targets: toks.join('\n'),
     apps: ['com.android.vending', 'app.mihon', 'com.tencent.mm', 'io.legado.app'].join('\n'),
     'target-meta': meta.join('\n'),

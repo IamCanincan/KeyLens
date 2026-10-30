@@ -50,6 +50,13 @@
 
 #### 修复
 
+* **界面不是动态配色**（换 MD3E 时整套丢了的第三发，用户报的）。命令层一直在报 `sys_frro`（SystemUI overlay 的 base64）与 `sys_seed_raw`，界面这头却没人读 —— 上一版的 FRRO 解析、tonal 自检、四级回退与"明度取内置、彩度按实测比值"的映射全在换版时没了，界面退回 MD3E 库默认的静态紫。
+  * 新增 `webui/src/theme.js`：解析与映射照上一版搬回（判据一字未动），落点从自绘 `--hue/--sat` 换成 MD3E 的 `--md-sys-color-*` 角色 —— 只重着 accent 染出来的六个角色（primary ×4 + secondary-container ×2），primary 的彩度精确落到系统实测值，其余按"内置彩度/内置 primary 彩度"的比例跟随；角色明度用**当前深浅档**的内置令牌（所以 `applyAccent` 挂在 `data-theme` 之后，切档重算；内置值按档缓存，落 overrides 前先抄走库的值，不然读到的是自己的 override）。
+  * `applyAccent` 优先级不变：frro（tonal 阶梯明度必须单调，不单调整份丢）→ `theme_custom_color` → 壁纸 `colorValue0` → 平台默认 `system_accent1`（framework-res 的 **#4b5d8b**，不是库的紫）。外观卡照报来源与落点色相。
+  * 新闸 `tests/accent-theme.mjs`（CI 已挂）：拿**合成 FRRO** 验解析与自检 —— 正对照先证明台子能从合成数据里解出金标准 400 档，变异（两档对调 / 条目不足 8 / 名字不带 system_ 前缀）必须退 null；种子解析六种存法、OKLCH 换算拿 #FF0000 与框架默认 #4b5d8b 当锚点。造台子自己先踩了两脚：`lerp` 闭包拿了外面的 `t`、传第三个实参被无声忽略（"金标准"其实是另一档的值），FRRO 的 ARGB8888 带 alpha、构造时丢了就永远差 0xff000000。
+  * 台架（`verify.mjs`）钉端到端：无种子 → primary 覆写成 oklch 且色相 ≈267°（平台默认）；`?seed=0xFFC00000`（demo 数据新增的种子注入路）→ 色相落到 ≈29°。真机回放里按钮已是本机的青蓝。
+  * 顺带修掉 README 两处上一版留下的过期描述（`--r-*`/`--sp-*` 令牌、`?dark=1`/`&tab=` 这些已不存在的预览参数）。
+
 * **状态栏那条是透明的，像缺了一块**（用户上机报的）。两个半截原因叠加，各自只造成"看不见的带子"：
   ① 换 MD3E 时 `app.css` 重写，安全区改成了只读 `env(safe-area-inset-*)` —— 而管理器注入 insets 用的是**自定义属性**（从管理器 APK 的 dex 里挖出 `insets.css` 的生成格式：`:root{--safe-area-inset-*: …; --window-inset-*: var(--safe-area-inset-*, 0px)}`），这个 WebView 里 `env()` 恒 0。上一版读的正是 `var(--window-inset-top, env(…))`，重写时丢了。现在两边取大者：`max(var(--safe-area-inset-*), var(--window-inset-*, env(…)))`。
   ② 顶/底栏组件把颜色画在 shadow 里的 `.bar` 上，**宿主元素是透明的**，而让位 padding 恰恰加在宿主上 —— 不给宿主涂底色，padding 那条就是透明带。给两个宿主补上与内层一致的背景。

@@ -284,6 +284,22 @@ async function main() {
       ng.h === nb.h + 24 && nb.bg !== 'rgba(0, 0, 0, 0)' && nb.bg !== 'transparent',
       `before=${nb.h} grown=${ng.h} bg=${nb.bg}`);
   }
+
+  /* ── 动态配色：强调色要落到 MD3E 的角色上，不是库默认那支紫 ──────────
+     demo 不带 seed：env 报 sys_seed_src=none → 走平台默认兜底 #4b5d8b（色相 ≈267°）；
+     带 ?seed= 走 parseSeed → 映射，色相必须落到种子上。判据读的是**算出来的**
+     --md-sys-color-primary 的色相数字，不是"看着像不像"。 */
+  {
+    const hueOf = s => { const m = /oklch\([\d.]+% [\d.]+ ([\d.]+)\)/.exec(s || ''); return m ? parseFloat(m[1]) : NaN; };
+    const prim = async () => hueOf(await ev(`getComputedStyle(document.documentElement).getPropertyValue('--md-sys-color-primary')`));
+    const pDefault = await prim();
+    chk('动态配色生效（primary 被覆写成 oklch，不再验库默认值）', !isNaN(pDefault), 'H=' + pDefault);
+    chk('无种子 → 平台默认强调色（#4b5d8b → 色相 ≈267°）', Math.abs(pDefault - 267.2) < 6, 'H=' + pDefault);
+    await send('Page.navigate', { url: URL0 + '&seed=0xFFC00000' });
+    await sleep(1800);
+    const pSeed = await prim();
+    chk('?seed=0xFFC00000 → primary 色相落到种子（红 ≈29°）', Math.abs(pSeed - 29) < 4, 'H=' + pSeed);
+  }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
   /* ── 逐后端驱动：三家各自的能力面只在 backend=<家> 时才画得出来 ──────

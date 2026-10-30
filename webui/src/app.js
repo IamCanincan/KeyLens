@@ -20,6 +20,7 @@ import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 import {
   S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
 } from './bridge.js';
+import { applyAccent } from './theme.js';
 import {
   ICON, h, renderHome, renderBackend, renderLog, renderSettings,
   onToast, onReload, onAuto, onApplyTheme, onDraw,
@@ -60,6 +61,9 @@ function applyTheme() {
     : S.theme === 'dark';
   document.documentElement.setAttribute('data-theme', want ? 'dark' : 'light');
   document.documentElement.style.setProperty('color-scheme', want ? 'dark' : 'light');
+  /* 动态配色跟在深浅后面：角色明度要从**当前档**的内置令牌里读，
+     切档后必须重算（theme.js 里按档缓存，落 overrides 前先抄走库的值）。 */
+  applyAccent(S.env);
 }
 onApplyTheme(applyTheme);
 

@@ -8,6 +8,7 @@
  *===========================================================================*/
 import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons } from './bridge.js';
 import { loadOverrides } from './bridge.js';
+import { accentNote } from './theme.js';
 
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
@@ -1004,6 +1005,8 @@ export function renderTheme() {
   if (S.env.sys_seed_src && S.env.sys_seed_src !== 'none') {
     s.appendChild(h('p', 'hint', '系统强调色来源：' + S.env.sys_seed_src));
   }
+  /* 落了什么色由 theme.js 算（frro 解析 + tonal 自检 + 明度取内置），这里只照报 */
+  s.appendChild(h('p', 'hint', accentNote()));
   c.appendChild(s);
   return c;
 }

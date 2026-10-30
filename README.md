@@ -189,14 +189,14 @@ sh /data/adb/modules/keylens/action.sh
 - 所有数据都来自一次 root shell 调用：`sh /data/adb/modules/keylens/webui.sh <命令>`，与命令行排查看到的是同一套判定，界面自己不算状态。可用 `sh webui.sh help` 看全部命令。
 - 界面开机先问一次 `contract`（命令层自报契约号与命令清单）：**号对不上就横幅明说「界面与命令层不是同一版」，并把写命令挡在传输层外**（读命令仍放行，好让人看到现场）。另外每次调用会校验界面真正要读的关键键（`status` / `env` / `boot-hash` / `sync` / `restore-*` / `remove-apps` 等）：字段名变了会横幅「命令层返回格式不认识」并停写，不会静默画成空值。需要这条是因为迭代时可以只推 `index.html` 或只推 `webui.sh`，不同版以前只会表现为"某个值怪怪的"。改任何命令的输出形状仍要两侧同时把号 +1；电脑上预览可用 `?badapi=99` 验契约号，形状检查可在演示数据里临时改坏一个键验证。
 - 界面**不做后台轮询**（与模块"事件驱动、不额外耗电"的取向一致）：数字只在进入页面、点「重新读取」或执行写操作后更新。实测本机（XQ-DQ72）`status` 约 0.6 秒、`env` 约 0.77 秒（每次打开只问一次）、`targets` 约 0.33 秒、`apps` / `rules` / `log` 约 0.1~0.12 秒。
-- **颜色与深浅一律跟随系统，界面不提供覆盖**（顶栏没有色相滑杆，也没有深浅切换按钮——它们只会让人不小心把界面调得和系统不一样）。深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询）。Material Web 组件通过 `:root` 里未分层的 `--md-sys-color-*` 别名映射到这套 token（`m3.css` 在 `@layer` 里，不会盖掉）。
-- **强调色按四级回退，取到哪一级在概览页「关于 → 取色」里照实写出**：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`。
+- **颜色与深浅跟随系统**：深浅以系统实际算出的结果为准（`dumpsys uimode` 的 `mComputedNightMode`，取不到再退回 `mCurUiMode` 的夜间位，最后才是 WebView 的媒体查询），落到 MD3E 的 `[data-theme=dark]` 上；外观卡提供 跟随系统/浅色/深色 三档覆盖（只影响本次打开）。
+- **强调色是动态的（Material You）**，四级回退，取到哪一级在外观卡里照实写出：① SystemUI 运行时生成的 Material You overlay `/data/resource-cache/com.android.systemui-accent-*.frro`（**这是系统正在用的那套色**，用户手选颜色时它同样会重新生成，所以比任何 setting 都权威；模块只做「取文件 + base64」，解析在界面里，并用「tonal 阶梯明度必须单调」当自检，不单调就整份丢掉）→ ② `settings get secure theme_custom_color` → ③ 壁纸提取色 `dumpsys wallpaper` 的 `colorValue0` → ④ 平台默认 `system_accent1`（framework-res 的 #4b5d8b，**不是** MD3E 库自己那支紫）。映射规矩：各角色的明度档位用界面内置的那套，只换色相；彩度按实测比值走（primary 精确落到系统实测彩度，其余角色按内置比例跟随），不做审美放大。
   界面里 `--primary` 是 `oklch(49% .19×sat hue)`，而系统 `accent1_600` 的明度就在 49% 那一档，所以 `sat = 系统实测C / .19` 即可对上——**彩度按实测比值走，不做审美放大**（放大过的版本色相差不多却完全不像一套东西）。
   需要说清楚的是：跟的是**色相与彩度**，各角色的明度档位仍用界面内置的那一套——模块侧拿不到系统算好的 12 组色调表本身，只能拿到这份 overlay 文件里的 ARGB。
 - **字体直接使用 WebView 的 `system-ui`**（与机上 `nomount` 等模块的 WebUI 一致）：本机 WebView 156 下 system-ui 就按系统字体（当前 overlay 的 `config_bodyFontFamily` 是 `google-sans-flex`）渲染。界面不再探测/复制/加载 ttf，也不写 `@font-face`；Material Web 组件通过 `--md-ref-typeface-plain: var(--font)` 使用同一份字体。**字号**仍按界面自己的七档 px，不跟随系统 `font_scale`。
-- 松紧只由两组令牌控制：`--r-*`（圆角）与 `--sp-*`（留白），加上少量字号档位。**要整体调密度就改这几行**，不要逐条找元素——上一轮"收一档"是逐条改的，结果改完就变成"很挤"。
+- 松紧交给 MD3E 的令牌与组件（间距 `--md-sys-spacing-*`、形状、字阶都是库的默认值），本模块自己的布局层只有壳与排版（`.stack` / `.acts` / `.row` / `.console`，加上 `--bar-h` / `--nav-h` / `--gap` / `--line` 四个变量）——**别复制一份 MD3 数值进 app.css**，复制了就会有两套，改一处漏一处。
 - 「立即应用一次」是**运行期**写属性，`ro.build.type` 这类已经被 Zygote 读进 Java 静态字段的值不会因此刷新，要彻底生效仍需重启；开机伪装开关只影响下一次开机。
-- 想在电脑上预览界面：用任意本地 http 打开 `module/webroot/index.html` 并加 `?demo=1`（内置一份演示数据，不会碰真机）；加 `&seed=RRGGBB` 可模拟系统强调色、`&dark=1` 模拟系统深色、`&tab=rules` 直接进某一页、`&scheme=light|dark` 强制配色（不看系统）。
+- 想在电脑上预览界面：`node tools/md3e-build/build.mjs` 之后用 Chrome 打开 `webui/dist/index.html?demo=1`（内置一份演示数据，不会碰真机）。参数：`&backend=tricky|teesim|omk` 切假后端、`&fail=targets` 造一次读失败、`&conflict=1` 造三家同开、`&seed=0xAARRGGBB` 模拟系统强调色。正式验收跑 `node tools/md3e-build/verify.mjs`（逐页真点导航 + 逐后端驱动 + 深浅/安全区/配色三组运行时断言）。
 
 > 贡献者提示：`webroot/` 是各管理器约定的 WebUI 目录，入口文件名必须是 `index.html`；**样式与脚本不要拆成多个 css/js 文件**——部分管理器用 `file://` 加载且不解析子资源路径。Material Web bundle 也是内联的；`tools/mwc-build/` 只用于维护时重新生成它（`npm install && npm run build`），不会进刷机包。唯一的运行时子资源例外是 `webroot/icons/*.png`：那是运行时导出的图片，读不到时界面会退成首字块，所以缺了也不影响任何功能与可读性。第三方许可见 [THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)。
 
