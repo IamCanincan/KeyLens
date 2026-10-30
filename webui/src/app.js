@@ -67,6 +67,10 @@ function whenDefined(tag, fn) {
 }
 whenDefined('md-top-app-bar', function () {
   injectSheet(bar, [
+    /* 组件 shadow 的 .bar 自己还吃一次 env(safe-area-inset-top)；真机 env=28px，
+       和 #barwrap 的让位叠成双倍，内容标题被多出来的 28px 切掉（2026-10-31
+       上机截图）。让位只由外层包壳负责，组件内部归零。 */
+    '.bar{padding-top:0!important}',
     ':host(:not(.has-back)) .titles{left:16px!important}',
     '.titles{opacity:0!important;visibility:hidden!important;transition:opacity .18s ease}',
     ':host(.scrolled) .titles{opacity:1!important;visibility:visible!important}',
@@ -75,9 +79,11 @@ whenDefined('md-top-app-bar', function () {
 });
 whenDefined('md-navigation-bar', function () {
   /* alwaysShowLabel 在这个版本里只是个兼容存根（getter 恒 true），所以
-     "只给当前项显示文字"只能在 shadow 里做：非活动标签淡出，图标下移居中。 */
+     "只给当前项显示文字"只能在 shadow 里做：非活动标签淡出，图标下移居中。
+     底栏同理，组件 shadow 的 .bar 也会吃 env(safe-area-inset-bottom)；外层已经
+     用 --inset-bottom 让位，这里归零避免底部再叠一次。 */
   injectSheet(nav, [
-    '.bar{background:transparent!important}',
+    '.bar{background:transparent!important;padding-bottom:0!important}',
     '.item .label{font-weight:650!important;transition:opacity .18s,transform .18s}',
     '.item[aria-selected="false"] .label{opacity:0!important;visibility:hidden!important;transform:translateY(-4px)}',
     '.item[aria-selected="true"] .label{opacity:1!important;visibility:visible!important}',

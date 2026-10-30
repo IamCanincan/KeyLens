@@ -14,6 +14,7 @@
   * 底栏改成半透明模糊面；**只给当前项显示文字**，活动图标留在组件的 secondary-container 胶囊里。
   * 页面过渡改成 280ms 弹性曲线；主页矩阵的说明从长句压成 `target.txt + keybox.xml` 这种短摘要。
   * **组件层发现**：`md-navigation-bar.alwaysShowLabel` 在这一版是兼容存根（getter 恒 true），所以"只显示当前项"只能在 shadow 里做；顶栏标题第一次把 `.titles` 的宽度也覆盖成 `max-content`，组件量到 8px 宽、标题直接消失 —— 改成只放大字号、让组件自己量宽度。两条都写进 `tests/ui-shape.js` / `verify.mjs` 的断言（28px 内容标题、非活动标签 hidden、行标题 16px、滚动后顶栏标题可见、回到页首再隐藏）。真机回放也在 129 条名单页上验过滚动前后的两态。
+  * **真机双倍让位（上机截图"头又没了"）**：`md-top-app-bar` / `md-navigation-bar` 的 shadow 里各还有一条 `padding: env(safe-area-inset-*)`；桌面台架 `env=0` 看不见，真机 `env=28px`，与 `#barwrap` / `--inset-bottom` 的让位叠加成双倍，内容标题正好被多出的 28px 切掉。已在注入样式里把组件内部的 env padding 归零（让位只由外层负责），并加静态断言；底栏同样处理，避免底部也叠一次。
 
 * **OMK 1.2.5 适配面补齐：主页出后端版本，OMK 配置页新增「运行状态」**（设备上的 OMK 升到 `1.2.5-17b0eb6` 后做的兼容收口）。1.2.5 把 keymint 与 injector 拆成两个独立 daemon，keystore2 由 injector 注入；界面此前只看得到本模块自己的守护进程数，后端 daemon 真死了也显示正常。现在：
   * 主页状态条在后端名旁显示后端 `module.prop` 的版本（与 KeyLens 版本分开），换/升后端后第一眼能确认设备上跑的是哪版。

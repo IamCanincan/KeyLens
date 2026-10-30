@@ -270,6 +270,12 @@ chk('底栏宿主是半透明模糊面（NoMount 式）',
 chk('底栏只给当前项显示文字（shadow 注入）',
   /aria-selected="false"\] \.label\{opacity:0/.test(app)
   && /aria-selected="false"\] \.icon\{top:20px/.test(app));
+/* 真机 WebView 的 env(safe-area-inset-*) 不是 0，而两个组件 shadow 里各有一条
+   env padding；外层包壳已经让位，组件内部必须归零，否则真机上会双倍让位
+   （顶栏多 28px 把内容标题切掉，台架 env=0 看不见）。 */
+chk('顶栏/底栏组件内部的 env 让位归零（防真机双倍）',
+  /\.bar\{padding-top:0!important\}/.test(app)
+  && /\.bar\{background:transparent!important;padding-bottom:0!important\}/.test(app));
 chk('页标题在内容里（28px），顶栏只在滚动后出 22px 小标题',
   /\.page-title\{font-size:28px/.test(css)
   && /\.headline\{font-size:22px!important/.test(app)
