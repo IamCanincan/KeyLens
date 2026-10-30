@@ -531,9 +531,20 @@ function listSection() {
     if (m) {
       it.appendChild(m.el);
     } else {
-      it.appendChild(S.view === 'targets'
-        ? button('移出', { variant: 'text', on: function () { write('remove-apps', b || tok, '已移出：' + (b || tok)); } })
-        : button('加入', { variant: 'text', on: function () { write('restore-apps', b || tok, '已加入：' + (b || tok)); } }));
+      /* 行尾图标按钮（照系统设置）：文本"移出/加入"夹在标题后面会把行撑乱，
+         而且小屏上最想一眼看全的是应用名。标签走 label 属性，无障碍不丢。
+         两个写命令用**字面量**分支调用：写成三目会让 ui-shape 的 write('…')
+         扫描看不见它们（算出来的参数是那道闸的盲区）。 */
+      const act = h('md-icon-button');
+      const isTargets = S.view === 'targets';
+      act.setAttribute('slot', 'end');
+      act.setAttribute('icon', isTargets ? 'remove' : 'add');
+      act.setAttribute('label', (isTargets ? '移出 ' : '加入 ') + (b || tok));
+      act.addEventListener('click', function () {
+        if (isTargets) write('remove-apps', b || tok, '已移出：' + (b || tok));
+        else write('restore-apps', b || tok, '已加入：' + (b || tok));
+      });
+      it.appendChild(act);
     }
     return it;
   }
@@ -1078,10 +1089,12 @@ export function renderLog() {
   const c = card();
   const s = section('运行日志', ICON.log);
   const bar = h('div', 'acts');
+  /* 行数档位是筛选性质的（四选一），用芯片；刷新/清空仍是动作按钮 */
+  const tailRow = h('div', 'acts filter-grid');
   [30, 60, 120, 300].forEach(function (n) {
-    bar.appendChild(button(String(n) + ' 行', { variant: n === S.tail ? 'filled' : 'text',
-      on: function () { S.tail = n; S.loaded.log = false; reload(); } }));
+    tailRow.appendChild(chip(String(n) + ' 行', n === S.tail, function () { S.tail = n; S.loaded.log = false; reload(); }));
   });
+  s.appendChild(tailRow);
   bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read,
     on: function () { S.loaded.log = false; reload(); } }));
   bar.appendChild(button('清空缓冲', { variant: 'text',

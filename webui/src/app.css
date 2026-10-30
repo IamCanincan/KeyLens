@@ -63,15 +63,17 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
   background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant)}
-.chip-ok{background:var(--md-sys-color-surface-container-high)}
+.chip-ok{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)}
 .chip-warn{background:var(--md-sys-color-warning-container, var(--md-sys-color-secondary-container));color:var(--md-sys-color-on-warning-container, inherit)}
 .chip-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
-/* 名单筛选：四颗 chip 在 417px 里放不下，3+1 参差；两列等宽比让它们挤成两排好看 */
-.acts.filter-grid{display:grid;grid-template-columns:1fr 1fr;gap:8px}
-.acts.filter-grid md-chip{width:100%}
+/* 筛选芯片一行横滚（名单 129 / 已装 125 / 未纳入 / 已排除 在 417px 放不下）：
+   不折行、可横滑、隐藏滚动条 —— 折成两排会把首屏往下顶两行。 */
+.acts.filter-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
+.acts.filter-grid::-webkit-scrollbar{display:none}
+.acts.filter-grid md-chip{flex:0 0 auto}
 /* 主页英雄卡：状态芯片 + 大字后端名 + 三个小统计。
    以前是四段小字用 · 连成一行（.strip-*），信息都在但要凑近读。 */
 .hero .hero-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
