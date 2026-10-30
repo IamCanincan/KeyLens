@@ -194,16 +194,20 @@ async function main() {
   const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
 
   await ws.send('Page.navigate', { url: URL0 });
-  /* 冷启动：从 navigate 到 #view 真有内容 —— 用户打开 WebUI 等的就是这一段 */
+  /* 冷启动：从 navigate 到落地页（现在是主页）真长出三张卡 —— 用户打开 WebUI 等的就是这一段。
+     判据不用"文本长度 > 200"那种一刀切：md-list-item 的标题/supporting 都写在**属性**里，
+     textContent 数不到，四格重排后落地页换了，那条阈值就成了碰运气。 */
   const tNav = Date.now();
   let coldMs = -1;
   for (let i = 0; i < 100; i++) {
     await sleep(100);
     const r = await ws.send('Runtime.evaluate', {
-      expression: `(document.getElementById('view') && document.getElementById('view').textContent || '').length`,
+      expression: `(function(){ var v=document.getElementById('view'); if(!v) return 0;
+        var c=v.querySelectorAll('md-card').length, t=(v.textContent||'').length;
+        return (c >= 3 && t > 40) ? 1 : 0; })()`,
       returnByValue: true,
     });
-    if ((r.result.value || 0) > 200) { coldMs = Date.now() - tNav; break; }
+    if (r.result.value === 1) { coldMs = Date.now() - tNav; break; }
   }
   chk('冷启动能看到内容（<3s）', coldMs > 0 && coldMs < 3000, coldMs > 0 ? coldMs + 'ms' : '10 秒内没出内容');
   await sleep(2500);   // 让分批挂载与图标补齐
@@ -225,53 +229,77 @@ async function main() {
   })()`;
   const ev = async e => { const r = await ws.send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true }); return r.result.value; };
 
-  const p = await ev(PROBE);
-  /* 判据要钉在**真数据**上，不是"画了点什么"：
-     名单里有多少条真条目，屏上就该有多少行 —— 桥接卡住时界面仍会画出自检卡那几行，
-     只看 cards/items 下限抓不到（第一次就是这么假绿的）。 */
   const realTargets = (store['targets'].stdout || '').split('\n').map(s => s.trim()).filter(Boolean);
   const wantItems = Math.min(realTargets.length, 60);
   const firstPkg = realTargets[0] || '';
   const firstLog = (store['log'].stdout || '').split('\n').filter(Boolean).pop() || '';
+  /* 主页钉的是 backend-info 报的真条数：`生效 N 条` 只有真读到 target_entries 才会出现 */
+  const entries = (store['backend-info'].stdout.match(/^target_entries=(\S*)/m) || [])[1] || '';
+  const headline = () => ev(`(function(){var b=document.getElementById('bar');
+    return b&&b.shadowRoot&&b.shadowRoot.querySelector('.headline-line')?(b.shadowRoot.querySelector('.headline-line').textContent||'').trim():''})()`);
+  const goto = i => ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
+
+  /* 落地页现在是主页（四格：主页/后端/日志/设置）。
+     名单那批断言挪到【后端】那一格去量，自检那行挪到【设置】那一格去读 ——
+     它们都不在落地页上了，拿落地页的探针去找等于自证失败。 */
+  const p = await ev(PROBE);
+  chk('打开落在主页', (await headline()) === '主页', '顶栏=' + (await headline()));
   chk('视口钉在 417', p.vw === 417, 'vw=' + p.vw);
-  chk('桥接被认成 ksu（不是"未找到"）', /ksu/i.test(p.self || ''), p.self || '自检行没读到');
   chk('真的把命令发出去了', p.calls >= 6, 'exec 调用 ' + p.calls + ' 次');
-  chk('真机名单画到屏上（不是只有框架）', p.items >= wantItems,
-    '列表项 ' + p.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
-  chk('画的是真包名，不是占位', !firstPkg || (p.text || '').indexOf(firstPkg) >= 0, firstPkg);
+  chk('主页画出三家矩阵与自动同步', p.cards >= 3 && p.items >= 5, 'cards=' + p.cards + ' items=' + p.items);
+  chk('主页画的是真数（生效 ' + entries + ' 条）', !entries || (p.text || '').indexOf('生效 ' + entries + ' 条') >= 0,
+    entries ? '找「生效 ' + entries + ' 条」' : 'backend-info 没给 target_entries');
   chk('没有"命令超时"', (p.text || '').indexOf('超时') < 0, '');
   chk('没有"桥接未就绪"', (p.text || '').indexOf('桥接未就绪') < 0, '');
-  chk('没有"读不到"', (p.text || '').indexOf('读不到') < 0, '');
+  chk('主页没有"读不到"', (p.text || '').indexOf('读不到') < 0, '');
   chk('横向不溢出', p.scrollW - p.vw <= 0, '溢出 ' + (p.scrollW - p.vw) + 'px');
   chk('无未捕获异常', !(ws.errs || []).length, (ws.errs || []).slice(0, 2).join(' | '));
 
-  /* 逐格点一遍：每格都要有**那一格该出现的真东西** */
-  const PAGE_MARK = ['后端', '伪装', '日志'];
-  for (let i = 0; i < 3; i++) {
-    await ev(`(function(){ var n=document.getElementById('nav');
-      n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
-    await sleep(2600);
-    const q = await ev(PROBE);
-    const t2 = await ev(`(function(){var b=document.getElementById('bar');return b&&b.shadowRoot&&b.shadowRoot.querySelector('.headline-line')?b.shadowRoot.querySelector('.headline-line').textContent.trim():''})()`);
-    /* 日志页要出现真机最后一行；其余页要出现真机第一条包名或真机属性 */
-    /* 每格钉一个"只有真数据才会出现"的东西：
-       日志页会剥 emoji（stripEmoji），所以取时间戳前缀而不是整行；
-       自动更新页不显示包名，钉的是真机名单条数。 */
-    const needle = i === 2 ? firstLog.slice(0, 15).trim() : (i === 1 ? 'ro.' : firstPkg);
-    const hasNeedle = needle ? (q.text || '').indexOf(needle) >= 0 : true;
-    chk('第 ' + i + ' 格有真数据', hasNeedle && (q.text || '').length > 40,
-      '标题=' + t2 + ' 列表项=' + q.items + ' 找「' + needle + '」' + (hasNeedle ? '✓'
-        : '✗ 屏上末尾是：' + JSON.stringify((q.text || '').slice(-90))));
-    if (!hasNeedle) bad++;
+  /* 界面自检从落地页搬进【设置】之后，"桥接被认成什么"只能在设置格读 */
+  await goto(3); await sleep(900);
+  const ps = await ev(PROBE);
+  chk('桥接被认成 ksu（不是"未找到"）', /ksu/i.test(ps.self || ''), ps.self || '自检行没读到');
+  {
+    const s3 = await ws.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(OUT, 'replay-settings.png'), Buffer.from(s3.data, 'base64'));
   }
 
-  /* 切页手感：数据已缓存时"二次进入后端页"要多久（含同步渲染与组件布局）。
-     真机名单 128 条，这一页是全场最重的一页 —— 手机上的耗时只会比这里更长。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
-  await sleep(150);
-  const mt = await ev(`(function(){ return new Promise(function(res){
+  await goto(1); await sleep(1500);
+  const pb = await ev(PROBE);
+  /* 判据要钉在**真数据**上，不是"画了点什么"：
+     名单里有多少条真条目，屏上就该有多少行 —— 桥接卡住时界面仍会画出自检卡那几行，
+     只看 cards/items 下限抓不到（第一次就是这么假绿的）。 */
+  chk('真机名单画到屏上（不是只有框架）', pb.items >= wantItems,
+    '列表项 ' + pb.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
+  chk('画的是真包名，不是占位', !firstPkg || (pb.text || '').indexOf(firstPkg) >= 0, firstPkg);
+
+  /* 逐格点一遍：每格都要有**那一格该出现的真东西** */
+  const PAGE_MARK = ['主页', '后端', '日志', '设置'];
+  for (let i = 0; i < PAGE_MARK.length; i++) {
+    await goto(i);
+    await sleep(2600);
+    const q = await ev(PROBE);
+    const t2 = await headline();
+    /* 每格钉一个"只有真数据才会出现"的东西：
+       主页 = backend-info 的真条数；后端 = 真机第一条包名；
+       日志会剥 emoji，所以取时间戳前缀而不是整行；设置 = 真机属性名前缀 ro. */
+    const needle = i === 0 ? (entries ? '生效 ' + entries + ' 条' : '')
+      : i === 1 ? firstPkg : i === 2 ? firstLog.slice(0, 15).trim() : 'ro.';
+    const hasNeedle = needle ? (q.text || '').indexOf(needle) >= 0 : true;
+    const titleOk = t2 === PAGE_MARK[i];
+    chk('第 ' + i + ' 格是「' + PAGE_MARK[i] + '」且有真数据', hasNeedle && titleOk && (q.text || '').length > 40,
+      '标题=' + t2 + ' 列表项=' + q.items + ' 找「' + needle + '」' + (hasNeedle ? '✓'
+        : '✗ 屏上末尾是：' + JSON.stringify((q.text || '').slice(-90))));
+    if (!hasNeedle || !titleOk) bad++;
+  }
+
+  /* 切页手感：数据已缓存时"二次进入"要多久（含同步渲染与组件布局）。
+     后端格仍是全场最重的一页（真机名单上百条），主页则是打开就看到的那一屏 ——
+     两页都要有数，四格重排之后"落地页变轻了"这件事得能被量出来。 */
+  const measure = i => ev(`(function(){ return new Promise(function(res){
     var n=document.getElementById('nav'), t0=performance.now();
-    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}));
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:${i},bubbles:true}}));
     var sync=performance.now()-t0;
     var first=-1;
     requestAnimationFrame(function(){ first=Math.round(performance.now()-t0);
@@ -280,12 +308,18 @@ async function main() {
             nodes: document.querySelectorAll('#view *').length });
     });});
   }); })()`);
-  console.log(`     二次进入后端页：首帧 ${mt.firstMs}ms · 稳定 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
-  if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
+  for (const [i, label, away] of [[0, '主页', 1], [1, '后端', 0], [3, '设置', 0]]) {
+    await goto(away);
+    await sleep(150);
+    const mt = await measure(i);
+    console.log(`     二次进入${label}：首帧 ${mt.firstMs}ms · 稳定 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
+    if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
+  }
 
   /* 图标：旧版靠 webroot/icons/*.png，新版用 <img> 指同一批文件。加载失败就是
-     一个个空白块 —— 只看"有没有 img 元素"不算验过，必须看 naturalWidth。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+     一个个空白块 —— 只看"有没有 img 元素"不算验过，必须看 naturalWidth。
+     名单现在在【后端】那一格（index 1），探针要跟着搬。 */
+  await goto(1);
   await sleep(2500);
   const ic = await ev(`(function(){
     var imgs = [].slice.call(document.querySelectorAll('#view img.app-ic'));
@@ -310,13 +344,13 @@ async function main() {
   /* 分批挂载的两个风险，都要有断言：
      ① 打到一半切走 —— 不许往已经卸掉的列表里继续 append，也不许抛异常；
      ② 不打断时最后必须补齐到全部条目（不能悄悄停在 40 条）。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+  await goto(1);
   await sleep(40);
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
+  await goto(3);
   await sleep(900);
   const afterCut = await ev(`document.getElementById('view').textContent.length`);
-  chk('分批加载被打断后不炸（切到伪装页仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
+  chk('分批加载被打断后不炸（切到设置格仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
+  await goto(1);
   await sleep(2500);
   const done = await ev(`(function(){ return {
     items: document.querySelectorAll('#view md-list-item').length,
@@ -325,27 +359,19 @@ async function main() {
 
   /* 日志页 300 行：用户在日志页能点的最大档，也是这页最重的形态。
      量"切走再切回"的时间——数据已在 S.log 里，量到的是渲染本身。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
+  await goto(2);
   await sleep(900);
   const picked300 = await ev(`(function(){
     var bs = [].slice.call(document.querySelectorAll('#view md-button'));
     var b = bs.filter(function(x){ return (x.textContent||'').trim().indexOf('300') >= 0; })[0];
     if (b) { b.click(); return 1; } return 0; })()`);
   await sleep(2600);
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
+  await goto(0);
   await sleep(150);
-  const logM = await ev(`(function(){ return new Promise(function(res){
-    var n=document.getElementById('nav'), t0=performance.now();
-    n.dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}));
-    var sync=performance.now()-t0;
-    requestAnimationFrame(function(){ requestAnimationFrame(function(){
-      res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
-            nodes: document.querySelectorAll('#view *').length,
-            lines: document.querySelectorAll('#view .log-line').length });
-    });});
-  }); })()`);
+  const logM = await measure(2);
+  const logLines = await ev(`document.querySelectorAll('#view .log-line').length`);
   chk('日志页 300 行切回不卡（<400ms）', logM.ms < 400,
-    `${logM.ms}ms（同步 ${logM.syncMs}ms）/ ${logM.nodes} 节点 / ${logM.lines} 行`
+    `${logM.ms}ms（同步 ${logM.syncMs}ms）/ ${logM.nodes} 节点 / ${logLines} 行`
     + (picked300 ? '' : '  · 没找到 300 行按钮，量的是当前档'));
   const shot = await ws.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, 'replay.png'), Buffer.from(shot.data, 'base64'));

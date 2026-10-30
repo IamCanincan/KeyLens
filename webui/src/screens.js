@@ -12,8 +12,9 @@ import { loadOverrides } from './bridge.js';
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
 export const ICON = {
-  over: 'home', func: 'category', log: 'article', about: 'info',
-  sync: 'refresh', read: 'download', backend: 'settings', list: 'group',
+  home: 'home', backend: 'extension', log: 'article', settings: 'settings',
+  about: 'info',
+  sync: 'refresh', read: 'download', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
   addPkg: 'add', moon: 'dark_mode', edit: 'edit', tune: 'tune',
   ok: 'check', warn: 'warning', bad: 'error', none: 'help',
@@ -177,9 +178,13 @@ function loadIconsFor(shown) {
   if (need.length) loadIcons(need.slice(0, 120));
 }
 
-/* ── 伪装页：属性对照 + Verified Boot（这两件事不受后端影响，独立成一格）── */
-export function renderProps() {
-  const box = h('div', 'stack');
+/* ── 设置页里的"伪装"两块：属性对照 + Verified Boot ───────────────────── */
+/* 这两件事与后端无关（三家共用一份属性表），所以不跟在某一家的配置面后面；
+   2026-10-30 四格重排时从独立目的地并进"设置"—— 一格只有一个开关太薄，
+   而它本来就是"模块自己的开关"这一类。返回 fragment 而不是 stack：外层已经有
+   stack 了，套两层 div 会让 .stack 的 flex gap 只作用在外层，卡片间距变成两级。 */
+function propsCards() {
+  const frag = document.createDocumentFragment();
   const diff = S.props.filter(function (p) { return p.st !== 'ok'; });
 
   const c1 = card();
@@ -206,7 +211,7 @@ export function renderProps() {
   });
   s1.appendChild(l);
   c1.appendChild(s1);
-  box.appendChild(c1);
+  frag.appendChild(c1);
 
   const bt = S.boot;
   const c2 = card();
@@ -230,37 +235,55 @@ export function renderProps() {
   } }));
   s2.appendChild(acts2);
   c2.appendChild(s2);
-  box.appendChild(c2);
+  frag.appendChild(c2);
+  return frag;
+}
+
+/* ── 三个目的地各一个 render*（ui-shape 按这段的相邻次序切函数体，别打散）── */
+
+/* 主页：打开就看到"还在不在跑、哪一家在跑、附加的自动同步上一次做了什么"。
+   三张卡都是十几二十个节点，没有一项需要推迟挂载 —— 推迟是给名单那种
+   上百行的列表用的，这里推迟只会让落地页"先空一帧再长出来"。 */
+export function renderHome() {
+  const box = h('div', 'stack');
+  box.appendChild(statusStrip());
+  box.appendChild(backendMatrix());
+  box.appendChild(autoSyncCard());
   return box;
 }
 
-/* ── 后端控制面板：这就是主体，也是落地页 ───────────────────────────── */
-/* 层级说明（这一版重排的原因）：本模块首先是一个**后端控制面板** —— 名单
-   （target.txt / apps[] / scoop）本来就是三家后端自己的配置文件之一，控制它
-   属于面板职责；"自动更新应用列表"才是我们附加上去的功能。上一版把生效数当
-   英雄数字、把"立即同步"当主按钮、把名单提成独立一格，等于把附加功能放在了
-   主体前面。现在：状态条 → 名单 → 该后端的配置面 → keybox → 只读状态 → 自检。 */
+/* 后端控制面板：名单 + 这一家的配置面 + keybox。
+   层级说明：本模块首先是一个**后端控制面板** —— 名单（target.txt / apps[] /
+   scoop）本来就是三家后端自己的配置文件之一，控制它属于面板职责；"自动更新
+   应用列表"才是我们附加上去的功能，那张卡现在在主页。上一版把整个面板放在
+   落地页，打开先看到的是一屏配置表，而"模块到底在不在跑"要往下翻 —— 现在
+   落地页只回答那一个问题，配置面按家分在后端格里。 */
 export function renderBackend() {
   const bi = S.backendInfo;
   const box = h('div', 'stack');
-  box.appendChild(statusStrip());
   box.appendChild(listSection());
   if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
-  /* 首屏之外的卡（keybox / 三家矩阵 / 外观 / 自检）推迟一帧再挂。
-     975px 高的视口里它们都在折叠线以下，晚一帧出现没人看得见；而把它们的
-     md-list-item / md-button 从切页的关键路径上摘掉，同步渲染与布局都能少一截。
+  /* keybox 卡在名单与配置面之下，975px 视口里它在折叠线以下：推迟一帧再挂，
+     把它的 md-text-field / md-button 从切页关键路径上摘掉。
      box 已经不在页面上（换页或重画了）就整批放弃 —— 不往卸掉的树里塞节点。 */
   setTimeout(function () {
     if (!box.isConnected) return;
-    const frag = document.createDocumentFragment();
-    frag.appendChild(autoSyncCard());
-    frag.appendChild(keyboxCard());
-    frag.appendChild(backendMatrix());
-    frag.appendChild(renderTheme());
-    frag.appendChild(selfCheck());
-    box.appendChild(frag);
+    box.appendChild(keyboxCard());
+  }, 0);
+  return box;
+}
+
+/* 设置：与后端无关的模块自身开关（属性伪装、Verified Boot）+ 外观 + 界面自检。
+   自检是排障材料，跟着设置走比跟着某一家的配置面走顺手。 */
+export function renderSettings() {
+  const box = h('div', 'stack');
+  box.appendChild(propsCards());
+  box.appendChild(renderTheme());
+  setTimeout(function () {
+    if (!box.isConnected) return;
+    box.appendChild(selfCheck());
   }, 0);
   return box;
 }
@@ -343,7 +366,7 @@ function listSection() {
   [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
    ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
    ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
-    seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; draw(); }));
+    seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; redraw(); }));
   });
   s.appendChild(seg);
   const src = S.view === 'apps' ? S.apps
@@ -356,7 +379,7 @@ function listSection() {
   }) : src;
   const tf = h('md-text-field');
   tf.setAttribute('label', '搜索包名或应用名');
-  tf.addEventListener('input', function () { S.search = String(tf.value || ''); draw(); });
+  tf.addEventListener('input', function () { S.search = String(tf.value || ''); redraw(); });
   s.appendChild(tf);
   const l = h('md-list');
   const LIMIT = 200;
@@ -504,15 +527,16 @@ function teesimOverrides() {
 
 /* ── 自动更新：本模块附加的功能，不是后端自带的 ─────────────────────── */
 /* 自动同步：本模块附加的功能，不是后端自带的能力。
-   2026-10-30 从独立目的地降为后端页里的一张卡 —— 给它一个位格等于把附加功能
-   摆在了主体（后端控制面板）前面。这里同时吸掉了原来那张"自动纳入"卡：
+   2026-10-30 四格重排后它是**主页**上的一张卡 —— 不给它独立位格（那是把附加功能
+   摆在主体前面），也不塞回后端页（用户打开模块最先问的是"它在不在跑"，
+   这一卡回答的正是那个问题）。这里同时吸掉了原来那张"自动纳入"卡：
    只有 TEESim 有这个概念，用一段说明带过即可。 */
 function autoSyncCard() {
   const st = S.status, env = S.env;
   const c = card();
   const s = section('自动同步 · 本模块附加', ICON.sync);
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
-    + '当前后端的名单文件。后端自己的配置在其它几张卡里。'));
+    + '当前后端的名单文件。后端自己的配置在【后端】那一格里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
   s.appendChild(list([
@@ -712,7 +736,7 @@ function teesimProfiles() {
   S.profiles.forEach(function (p) {
     seg.appendChild(button(p.name + (p.isDefault ? '（默认）' : '') + ' · ' + p.apps + ' 条', {
       variant: p.name === S.profile ? 'filled' : 'text',
-      on: function () { S.profile = p.name; draw(); },
+      on: function () { S.profile = p.name; redraw(); },
     }));
   });
   s.appendChild(seg);
@@ -775,9 +799,9 @@ function trickyBlocks() {
     .map(function (b) { return { scope: b.scope, label: b.scope }; }));
   scopes.forEach(function (o) {
     seg.appendChild(button(o.label, { variant: o.scope === S.scope ? 'filled' : 'text',
-      on: function () { S.scope = o.scope; draw(); } }));
+      on: function () { S.scope = o.scope; redraw(); } }));
   });
-  seg.appendChild(button('新按包段', { variant: 'tonal', icon: ICON.addPkg, on: function () { S.scope = S.newPkg || 'com.example'; draw(); } }));
+  seg.appendChild(button('新按包段', { variant: 'tonal', icon: ICON.addPkg, on: function () { S.scope = S.newPkg || 'com.example'; redraw(); } }));
   ps.appendChild(seg);
   const cur = S.trickyPatches.filter(function (b) { return b.scope === S.scope; })[0];
   ps.appendChild(h('p', 'hint', cur ? '本段当前：system ' + cur.system + ' · vendor ' + cur.vendor + ' · boot ' + cur.boot
@@ -972,7 +996,7 @@ export function renderTheme() {
   const seg = h('div', 'acts');
   [['auto', '跟随系统'], ['light', '浅色'], ['dark', '深色']].forEach(function (v) {
     seg.appendChild(button(v[1], { variant: v[0] === S.theme ? 'filled' : 'text',
-      on: function () { S.theme = v[0]; applyThemeFn(); draw(); } }));
+      on: function () { S.theme = v[0]; applyThemeFn(); redraw(); } }));
   });
   s.appendChild(seg);
   s.appendChild(h('p', 'hint', '跟随系统时读 env 的 sys_dark（管理器报告的 mComputedNightMode），'
@@ -1003,3 +1027,11 @@ function toast(text, bad) { toastFn(text, !!bad); }
 let reloadFn = function () {};
 export function onReload(fn) { reloadFn = fn; }
 function reload() { return reloadFn(); }
+/* 重画当前页（切视图/改搜索词/换 profile 与主题都要立刻重排）。
+   以前这六处直接写 `draw()` —— 那是个没 import 的自由变量，产物能跑只是 esbuild
+   把三个模块摊进了同一个 IIFE 作用域；换打包器或撞名就当场 ReferenceError，
+   而台架只驱动切页、点不到这些按钮，所以它一路绿。守这一类的是
+   tools/module-scope-check.mjs。 */
+let drawFn = function () {};
+export function onDraw(fn) { drawFn = fn; }
+function redraw() { drawFn(); }

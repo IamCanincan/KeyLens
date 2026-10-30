@@ -6,6 +6,13 @@
 
 #### 新增
 
+* **底栏定回四格：主页 / 后端 / 日志 / 设置**（用户拍板）。分工按"这一格回答的是什么问题"：主页 = 在不在跑（状态条 + 三家互斥矩阵 + 自动同步卡），后端 = 这一家的配置文件怎么改（名单 + 配置面 + keybox），日志 = 出了什么事，设置 = 与后端无关的模块自身开关（系统属性 + Verified Boot + 外观 + 界面自检）。两次反复的结论都留在源码注释里：自动同步**始终不占位格**（附加功能占一格 = 摆到主体前面），「伪装」也不再单列 —— 一格只放一个开关太薄。
+  * **落地页换了，取数跟着换**：主页只问 `base + backend`，不再为名单 fork `targets/apps/target-meta/excluded` —— 打开模块先回答"在不在跑"，配置面的那批命令等点进【后端】再问。后端格反过来白得一个修正：进格时 `backend-info` 已在主页取过，按家取的配置数据不再拿空值猜成 omk。
+  * **顺带抓出一个一直没炸的雷**：`screens.js` 里六处重画写的是没 import 的 `draw()` —— 产物能跑只是 esbuild 把三个模块摊平进同一个 IIFE 作用域，源码层它是自由变量；换打包器或哪天撞名就是当场 ReferenceError，而台架只驱动切页、点不到那几颗按钮，所以它一路绿。改成照 `onToast`/`onReload` 的套路注册回调（`onDraw`），并新增 `tools/module-scope-check.mjs` 守这一整类：专查"用了兄弟模块的名字却没 import"（判据收窄到**我们自己的三个源文件互相之间**，浏览器全局与库组件不误报）。它第一版自己就踩了两个坑：import 的模块路径被字符串剥离替换成 `''` 后，要求 `[^'"]+` 会让整条 import 匹配不上、把 app.js 里每个 import 来的名字都误报；`catch (e)` 的形参不进声明集，`e` 也被误报 —— 都修了，并拿真雷（`draw`）当正对照。
+  * **新断言全部过变异**：`node tools/mutate-ui-shape.cjs` 八条刀（自动同步挪出主页 / 主页塞 setTimeout / renderTheme 挪进主页 / 日志设置换序 / propsCards 不挂 / redraw 退回自由变量（这把同时要 module-scope-check 响）/ renderSettings 摘掉 export / keybox 卡挪走），每条要求**点名的那一条**断言响，不是"退码非 0 就行"；跑完逐字节还原。变异台第一版把 8 条真变异全读成"没响" —— ui-shape 的失败行前缀是"两个空格 + ✗"，按列 0 匹配 `✗` 一条都对不上。
+  * 台架与文档同步：`verify.mjs` 的 `PAGES` 改四格、逐后端 / 读失败驱动改去 index 1（它们要的块在【后端】格）、互斥矩阵那屏留在主页；`replay-check.mjs` 冷启动判据从"文本长度 > 200"改成"长出三张卡"（md-list-item 的标题都写在**属性**里，textContent 数不到，落地页一换那条阈值就是碰运气），桥接自检那行改到【设置】格去读，主页钉 `生效 N 条`（来自真机 backend-info），主页/后端/设置三格都量二次进入耗时；README 界面节整段重写（顺带修掉两处更早的过期描述：`@material/web 2.5.0`、"图形语言是内联 SVG"）。
+  * 清掉上一版结构留下的死代码：`app.css` 的英雄数字区块（`.hero*`/`.recent`/`.warn-card`/`.sk`/`@keyframes pulse`，MD3E 换版后就没有人用了）、`bridge.js` 状态对象里同样没人读的 `appsSrc`/`selectMode`/`selected`/`targetSet`/`targetBaseSet`/`logSig`（多选与撤销那套界面退役时留下的）。
+
 * **模块改名 KeyLens**：`name=TS-AUTO-ADD` → `KeyLens`，`id=ts-auto-add` → `keylens`。按"凡是代表老模块的地方都换"执行，动了约 **500 处**：`TAA_*`/`_taa_*` 标识符 → `KL_*`/`_kl_*`（`KL_DIR` 一项就 108 处），后端目录里的运行时文件 `.ts_lock` / `.ts_ever` / `.ts_fingerprint` / `.ts_installed_last` / `.ts_daemon_pids` … 全部 → `.kl_*`，`/data/adb/ts_auto.*` → `/data/adb/keylens.*`，临时文件后缀 `.ts_auto.$$` → `.keylens.$$`，logcat tag `TS-AUTO` → `KeyLens`，界面标题与 README 的日志/路径段同步。
   * **老名字只剩三处必要地方**：① 清理老版本遗留在用户机器上的文件名（`taa_sys.txt`、`service.d/taa_resetprop.sh`、`/data/adb/ts_auto.*`）—— 按旧名才找得到；② 迁移函数的源路径与它扫的旧 glob；③ 更新说明与 GitHub 仓库 URL（仓库改名由人做，`zipUrl`/徽章等它改完再动）。
   * **不靠人眼保证不漏**：`node tools/name-residue-check.mjs` 扫全部 git 跟踪文件，白名单外的旧名一律退非 0。这道闸第一版把 `ts_auto` 全局放行，于是 README 里那些已经过期的 `/data/adb/ts_auto.log` 路径被一起放过 —— 改成**按文件豁免**（只有 core.sh / uninstall.sh / customize.sh 这类"必须按旧名找东西"的文件能用旧名），当场抓出 28 处。它自己也带正对照：往 `lib/props.sh` 塞一行旧锁名 → 闸门必须响且点名文件，跑完逐字节还原（在 `tests/legacy-migrate.sh` 里）。

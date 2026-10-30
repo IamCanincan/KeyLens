@@ -21,22 +21,24 @@ import {
   S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
 } from './bridge.js';
 import {
-  ICON, h, renderBackend, renderProps, renderLog,
-  onToast, onReload, onAuto, onApplyTheme,
+  ICON, h, renderHome, renderBackend, renderLog, renderSettings,
+  onToast, onReload, onAuto, onApplyTheme, onDraw,
 } from './screens.js';
 
-/* 五格，按"用户来这儿要办的事"分，不按上一版的"功能二级菜单"分：
-   名单是最高频、后端配置是三家里差异最大的、属性伪装与后端无关所以独立一格。
-   界面自检收进"状态"页底部 —— 它不是一个目的地，是一屏说明。 */
-/* 四格，主体是后端控制面板：本模块首先是一个后端面板，名单本来就是三家各自的
-   配置文件之一（target.txt / apps[] / scoop），控制它属于面板职责；
-   "自动更新应用列表"是我们附加的功能，所以排在面板之后，不占落地页。
-   上一版把生效数当英雄数字、把"立即同步"当主按钮、把名单提成独立目的地，
-   等于把附加功能放在了主体前面。 */
+/* 四格，2026-10-30 定：主页 / 后端 / 日志 / 设置。
+   分工按"这一格回答的是什么问题"：
+     主页 —— 在不在跑、哪一家在跑、附加的自动同步上次做了什么（状态条 + 三家矩阵 + 自动同步卡）；
+     后端 —— 当前这一家的配置文件怎么改（名单 + 配置面 + keybox）；
+     日志 —— 出了什么事；
+     设置 —— 与后端无关的模块自身开关（属性伪装 / Verified Boot 哈希）+ 外观 + 界面自检。
+   上一版把面板本体放在落地页、把伪装单列一格，打开先是一屏配置表；现在落地页
+   只回答"状态"，配置按家收进【后端】，伪装并进【设置】—— 一格只放一个开关太薄。
+   自动同步仍旧不占位格：它是附加功能，不是目的地。 */
 const PAGES = [
+  { id: 'home', label: '主页', icon: ICON.home, need: ['base', 'backend'] },
   { id: 'backend', label: '后端', icon: ICON.backend, need: ['base', 'backend', 'lists', 'excluded'] },
-  { id: 'props', label: '伪装', icon: ICON.tune, need: ['props'] },
   { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },
+  { id: 'settings', label: '设置', icon: ICON.settings, need: ['props'] },
 ];
 
 const bar = document.getElementById('bar');
@@ -84,8 +86,10 @@ onToast(function (text, bad) {
 
 /* ── 路由 ──────────────────────────────────────────────────────────── */
 function show(name) {
-  S.tab = name;
-  const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'backend';
+  const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'home';
+  /* S.tab 存**校正过**的那一格：存原始 hash 的话，draw() 里的表查不到会悄悄画主页，
+     而顶栏标题、取数、#hash 说的是另一格 —— 四格各说各话。 */
+  S.tab = p;
   /* 顶栏标题走 headline 属性 —— `bar.title = x` 设的是原生 tooltip，界面上
      什么都不画（上一版就是这么错的，而台架读 .title 读得到值，跟着一起被骗）。 */
   const label = (PAGES.filter(function (x) { return x.id === p; })[0] || PAGES[0]).label;
@@ -98,9 +102,11 @@ function show(name) {
 function draw() {
   view.textContent = '';
   const body = {
+    home: renderHome,
     backend: renderBackend,
-    props: renderProps, log: renderLog,
-  }[S.tab] || renderBackend;
+    log: renderLog,
+    settings: renderSettings,
+  }[S.tab] || renderHome;
   view.appendChild(body());
 }
 function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[0] || PAGES[0]; }
@@ -119,6 +125,12 @@ function reloadAll() {
   });
 }
 onReload(reloadAll);
+/* screens.js 里切视图/改搜索词/换 profile 与主题之后要立刻重排。以前那几处直接写
+   `draw()` —— 一个没 import 的自由变量，产物能跑只是 esbuild 把三个模块摊进了同一个
+   IIFE 作用域；换打包器或哪天撞名就是当场 ReferenceError，而台架只驱动切页、点不到
+   那几颗按钮。注册回调与 onToast/onReload 同一套路，守这一类的是
+   tools/module-scope-check.mjs。 */
+onDraw(draw);
 
 /* 库的事件是 change + detail.index（不是 selected-change —— 上一版骨架按后者接，
    点了不会切页而台架没抓到，因为台架只数了 items.length）。 */
@@ -137,9 +149,9 @@ function boot() {
   /* 首屏只走一条路：契约 → 基础状态 → show()。show() 自己会按目标页取数，
      这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
-    show(PAGES.some(function (p) { return p.id === start; }) ? start : 'backend');
+    show(PAGES.some(function (p) { return p.id === start; }) ? start : 'home');
   }, function () {
-    show('backend');
+    show('home');
     onToast('基础状态读取失败，界面显示的是空值', true);
   });
 }

@@ -35,14 +35,19 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
   'md-list-item', 'md-button', 'md-loading-indicator', 'md-snackbar'];
-/* 顺序 = 底栏四格的顺序。must 是这一页必须出现的区块标题：
-   功能页那几块正是三家后端各自的能力面，缺一个就说明分支渲染没跑到。 */
+/* 顺序 = 底栏四格的顺序（主页 / 后端 / 日志 / 设置）。
+   must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
-  /* 落地页是后端控制面板：名单在里面（它是后端的配置文件之一），自动同步是
-     它下面的一张卡 —— 那是我们附加的功能，不占独立位格。 */
-  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '密钥箱 keybox', '自动同步', '本模块附加', '界面自检'], items: true },
-  { id: 'props', title: '伪装', must: ['系统属性', 'Verified Boot 哈希'], items: true },
+  /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵 + 自动同步卡（附加功能，不占位格）。
+     后两条是矩阵**行**的值（demo 默认 omk：本家"当前生效"，另两家"未安装"）——
+     只看区块标题的话，矩阵三行画成空壳也照样绿。 */
+  { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家',
+    '自动同步', '本模块附加'], items: true },
+  /* 后端格是这一家的配置面：名单（后端自己的配置文件之一）+ 各家能力面 + keybox。 */
+  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '密钥箱 keybox'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
+  /* 设置格收的是与后端无关的模块自身开关：属性伪装 / Verified Boot / 外观 / 自检。 */
+  { id: 'settings', title: '设置', must: ['系统属性', 'Verified Boot 哈希', '外观', '界面自检'], items: true },
 ];
 
 const PROBE = `(function(){
@@ -256,9 +261,7 @@ async function main() {
       'attestation 侧安全等级', '留空 = 删掉这一项', 'TrustedEnvironment', '只记录，不上线',
       'deviceLocked', 'supplement', '本模块不提供写入'] , tail: 'overrides.json ·' },
     { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml',
-      '三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家',
-      /* 换 keybox 会作废它绑定的旧密钥 —— 这句必须画出来，不然用户是事后
-         才发现应用要重新注册。 */
+      /* 矩阵（"未安装 / 当前生效"）2026-10-30 挪进了主页，这里的 must 只留后端格自己的块 */
       '旧密钥全部作废'],
       tail: 'config.toml ·' },
   ];
@@ -266,8 +269,10 @@ async function main() {
   for (const b of BACKENDS) {
     await send('Page.navigate', { url: URL0 + '&backend=' + b.q });
     await sleep(1400);
+    /* 四格之后各家配置面在【后端】那一格（index 1）—— 落地页现在是主页，
+       拿 index:0 去驱动这三家只会一直量到状态条那三张卡。 */
     await ev(`(function(){ var n=document.getElementById('nav');
-      n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
     await sleep(900);
     const p = await ev(PROBE);
     const miss = b.must.filter(s => p.text.indexOf(s) < 0);
@@ -293,8 +298,9 @@ async function main() {
   /* 读失败与"真的是空的"必须长得不一样 */
   await send('Page.navigate', { url: URL0 + '&backend=tricky&fail=targets' });
   await sleep(1400);
+  /* 名单在后端格（index 1）：错误行要钉在那一格的第一张卡上 */
   await ev(`(function(){ var n=document.getElementById('nav');
-    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
   await sleep(900);
   const pf = await ev(PROBE);
   const hasErr = pf.text.indexOf('名单读不到') >= 0;

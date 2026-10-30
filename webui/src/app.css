@@ -39,13 +39,7 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
 .sec-h b{font-size:var(--md-sys-typescale-size-title-medium, 16px);font-weight:600;letter-spacing:-.1px}
 .sec-i{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-primary)}
 
-/* 英雄区：一屏只有一个大数字，主色只给它和主行动按钮 */
-.hero .hero-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
-.hero .ver{font-size:12px;color:var(--md-sys-color-on-surface-variant);font-variant-numeric:tabular-nums}
-.hero-count{display:flex;align-items:flex-end;gap:10px;margin:10px 0 14px}
-.hero-count .num{font-size:var(--md-sys-typescale-size-display-large, 57px);line-height:1;font-weight:600;
-  letter-spacing:-2px;color:var(--md-sys-color-primary);font-variant-numeric:tabular-nums}
-.hero-count .unit{font-size:14px;padding-bottom:8px}
+/* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
   background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant)}
 .chip-ok{background:var(--md-sys-color-surface-container-high)}
@@ -73,7 +67,6 @@ md-list-item img.app-ic{width:32px;height:32px;border-radius:50%;object-fit:cove
 md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
 .read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 10px;border-radius:8px}
-.warn-card{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
 .warn-text{margin:0;font-size:14px;line-height:1.5}
 
 /* 日志台：三列网格，图标列恒占宽 —— 没有级别的行也要把正文对齐到同一条竖线 */
@@ -83,7 +76,6 @@ md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:f
   font-family:ui-monospace, SFMono-Regular, Cutive Mono, Menlo, monospace;font-size:12px;line-height:1.7;
   max-height:46vh;overflow:auto;-webkit-overflow-scrolling:touch}
 .console.tall{max-height:62vh}
-.recent .console{min-height:150px;max-height:none}
 .log-line{display:grid;grid-template-columns:auto 16px minmax(0,1fr);column-gap:8px;
   align-items:baseline;padding:3px 4px;border-radius:6px}
 .log-time{color:var(--md-sys-color-on-surface-variant);white-space:nowrap}
@@ -92,7 +84,3 @@ md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:f
 .log-line.t-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
 .log-line.t-warn{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .log-line.t-ok .log-msg{color:var(--md-sys-color-primary)}
-
-.sk{height:14px;border-radius:8px;background:var(--md-sys-color-surface-container-high);
-  animation:pulse 1.2s ease-in-out infinite alternate}
-@keyframes pulse{from{opacity:.45}to{opacity:1}}

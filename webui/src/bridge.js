@@ -92,14 +92,17 @@ export function findBridge() {
 }
 
 export const S = {
-  status: {}, env: {}, tab: 'over',
+  /* 每个字段都要有读它的地方 —— 曾经躺着但已没人用的那几个
+     （appsSrc / selectMode / selected / targetSet / targetBaseSet / logSig）随
+     多选与撤销那套界面一起退役，留在这里只会被下一个人当成"还有这条路子"。 */
+  status: {}, env: {}, tab: 'home',
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   bridge: { kind: '', label: '', seen: [] },
-  targets: [], apps: [], targetMeta: {}, targetSet: null, targetBaseSet: null, listErr: '',
+  targets: [], apps: [], targetMeta: {}, listErr: '',
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
-  appsSrc: 'targets', view: 'targets', search: '', selectMode: false, selected: {},
+  view: 'targets', search: '',
   profile: 'default', scope: 'global', newPkg: '', overrides: [],
-  icons: {}, log: [], logErr: false, logSig: '', tail: 60, props: [], boot: null,
+  icons: {}, log: [], logErr: false, tail: 60, props: [], boot: null,
   excluded: [], theme: 'auto',
   loaded: {}, seq: 0,
 };
