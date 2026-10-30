@@ -270,8 +270,8 @@ async function main() {
   chk('视口钉在 417', p.vw === 417, 'vw=' + p.vw);
   chk('真的把命令发出去了', p.calls >= 6, 'exec 调用 ' + p.calls + ' 次');
   chk('主页画出状态条与三家矩阵', p.cards >= 2 && p.items >= 3, 'cards=' + p.cards + ' items=' + p.items);
-  chk('主页画的是真数（生效 ' + entries + ' 条）', !entries || (p.text || '').indexOf('生效 ' + entries + ' 条') >= 0,
-    entries ? '找「生效 ' + entries + ' 条」' : 'backend-info 没给 target_entries');
+  chk('主页画的是真数（生效名单 ' + entries + ' 条）', !entries || (p.text || '').indexOf(entries + ' 条') >= 0,
+    entries ? '找「' + entries + ' 条」' : 'backend-info 没给 target_entries');
   chk('没有"命令超时"', (p.text || '').indexOf('超时') < 0, '');
   chk('没有"桥接未就绪"', (p.text || '').indexOf('桥接未就绪') < 0, '');
   chk('主页没有"读不到"', (p.text || '').indexOf('读不到') < 0, '');
@@ -314,11 +314,12 @@ async function main() {
     const q = await ev(PROBE);
     const t2 = await headline();
     /* 每格钉一个"只有真数据才会出现"的东西：
-       主页与功能菜单 = backend-info 的真条数；日志会剥 emoji，取时间戳前缀；
-       设置格只剩外观+自检，钉的是自检卡里真机的「Android <版本>」。 */
+       主页（英雄卡）与功能菜单（摘要）都是 backend-info 的真条数；
+       日志会剥 emoji，取时间戳前缀；设置格只剩外观+自检，
+       钉的是自检卡里真机的「Android <版本>」。 */
     const needle = i === 2 ? firstLog.slice(0, 15).trim()
       : i === 3 ? ('Android ' + androidVer)
-      : (entries ? '生效 ' + entries + ' 条' : '');
+      : (entries ? entries + ' 条' : '');
     const hasNeedle = needle ? (q.text || '').indexOf(needle) >= 0 : true;
     const titleOk = t2 === PAGE_MARK[i];
     chk('第 ' + i + ' 格是「' + PAGE_MARK[i] + '」且有真数据', hasNeedle && titleOk && (q.text || '').length > 40,

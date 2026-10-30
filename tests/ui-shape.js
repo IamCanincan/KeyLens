@@ -182,6 +182,9 @@ chk('二级走 pushState + popstate，返回箭头是顶栏 leading 槽',
   && /slot', 'leading'/.test(app) && /history\.back\(\)/.test(app));
 chk('菜单行点击经注册回调进 app（screens 不反向 import app）',
   /export function onOpenSub\(/.test(screens) && /onOpenSub\(openSub\)/.test(app));
+/* "本模块附加"的定位说明住在注释里，不上屏 —— 用户原话：没必要这么强调。
+   剥掉注释再查：注释里说的不算，画到屏上的字符串才算。 */
+chk('界面文字不再强调"本模块附加"', !/本模块附加/.test(screens.replace(/\/\*[\s\S]*?\*\//g, ' ')));
 chk('三家互斥矩阵与状态条在主页',
   /box\.appendChild\(backendMatrix\(\)\)/.test(homeBody) && /box\.appendChild\(statusStrip\(\)\)/.test(homeBody));
 chk('主页不推迟挂载（落地页晚一帧就是"先空一下"）', !/setTimeout/.test(homeBody));

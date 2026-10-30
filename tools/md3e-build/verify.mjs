@@ -42,7 +42,7 @@ const PAGES = [
   { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'], items: true },
   /* 功能格是一张菜单：所有功能集中在这里，每项带状态摘要；
      长列表在二级页里，菜单页本身落地即用。 */
-  { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '自动同步 · 本模块附加', '密钥箱 keybox', '属性伪装'], items: true },
+  { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '自动同步', '密钥箱 keybox', '属性伪装'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
   /* 设置格只留界面自己的事：外观 + 界面自检（伪装/Verified Boot 在【功能】里）。 */
   { id: 'settings', title: '设置', must: ['外观', '界面自检'], items: true },

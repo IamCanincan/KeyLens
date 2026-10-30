@@ -275,23 +275,22 @@ export function renderFunc() {
      全路径在二级页的第一行 hint 里本来就有。 */
   const base = p => String(p || '').split('/').filter(Boolean).pop() || '—';
   const entries = [
-    ['targets', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
-    ['config', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
-    ['sync', '自动同步 · 本模块附加',
+    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
+    ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
+    ['sync', 'refresh', '自动同步',
       (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
-    ['keybox', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
-    ['props', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
+    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
+    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
   ];
   const c = card();
   const s = section('功能', ICON.func);
   const l = h('md-list');
   entries.forEach(function (e) {
-    const it = item({ headline: e[1], supporting: e[2], interactive: true });
+    const it = item({ headline: e[2], supporting: e[3], interactive: true, icon: e[1] });
     const ic = h('span', 'nav-ic', ICON.next);
     ic.setAttribute('slot', 'end');
     it.appendChild(ic);
-    it.addEventListener('click', function () { openSubFn(e[0]); });
-    l.appendChild(it);
+    it.addEventListener('click', function () { openSubFn(e[0]); });    l.appendChild(it);
   });
   s.appendChild(l);
   c.appendChild(s);
@@ -340,9 +339,9 @@ export function renderSettings() {
    没装是去装，被禁是把 disable 删掉。以前命令层只报 teesim/tricky 两家、
    而 backends_conflict() 把 OMK 也数进去了 —— 于是横幅能亮却说不清是哪几家。 */
 const BACKENDS = [
-  ['tricky', 'Tricky Store', 'tricky_state', '证书改写走它自己的 target.txt 与 keybox.xml'],
-  ['teesim', 'TEE Simulator', 'teesim_state', '多 profile，配置在 config.json + overrides.json'],
-  ['omk', 'OhMyKeymint', 'omk_state', '名单在 injector.toml 的 scoop 段，另有 config.toml'],
+  ['tricky', 'Tricky Store', 'tricky_state', '证书改写走它自己的 target.txt 与 keybox.xml', 'label'],
+  ['teesim', 'TEE Simulator', 'teesim_state', '多 profile，配置在 config.json + overrides.json', 'verified'],
+  ['omk', 'OhMyKeymint', 'omk_state', '名单在 injector.toml 的 scoop 段，另有 config.toml', 'extension'],
 ];
 const BSTATE = { active: ['ok', '启用'], disabled: ['warn', '已禁用（模块目录里有 disable）'], absent: ['none', '未安装'] };
 function backendMatrix() {
@@ -362,6 +361,7 @@ function backendMatrix() {
       supporting: cur ? '当前生效的就是这一家 · ' + b[3] : b[3],
       trailing: (cur ? '● ' : '') + (sv[b[0]] ? rep[1] : '读不到'),
       tone: cur ? 'ok' : rep[0],
+      icon: b[4],
     });
   })));
   if (st.conflict === '1') {
@@ -376,16 +376,26 @@ function backendMatrix() {
 }
 
 /* 状态条：一行讲清"还在不在跑、写的哪一版"，不再占一整屏 */
+/* 状态条：主页的英雄卡。以前是四段小字用 · 连起来 —— 信息都在，
+   但"在不在跑、跑的是谁"要凑近看；现在芯片 + 大字后端名 + 三个小统计。 */
 function statusStrip() {
   const st = S.status;
   const [tone, label] = toneOfState(st.state);
-  const c = card('strip');
-  const row = h('div', 'strip-row');
-  row.appendChild(h('span', 'chip chip-' + tone, label));
-  row.appendChild(h('span', 'strip-k', st.backend_name || '未探测到后端'));
-  row.appendChild(h('span', 'strip-k', st.mod_version || '—'));
-  row.appendChild(h('span', 'strip-k', '生效 ' + (bi_entries() || '—') + ' 条'));
-  c.appendChild(row);
+  const c = card('hero');
+  const top = h('div', 'hero-top');
+  top.appendChild(h('span', 'chip chip-' + tone, label));
+  top.appendChild(h('b', 'hero-name', st.backend_name || '未探测到后端'));
+  c.appendChild(top);
+  const stats = h('div', 'hero-stats');
+  [['版本', st.mod_version || '—'],
+   ['生效名单', (bi_entries() || '—') + ' 条'],
+   ['属性伪装', st.props_masking === 'on' ? '开' : '关']].forEach(function (s) {
+    const d = h('div', 'hero-stat');
+    d.appendChild(h('span', 'hero-k', s[0]));
+    d.appendChild(h('b', 'hero-v', s[1]));
+    stats.appendChild(d);
+  });
+  c.appendChild(stats);
   /* 契约不匹配横幅：写命令已在传输层被拦，这里只负责说清楚 */
   if (S.contract.bad) {
     c.appendChild(h('p', 'warn-text', '命令层契约不匹配（界面要 api=' + EXPECT_API + '，命令层是 '
@@ -581,9 +591,9 @@ function teesimOverrides() {
 function autoSyncCard() {
   const st = S.status, env = S.env;
   const c = card();
-  const s = section('自动同步 · 本模块附加', ICON.sync);
+  const s = section('自动同步', ICON.sync);
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
-    + '当前后端的名单文件 —— 就是本格最上面那张卡的名单。后端自己的配置在上方几张卡里。'));
+    + '当前后端的名单文件（「目标名单」里那份）。后端自己的配置在「后端配置」里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
   s.appendChild(list([
@@ -600,7 +610,7 @@ function autoSyncCard() {
   s.appendChild(acts);
   s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
   if (S.backendInfo.backend === 'teesim') {
-    s.appendChild(h('p', 'hint', '「自动纳入新应用」在上方 profile 编辑里逐份设置（profile 级 autoIncludeNewApps）。'));
+    s.appendChild(h('p', 'hint', '「自动纳入新应用」在「后端配置」里逐份设置（profile 级 autoIncludeNewApps）。'));
   }
   c.appendChild(s);
   return c;
