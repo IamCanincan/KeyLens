@@ -345,6 +345,22 @@ async function main() {
       const val = (first.split('\t')[1] || '').trim();
       chk('Tricky 补丁块画的是命令层真读到的值', !!val && val !== '-' && (q.text || '').indexOf(val) >= 0,
         val ? '找「' + val + '」（' + first.split('\t')[0] + ' 段）' : '命令层没返回任何补丁段');
+      /* tee_status 有两代格式：四行（status=…）与单行（teeBroken=…）。不管哪一代，
+         "自动条目现在走"都要算得出一个去向 —— 算不出就是解析少了一支。 */
+      const tk = {};
+      (store['tee-status'].stdout || '').split('\n').forEach(l => { const i = l.indexOf('='); if (i > 0) tk[l.slice(0, i)] = l.slice(i + 1); });
+      if (tk.present === '1') {
+        const tb = String(tk.tee_broken || '').toLowerCase();
+        const expect = tk.status === 'AVAILABLE' ? '叶证书' : tk.status === 'FAILED' ? '证书生成'
+          : tk.status === 'UNAVAILABLE' ? '不匹配'
+          : tb === 'false' ? '叶证书' : tb === 'true' ? '证书生成' : '';
+        if (expect) {
+          chk('Tricky 的 AUTO 去向按 tee_status 算出来了', (q.text || '').indexOf(expect) >= 0,
+            'tee_status：' + (tk.status ? 'status=' + tk.status : '旧格式 teeBroken=' + tb) + ' → 找「' + expect + '」');
+        } else {
+          console.log('     · tee_status 存在但取值无法判定（status=' + (tk.status || '空') + ' teeBroken=' + (tb || '空') + '），AUTO 断言跳过');
+        }
+      }
     } else if (be === 'teesim') {
       const nm = ((store['teesim-profiles'].stdout || '').split('\n').filter(Boolean)[0] || '').split('\t')[0] || '';
       chk('TEESim profile 表画的是命令层真读到的名字', !!nm && (q.text || '').indexOf(nm) >= 0,

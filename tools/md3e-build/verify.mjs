@@ -443,6 +443,24 @@ async function main() {
   const shotF = await send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(SHOT_DIR, 'new-readfail.png'), Buffer.from(shotF.data, 'base64'));
 
+  /* 旧格式 tee_status（只有一行 teeBroken=，TrickyStore 原版与 OSS v3.1.0 都这样）：
+     AUTO 的去向必须按 teeBroken 算出来 —— 真机上第一份四行格式之外的证据就是它。 */
+  await send('Page.navigate', { url: URL0 + '&backend=tricky&tee=old' });
+  await sleep(1400);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('后端配置');
+  await sleep(900);
+  const pt = await ev(PROBE);
+  chk('旧版单行 tee_status → AUTO 仍能判出"证书生成"',
+    (pt.text || '').indexOf('证书生成') >= 0 && (pt.text || '').indexOf('旧版 tee_status') >= 0,
+    '缺「证书生成」或「旧版 tee_status」说明 —— 屏上 ' + JSON.stringify((pt.text || '').slice(-80)));
+  {
+    const sT = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-tee-old.png'), Buffer.from(sT.data, 'base64'));
+  }
+
   /* 互斥那一屏：真机上碰不到，只能造 —— 不造就没有任何证据它渲染得对。 */
   await send('Page.navigate', { url: URL0 + '&backend=tricky&conflict=1' });
   await sleep(1400);

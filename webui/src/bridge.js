@@ -477,8 +477,12 @@ function demoResult(cmd, arg) {
     excluded: 'io.legado.app',
     'teesim-profiles': ['default' + T + 'keybox.xml' + T + 'patch' + T + '10' + T + '1',
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),
-    'tee-status': ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
-      'category=keystore2_unavailable', 'service_error_code=none', 'tee_broken=unknown'].join('\n'),
+    /* ?tee=old：TrickyStore（含 OSS v3.1.0）的旧格式 tee_status **只有一行**
+       teeBroken=…；OSS 新主分支才是四行。台架要两条都画得出来。 */
+    'tee-status': (QUERY.get('tee') === 'old'
+      ? ['present=1', 'file=/data/adb/tricky_store/tee_status', 'tee_broken=true']
+      : ['present=1', 'file=/data/adb/tricky_store/tee_status', 'status=UNAVAILABLE',
+        'category=keystore2_unavailable', 'service_error_code=none', 'tee_broken=unknown']).join('\n'),
     /* 一份"纯软件兜底设备"的 overrides 汇总。source 只有三种取值
        （OverrideSource 枚举：required / supplement / synthesized，没有 original），
        且 **source=required 而 editable=1 是真实存在的组合**：启动键/哈希在设备上报

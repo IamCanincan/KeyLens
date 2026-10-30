@@ -216,8 +216,18 @@ export function resolveAuto(tee, why) {
     case 'AVAILABLE': return { to: 'leaf', tone: 'ok', note: '上次探测：TEE 可用 → 自动走叶证书' };
     case 'FAILED': return { to: 'generate', tone: 'warn', note: '上次探测：TEE 探测失败 → 自动退到证书生成' };
     case 'UNAVAILABLE': return { to: 'none', tone: 'bad', note: '上次探测：TEE 不可用 → 自动条目不匹配，包不会被改写' };
-    default: return { to: '', tone: 'warn', note: 'tee_status.status=' + (tee.status || '空') + '，不认识的取值，无法判定' };
   }
+  /* 两代 Tricky 的 tee_status 格式不一样：
+       - TrickyStore（原版，含 OSS v3.1.0 这一代）：**只有一行** teeBroken=true|false|unknown；
+       - OSS 新主分支：四行 status/category/serviceErrorCode/teeBroken。
+     只认 status 的话，旧格式会落进"不认识"——真机实测 OSS v3.1.0 就是单行，
+     界面于是显示"无法判定"，而 teeBroken 明明就在文件里。这里按 teeBroken
+     回退（true=探测失败→生成、false=可用→叶证书、unknown=不判定）。 */
+  const tb = String(tee.tee_broken || '').toLowerCase();
+  if (tb === 'false') return { to: 'leaf', tone: 'ok', note: '上次探测：teeBroken=false（旧版 tee_status 只有这一行）→ 自动走叶证书' };
+  if (tb === 'true') return { to: 'generate', tone: 'warn', note: '上次探测：teeBroken=true（旧版 tee_status 只有这一行）→ 自动退到证书生成' };
+  if (tb === 'unknown') return { to: '', tone: 'warn', note: '上次探测：teeBroken=unknown（旧版格式），无法判定' };
+  return { to: '', tone: 'warn', note: 'tee_status.status=' + (tee.status || '空') + '，不认识的取值，无法判定' };
 }
 
 /* 返回 { el, note }：note 要写进条目的 supporting 行 —— 触屏上没有 tooltip，
@@ -245,11 +255,23 @@ function loadIconsFor(shown) {
   const need = [];
   shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
   if (!need.length) return;
-  /* 图标是异步取回来的：第一批先画的是首字块，到货后重画一次把 img 换上。
-     只在还停在名单二级页时重画（用户可能已经走了）；askedIcons 保证不会循环。 */
-  loadIcons(need.slice(0, 120)).then(function () {
-    if (S.tab === 'func' && S.sub === 'targets') redraw();
-  }, function () {});
+  /* 图标异步到货后**原位替换**首字块，不整页重画：重画会把 16 条/批的分批
+     从头再来一遍，名单一大（真机 137 条）图标又分批到达时，列表会被反复
+     打断、几秒都走不完 —— 回放台架在软重启后的真机上就这么抓到的。 */
+  loadIcons(need.slice(0, 120)).then(swapIcons, function () {});
+}
+function swapIcons() {
+  if (S.tab !== 'func' || S.sub !== 'targets') return;
+  [].forEach.call(document.querySelectorAll('#view md-list-item[data-base]'), function (it) {
+    if (it.querySelector('img.app-ic')) return;
+    const ic = S.icons[it.getAttribute('data-base')];
+    const fb = it.querySelector('.app-ic-fallback');
+    if (!ic || !ic.src || !fb) return;
+    const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
+    img.setAttribute('slot', 'start'); img.loading = 'lazy'; img.decoding = 'async';
+    img.addEventListener('error', function () { /* 贴图打不开就保持首字块 */ });
+    fb.parentNode.replaceChild(img, fb);
+  });
 }
 
 /* ── 设置页里的"伪装"两块：属性对照 + Verified Boot ───────────────────── */
@@ -540,6 +562,8 @@ function listSection() {
       supporting: [detail, m && m.note].filter(Boolean).join(' · '),
       interactive: true,
     });
+    /* 记住基础包名：图标异步到货后据此原位换上 <img>（见 swapIcons） */
+    it.setAttribute('data-base', b || tok);
     if (ic && ic.src) {
       /* 必须进 start 槽并给尺寸：裸 img 落在默认槽里会按原图 256px 渲染，
          整行被一个巨大图标撑开（截图里 Grok 那张就是这样）。 */
@@ -972,7 +996,8 @@ function trickyBlocks() {
     const [btone, bsup] = TEE_BROKEN[t.tee_broken] || ['none', '取值不在 false/true/unknown 里，按原样显示'];
     const r = resolveAuto(t);
     s.appendChild(list([
-      item({ headline: 'status', trailing: t.status || '—', tone: r.tone, supporting: r.note }),
+      item({ headline: 'status', trailing: t.status || '—', tone: r.tone,
+        supporting: t.status ? r.note : '旧格式 tee_status 只有 teeBroken 一行 · ' + r.note }),
       item({ headline: 'tee_broken', trailing: t.tee_broken || '—', tone: btone, supporting: bsup }),
       item({ headline: 'category', trailing: t.category || '—',
         supporting: '上游用文字描述失败原因（not_run、aaid_timeout、异常名…），不是编号' }),
