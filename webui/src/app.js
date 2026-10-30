@@ -167,7 +167,9 @@ window.addEventListener('popstate', function () {
   loadSub(S.sub);
 });
 onOpenSub(openSub);
+let lastPageKey = '';
 function draw() {
+  const key = S.tab + '/' + S.sub;
   view.textContent = '';
   let body = {
     home: renderHome,
@@ -176,7 +178,18 @@ function draw() {
     settings: renderSettings,
   }[S.tab] || renderHome;
   if (S.tab === 'func' && S.sub) body = function () { return renderFuncSub(S.sub); };
-  view.appendChild(body());
+  const node = body();
+  if (key !== lastPageKey && node.classList) { node.classList.add('page-in'); lastPageKey = key; }
+  view.appendChild(node);
+  view.appendChild(pageFoot());
+}
+/* 页脚：版本 + 契约号 + 机型。短页下半屏的空白因此是有意留的，
+   也把排障最常用的三个事实放在每页都能看到的位置。 */
+function pageFoot() {
+  const bits = ['KeyLens ' + (S.status.mod_version || ''),
+    'api ' + (S.contract.api == null ? '?' : S.contract.api),
+    S.env.device || ''].filter(Boolean);
+  return h('p', 'page-foot', bits.join(' · '));
 }
 function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[0] || PAGES[0]; }
 function load(name) {

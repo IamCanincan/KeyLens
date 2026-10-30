@@ -57,7 +57,7 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 /* 分组标题 = 安静的小标签（14px/500/次要色），主角让给行；
    组与组之间 20px（--gap），标题离自己的组 8px。 */
 .sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
-.sec-h b{font-size:14px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-on-surface-variant)}
+.sec-h b{font-size:15px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-on-surface-variant)}
 .sec-i{font-family:var(--md-icon-font-family);font-size:18px;line-height:1;color:var(--md-sys-color-primary)}
 
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
@@ -94,8 +94,8 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
   letter-spacing:-.3px;min-width:0;overflow-wrap:anywhere}
 .hero-stats{display:flex;gap:28px;margin-top:14px;flex-wrap:wrap}
 .hero-stat{display:flex;flex-direction:column;gap:2px}
-.hero-k{font-size:12px;color:var(--md-sys-color-on-surface-variant)}
-.hero-v{font-size:16px;font-weight:600;font-variant-numeric:tabular-nums}
+.hero-k{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
+.hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
 .sec-h b{min-width:0;overflow-wrap:anywhere}
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
 .nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
@@ -113,6 +113,14 @@ md-list{display:block}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
+/* 页脚：短页下半屏的空白因此显得是有意留的，也顺手报出版本/契约/机型 */
+.page-foot{font-size:13px;color:var(--md-sys-color-outline);text-align:center;margin:28px 0 8px}
+/* 切页淡入：只在合成层做 opacity/transform，慢机上也不掉帧；系统要求减少动效时关掉 */
+/* 只在**换页**时播（draw() 里按 tab/sub 变化加 .page-in）：搜索框每次按键都会
+   重画同一个 stack，若无条件播动画就会闪。 */
+#view > .stack.page-in{animation:page-in 160ms cubic-bezier(.2,0,0,1)}
+@keyframes page-in{from{opacity:0;transform:translateY(4px)}to{opacity:1;transform:none}}
+@media (prefers-reduced-motion: reduce){#view > .stack.page-in{animation:none}}
 /* 系统设置那种行首：彩色圆底 + 图标（底/前景色由 .ic-avatar 的两个自定义属性给）。
    48px 圆 + 24px 图形，与参考图一致；list-item 的 leading 槽给 52px 宽，放得下。 */
 .ic-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;
@@ -121,14 +129,14 @@ md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-contai
 /* 名单的应用图标走 img/首字块，与这个类共用 32px 尺寸 */
 md-list-item img.app-ic{width:32px;height:32px;border-radius:50%;object-fit:cover;display:block}
 /* 图标缺失时的首字块：同尺寸同圆，用容器色，不抢眼 */
-md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:13px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
-.read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 10px;border-radius:8px}
+.read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 12px;border-radius:12px}
 .warn-text{margin:0;font-size:14px;line-height:1.5}
 
 /* 日志台：三列网格，图标列恒占宽 —— 没有级别的行也要把正文对齐到同一条竖线 */
 .console{
-  margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:12px;
+  margin-top:10px;padding:8px;border:1px solid var(--line);border-radius:16px;
   background:var(--md-sys-color-surface-container-lowest);
   font-family:ui-monospace, SFMono-Regular, Cutive Mono, Menlo, monospace;font-size:12px;line-height:1.7;
   max-height:46vh;overflow:auto;-webkit-overflow-scrolling:touch}
