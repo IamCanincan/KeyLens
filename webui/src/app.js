@@ -75,10 +75,9 @@ function buildNav() {
 }
 buildNav();
 
-/* 长按活动圆横向拖拽切页：320ms 长按拿起活动圆，拖到任意一格松手切过去。
-   拿起时源格变淡、活动圆浮在导航上；拖过目标格时光圈亮起；松手才切页，
-   不在拖动过程中反复 load 页面。 */
-const NAV_HOLD_MS = 320;
+/* 活动圆直接横向拖拽切页：按住活动圆横向移动超过 6px 就拿起，拖到任意一格
+   松手切过去（不需要长按等待）。拿起时源格变淡、活动圆浮在导航上；拖过目标格
+   时光圈亮起；松手才切页，不在拖动过程中反复 load 页面。 */
 let navDrag = null;
 let suppressNavClick = false;
 let suppressTimer = 0;
@@ -105,7 +104,6 @@ function markNavTarget(i) {
 function cleanupNavDrag(clickGuard) {
   if (!navDrag) return;
   const d = navDrag;
-  clearTimeout(d.timer);
   window.removeEventListener('pointermove', d.move);
   window.removeEventListener('pointerup', d.up);
   window.removeEventListener('pointercancel', d.cancel);
@@ -137,10 +135,12 @@ function onNavMove(e) {
   navDrag.x = e.clientX;
   navDrag.y = e.clientY;
   if (!navDrag.fired) {
-    if (Math.abs(e.clientX - navDrag.startX) > 8 || Math.abs(e.clientY - navDrag.startY) > 8) {
-      cleanupNavDrag(false);
-    }
-    return;
+    const dx = e.clientX - navDrag.startX;
+    const dy = e.clientY - navDrag.startY;
+    /* 横向意图明确才拿起：避免手指只是想点一下时闪出一个 ghost */
+    if (Math.abs(dx) <= 6 || Math.abs(dx) < Math.abs(dy)) return;
+    beginNavDrag();
+    if (!navDrag || !navDrag.fired) return;
   }
   if (e.cancelable) e.preventDefault();
   navGhostPos(navDrag.ghost, e.clientX);
@@ -168,11 +168,10 @@ nav.addEventListener('pointerdown', function (e) {
   const d = {
     id: e.pointerId, active: idx, x: e.clientX, y: e.clientY,
     startX: e.clientX, startY: e.clientY,
-    timer: 0, fired: false, target: idx, ghost: null,
+    fired: false, target: idx, ghost: null,
     move: onNavMove, up: onNavUp, cancel: onNavCancel
   };
   navDrag = d;
-  d.timer = setTimeout(beginNavDrag, NAV_HOLD_MS);
   window.addEventListener('pointermove', d.move, { passive: false });
   window.addEventListener('pointerup', d.up);
   window.addEventListener('pointercancel', d.cancel);

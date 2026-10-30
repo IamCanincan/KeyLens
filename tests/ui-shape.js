@@ -270,6 +270,7 @@ chk('底栏是悬浮药丸（不贴边 + 模糊 + 阴影）',
   && /\.bottom-nav\{[^}]*width:fit-content/.test(css)
   && /\.bottom-nav\{[^}]*justify-content:center[^}]*gap:4px/.test(css)
   && /\.bottom-nav\{[^}]*border-radius:999px/.test(css)
+  && /\.bottom-nav\{[^}]*bottom:calc\(var\(--inset-bottom\) \+ 24px\)/.test(css)
   && /\.bottom-nav\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
   && /\.bottom-nav\{[^}]*backdrop-filter:blur/.test(css)
   && /\.bottom-nav\{[^}]*box-shadow:/.test(css));
@@ -290,8 +291,10 @@ chk('底栏图标在中轴、文字在侧边、活动圆与边缘同心',
 chk('底栏文字切到侧边是过渡而不是瞬切',
   /\.nav-label\{[^}]*transition:max-width[^}]*opacity[^}]*transform/.test(css)
   && /\.nav-item\.active\{[^}]*padding:4px 16px 4px 4px/.test(css));
-chk('长按活动圆可横向拖拽切页',
-  /NAV_HOLD_MS/.test(app) && /addEventListener\('pointerdown'/.test(app)
+chk('活动圆直接横向拖拽切页（无需长按）',
+  !/NAV_HOLD_MS|setTimeout\(beginNavDrag/.test(app)
+  && /const dx = e\.clientX - navDrag\.startX/.test(app) && /Math\.abs\(dx\) <= 6/.test(app)
+  && /beginNavDrag\(\)/.test(app) && /addEventListener\('pointerdown'/.test(app)
   && /nav-ghost/.test(app) && /markNavTarget/.test(app) && /nav-dragging/.test(app)
   && /\.nav-ghost\{/.test(css) && /\.bottom-nav\.nav-dragging/.test(css)
   && /\.nav-item\.drag-over/.test(css) && /touch-action:none/.test(css));

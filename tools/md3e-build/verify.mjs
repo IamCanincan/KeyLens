@@ -248,13 +248,13 @@ async function main() {
       return { x1:Math.round(a.left+a.width/2), y1:Math.round(a.top+a.height/2),
         x2:Math.round(b.left+b.width/2), y2:Math.round(b.top+b.height/2) }; })()`);
     await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pts.x1, y: pts.y1, button: 'left', clickCount: 1 });
-    await sleep(380);
+    await sleep(30);
     await send('Input.dispatchMouseEvent', { type: 'mouseMoved', x: pts.x2, y: pts.y2, button: 'left', buttons: 1 });
     await sleep(80);
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pts.x2, y: pts.y2, button: 'left', clickCount: 1 });
     await sleep(800);
     const pd = await ev(PROBE);
-    chk('长按活动圆拖到第二格 → 切页', pd.title === '功能', '标题=' + pd.title);
+    chk('直接拖活动圆到第二格 → 切页（无需长按）', pd.title === '功能', '标题=' + pd.title);
     chk('拖拽后没有残留 ghost', (await ev(`document.querySelectorAll('.nav-ghost').length`)) === 0);
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);

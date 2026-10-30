@@ -60,7 +60,7 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
   margin:0 0 12px;padding-inline-start:4px;overflow-wrap:anywhere}
 /* 悬浮药丸底栏：不贴边、不铺满，靠模糊+阴影浮在内容上。
    长页向下滑时整体下沉缩小消失，向上滑/回顶再回来（状态由 app.js 切）。 */
-.bottom-nav{position:fixed;inset-inline:0;bottom:calc(var(--inset-bottom) + 12px);z-index:30;
+.bottom-nav{position:fixed;inset-inline:0;bottom:calc(var(--inset-bottom) + 24px);z-index:30;
   box-sizing:border-box;width:fit-content;max-width:calc(100% - 32px);height:64px;margin-inline:auto;padding:6px;
   display:flex;align-items:center;justify-content:center;gap:4px;
   border-radius:999px;border:1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 38%, transparent);
