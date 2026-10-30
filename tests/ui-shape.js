@@ -278,6 +278,10 @@ chk('长页下滑时药丸收缩消失、上滑/回顶回来',
 chk('底栏只给当前项显示文字（shadow 注入）',
   /aria-selected="false"\] \.label\{opacity:0/.test(app)
   && /aria-selected="false"\] \.icon\{top:20px/.test(app));
+chk('底栏文字切换走过渡（不再一跳一跳）',
+  /\.item \.label\{[^}]*transition:opacity/.test(app)
+  && /\.item \.icon\{[^}]*transition:top/.test(app)
+  && !/aria-selected="false"\] \.label\{[^}]*visibility/.test(app));
 /* 真机 WebView 的 env(safe-area-inset-*) 不是 0，而两个组件 shadow 里各有一条
    env padding；外层包壳已经让位，组件内部必须归零，否则真机上会双倍让位
    （顶栏多 28px 把内容标题切掉，台架 env=0 看不见）。 */

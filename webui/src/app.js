@@ -84,12 +84,14 @@ whenDefined('md-navigation-bar', function () {
      用 --inset-bottom 让位，这里归零避免底部再叠一次。 */
   injectSheet(nav, [
     '.bar{background:transparent!important;padding-bottom:0!important}',
-    '.item .label{font-weight:650!important;transition:opacity .18s,transform .18s}',
-    '.item[aria-selected="false"] .label{opacity:0!important;visibility:hidden!important;transform:translateY(-4px)}',
-    '.item[aria-selected="true"] .label{opacity:1!important;visibility:visible!important}',
+    /* 切换标签时不要瞬切字符：纯 opacity/transform 过渡，配合图标 top 的缓动。
+       以前用 visibility 立即显隐 + 图标 10/20px 硬切，看起来就是“字一跳一跳”。 */
+    '.item .label{font-weight:650!important;transition:opacity .22s ease,transform .22s ease}',
+    '.item[aria-selected="false"] .label{opacity:0!important;transform:translateY(-4px)}',
+    '.item[aria-selected="true"] .label{opacity:1!important;transform:none}',
     '.item[aria-selected="false"] .icon{top:20px!important}',
-    '.item[aria-selected="false"] .glyph{font-variation-settings:"FILL" 0,"wght" 400}',
-    '.item[aria-selected="true"] .glyph{font-variation-settings:"FILL" 1,"wght" 500}',
+    '.item .icon{transition:top .22s cubic-bezier(.2,.9,.25,1)}',
+    '.glyph{transition:font-variation-settings .22s ease}',
   ].join(''));
 });
 

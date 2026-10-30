@@ -19,6 +19,7 @@
   * 分组标题的镜头光圈点、页脚镜头点保留；包名、摘要、keybox 指纹等技术值仍走等宽字（`--kl-mono`）。
   * **行内文字垂直居中**（"板块的字有点靠上"）：组件把正文块按 `top:14px` 定死，单行行只剩上半截字；注入 `.content{top:50%;translateY(-50%)}`，和行首图标、行尾操作同轴。verify/replay 直接量"行中心 vs 文字中心"，实测 0px（阈值 ≤2px）。
   * **底栏改悬浮药丸 + 长页阅读隐藏**（"底栏做成悬浮药丸，上滑长页面时可以收缩消失"）：四格导航从贴边通栏改成左右留 16px、圆角 999px 的浮起胶囊（模糊+边框+阴影），不再用 `padding-bottom` 长高，而是用 `bottom: calc(--inset-bottom + 12px)` 整体抬离手势条；长页向下滑（手指上推）时 `translateY + scale(.94) + opacity:0` 下沉缩小消失，向上滑/回顶恢复，短页不隐藏。verify/replay 量药丸不贴边、滚动后 hidden/opacity 0/pointer-events none、回顶恢复；底部 inset 的判据也从"高度 +24"改成"药丸底边再上移 24"。
+  * **切换标签时不再"字一跳一跳"**：非活动标签原先用 `visibility:hidden` 瞬切、图标 top 10→20 硬切、字形的 FILL 也瞬间变化。现在标签走 opacity/transform 0.22s，图标 top 走同曲线缓动，并取消字形的 FILL 瞬变；verify 直接读 label 的 `transition-property/duration` 与 icon 的 `top` 过渡，确认不是瞬切。
   * **真机双倍让位（上机截图"头又没了"）**：`md-top-app-bar` / `md-navigation-bar` 的 shadow 里各还有一条 `padding: env(safe-area-inset-*)`；桌面台架 `env=0` 看不见，真机 `env=28px`，与 `#barwrap` / `--inset-bottom` 的让位叠加成双倍，内容标题正好被多出的 28px 切掉。已在注入样式里把组件内部的 env padding 归零（让位只由外层负责），并加静态断言；底栏同样处理，避免底部也叠一次。
   * **不同类版块之间留白**（"搜索框和应用列表不要紧贴"及后续"属性伪装按钮/输入框"）：搜索框↔名单 20px、筛选芯片↔搜索 16px、说明↔按钮 16px、名单↔计数 12px、日志台 16px、keybox 输入框 18px；列表↔按钮/表单/输入框统一 20px、输入框↔保存 16px。属性伪装页实测列表↔按钮 20、按钮↔属性列表 20、应用值↔输入框 20、输入框↔保存 16；同类行与芯片仍保持 2–8px。verify/replay 直接量矩形间距（搜索框↔名单实测 20px，阈值 ≥18px）。
 

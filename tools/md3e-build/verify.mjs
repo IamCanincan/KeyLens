@@ -190,7 +190,15 @@ async function main() {
         var l=b.querySelector('.label'); var s=getComputedStyle(l);
         return s.visibility + ':' + s.opacity; }); })()`);
     chk('底栏只给当前项显示文字', (navLbl[0] === 'visible:1')
-      && navLbl.slice(1).every(function(x){ return x === 'hidden:0'; }), (navLbl || []).join(' / '));
+      && navLbl.slice(1).every(function(x){ return /:0$/.test(x); }), (navLbl || []).join(' / '));
+    const navTr = await ev(`(function(){ var n=document.getElementById('nav'), items=n.shadowRoot.querySelectorAll('.item');
+      var l=items[1]&&items[1].querySelector('.label'), i=items[1]&&items[1].querySelector('.icon');
+      var ls=l?getComputedStyle(l):null, is=i?getComputedStyle(i):null;
+      return { lt:ls?ls.transitionProperty:'', ld:ls?ls.transitionDuration:'', it:is?is.transitionProperty:'', id:is?is.transitionDuration:'' }; })()`);
+    chk('底栏文字/图标切换走过渡（不再瞬切）',
+      /opacity/.test(navTr.lt) && /transform/.test(navTr.lt) && parseFloat(navTr.ld) > 0
+      && /top/.test(navTr.it) && parseFloat(navTr.id) > 0,
+      'label=' + navTr.lt + ' ' + navTr.ld + ' / icon=' + navTr.it + ' ' + navTr.id);
     const pill = await ev(`(function(){ var n=document.getElementById('nav'); var r=n.getBoundingClientRect();
       var s=getComputedStyle(n); return { pos:s.position, left:Math.round(r.left), right:Math.round(r.right),
         radius:s.borderRadius, vw:Math.round(document.documentElement.clientWidth) }; })()`);
