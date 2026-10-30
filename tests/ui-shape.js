@@ -378,6 +378,17 @@ chk('三态各有说法（没装 / 已禁用 / 启用）', /active: \['ok', '启
 chk('命令层输出这三态', /kv (teesim|tricky|omk)_state/.test(sh));
 chk('冲突横幅点名是哪几家', /on\.map\(function \(b\) \{ return b\[1\]; \}\)\.join/.test(screens));
 
+/* OMK 1.2.5：主页要显示后端自己的版本；配置页要有两个 daemon 与 keystore2 注入的
+   **只读**状态。三条状态都来自 backend-info，界面不自己探测进程。 */
+chk('主页状态条显示后端版本', /h\('span', 'hero-ver'/.test(screens) && /backendInfo\.module_version/.test(screens));
+chk('OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）',
+  /function omkRuntime\(\)/.test(screens) && /omkReload[\s\S]{0,200}omkRuntime\(\)/.test(screens)
+  && ['omk_keymint_alive', 'omk_injector_alive', 'omk_keystore_injected'].every(k => new RegExp('bi\\.' + k).test(screens)));
+chk('命令层上报 OMK daemon/注入状态',
+  /kv omk_keymint_daemon/.test(sh) && /kv omk_injector_daemon/.test(sh)
+  && /kv omk_keystore_pid/.test(sh) && /kv omk_keystore_injected/.test(sh));
+chk('omk_info 解析 1.2.5 的 [main].backend', /omk_backend=/.test(read('module/backends/omk_info.awk')));
+
 /* 生效代价：命令层算出来的 apply_note 必须真的被界面读走（kv-shape 那道闸看不见
    局部 parseKV 结果上的读取，所以这里单独钉一条） */
 chk('write() 优先采用命令层的 apply_note', /kv && kv\.apply_note/.test(screens));

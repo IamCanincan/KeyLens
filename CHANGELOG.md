@@ -6,6 +6,12 @@
 
 #### 新增
 
+* **OMK 1.2.5 适配面补齐：主页出后端版本，OMK 配置页新增「运行状态」**（设备上的 OMK 升到 `1.2.5-17b0eb6` 后做的兼容收口）。1.2.5 把 keymint 与 injector 拆成两个独立 daemon，keystore2 由 injector 注入；界面此前只看得到本模块自己的守护进程数，后端 daemon 真死了也显示正常。现在：
+  * 主页状态条在后端名旁显示后端 `module.prop` 的版本（与 KeyLens 版本分开），换/升后端后第一眼能确认设备上跑的是哪版。
+  * OMK 配置页顶部新增「运行状态」：keymint daemon、injector daemon（pid + 存活；pid 文件里的 pid 还要核对 cmdline，防 PID 复用）、keystore2 是否已注入（`injector.payload` 的 pid 必须等于当前 keystore2）；底部注明 `OMK 版本 · config v3 · 后端 injector`。任一异常显示红条并指向 `/data/misc/keystore/omk/logs/`。
+  * 命令层 `backend-info` 新增 `omk_keymint_daemon/alive`、`omk_injector_daemon/alive`、`omk_keystore_pid/injected`；`omk_info.awk` 解析 1.2.5 新增的 `[main].backend`。写回仍只动目标键，`[main].backend` 与 `[crypto]` 原样保留（`tests/config-write.sh` 钉住）。
+  * 假数据从 `1.2.0` 刷新到 `1.2.5-17b0eb6`（含 config v3 与两条 daemon / 注入真值）；verify 新增「后端版本在主页」「运行状态卡」「daemon 死掉必须报红（`?omk=dead`，不冒充已注入）」，replay 按真机 backend-info 的 pid / 存活 / 注入值断言。设备上的 1.2.5 回放全部通过。
+
 * **底栏定回四格：主页 / 后端 / 日志 / 设置**（用户拍板）。分工按"这一格回答的是什么问题"：主页 = 在不在跑（状态条 + 三家互斥矩阵 + 自动同步卡），后端 = 这一家的配置文件怎么改（名单 + 配置面 + keybox），日志 = 出了什么事，设置 = 与后端无关的模块自身开关（系统属性 + Verified Boot + 外观 + 界面自检）。两次反复的结论都留在源码注释里：自动同步**始终不占位格**（附加功能占一格 = 摆到主体前面），「伪装」也不再单列 —— 一格只放一个开关太薄。
   * **落地页换了，取数跟着换**：主页只问 `base + backend`，不再为名单 fork `targets/apps/target-meta/excluded` —— 打开模块先回答"在不在跑"，配置面的那批命令等点进【后端】再问。后端格反过来白得一个修正：进格时 `backend-info` 已在主页取过，按家取的配置数据不再拿空值猜成 omk。
   * **顺带抓出一个一直没炸的雷**：`screens.js` 里六处重画写的是没 import 的 `draw()` —— 产物能跑只是 esbuild 把三个模块摊平进同一个 IIFE 作用域，源码层它是自由变量；换打包器或哪天撞名就是当场 ReferenceError，而台架只驱动切页、点不到那几颗按钮，所以它一路绿。改成照 `onToast`/`onReload` 的套路注册回调（`onDraw`），并新增 `tools/module-scope-check.mjs` 守这一整类：专查"用了兄弟模块的名字却没 import"（判据收窄到**我们自己的三个源文件互相之间**，浏览器全局与库组件不误报）。它第一版自己就踩了两个坑：import 的模块路径被字符串剥离替换成 `''` 后，要求 `[^'"]+` 会让整条 import 匹配不上、把 app.js 里每个 import 来的名字都误报；`catch (e)` 的形参不进声明集，`e` 也被误报 —— 都修了，并拿真雷（`draw`）当正对照。

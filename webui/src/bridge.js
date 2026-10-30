@@ -20,6 +20,9 @@ export const DEMO_FAIL = DEMO ? (QUERY.get('fail') || '') : '';
 /* conflict=1：三家都"启用"，用来把互斥横幅那一条画出来给台架看 —— 那是模块
    停写的状态，平时真机上碰不到，不造就没有任何证据它渲染得对。 */
 export const DEMO_CONFLICT = DEMO && QUERY.get('conflict') === '1';
+/* ?omk=dead：把 OMK 两个 daemon 与 keystore2 注入都打成异常，验运行状态卡的红态。
+   真机上故意杀 daemon 才能造，台架里不值得为它动设备。 */
+const DEMO_OMK_DEAD = DEMO && QUERY.get('omk') === 'dead';
 
 /* 界面期望的契约号。命令层只加命令、不改输出形状时这个号不动 —— 涨号会让手机上
    正在跑的旧界面当场判"契约不符"并停写。 */
@@ -380,7 +383,7 @@ export function ensure(what) {
 function demoFiles() {
   var o = {
     omk: { backend: 'omk', name: 'OhMyKeymint', mod: '/data/adb/modules/oh_my_keymint',
-      dir: '/data/misc/keystore/omk', target: 'injector.toml', kb: 'keybox.xml', ver: '1.2.0-a1f3241' },
+      dir: '/data/misc/keystore/omk', target: 'injector.toml', kb: 'keybox.xml', ver: '1.2.5-17b0eb6' },
     tricky: { backend: 'tricky', name: 'Tricky Store', mod: '/data/adb/modules/tricky_store',
       dir: '/data/adb/tricky_store', target: 'target.txt', kb: 'keybox.xml', ver: '1.4.1' },
     teesim: { backend: 'teesim', name: 'TEE Simulator', mod: '/data/adb/modules/teesim',
@@ -423,13 +426,17 @@ function demoResult(cmd, arg) {
     'keybox_hash=4166677843448ea03fa5983c9cba554318c06bbaac8bd075ee18f6cedfba2dfa'];
   if (B.backend === 'omk') bi = bi.concat(['injector_version=1', 'injector_main_enabled=true',
     'injector_log_level=debug', 'filter_enabled=true', 'filter_block_android=true', 'filter_allow_unknown=false',
-    /* 真机现值（2026-10-30 现读）。注意 cfg_retire_stale_keys **故意不写**：
-       那台 config.toml 里本来就没有这一行（上游默认 true），命令层如实不输出 ——
-       假数据摆出这个"缺键"状态，才能验出界面有没有把"未设置"说成"关"。 */
-    'config_log_level=debug', 'cfg_force_skip_biometric=false',
+    /* 真机现值（1.2.5-17b0eb6，2026-10-31 现读）：config v3、[main].backend=injector，
+       retire_stale 这一行现在由上游显式写出。界面仍要认"缺键 = 未设置"（旧配置如此）。 */
+    'config_version=3', 'omk_backend=injector', 'config_log_level=debug',
+    'cfg_force_skip_biometric=false', 'cfg_retire_stale_keys=true',
     'trust_os_version=auto', 'trust_security_patch=auto', 'trust_os_patchlevel=auto',
     'trust_vendor_patchlevel=auto', 'trust_boot_patchlevel=auto',
-    'trust_vb_key=auto', 'trust_vb_hash=auto', 'trust_verified_boot=true', 'trust_device_locked=true']);
+    'trust_vb_key=auto', 'trust_vb_hash=auto', 'trust_verified_boot=true', 'trust_device_locked=true',
+    /* 1.2.5 的两个独立 daemon + keystore2 注入状态（真机 pid，回放会按真值另钉） */
+    'omk_keymint_daemon=' + (DEMO_OMK_DEAD ? '' : '2604'), 'omk_keymint_alive=' + (DEMO_OMK_DEAD ? 0 : 1),
+    'omk_injector_daemon=' + (DEMO_OMK_DEAD ? '' : '3007'), 'omk_injector_alive=' + (DEMO_OMK_DEAD ? 0 : 1),
+    'omk_keystore_pid=914', 'omk_keystore_injected=' + (DEMO_OMK_DEAD ? 0 : 1)]);
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {

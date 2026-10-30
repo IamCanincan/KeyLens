@@ -270,6 +270,11 @@ async function main() {
   chk('视口钉在 417', p.vw === 417, 'vw=' + p.vw);
   chk('真的把命令发出去了', p.calls >= 6, 'exec 调用 ' + p.calls + ' 次');
   chk('主页画出状态条与三家矩阵', p.cards >= 2 && p.items >= 3, 'cards=' + p.cards + ' items=' + p.items);
+  {
+    const beVer = ((store['backend-info'].stdout || '').match(/^module_version=(.*)$/m) || [])[1] || '';
+    chk('主页显示后端版本', !beVer || (p.text || '').indexOf(beVer) >= 0,
+      beVer ? '找「' + beVer + '」' : 'backend-info 没给 module_version');
+  }
   chk('主页画的是真数（生效名单 ' + entries + ' 条）', !entries || (p.text || '').indexOf(entries + ' 条') >= 0,
     entries ? '找「' + entries + ' 条」' : 'backend-info 没给 target_entries');
   chk('没有"命令超时"', (p.text || '').indexOf('超时') < 0, '');
@@ -365,6 +370,25 @@ async function main() {
       const nm = ((store['teesim-profiles'].stdout || '').split('\n').filter(Boolean)[0] || '').split('\t')[0] || '';
       chk('TEESim profile 表画的是命令层真读到的名字', !!nm && (q.text || '').indexOf(nm) >= 0,
         nm ? '找「' + nm + '」' : '命令层没返回 profile');
+    } else if (be === 'omk') {
+      const bk = {};
+      (store['backend-info'].stdout || '').split('\n').forEach(l => { const i = l.indexOf('='); if (i > 0) bk[l.slice(0, i)] = l.slice(i + 1); });
+      if (bk.omk_keymint_alive === undefined) {
+        console.log('     · 命令层没有 OMK 运行状态键，跳过（设备上跑的是旧命令层？）');
+      } else {
+        const tr = q.text || '';
+        const alive = bk.omk_keymint_alive === '1' && bk.omk_injector_alive === '1' && bk.omk_keystore_injected === '1';
+        const pids = [bk.omk_keymint_daemon, bk.omk_injector_daemon, bk.omk_keystore_pid].filter(Boolean);
+        const pidShown = pids.length === 3 && pids.every(x => tr.indexOf(x) >= 0);
+        chk('OMK 两个 daemon 与 keystore2 注入按真值画出来',
+          alive && pidShown && tr.indexOf('运行状态') >= 0 && tr.indexOf('已注入') >= 0,
+          `keymint=${bk.omk_keymint_alive}(pid ${bk.omk_keymint_daemon}) injector=${bk.omk_injector_alive}(pid ${bk.omk_injector_daemon})`
+            + ` keystore=${bk.omk_keystore_injected}(pid ${bk.omk_keystore_pid})`);
+        chk('OMK 版本与后端模式出现在运行状态卡上',
+          !!bk.module_version && tr.indexOf(bk.module_version) >= 0
+            && (!bk.omk_backend || tr.indexOf(bk.omk_backend) >= 0),
+          'version=' + (bk.module_version || '未上报') + ' mode=' + (bk.omk_backend || '未上报'));
+      }
     } else {
       console.log('     · 当前后端是 ' + (be || '未知') + '，跳过后端专属卡片断言');
     }

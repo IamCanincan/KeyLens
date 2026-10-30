@@ -86,8 +86,9 @@ cmp -s "$T/i2.toml" "$T/out" && printf '  ok   重复写逐字节不变\n' || { 
 
 echo "── 4 OMK config：trust / device / 新段 ──"
 cat > "$T/cfg.toml" <<'EOF'
-version = 2
+version = 3
 [main]
+backend = "injector"
 log_level = "debug"
 [trust]
 os_version = "auto"
@@ -99,6 +100,7 @@ chk "status" "ok" "$(run "$ROOT/module/backends/omk_set.awk" "$T/cfg.toml")"
 chk_has "$T/out" '^security_patch = "2024-11-01"$' "trust 新键插入"
 chk_has "$T/out" '^serial = "XYZ"$' "device 新键插入"
 chk_has "$T/out" '^overrideTelephonyProperties = true$' "布尔写入"
+chk_has "$T/out" '^backend = "injector"$' "1.2.5 新增的 [main].backend 原样保留"
 printf 'version = 1\n[filter] # note\nenabled = true\n' > "$T/hdr.toml"
 pairs 'filter_enabled	false'
 chk "段头带注释 status" "ok" "$(run "$ROOT/module/backends/omk_set.awk" "$T/hdr.toml" injector)"

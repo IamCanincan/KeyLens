@@ -1405,6 +1405,8 @@ cmd_set_mode() {
 cmd_backend_info() {
     local mdir="" keybox="" ver="" patch="" info="" n="" kb=""
     local kb_exists=0 kb_bytes="" kb_mtime="" kb_sha="" kb_list=""
+    local omk_d1="" omk_d2="" omk_ks="" omk_pay_pid="" omk_pay_id=""
+    local omk_d1_alive=0 omk_d2_alive=0 omk_injected=0
 
     detect_backend "$MODDIR"
 
@@ -1447,6 +1449,33 @@ cmd_backend_info() {
             fi
             ;;
     esac
+
+    # OMK 1.2.5 起 keymint 与 injector 是两个独立 daemon，keystore2 由 injector
+    # 注入。这两条只读状态由本模块自己看（OMK 没有自报），pid 文件里的 pid 还要
+    # 核对 cmdline —— PID 会被复用，单看 kill -0 会把陌生进程当成 daemon。
+    if [ "$KL_BACKEND" = "omk" ]; then
+        omk_d1=$(cat "$OMK_STATE_DIR/keymint-daemon.pid" 2>/dev/null)
+        omk_d2=$(cat "$OMK_STATE_DIR/injector-daemon.pid" 2>/dev/null)
+        if [ -n "$omk_d1" ] && kill -0 "$omk_d1" 2>/dev/null \
+           && [ "$(tr '\0' '\n' < "/proc/$omk_d1/cmdline" 2>/dev/null | sed -n '2p')" = "$OMK_MODULE/daemon" ]; then
+            omk_d1_alive=1
+        fi
+        if [ -n "$omk_d2" ] && kill -0 "$omk_d2" 2>/dev/null \
+           && [ "$(tr '\0' '\n' < "/proc/$omk_d2/cmdline" 2>/dev/null | sed -n '2p')" = "$OMK_MODULE/daemon-injector" ]; then
+            omk_d2_alive=1
+        fi
+        omk_ks=$(pidof keystore2 2>/dev/null | awk '{print $1; exit}')
+        if [ -n "$omk_ks" ] && [ -f "$OMK_STATE_DIR/injector.payload" ]; then
+            read -r omk_pay_pid omk_pay_id < "$OMK_STATE_DIR/injector.payload" 2>/dev/null
+            [ "$omk_pay_pid" = "$omk_ks" ] && [ -n "$omk_pay_id" ] && omk_injected=1
+        fi
+        kv omk_keymint_daemon "$omk_d1"
+        kv omk_keymint_alive "$omk_d1_alive"
+        kv omk_injector_daemon "$omk_d2"
+        kv omk_injector_alive "$omk_d2_alive"
+        kv omk_keystore_pid "$omk_ks"
+        kv omk_keystore_injected "$omk_injected"
+    fi
 
     kv backend "$KL_BACKEND"
     kv backend_name "$(backend_name)"

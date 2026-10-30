@@ -102,6 +102,7 @@ FILENAME == config {
     }
     if (!kv(line)) next
     if (sec == "" && KEY == "version") print "config_version=" VAL
+    else if (sec == "main" && KEY == "backend") print "omk_backend=" VAL
     else if (sec == "main" && KEY == "log_level") print "config_log_level=" VAL
     else if (sec == "main" && KEY == "force_skip_system_biometric_hat_verification") print "cfg_force_skip_biometric=" VAL
     else if (sec == "main" && KEY == "retire_stale_keybox_bound_keys") print "cfg_retire_stale_keys=" VAL

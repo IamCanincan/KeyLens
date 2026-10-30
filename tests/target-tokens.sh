@@ -164,8 +164,9 @@ delete_key = false
 grant = true
 EOF
 cat > "$T/omk-config.toml" <<'EOF'
-version = 2
+version = 3
 [main]
+backend = "injector"
 log_level = "debug"
 [trust]
 os_version = "auto"
@@ -181,7 +182,8 @@ info=$(awk -v injector="$T/injector.toml" -v config="$T/omk-config.toml" \
 chk "injector version" "1" "$(printf '%s\n' "$info" | sed -n 's/^injector_version=//p')"
 chk "deny 数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^filter_deny=//p')"
 chk "intercept true 数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^intercept_true=//p')"
-chk "config version" "2" "$(printf '%s\n' "$info" | sed -n 's/^config_version=//p')"
+chk "config version" "3" "$(printf '%s\n' "$info" | sed -n 's/^config_version=//p')"
+chk "OMK backend 模式" "injector" "$(printf '%s\n' "$info" | sed -n 's/^omk_backend=//p')"
 chk "trust boot patchlevel" "no" "$(printf '%s\n' "$info" | sed -n 's/^trust_boot_patchlevel=//p')"
 
 echo "── 8 entry_base：变体归到基础包名 ──"

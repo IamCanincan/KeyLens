@@ -494,6 +494,11 @@ function statusStrip() {
   const top = h('div', 'hero-top');
   top.appendChild(h('span', 'chip chip-' + tone, label));
   top.appendChild(h('b', 'hero-name', st.backend_name || '未探测到后端'));
+  /* 后端自己的版本（module.prop 的 version）与 KeyLens 版本是两件事：
+     换后端 / 升级后端之后，第一眼要能看出设备上现在跑的是哪一版。 */
+  if (S.backendInfo && S.backendInfo.module_version) {
+    top.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));
+  }
   c.appendChild(top);
   const stats = h('div', 'hero-stats');
   [['版本', st.mod_version || '—'],
@@ -1069,8 +1074,45 @@ function fold(build, openText) {
   return wrap;
 }
 
+/* OMK 1.2.5 起 keymint / injector 是两个独立 daemon，keystore2 由 injector 注入。
+   这三条是"证书为什么没生效"的第一现场；命令层只读上报，旧命令层没有这批键时
+   整张卡不画 —— 不拿"读不到"冒充"未运行"。 */
+function omkRuntime() {
+  const bi = S.backendInfo;
+  if (bi.omk_keymint_alive === undefined) return null;
+  const km = bi.omk_keymint_alive === '1';
+  const inj = bi.omk_injector_alive === '1';
+  const ks = bi.omk_keystore_injected === '1';
+  const pid = function (v) { return v ? 'PID ' + v : 'PID 读不到'; };
+  const c = card();
+  const s = section('运行状态', ICON.tee);
+  s.appendChild(list([
+    item({ headline: 'keymint 守护进程', trailing: km ? pid(bi.omk_keymint_daemon) : '未运行',
+      tone: km ? 'ok' : 'bad',
+      supporting: km ? 'OMK 自己的 keymint daemon，证书由它提供' : 'daemon 没起来：检查 OMK 模块是否启用、是否需要重启' }),
+    item({ headline: 'injector 守护进程', trailing: inj ? pid(bi.omk_injector_daemon) : '未运行',
+      tone: inj ? 'ok' : 'bad',
+      supporting: inj ? '负责把 OMK 注入 keystore2' : '没有它，keystore2 不会加载 OMK' }),
+    item({ headline: 'keystore2 注入', trailing: ks ? '已注入' : '未注入',
+      tone: ks ? 'ok' : 'bad',
+      supporting: 'keystore2 ' + (bi.omk_keystore_pid ? 'PID ' + bi.omk_keystore_pid : 'PID 读不到')
+        + ' · 依据 injector.payload 里的 pid 与标识' }),
+  ]));
+  const mode = bi.omk_backend ? ' · 后端 ' + bi.omk_backend : '';
+  s.appendChild(h('p', 'hint', 'OMK ' + (bi.module_version || '版本读不到') + ' · config v'
+    + (bi.config_version || '?') + mode + ' —— 下面「生效代价」的按钮就是让这两个 daemon 重载。'));
+  if (!km || !inj || !ks) {
+    s.appendChild(h('p', 'read-err', '有状态不正常：先重启一次 OMK 模块或手机，再回来读；仍红就看 '
+      + '/data/misc/keystore/omk/logs/ 里的 keymint.log / injector.log。'));
+  }
+  c.appendChild(s);
+  return c;
+}
+
 function omkReload() {
   const box = h('div', 'stack');
+  const rt = omkRuntime();
+  if (rt) box.appendChild(rt);
   const c = card();
   const s = section('生效代价', ICON.restart);
   s.appendChild(list([
@@ -1130,8 +1172,8 @@ function omkReload() {
   ks.appendChild(list([
     item({ headline: '日志级别', trailing: S.backendInfo.config_log_level || '—' }),
     item({ headline: '跳过生物识别', trailing: S.backendInfo.cfg_force_skip_biometric || '未设置' }),
-    /* 这一项在真机的 config.toml 里**本来就没有那一行**（上游默认 true），
-       命令层如实不输出。把空值显示成"关"就是错的事实 —— 如实写"未设置（默认 true）"。 */
+    /* 上游只在显式配置时才写这一行（旧配置里没有），命令层如实不输出。
+       把空值显示成"关"就是错的事实 —— 如实写"未设置（默认 true）"。 */
     item({ headline: '回收旧 keybox 绑定的密钥', trailing: S.backendInfo.cfg_retire_stale_keys || '未设置（上游默认 true）' }),
     item({ headline: '补丁级别', supporting: 'security ' + (S.backendInfo.trust_security_patch || '—')
       + ' · os ' + (S.backendInfo.trust_os_patchlevel || '—')

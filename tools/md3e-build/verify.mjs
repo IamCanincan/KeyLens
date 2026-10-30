@@ -163,6 +163,8 @@ async function main() {
   chk('视口钉在 417', p0.vw === 417, 'vw=' + p0.vw);
   chk('主页横向不溢出', p0.scrollW - p0.vw <= 0, '溢出 ' + (p0.scrollW - p0.vw) + 'px');
   chk('主页画出状态条与三家矩阵', p0.cards >= 2 && p0.items >= 3, 'cards=' + p0.cards + ' items=' + p0.items);
+  chk('主页显示后端版本（不是 KeyLens 自己的版本）', (p0.text || '').indexOf('1.2.5-17b0eb6') >= 0,
+    '找「1.2.5-17b0eb6」');
   chk('图标字体生效（子集内名字 = 一个字形）', p0.inSet > 0 && p0.inSet <= 34, 'home=' + p0.inSet + 'px');
   chk('负对照成立（子集外名字 = 字面词）', p0.outSet > p0.inSet * 2, 'security=' + p0.outSet + 'px，' + (p0.outSet / Math.max(p0.inSet, 1)).toFixed(1) + ' 倍');
   chk('组件内部解析到符号字体', /Material Symbols/i.test(p0.fam), p0.fam || '没找到');
@@ -382,7 +384,8 @@ async function main() {
          假数据才会出现的值。 */
       'attestation 侧安全等级', '留空 = 删掉这一项', 'TrustedEnvironment', '只记录，不上线',
       'deviceLocked', 'supplement', '本模块不提供写入'] , tail: 'overrides.json ·' },
-    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml'],
+    { id: 'omk', q: 'omk', must: ['运行状态', 'keymint 守护进程', 'injector 守护进程', 'keystore2 注入', '已注入',
+      'config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml'],
       tail: 'config.toml ·' },
   ];
   console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');
@@ -424,6 +427,25 @@ async function main() {
       const s2 = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-backend-' + b.id + '-tail.png'), Buffer.from(s2.data, 'base64'));
     }
+  }
+
+  /* OMK daemon 死掉的红态：真机上不能故意杀，只能造 —— 红态不验，等于只保证
+     "正常时好看"，出了问题界面照样可能说人话。 */
+  await send('Page.navigate', { url: URL0 + '&backend=omk&omk=dead' });
+  await sleep(1400);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('后端配置');
+  await sleep(900);
+  const pd = await ev(PROBE);
+  chk('OMK daemon 死掉时运行状态卡报红（不冒充已注入）',
+    pd.text.indexOf('未运行') >= 0 && pd.text.indexOf('未注入') >= 0
+    && pd.text.indexOf('已注入') < 0 && pd.text.indexOf('有状态不正常') >= 0,
+    '屏上命中：' + ((pd.text.match(/未运行|已注入|未注入|有状态不正常/g) || []).join('、')));
+  {
+    const sD = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-omk-dead.png'), Buffer.from(sD.data, 'base64'));
   }
 
   /* 读失败与"真的是空的"必须长得不一样 */

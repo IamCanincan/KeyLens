@@ -42,7 +42,7 @@ TEE Simulator 模式下**只替换 `default` profile 的 `apps`**，其余字段
   日志同时写入系统日志（`logcat`，tag 为 `KeyLens`）与本地缓冲文件 `/data/adb/keylens.log`。`logcat` 是内存环形缓冲（默认仅几百 KB 且全系统共用），系统繁忙时旧记录很快被挤掉、重启即清空；缓冲文件容量固定（超过 64KB 自动只保留末尾 200 行）、跨重启保留，权限 `600` 且位于 `0700` 的 `/data/adb`，仅 root 可读。
 
 - **WebUI 控制台（Material 3 Expressive）**  
-  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：主页看运行状态、后端格里对照目标名单与已装应用并配置当前后端、日志页排障、设置页里一键开关开机属性伪装与 Verified Boot 哈希。「后端」格按当前后端分别适配并可**手动配置**：TEE Simulator 的 default profile（模式、keybox 文件名、补丁级别、OS 版本、自动纳入、设备身份）、Tricky Store OSS 的全局补丁表（`system / vendor / boot / all`）、OhMyKeymint 的 injector（过滤、拒绝包、10 个拦截方法）与 config.toml（日志、trust、设备身份）；三家都支持粘贴替换 keybox.xml。保存只提交改动过的字段，写前备份，Tricky/TEE Simulator 由各自的 watcher 重载，OMK 通过自己的 `restart.injector / restart.keymint` 生效。名单里 Tricky 的条目带 `自动 / 叶证书 / 证书生成` 选择，TEE Simulator 的 `pkg@用户` 与 `uid:数字` 会显示成对应标签。界面是单文件、不联网；MD3E Web 1.0.14 的组件与符号字体子集已内联进产物（不需要联网加载任何库或字体）。
+  模块自带 `webroot/index.html`，在支持 WebUI 的管理器里点模块的「打开界面」即可：主页看运行状态与**当前后端版本**、后端格里对照目标名单与已装应用并配置当前后端、日志页排障、设置页里一键开关开机属性伪装与 Verified Boot 哈希。「后端」格按当前后端分别适配并可**手动配置**：TEE Simulator 的 default profile（模式、keybox 文件名、补丁级别、OS 版本、自动纳入、设备身份）、Tricky Store OSS 的全局补丁表（`system / vendor / boot / all`）、OhMyKeymint 的 injector（过滤、拒绝包、10 个拦截方法）与 config.toml（日志、trust、设备身份）；OMK 配置页顶部还有**运行状态**（keymint / injector 两个 daemon 的 pid 与存活、keystore2 是否已注入，来自 1.2.5 的 daemon 架构），异常时直接给排障指引。三家都支持粘贴替换 keybox.xml。保存只提交改动过的字段，写前备份，Tricky/TEE Simulator 由各自的 watcher 重载，OMK 通过自己的 `restart.injector / restart.keymint` 生效。名单里 Tricky 的条目带 `自动 / 叶证书 / 证书生成` 选择，TEE Simulator 的 `pkg@用户` 与 `uid:数字` 会显示成对应标签。界面是单文件、不联网；MD3E Web 1.0.14 的组件与符号字体子集已内联进产物（不需要联网加载任何库或字体）。
 
 - **兼容性广泛**  
   支持 Magisk、KernelSU、APatch，并自动适配 `inotifywait` / `inotifyd` 两种监控模式（含各框架自带的 busybox）。
@@ -164,10 +164,10 @@ sh /data/adb/modules/keylens/action.sh
 
 | 页面 | 内容 | 能改什么 |
 |------|------|----------|
-| **主页** | 英雄卡（状态芯片 + **大字后端名** + 三个小统计：版本 / 生效名单 / 属性伪装开关；契约不匹配时横幅就在这张卡上）、三家互斥矩阵（`Tricky Store / TEE Simulator / OhMyKeymint` 各一行，带图标，三态**启用 / 已禁用（模块目录里有 disable）/ 未安装**，当前生效那行标 ●；三家同开时横幅点名是哪几家，并说清抢的是同一个 keymint HAL） | — |
+| **主页** | 英雄卡（状态芯片 + **大字后端名 + 后端版本** + 三个小统计：KeyLens 版本 / 生效名单 / 属性伪装开关；契约不匹配时横幅就在这张卡上）、三家互斥矩阵（`Tricky Store / TEE Simulator / OhMyKeymint` 各一行，带图标，三态**启用 / 已禁用（模块目录里有 disable）/ 未安装**，当前生效那行标 ●；三家同开时横幅点名是哪几家，并说清抢的是同一个 keymint HAL） | — |
 | **功能**（菜单） | 五项入口，照系统设置的样子：**彩色圆底图标 + 一行当下的状态摘要** —— 目标名单（生效条数 · 目标文件名）、后端配置 · 当前后端（各家的能力面一句话）、自动同步（守护进程数 · 上次写入时间）、密钥箱 keybox（已设置/未设置 · 文件名）、属性伪装（开机写入开/关 · 项数）。点进去才是对应的功能面 | 二级页里各自可改的东西见下 |
 | ↳ **目标名单** | **名单 / 已装 / 未纳入 / 已排除** 四颗筛选芯片 + 搜索包名或应用名 + 桌面图标与显示名；Tricky 的条目行尾是 `自动 / 叶证书 / 证书生成` 三态按钮，`自动` 那行直接把上次 TEE 探测算出的去向写在旁边；读不到时第一行是**错误**而不是"这一类是空的" | 名单逐条加入 / 移出 |
-| ↳ **后端配置** | 按当前后端渲染：TEESim 的 Profile 表 + overrides.json；Tricky 的 TEE 探测结果 + 全局与按包补丁；OhMyKeymint 的 config.toml + injector.toml + 生效代价 + 重启 keymint | 各家配置字段 |
+| ↳ **后端配置** | 按当前后端渲染：TEESim 的 Profile 表 + overrides.json；Tricky 的 TEE 探测结果 + 全局与按包补丁；OhMyKeymint 的运行状态（keymint / injector daemon + keystore2 注入）+ config.toml + injector.toml + 生效代价 + 重载按钮（keymint / injector / all） | 各家配置字段 |
 | ↳ **自动同步** | 守护进程数与事件监听方式 · 目标文件存在与可写 · 上次写入时间 · 日志字节与行数 · 最近一次描述（这是本模块附加的能力，维护的就是「目标名单」里那份文件；强调不上屏） | 立即同步一次 / 重新读取 |
 | ↳ **密钥箱 keybox** | 粘贴替换 keybox.xml，三家的判据与文案分叉（见下面「keybox」） | 替换 keybox |
 | ↳ **属性伪装** | 系统属性对照（期望值与「当前」两行写在同一项的 supporting 里，只在不符 / 读不到时着色）+ Verified Boot 哈希（当前 digest 与模块应用值） | 开关开机属性伪装、立即应用一次、保存并应用 verifiedBootHash |

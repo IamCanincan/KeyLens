@@ -46,11 +46,15 @@ const cases = [
     "  { id: 'settings', label: '设置', icon: ICON.settings, need: [] },\n  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },", 1],
   ['伪装在功能页的二级里，设置格不再有它', files.screens,
     "  if (sub === 'props') box.appendChild(propsCards());", '', 1],
-  ['重画走注册的回调，不写跨模块自由变量', files.screens, 'redraw();', 'draw();', 6, SCOPE],
+  ['重画走注册的回调，不写跨模块自由变量', files.screens, 'redraw();', 'draw();', 7, SCOPE],
   ['四个页渲染函数都在，且按 主页→功能→二级→设置 相邻（切片前提）', files.screens,
     'export function renderSettings()', 'function renderSettingsX()', 1],
   ['keybox 在二级页里，不在主页与设置', files.screens,
     "  if (sub === 'keybox') box.appendChild(keyboxCard());", '', 1],
+  ['主页状态条显示后端版本', files.screens,
+    "  if (S.backendInfo && S.backendInfo.module_version) {\n    top.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));\n  }", '', 1],
+  ['OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）', files.screens,
+    '  const rt = omkRuntime();\n  if (rt) box.appendChild(rt);\n', '', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`
