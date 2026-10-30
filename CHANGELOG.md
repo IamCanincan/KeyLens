@@ -50,6 +50,8 @@
 
 #### 修复
 
+* **后端轮换的"上游会互相拆台"记一笔（差点删掉用户的 OMK）**：TrickyStoreOSS 的 `customize.sh` 在安装时对 `oh_my_keymint` / `teesim` 直接 `touch remove`（"下次重启时删除"），TEESim 的 `customize.sh` 反过来给 Tricky 打 `disable`。轮换收尾复查时发现 OMK 目录里躺着一个 `remove` 标记 —— **要不是复查，用户下次重启 OMK 模块就没了**（keybox 与配置本身未被改动）。已撤标记；`ksud module enable/disable/uninstall` 实测都只动目标模块，误伤全部来自上游脚本。以后轮换必须在装完对方后检查并撤掉 `remove` 标记，收尾时再确认 `oh_my_keymint` 目录里既无 `remove` 也无 `disable`。
+
 * **真机后端轮换跑完（Tricky + TEESim 各一轮），抓出三个只在真机上才现形的问题**：
   * **全新 Tricky 第一次保存补丁表必失败**：`security_patch.txt` 只在用户第一次保存时才存在，而 awk 对**不存在的输入文件会在 END 之前就退出** ——"文件不存在时按请求新建"那段根本跑不到，命令层只看到空状态，回"补丁表写入失败"。保存前先落空文件；目录缺失给明确错误。
   * **`tricky-patches` 读命令没解析后端**：每次 `webui.sh` 都是新进程，`KL_PATCH` 只在 `use_backend` 里赋值 —— 读命令拿到空路径，报"缺少 tricky_patches.awk"，界面据此把整个补丁块画成"还没有这个段"，**错得很安静**。回放台架当时没断言这块文字，所以一路绿。新增 `tools/klpatch-init-check.cjs` 守这一类（凡用 `KL_PATCH` 的命令函数必须自己 `detect_backend`；唯一豁免是 helper `backend_keybox_path`），CI 已挂。
