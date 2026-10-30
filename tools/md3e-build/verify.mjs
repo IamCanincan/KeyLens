@@ -262,15 +262,20 @@ async function main() {
       var r=b.getBoundingClientRect(), cs=getComputedStyle(b);
       return { h: Math.round(r.height), bg: cs.backgroundColor }; })()`);
     const before = await barInfo();
-    await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-top','40px'); return 1; })()`);
+    /* demo 的 env 报 sys_statusbar_dp=28、注入 insets 为 0 —— 顶栏必须自己
+       让出这 28px，否则 22px 的标题行正好钻进状态栏底下（"头被砍一半"）。 */
+    const fallback = await ev(`getComputedStyle(document.documentElement).getPropertyValue('--statusbar-fallback').trim()`);
+    chk('状态栏兜底生效（注入 insets 为 0 时按系统栏高度让位）',
+      fallback === '28px' && before.h === 92, 'fallback=' + fallback + ' barH=' + before.h);
+    await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-top','60px'); return 1; })()`);
     const grown = await barInfo();
     await ev(`(function(){ document.documentElement.style.removeProperty('--safe-area-inset-top'); return 1; })()`);
     const after = await barInfo();
-    chk('顶栏吃得到注入的 --safe-area-inset-top（+40px → 长高 40）',
-      grown.h === before.h + 40, `before=${before.h} grown=${grown.h} after=${after.h}`);
+    chk('注入值更大时取注入值（60px 赢过兜底 28px）',
+      grown.h === 124, `before=${before.h} grown=${grown.h} after=${after.h}`);
     chk('顶栏宿主有底色（padding 那条不是透明带）',
       before.bg !== 'rgba(0, 0, 0, 0)' && before.bg !== 'transparent', before.bg);
-    chk('拿掉假 inset 后顶栏回原高', after.h === before.h, `after=${after.h} before=${before.h}`);
+    chk('拿掉假 inset 后顶栏回兜底高度', after.h === before.h, `after=${after.h} before=${before.h}`);
     /* 底栏同一类：fixed + padding-bottom，宿主也要有底色，手势条那一条不能透明 */
     const navInfo = () => ev(`(function(){ var n=document.getElementById('nav'); var cs=getComputedStyle(n);
       return { h: Math.round(n.getBoundingClientRect().height), bg: cs.backgroundColor }; })()`);

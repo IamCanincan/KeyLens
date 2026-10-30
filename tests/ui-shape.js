@@ -253,6 +253,11 @@ chk('深浅翻的是 data-theme，且 env 落地后重涂（boot 与 reloadAll �
 chk('安全区读注入值与 env 的较大者',
   /--inset-top: max\(var\(--safe-area-inset-top/.test(css)
   && /--inset-bottom: max\(var\(--safe-area-inset-bottom/.test(css));
+/* 管理器注入的 insets 在本机实测可能是 0 —— 22px 的标题行会正好钻进状态栏底下
+   （"头被砍一半"）。命令层从 dumpsys 量真实高度换成 dp，界面落 `--statusbar-fallback`，
+   --inset-top 取三者较大者。*/
+chk('状态栏兜底接上了（命令层量 dp → 界面落 --statusbar-fallback）',
+  /sys_statusbar_dp/.test(sh) && /--statusbar-fallback/.test(css) && /applyInsets\(\)/.test(app));
 /* 顶/底栏组件把颜色画在 shadow 的 .bar 上、宿主透明，而让位 padding 加在宿主上
    —— 宿主不涂底色，padding 那条就是透明带（上机"状态栏缺一块"的另一半）。 */
 chk('顶栏与底栏宿主有底色',

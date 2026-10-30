@@ -1448,6 +1448,19 @@ cmd_env() {
             ;;
     esac
 
+    # 状态栏真实高度（dp）：管理器注入的 insets 在本机可能报 0 —— 它算的是
+    # "安全绘制区"，edge-to-edge 下不等于系统栏高度。界面拿它兜底，否则 22px
+    # 的标题行正好钻到状态栏底下（"头被砍一半"）。WebView 的 CSS px 就是 dp，
+    # 所以这里直接从 px 换算，不让界面猜 devicePixelRatio。取不到就整条不报。
+    sbh=$(dumpsys window displays 2>/dev/null | sed -n 's/.*type=statusBars frame=\[[0-9]*,[0-9]*\]\[[0-9]*,\([0-9]*\)\].*/\1/p' | head -n 1)
+    dens=$(wm density 2>/dev/null | sed -n 's/^Physical density: *\([0-9][0-9]*\).*/\1/p')
+    [ -n "$dens" ] || dens=$(getprop ro.sf.lcd_density)
+    case "$sbh" in ''|*[!0-9]*) sbh=0 ;; esac
+    case "$dens" in ''|*[!0-9]*) dens=0 ;; esac
+    if [ "$sbh" -gt 0 ] && [ "$dens" -gt 0 ]; then
+        kv sys_statusbar_dp $(( sbh * 160 / dens ))
+    fi
+
     # 强调色第一优先：SystemUI 运行时生成的 Material You overlay。
     # 那是系统"正在拿来画东西的那套色"，用户手选颜色时它也会被重新生成，
     # 所以比任何 setting 都权威 —— 本机 theme_custom_color 是 null、壁纸是渐变

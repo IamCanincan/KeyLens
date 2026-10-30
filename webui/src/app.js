@@ -69,6 +69,17 @@ function applyTheme() {
 }
 onApplyTheme(applyTheme);
 
+/* 状态栏兜底：管理器注入的 insets 在本机可能报 0（它算的是"安全绘制区"），
+   而 22px 的标题行会正好钻进状态栏底下 —— "头被砍一半"。命令层从 dumpsys
+   量出真实高度并换算成 dp，这里落成 CSS 值，与注入值取大（见 app.css 的
+   --inset-top）。 */
+function applyInsets() {
+  const dp = parseFloat(S.env.sys_statusbar_dp);
+  const st = document.documentElement.style;
+  if (dp > 0) st.setProperty('--statusbar-fallback', dp + 'px');
+  else st.removeProperty('--statusbar-fallback');
+}
+
 /* 自动刷新：只在日志页开着时才该有这一个定时器；离开页面必须收掉，
    否则它会一直在后台 fork 命令。 */
 onAuto(function (on) {
@@ -188,6 +199,7 @@ function reloadAll() {
   S.loaded = {};
   return loadBase().then(function () { return checkContract(); }).then(function () {
     applyTheme();
+    applyInsets();
     return load(S.tab);
   });
 }
@@ -221,6 +233,7 @@ function boot() {
      这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
     applyTheme();   /* env.sys_dark 这时才到 —— boot 里第一次涂色时它还是 undefined */
+    applyInsets();  /* 状态栏高度也是 env 带回来的 */
     show(start);
     if (startSub) openSub(startSub);
   }, function () {

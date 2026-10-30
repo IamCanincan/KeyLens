@@ -14,8 +14,10 @@
      --safe-area-inset-*，--window-inset-* 是它的别名），这个 WebView 里
      env(safe-area-inset-*) 恒 0 —— 只读 env 的话顶栏就不再伸到状态栏底下，
      那条缝会露成"透明缺一块"（2026-10-30 上机症状）。所以两边取大者：
-     管理器注入的优先，浏览器/台架里没有注入值时退回 env()。 */
-  --inset-top: max(var(--safe-area-inset-top, 0px), var(--window-inset-top, env(safe-area-inset-top, 0px)));
+     管理器注入的优先，浏览器/台架里没有注入值时退回 env()。
+     第三项是命令层从 dumpsys 量出来的真实状态栏高度（dp）—— 本机注入值实测
+     可能是 0，而 22px 的标题行正好钻到状态栏底下（"头被砍一半"）。 */
+  --inset-top: max(var(--safe-area-inset-top, 0px), var(--window-inset-top, env(safe-area-inset-top, 0px)), var(--statusbar-fallback, 0px));
   --inset-bottom: max(var(--safe-area-inset-bottom, 0px), var(--window-inset-bottom, env(safe-area-inset-bottom, 0px)));
   --bar-h: 64px;
   --nav-h: 80px;
