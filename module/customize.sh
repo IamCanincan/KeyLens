@@ -61,6 +61,11 @@ set_perm_recursive "$MODPATH" 0 0 0755 0644 || true
 chmod 0755 "$MODPATH/post-fs-data.sh" 2>/dev/null
 chmod 0755 "$MODPATH/service.sh" 2>/dev/null
 chmod 0755 "$MODPATH/action.sh" 2>/dev/null
+# 其余脚本也点名给 0755：KernelSU 解包后一律落 644（zip 里的权限位不保留），
+# 而 webui.sh 由管理器按 sh 调用、backends/*.sh 会被 source、部署脚本还要核对模式 ——
+# 不点名就会留一堆 644，看着能跑，一核对就红（2026-10-30 装 KeyLens 时实测如此）。
+chmod 0755 "$MODPATH/webui.sh" "$MODPATH/uninstall.sh" 2>/dev/null
+chmod 0755 "$MODPATH"/backends/*.sh "$MODPATH"/backends/*.awk 2>/dev/null
 
 # ---------- [4/5] 清理旧版残留 ----------
 ui_print " "

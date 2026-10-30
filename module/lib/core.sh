@@ -42,7 +42,11 @@ KL_LEGACY_BOOT_HASH="/data/adb/ts_auto.boot_hash"
 #       后端目录里那批 .ts_* 是**运行期状态**（基线名单、ever 名单、指纹、已移除清单），
 #       丢了不只是难看：手删过的应用会重新被加回名单，快照差分会当成第一次运行。
 #       这里按目录扫，不依赖 detect_backend 的顺序（迁移在探测之前就要能跑）。
-KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/misc/keystore/omk"
+# 迁移要扫的目录：三个后端的目标文件目录 + OMK 自己的**状态**目录。
+# OMK 的 KL_DIR 是 /data/adb/omk（运行期文件寄在那儿），跟它的配置目录
+# /data/misc/keystore/omk 不是同一个 —— 漏了前者，OMK 机器上的基线/ever/pid
+# 一个都不会搬。这条由 tests/legacy-migrate.sh 从 OMK_STATE_DIR 反查。
+KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
 
 # 说明：一条搬家：只在新名不存在时 mv，源不存在就什么都不做。
 #       为什么不用 `for pair in "旧|新"` 再 ${pair%%|*} 切：**Android 的 sh 把 | 当成"或"**，

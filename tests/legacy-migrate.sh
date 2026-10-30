@@ -92,6 +92,21 @@ KL_LOG="$D/new2/keylens.log"; mkdir -p "$D/new2"
 migrate_legacy_paths; rc=$?
 [ "$rc" = 0 ] && ok '缺目录退 0（迁移失败不该阻断开机）' || bad "缺目录时退 $rc"
 
+printf '── 迁移目录表必须覆盖后端真正的运行期目录 ──\n'
+# OMK 的运行期文件寄在 KL_DIR = /data/adb/omk，而它的配置在 /data/misc/keystore/omk ——
+# 两个目录只有一字之差，漏了前者，OMK 机器上的基线/ever/pid 一个都不会搬（真踩过）。
+omk_state=$(sed -n 's/^OMK_STATE_DIR="\([^"]*\)".*/\1/p' module/lib/core.sh | head -1)
+teesim_dir=$(sed -n 's/^TEESIM_DIR="\([^"]*\)".*/\1/p' module/lib/core.sh | head -1)
+tstore_dir=$(sed -n 's/^TSTORE_DIR="\([^"]*\)".*/\1/p' module/lib/core.sh | head -1)
+dirs=$(sed -n 's/^KL_BACKEND_DIRS="\([^"]*\)".*/\1/p' module/lib/core.sh | head -1)
+for d in "$omk_state" "$teesim_dir" "$tstore_dir"; do
+    [ -n "$d" ] || { bad '从 core.sh 抽不到后端目录常量'; continue; }
+    case " $dirs " in
+        *" $d "*) ok "迁移表包含 $d" ;;
+        *) bad "迁移表漏了 $d（那里的运行期文件不会被搬）" ;;
+    esac
+done
+
 printf '── 迁移搬的名字，必须是代码真在用的名字 ──\n'
 # 这一条抓的是"迁移与代码各说各话"：改名那次把 .ts_lock 切成了 .kl__lock（双下划线），
 # 30 处代码自己是一致的、看着能用，但迁移生成的是 .kl_lock —— 搬过去的文件新代码永远看不见。
