@@ -233,10 +233,19 @@ export function renderBackend() {
   if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
-  box.appendChild(keyboxCard());
-  box.appendChild(backendMatrix());
-  box.appendChild(renderTheme());
-  box.appendChild(selfCheck());
+  /* 首屏之外的卡（keybox / 三家矩阵 / 外观 / 自检）推迟一帧再挂。
+     975px 高的视口里它们都在折叠线以下，晚一帧出现没人看得见；而把它们的
+     md-list-item / md-button 从切页的关键路径上摘掉，同步渲染与布局都能少一截。
+     box 已经不在页面上（换页或重画了）就整批放弃 —— 不往卸掉的树里塞节点。 */
+  setTimeout(function () {
+    if (!box.isConnected) return;
+    const frag = document.createDocumentFragment();
+    frag.appendChild(keyboxCard());
+    frag.appendChild(backendMatrix());
+    frag.appendChild(renderTheme());
+    frag.appendChild(selfCheck());
+    box.appendChild(frag);
+  }, 0);
   return box;
 }
 

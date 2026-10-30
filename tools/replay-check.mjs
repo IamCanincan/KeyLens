@@ -54,7 +54,7 @@ let serial = '';
 try { serial = adb('get-serialno').trim(); } catch (e) { console.error('✗ adb 不可用：' + e.message); process.exit(1); }
 if (!serial || serial === 'unknown') { console.error('✗ 没有连上的设备'); process.exit(1); }
 const store = {};
-for (const c of READ) store[c] = cap(c, c === 'log' ? '60' : '');
+for (const c of READ) store[c] = cap(c, c === 'log' ? '300' : '');
 /* icons 要包名参数：拿 targets 的头几个真包名去要，形状才是屏幕上会看到的形状 */
 const pkgs = (store.targets.stdout || '').split('\n').map(s => s.trim()).filter(Boolean).slice(0, 12);
 store.icons = pkgs.length ? cap('icons', pkgs.join(' ')) : { errno: 0, stdout: '', stderr: '' };
@@ -194,7 +194,19 @@ async function main() {
   const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
 
   await ws.send('Page.navigate', { url: URL0 });
-  await sleep(3500);
+  /* 冷启动：从 navigate 到 #view 真有内容 —— 用户打开 WebUI 等的就是这一段 */
+  const tNav = Date.now();
+  let coldMs = -1;
+  for (let i = 0; i < 100; i++) {
+    await sleep(100);
+    const r = await ws.send('Runtime.evaluate', {
+      expression: `(document.getElementById('view') && document.getElementById('view').textContent || '').length`,
+      returnByValue: true,
+    });
+    if ((r.result.value || 0) > 200) { coldMs = Date.now() - tNav; break; }
+  }
+  chk('冷启动能看到内容（<3s）', coldMs > 0 && coldMs < 3000, coldMs > 0 ? coldMs + 'ms' : '10 秒内没出内容');
+  await sleep(2500);   // 让分批挂载与图标补齐
 
   const PROBE = `(function(){
     var vw = Math.round(document.documentElement.clientWidth);
@@ -284,6 +296,31 @@ async function main() {
     items: document.querySelectorAll('#view md-list-item').length,
     hint: (document.getElementById('view').textContent.match(/共 \\d+ 条[^|]*/) || [''])[0] }; })()`);
   chk('分批加载最终补齐到全部条目', done.items >= Math.min(realTargets.length, 200), done.hint);
+
+  /* 日志页 300 行：用户在日志页能点的最大档，也是这页最重的形态。
+     量"切走再切回"的时间——数据已在 S.log 里，量到的是渲染本身。 */
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true}))`);
+  await sleep(900);
+  const picked300 = await ev(`(function(){
+    var bs = [].slice.call(document.querySelectorAll('#view md-button'));
+    var b = bs.filter(function(x){ return (x.textContent||'').trim().indexOf('300') >= 0; })[0];
+    if (b) { b.click(); return 1; } return 0; })()`);
+  await sleep(2600);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
+  await sleep(150);
+  const logM = await ev(`(function(){ return new Promise(function(res){
+    var n=document.getElementById('nav'), t0=performance.now();
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true}));
+    var sync=performance.now()-t0;
+    requestAnimationFrame(function(){ requestAnimationFrame(function(){
+      res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
+            nodes: document.querySelectorAll('#view *').length,
+            lines: document.querySelectorAll('#view .log-line').length });
+    });});
+  }); })()`);
+  chk('日志页 300 行切回不卡（<400ms）', logM.ms < 400,
+    `${logM.ms}ms（同步 ${logM.syncMs}ms）/ ${logM.nodes} 节点 / ${logM.lines} 行`
+    + (picked300 ? '' : '  · 没找到 300 行按钮，量的是当前档'));
   const shot = await ws.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, 'replay.png'), Buffer.from(shot.data, 'base64'));
   console.log('\n截图：' + path.join(OUT, 'replay.png'));
