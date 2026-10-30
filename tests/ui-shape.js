@@ -265,29 +265,35 @@ chk('顶栏让位在外层包壳上，组件保持原生 64px',
   && !/md-top-app-bar\{[^}]*padding-top/.test(css)
   && /<div id="barwrap"><md-top-app-bar id="bar"/.test(tpl));
 chk('底栏是悬浮药丸（不贴边 + 模糊 + 阴影）',
-  /md-navigation-bar\{[^}]*position:fixed/.test(css)
-  && /md-navigation-bar\{[^}]*width:min\(calc\(100% - 32px\)/.test(css)
-  && /md-navigation-bar\{[^}]*border-radius:999px/.test(css)
-  && /md-navigation-bar\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
-  && /md-navigation-bar\{[^}]*backdrop-filter:blur/.test(css)
-  && /md-navigation-bar\{[^}]*box-shadow:/.test(css));
+  /<nav id="nav" class="bottom-nav"/.test(tpl)
+  && /\.bottom-nav\{[^}]*position:fixed/.test(css)
+  && /\.bottom-nav\{[^}]*width:min\(calc\(100% - 32px\)/.test(css)
+  && /\.bottom-nav\{[^}]*border-radius:999px/.test(css)
+  && /\.bottom-nav\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
+  && /\.bottom-nav\{[^}]*backdrop-filter:blur/.test(css)
+  && /\.bottom-nav\{[^}]*box-shadow:/.test(css));
 chk('长页下滑时药丸收缩消失、上滑/回顶回来',
-  /md-navigation-bar\.nav-hidden\{[^}]*translateY/.test(css)
+  /\.bottom-nav\.nav-hidden\{[^}]*translateY/.test(css)
   && /nav\.classList\.toggle\('nav-hidden'/.test(app)
   && /document\.documentElement\.scrollHeight/.test(app));
-chk('底栏只给当前项显示文字（shadow 注入）',
-  /aria-selected="false"\] \.label\{opacity:0/.test(app)
-  && /aria-selected="false"\] \.icon\{top:20px/.test(app));
-chk('底栏文字切换走过渡（不再一跳一跳）',
-  /\.item \.label\{[^}]*transition:opacity/.test(app)
-  && /\.item \.icon\{[^}]*transition:top/.test(app)
-  && !/aria-selected="false"\] \.label\{[^}]*visibility/.test(app));
-/* 真机 WebView 的 env(safe-area-inset-*) 不是 0，而两个组件 shadow 里各有一条
+/* 自绘四格：图标在 52px 胶囊中轴；活动项把文字放侧边（halo 圆右侧淡入）；
+   44px 活动圆 / 26px 胶囊端 / 外层 32px 药丸端靠 4+22 = 6+26 的同一圆心。 */
+chk('底栏图标在中轴、文字在侧边、活动圆与边缘同心',
+  /\.nav-item\{[^}]*height:52px[^}]*align-items:center/.test(css)
+  && /\.nav-item\{[^}]*border-radius:26px/.test(css)
+  && /\.nav-halo\{width:44px;height:44px;border-radius:50%/.test(css)
+  && /\.bottom-nav\{[^}]*height:64px[^}]*padding:6px/.test(css)
+  && /\.nav-label\{[^}]*max-width:0[^}]*opacity:0/.test(css)
+  && /\.nav-item\.active \.nav-label\{max-width:64px;opacity:1/.test(css)
+  && /function buildNav\(\)/.test(app) && /classList\.toggle\('active'/.test(app));
+chk('底栏文字切到侧边是过渡而不是瞬切',
+  /\.nav-label\{[^}]*transition:max-width[^}]*opacity[^}]*transform/.test(css)
+  && /\.nav-item\.active\{[^}]*padding:4px 16px 4px 4px/.test(css));
+/* 真机 WebView 的 env(safe-area-inset-*) 不是 0，顶栏组件 shadow 里还有一条
    env padding；外层包壳已经让位，组件内部必须归零，否则真机上会双倍让位
    （顶栏多 28px 把内容标题切掉，台架 env=0 看不见）。 */
-chk('顶栏/底栏组件内部的 env 让位归零（防真机双倍）',
-  /\.bar\{padding-top:0!important\}/.test(app)
-  && /\.bar\{background:transparent!important;padding-bottom:0!important\}/.test(app));
+chk('顶栏组件内部的 env 让位归零（防真机双倍）',
+  /\.bar\{padding-top:0!important\}/.test(app));
 chk('页标题在内容里（28px），顶栏只在滚动后出 22px 小标题',
   /\.page-title\{font-size:28px/.test(css)
   && /\.headline\{font-size:22px!important/.test(app)

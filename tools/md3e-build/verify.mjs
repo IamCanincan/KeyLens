@@ -33,7 +33,7 @@ const get = p => new Promise((res, rej) => {
 });
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
-const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
+const WANT = ['md-top-app-bar', 'md-card', 'md-list',
   'md-list-item', 'md-button', 'md-loading-indicator', 'md-snackbar'];
 /* 顺序 = 底栏四格的顺序（主页 / 功能 / 日志 / 设置）。
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
@@ -185,20 +185,36 @@ async function main() {
     chk('页首顶栏标题让位（滚动后才出现）',
       !!barTitles && barTitles.vis === 'hidden' && barTitles.op === '0',
       barTitles ? barTitles.vis + '/' + barTitles.op : '没读到');
-    const navLbl = await ev(`(function(){ var n=document.getElementById('nav');
-      return [].slice.call(n.shadowRoot.querySelectorAll('.item')).map(function(b){
-        var l=b.querySelector('.label'); var s=getComputedStyle(l);
-        return s.visibility + ':' + s.opacity; }); })()`);
-    chk('底栏只给当前项显示文字', (navLbl[0] === 'visible:1')
-      && navLbl.slice(1).every(function(x){ return /:0$/.test(x); }), (navLbl || []).join(' / '));
-    const navTr = await ev(`(function(){ var n=document.getElementById('nav'), items=n.shadowRoot.querySelectorAll('.item');
-      var l=items[1]&&items[1].querySelector('.label'), i=items[1]&&items[1].querySelector('.icon');
-      var ls=l?getComputedStyle(l):null, is=i?getComputedStyle(i):null;
-      return { lt:ls?ls.transitionProperty:'', ld:ls?ls.transitionDuration:'', it:is?is.transitionProperty:'', id:is?is.transitionDuration:'' }; })()`);
-    chk('底栏文字/图标切换走过渡（不再瞬切）',
-      /opacity/.test(navTr.lt) && /transform/.test(navTr.lt) && parseFloat(navTr.ld) > 0
-      && /top/.test(navTr.it) && parseFloat(navTr.id) > 0,
-      'label=' + navTr.lt + ' ' + navTr.ld + ' / icon=' + navTr.it + ' ' + navTr.id);
+    const navInfo = await ev(`(function(){ var n=document.getElementById('nav');
+      return [].slice.call(n.children).map(function(b){
+        var l=b.querySelector('.nav-label'); var s=getComputedStyle(l);
+        return { active:b.classList.contains('active'), op:s.opacity, max:s.maxWidth }; }); })()`);
+    chk('底栏只给当前项显示文字',
+      navInfo[0].active && navInfo[0].op === '1'
+      && navInfo.slice(1).every(function(x){ return !x.active && x.op === '0'; }),
+      navInfo.map(function(x){ return (x.active ? '*' : '') + x.op; }).join(' / '));
+    const navTr = await ev(`(function(){ var n=document.getElementById('nav'); var b=n.children[1];
+      var l=b&&b.querySelector('.nav-label'); var s=l?getComputedStyle(l):null;
+      return { tp:s?s.transitionProperty:'', td:s?s.transitionDuration:'', max:s?s.maxWidth:'' }; })()`);
+    chk('底栏文字侧移是过渡（不是一跳一跳）',
+      /max-width/.test(navTr.tp) && /opacity/.test(navTr.tp) && /transform/.test(navTr.tp)
+      && parseFloat(navTr.td) > 0,
+      navTr.tp + ' ' + navTr.td);
+    {
+      const geo = await ev(`(function(){ var n=document.getElementById('nav'), item=n.children[0];
+        var halo=item.querySelector('.nav-halo'), icon=item.querySelector('.nav-icon'), lab=item.querySelector('.nav-label');
+        var nr=n.getBoundingClientRect(), ir=item.getBoundingClientRect(), hr=halo.getBoundingClientRect();
+        var cr=icon.getBoundingClientRect(), lr=lab.getBoundingClientRect();
+        var cx=function(r){ return r.left+r.width/2; }, cy=function(r){ return r.top+r.height/2; };
+        return { outerCap:cx(nr)-nr.width/2 + nr.height/2, itemCap:cx(ir)-ir.width/2 + ir.height/2,
+          halo:cx(hr), icon:cx(cr), v:cy(nr)-cy(hr), labelLeft:lr.left, haloRight:hr.right }; })()`);
+      chk('底栏图标在中轴、文字在侧边、活动圆与胶囊/药丸端同心',
+        Math.abs(geo.outerCap - geo.halo) <= 2 && Math.abs(geo.itemCap - geo.halo) <= 1
+        && Math.abs(geo.icon - geo.halo) <= 1 && Math.abs(geo.v) <= 1
+        && geo.labelLeft >= geo.haloRight - 1,
+        '圆心 ' + geo.outerCap + '/' + geo.itemCap + '/' + geo.halo + '/' + geo.icon
+        + ' · 垂直差 ' + geo.v + ' · 文字左 ' + Math.round(geo.labelLeft));
+    }
     const pill = await ev(`(function(){ var n=document.getElementById('nav'); var r=n.getBoundingClientRect();
       var s=getComputedStyle(n); return { pos:s.position, left:Math.round(r.left), right:Math.round(r.right),
         radius:s.borderRadius, vw:Math.round(document.documentElement.clientWidth) }; })()`);

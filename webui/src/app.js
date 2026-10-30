@@ -6,7 +6,6 @@
  * 实测 2962 KB，单文件页面扛不住。
  *===========================================================================*/
 import '@materialwebunofficial/md3e-web/components/md-top-app-bar.js';
-import '@materialwebunofficial/md3e-web/components/md-navigation-bar.js';
 import '@materialwebunofficial/md3e-web/components/md-card.js';
 import '@materialwebunofficial/md3e-web/components/md-list.js';
 import '@materialwebunofficial/md3e-web/components/md-button.js';
@@ -47,12 +46,37 @@ const PAGES = [
 const bar = document.getElementById('bar');
 const view = document.getElementById('view');
 const nav = document.getElementById('nav');
-nav.items = PAGES.map(function (p) { return { icon: p.icon, label: p.label }; });
 
-/* 参照 NoMount 的两处版式：顶栏标题用 28px 大标题；底栏只给当前项显示文字，
-   活动图标收进 secondary-container 胶囊。字号与标签布局都写死在组件 shadow 里，
-   外层 CSS 够不到 —— 照 rowSkin 的办法注入两张构造样式表，不动组件 API。
-   （已验证这批样式只在 shadow 里生效，不会外溢到 md-list-item 的行皮肤。） */
+/* 底栏自绘：MD3E 导航组件把图标/文字固定在上下结构里，做不出"图标在中轴、
+   文字在侧边、活动圆与胶囊边缘同心"。这里用四个原生按钮渲染：
+   图标永远在 52px 胶囊的垂直中轴；活动项向左端扩出一个 44px 圆（与 26px
+   胶囊端、外层 32px 药丸端同心），文字从圆右侧淡入。 */
+function setNavSelected(i) {
+  [].forEach.call(nav.children, function (el, j) {
+    el.classList.toggle('active', j === i);
+    el.setAttribute('aria-selected', j === i ? 'true' : 'false');
+  });
+}
+function buildNav() {
+  nav.textContent = '';
+  PAGES.forEach(function (p, i) {
+    const b = h('button', 'nav-item');
+    b.type = 'button';
+    b.setAttribute('data-index', String(i));
+    b.setAttribute('aria-label', p.label);
+    const halo = h('span', 'nav-halo');
+    halo.appendChild(h('span', 'nav-icon', p.icon));
+    b.appendChild(halo);
+    b.appendChild(h('span', 'nav-label', p.label));
+    b.addEventListener('click', function () { show(p.id); });
+    nav.appendChild(b);
+  });
+  setNavSelected(0);
+}
+buildNav();
+
+/* 顶栏标题的 28px / 滚动后浮现在组件 shadow 里，外层 CSS 够不到 ——
+   照 rowSkin 的办法注入一张构造样式表，不动组件 API。 */
 function injectSheet(el, css) {
   if (!el || !el.shadowRoot) return false;
   try {
@@ -75,23 +99,6 @@ whenDefined('md-top-app-bar', function () {
     '.titles{opacity:0!important;visibility:hidden!important;transition:opacity .18s ease}',
     ':host(.scrolled) .titles{opacity:1!important;visibility:visible!important}',
     '.headline{font-size:22px!important;line-height:28px!important;font-weight:500!important;letter-spacing:-.1px!important}',
-  ].join(''));
-});
-whenDefined('md-navigation-bar', function () {
-  /* alwaysShowLabel 在这个版本里只是个兼容存根（getter 恒 true），所以
-     "只给当前项显示文字"只能在 shadow 里做：非活动标签淡出，图标下移居中。
-     底栏同理，组件 shadow 的 .bar 也会吃 env(safe-area-inset-bottom)；外层已经
-     用 --inset-bottom 让位，这里归零避免底部再叠一次。 */
-  injectSheet(nav, [
-    '.bar{background:transparent!important;padding-bottom:0!important}',
-    /* 切换标签时不要瞬切字符：纯 opacity/transform 过渡，配合图标 top 的缓动。
-       以前用 visibility 立即显隐 + 图标 10/20px 硬切，看起来就是“字一跳一跳”。 */
-    '.item .label{font-weight:650!important;transition:opacity .22s ease,transform .22s ease}',
-    '.item[aria-selected="false"] .label{opacity:0!important;transform:translateY(-4px)}',
-    '.item[aria-selected="true"] .label{opacity:1!important;transform:none}',
-    '.item[aria-selected="false"] .icon{top:20px!important}',
-    '.item .icon{transition:top .22s cubic-bezier(.2,.9,.25,1)}',
-    '.glyph{transition:font-variation-settings .22s ease}',
   ].join(''));
 });
 
@@ -220,7 +227,7 @@ function show(name) {
   S.sub = '';
   headline();
   syncBackBtn();
-  nav.selected = String(PAGES.findIndex(function (x) { return x.id === p; }));
+  setNavSelected(PAGES.findIndex(function (x) { return x.id === p; }));
   try { history.replaceState(null, '', '#/' + p); } catch (e) { location.hash = '#/' + p; }
   resetScrollState();
   draw();
@@ -318,8 +325,8 @@ onDraw(draw);
 /* 库的事件是 change + detail.index（不是 selected-change —— 上一版骨架按后者接，
    点了不会切页而台架没抓到，因为台架只数了 items.length）。 */
 nav.addEventListener('change', function (e) {
-  const i = (e && e.detail && typeof e.detail.index === 'number') ? e.detail.index : Number(nav.selected);
-  if (!isNaN(i) && PAGES[i]) show(PAGES[i].id);
+  const i = (e && e.detail && typeof e.detail.index === 'number') ? e.detail.index : -1;
+  if (i >= 0 && PAGES[i]) show(PAGES[i].id);
 });
 
 /* ── 启动 ──────────────────────────────────────────────────────────── */

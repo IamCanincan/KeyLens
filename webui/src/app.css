@@ -60,15 +60,37 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
   margin:0 0 12px;padding-inline-start:4px;overflow-wrap:anywhere}
 /* 悬浮药丸底栏：不贴边、不铺满，靠模糊+阴影浮在内容上。
    长页向下滑时整体下沉缩小消失，向上滑/回顶再回来（状态由 app.js 切）。 */
-md-navigation-bar{position:fixed;left:0;right:0;bottom:calc(var(--inset-bottom) + 12px);z-index:30;
-  width:min(calc(100% - 32px), 480px);margin-inline:auto;height:64px;padding-bottom:0;
+.bottom-nav{position:fixed;inset-inline:0;bottom:calc(var(--inset-bottom) + 12px);z-index:30;
+  box-sizing:border-box;width:min(calc(100% - 32px), 480px);height:64px;margin-inline:auto;padding:6px;
+  display:flex;align-items:center;justify-content:space-between;gap:4px;
   border-radius:999px;border:1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 38%, transparent);
   background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 86%, transparent);
   -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
   box-shadow:0 10px 30px color-mix(in srgb, var(--md-sys-color-shadow, #000) 30%, transparent);
   transition:transform .26s cubic-bezier(.2,.9,.25,1),opacity .18s ease}
-md-navigation-bar.nav-hidden{transform:translateY(calc(100% + var(--inset-bottom) + 18px)) scale(.94);
+.bottom-nav.nav-hidden{transform:translateY(calc(100% + var(--inset-bottom) + 18px)) scale(.94);
   opacity:0;pointer-events:none}
+/* 每个目的地是一个 52px 胶囊；图标永远在垂直中轴。活动项向左端扩出一个
+   44px 圆（与 26px 胶囊端、外层 32px 药丸端同心），文字从圆右侧淡入。 */
+.nav-item{box-sizing:border-box;height:52px;min-width:52px;flex:0 0 auto;margin:0;padding:4px;border:0;
+  border-radius:26px;display:flex;align-items:center;justify-content:center;gap:8px;
+  background:transparent;color:var(--md-sys-color-on-surface-variant);
+  font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent;
+  transition:background-color .22s ease,color .22s ease,padding .26s cubic-bezier(.2,.9,.25,1)}
+.nav-item:active{transform:scale(.96)}
+.nav-item:focus-visible{outline:2px solid var(--md-sys-color-primary);outline-offset:-2px}
+.nav-halo{width:44px;height:44px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  flex:none;transition:background-color .22s ease}
+.nav-icon{width:24px;height:24px;display:flex;align-items:center;justify-content:center;
+  font-family:var(--md-icon-font-family);font-size:24px;line-height:1;transition:color .22s ease}
+.nav-label{max-width:0;opacity:0;overflow:hidden;white-space:nowrap;transform:translateX(-4px);
+  font-size:13px;font-weight:650;
+  /* 淡出比宽度收缩快：切换时先看不到半截字，胶囊再慢慢收 */
+  transition:max-width .26s cubic-bezier(.2,.9,.25,1),opacity .12s ease,transform .26s ease}
+.nav-item.active{background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container);
+  padding:4px 16px 4px 4px}
+.nav-item.active .nav-halo{background:color-mix(in srgb, var(--md-sys-color-surface) 22%, transparent)}
+.nav-item.active .nav-label{max-width:64px;opacity:1;transform:none}
 md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-bottom) + 12px);z-index:60;transform:translateX(-50%)}
 
 .stack{display:flex;flex-direction:column;gap:var(--gap)}
