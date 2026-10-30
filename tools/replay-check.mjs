@@ -376,18 +376,31 @@ async function main() {
   const ic = await ev(`(function(){
     var imgs = [].slice.call(document.querySelectorAll('#view img.app-ic'));
     var ok = imgs.filter(function (i) { return i.naturalWidth > 0; }).length;
-    return { total: imgs.length, ok: ok,
+    var rows = document.querySelectorAll('#view md-list-item').length;
+    var fb = document.querySelectorAll('#view .app-ic-fallback').length;
+    var srcs = imgs.map(function (i) { return i.getAttribute('src'); });
+    return { total: imgs.length, ok: ok, rows: rows, fb: fb, srcs: srcs,
       sample: imgs.slice(0, 3).map(function (i) { return i.getAttribute('src') + '=' + i.naturalWidth; }) };
   })()`);
-  /* 本地只有几张贴图（webroot/icons/ 是运行时产物、已 gitignore），所以判据分两截：
-     ① 每个包都建出了 <img> 且 src 是 icons/<包名>.png —— 这一条永远可判；
-     ② 本地真有那张图时，像素必须 > 0（证明路径解析对）。缺图不假装通过，报出来。 */
+  /* 图标是运行时产物（webroot/icons/ 已 gitignore），本地只有当下后端名单里导过的几张。
+     所以判据钉的是**行首一定有着落**：每个条目要么是 <img>、要么是首字块 ——
+     空白行首才是 bug。像素只在"本地确实有这张图"时要求（缺图会按设计退首字块，
+     不能拿它判死）。后端名单换了之后，原来那批 app 可能根本不在列表里。 */
   const iconsDir = path.join(repo, 'module', 'webroot', 'icons');
   const local = fs.existsSync(iconsDir) ? fs.readdirSync(iconsDir) : [];
-  chk('名单里的应用都建出了 <img>（src 指向 icons/<包名>.png）',
-    ic.total > 0, `${ic.total} 个 img · ${ic.sample.join(' ')}`);
-  chk('本地有贴图的图标真的渲染出了像素', ic.ok > 0 || local.length === 0,
-    `本地贴图 ${local.length} 张 · 有像素的 img ${ic.ok}/${ic.total}`);
+  const localSet = new Set(local);
+  chk('每个条目都有行首（img 或首字块），没有空白行首',
+    ic.total + ic.fb >= ic.rows && ic.rows > 0,
+    `img ${ic.total} + 首字块 ${ic.fb} / 行 ${ic.rows}`);
+  {
+    const expected = ic.srcs.filter(s => localSet.has(String(s).replace(/^icons\//, '')));
+    chk('本地真有这张贴图时，img 必须渲染出像素',
+      expected.length === 0 || ic.ok >= expected.length,
+      expected.length
+        ? `名单里 ${expected.length} 张本地贴图，有像素的 img ${ic.ok}/${ic.total}`
+        : `本地贴图与当前名单没有交集（${local.length} 张本地 · ${ic.total} 个 img），这一项没测到`);
+    if (!expected.length) console.log('     · 本地贴图与当前后端名单无交集，像素检查本轮跳过（不是通过）');
+  }
   {
     const s0 = await ws.send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(OUT, 'replay-list.png'), Buffer.from(s0.data, 'base64'));

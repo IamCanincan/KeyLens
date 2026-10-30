@@ -50,6 +50,13 @@
 
 #### 修复
 
+* **补齐两处"只增不删"，并开始真机后端轮换**（"要完美适配"）：
+  * **Tricky 按包补丁段可删**：`tricky_patch_set.awk` 加 `-v drop=<包名>` + 新命令 `tricky-drop-patch`。边界是测试钉出来的：紧邻**下一段**的空行与说明注释必须保留（第一版把 `# b 段` 连同 [bbb] 的说明吃掉了），紧贴本段段头的注释随段删除；全局段拒绝删除；阴性对照（缺失 / 前缀 / 删全局）要求文件逐字节不变。
+  * **TEESim profile 可建可删**：新 awk `teesim_profile.awk`（new = 复制 default 整份对象 + del = 删成员，其余字节保留；default 不可删、重名报 exists、别人名字的子串不误伤），命令 `teesim-profile-new` / `teesim-profile-del`，界面在 Profile 表里加"新建 profile"与"删除 · <当前>"。
+  * **真机轮换（TEESim 轮已验）**：装 TEESimulator v4.0、只禁用 OMK（不卸载），重启后 `backend=teesim`、名单同步 3 条；**新功能真机往返**：`teesim-profile-new ktest` → 列表出现（复制自 default：keybox.xml / patch / 3 条）→ `teesim-profile-del ktest` → 回到 1 份，`config.json.bak` 生成。真机回放 27 项绿。
+  * **回放台架的图标断言改了口径**：它原来要求"每个应用都建出 `<img>`"，这在名单只有 3 条、本地又没导过那几张 PNG 的后端上必然红 —— 而界面此时按设计退首字块。改成"每个条目都有行首（img 或首字块）"，像素只对本地真有贴图的包要求；没交集时明确打印"这一项没测到"，不冒充通过。
+  * Tricky 轮的 release 包本机下不到（GitHub 直连断、`api.github.com` 反而通），最后走 `ghproxy.net` 镜像取到 OSS v3.1.0（与官方资产字节数一致 1289252）。
+
 * **四条上机反馈**（名单首帧没图标 / 行顶贴搜索框 / 图标偏小；无层次 + 标签溢出；输入框丑；比例不协调）：
   * **首帧没图标**是异步取图标造成的：`icons` 命令回来之前行首是空的。现在**先画首字块**，图标到货后 `loadIconsFor` 触发一次重画把 `<img>` 换上（只在还停在名单二级页时重画）。图标 32→**40px**，首字块同步放大。
   * 搜索框与第一行之间加 12px（以前是 2px 的缝，看着像粘在一起）。
