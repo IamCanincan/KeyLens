@@ -1800,6 +1800,8 @@ cmd_set_boot_hash() {
         log_info "🧩 WebUI 设置 Verified Boot 哈希（${#v} 位）并已应用"
     else
         log_warn "⚠️ WebUI 保存 Verified Boot 哈希，但写入后读回不一致"
+        # 界面的成功提示会以这条为准：保存成功不等于这次运行里已经应用上
+        kv apply_note "已保存到配置，但立即应用失败（写入后读回不一致）；下次开机仍会再写一次"
     fi
     prop_now ro.boot.vbmeta.digest
     kv saved 1

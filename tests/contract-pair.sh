@@ -116,6 +116,28 @@ for g in $gated; do
     chk_has "能力门 $g" "$cmds" "$g"
 done
 
+# 写入口的参数形状：write('命令', 参数) 直发的参数只有两种 —— 明文（包名/模式/
+# 名字/哈希）或外层 base64（keybox 内容、payload）。发错形状时命令名、清单都能
+# 对上，命令层也会执行到校验那一步才拒绝：界面上就是"点了保存没反应"，而 demo
+# 台架不过桥、真机又没人逐颗按钮点，所以坏很久都没人发现（props-boot-hash 真发过
+# base64，命令层要明文十六进制）。这里把"哪些命令允许直发 base64"钉成清单。
+SCREENS=$ROOT/webui/src/screens.js
+direct=$(grep -oE "write\('[a-z-]+'" "$SCREENS" 2>/dev/null | sed "s/write('//; s/'//" | sort -u)
+chk "界面 write() 调用抽得到" 1 "$([ -n "$direct" ] && echo 1 || echo 0)"
+for d in $direct; do
+    chk_has "写入口 $d" "$cmds" "$d"
+    chk_has "写命令清单 $d" "$writes" "$d"
+done
+B64_OK="keybox-save omk-save-injector teesim-save teesim-save-overrides omk-save-config tricky-save-patch"
+b64sent=$(grep -oE "write\('[a-z-]+', *b64\(" "$SCREENS" 2>/dev/null \
+    | sed "s/write('//; s/', *b64(//" | sort -u)
+for c in $b64sent; do
+    case " $B64_OK " in
+        *" $c "*) printf '  ok   %-30s 允许直发 base64\n' "写入口 $c" ;;
+        *) printf '  ✗    %-30s 发了 base64，命令层收的是明文\n' "写入口 $c"; fail=1 ;;
+    esac
+done
+
 # 演示数据里的契约号不能再写死：写死就会与 EXPECT_API 漂开，
 # 桌面预览于是永远"匹配"，横幅永远演不出来（这次就是这么漏的）
 # 旧产物用 `QUERY.get('badapi') || String(EXPECT_API)`，新源码直接 `'api=' + EXPECT_API`

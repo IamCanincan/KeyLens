@@ -50,6 +50,10 @@
 
 #### 修复
 
+* **逐个核对 WebUI 写入口的接线，抓出 `props-boot-hash` 的参数形状错了**（"检查一下是否真的接入"）。界面把 digest 先 `b64()` 再发，而命令层 `cmd_set_boot_hash` 收的是明文十六进制或 `-`：真机上点「保存并应用」只会得到"哈希必须是 64 或 128 位十六进制"；留空取消恰好因为空串等于"不带参数"而能用。改成直发明文；命令层在读回不一致时补 `apply_note`，界面不再把"已保存"说成"已应用"。其余写入口逐条对过（名单增/删、`set-mode`、Tricky 补丁保存/删段、TEESim profile 增删、overrides、OMK 两份 toml、keybox、属性开关/立即应用、同步、清日志、OMK 重载），命令名、参数编码与 payload 键名均一致。
+  * **加静态闸**：`tests/contract-pair.sh` 现在从 `screens.js` 抽出所有 `write('命令', …)`，要求命令在 `KL_COMMANDS` / `WRITE_CMDS` 里，并把"允许直发 base64"的命令钉成清单（`keybox-save`、`omk-save-injector` 与五条 payload 写命令）。先跑未修版 → 点名 `props-boot-hash` 退 1；修后全绿。demo 台架不过桥、真机又没人逐颗按钮点，这类"按钮在、参数形状错"以前谁也拦不住。
+  * 全量自测：23 套 shell、9 道静态闸、`build.mjs --check` 全过；产物随之重建。
+
 * **不用整机重启也能轮换：`ksud soft-reboot` + 真机补齐最后三块**（"你不是可以单单重启进程吗"）。验证出来的边界：从 adb 起的后端 daemon 活不过会话、也不会被开机阶段接管，所以"只杀进程"不够；**`ksud soft-reboot`（用户态重启，内核 uptime 不变）** 会重跑 init 与模块 service 阶段，这才是等价于"重启那几个进程"的做法。三轮用户态重启完成：
   * **Tricky 真启动（OSS v3.1.0）**：`tee_status` 只有一行 `teeBroken=true` —— 老格式；界面的 AUTO 解析只认四行 `status=…`，于是显示"无法判定"。已加 `teeBroken` 回退（true→证书生成、false→叶证书、unknown→不判定），状态行写出回退理由；真机上 AUTO 卡现在显示"证书生成"，回放按真机 tee_status 断言这条。
   * **keybox 替换（真机）**：同字节重写 → `saved=1`、sha 不变、生成 `.bak`、权限收到 600；塞坏内容 → 拒绝且文件不动。

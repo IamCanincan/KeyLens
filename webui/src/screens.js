@@ -338,7 +338,9 @@ function propsCards() {
   acts2.appendChild(button('保存并应用', { variant: 'filled', icon: ICON.save, on: function () {
     const v = String(tf.value || '').trim();
     if (v && !/^[0-9a-fA-F]{64}$/.test(v)) { toastFn('digest 必须是 64 位十六进制（或留空取消）', true); return; }
-    write('props-boot-hash', b64(v), v ? '已写入并将在下次开机生效' : '已取消应用 vbmeta.digest');
+    /* 这条命令收的是明文十六进制或 '-'，不是 base64 —— 以前从 keybox 那条抄了
+       编码，真机上点保存只会得到"必须是 64 或 128 位十六进制"。契约闸门把它钉住。 */
+    write('props-boot-hash', v, v ? '已写入并立即应用' : '已取消应用 vbmeta.digest');
   } }));
   s2.appendChild(acts2);
   c2.appendChild(s2);
