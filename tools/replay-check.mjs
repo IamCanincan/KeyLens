@@ -328,6 +328,32 @@ async function main() {
     if (!hasNeedle || !titleOk) bad++;
   }
 
+  /* ── 后端专属卡片：把命令层**真读到**的值钉到界面上 ──────────────────
+     此前回放只保证"页面能渲染"，补丁块读成空、profile 表读成空都不响 ——
+     `tricky-patches` 没解析后端（KL_PATCH 为空）那个 bug 就是这么漏过去的：
+     界面把整块画成"还没有这个段"，台架一路绿。这里按当前后端取第一行真数据，
+     找不到就判红。 */
+  {
+    await goto(1);
+    await sleep(600);
+    await tapEntry('后端配置');
+    await sleep(1500);
+    const q = await ev(PROBE);
+    const be = ((store['backend-info'].stdout || '').match(/^backend=(.*)$/m) || [])[1] || '';
+    if (be === 'tricky') {
+      const first = (store['tricky-patches'].stdout || '').split('\n').filter(Boolean)[0] || '';
+      const val = (first.split('\t')[1] || '').trim();
+      chk('Tricky 补丁块画的是命令层真读到的值', !!val && val !== '-' && (q.text || '').indexOf(val) >= 0,
+        val ? '找「' + val + '」（' + first.split('\t')[0] + ' 段）' : '命令层没返回任何补丁段');
+    } else if (be === 'teesim') {
+      const nm = ((store['teesim-profiles'].stdout || '').split('\n').filter(Boolean)[0] || '').split('\t')[0] || '';
+      chk('TEESim profile 表画的是命令层真读到的名字', !!nm && (q.text || '').indexOf(nm) >= 0,
+        nm ? '找「' + nm + '」' : '命令层没返回 profile');
+    } else {
+      console.log('     · 当前后端是 ' + (be || '未知') + '，跳过后端专属卡片断言');
+    }
+  }
+
   /* 切页手感：数据已缓存时"二次进入"要多久（含同步渲染与组件布局）。
      后端格仍是全场最重的一页（真机名单上百条），主页则是打开就看到的那一屏 ——
      两页都要有数，四格重排之后"落地页变轻了"这件事得能被量出来。 */

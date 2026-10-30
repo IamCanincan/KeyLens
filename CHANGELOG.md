@@ -50,6 +50,13 @@
 
 #### 修复
 
+* **真机后端轮换跑完（Tricky + TEESim 各一轮），抓出三个只在真机上才现形的问题**：
+  * **全新 Tricky 第一次保存补丁表必失败**：`security_patch.txt` 只在用户第一次保存时才存在，而 awk 对**不存在的输入文件会在 END 之前就退出** ——"文件不存在时按请求新建"那段根本跑不到，命令层只看到空状态，回"补丁表写入失败"。保存前先落空文件；目录缺失给明确错误。
+  * **`tricky-patches` 读命令没解析后端**：每次 `webui.sh` 都是新进程，`KL_PATCH` 只在 `use_backend` 里赋值 —— 读命令拿到空路径，报"缺少 tricky_patches.awk"，界面据此把整个补丁块画成"还没有这个段"，**错得很安静**。回放台架当时没断言这块文字，所以一路绿。新增 `tools/klpatch-init-check.cjs` 守这一类（凡用 `KL_PATCH` 的命令函数必须自己 `detect_backend`；唯一豁免是 helper `backend_keybox_path`），CI 已挂。
+  * **回放台架补上"后端专属卡片"断言**：按当前后端把命令层真读到的一行钉到界面上（Tricky → 全局补丁值、TEESim → profile 名），否则"画成空"与"没有内容"在台架眼里一样。变异验过：临时挪走 `tricky_patches.awk` → 退码 1 且点名"命令层没返回任何补丁段"。
+  * **真机结果**：TEESim 轮 —— `backend=teesim`、名单同步 3 条、`ktest` profile 新建→删除往返成功（`config.json.bak` 生成）；Tricky 轮 —— `backend=tricky`、target.txt 13 条、全局+按包补丁写入、`tricky-patches` 读回正确、`tricky-drop-patch` 删除后文件与基线**逐字节相同**、两条阴性（缺段 / 删全局）按预期拒绝。两轮回放各 27/28 项绿。
+  * **收尾状态**：只禁用、不卸载过任何原有模块；OMK 已重新启用，TEESim/Tricky 已标记卸载（下次重启生效），OMK 的 keybox 与配置全程未动。**手机当前没有后端守护进程在跑（OMK 从轮换开始就没启动），要恢复 attestation 需要重启一次** —— 这步留给用户。
+
 * **补齐两处"只增不删"，并开始真机后端轮换**（"要完美适配"）：
   * **Tricky 按包补丁段可删**：`tricky_patch_set.awk` 加 `-v drop=<包名>` + 新命令 `tricky-drop-patch`。边界是测试钉出来的：紧邻**下一段**的空行与说明注释必须保留（第一版把 `# b 段` 连同 [bbb] 的说明吃掉了），紧贴本段段头的注释随段删除；全局段拒绝删除；阴性对照（缺失 / 前缀 / 删全局）要求文件逐字节不变。
   * **TEESim profile 可建可删**：新 awk `teesim_profile.awk`（new = 复制 default 整份对象 + del = 删成员，其余字节保留；default 不可删、重名报 exists、别人名字的子串不误伤），命令 `teesim-profile-new` / `teesim-profile-del`，界面在 Profile 表里加"新建 profile"与"删除 · <当前>"。
