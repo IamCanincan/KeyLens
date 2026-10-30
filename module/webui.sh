@@ -1157,6 +1157,11 @@ cmd_tee_status() {
 # 按包块（`[包名]` 段）以前不读也不写：全局值改了不等于那个包生效了。
 cmd_tricky_patches() {
     local f="$TSTORE_DIR/security_patch.txt" ac
+    # KL_PATCH 由 use_backend 赋值，而每次调用都是新进程 —— 不像 save 那几条
+    # 自己解析后端的话，这里拿到的是空路径（真机上表现成"缺少 tricky_patches.awk"，
+    # 界面据此把补丁块画成"还没有这个段"，错得很安静）。
+    detect_backend "$MODDIR"
+    [ "$KL_BACKEND" = "tricky" ] || { echo "当前后端不是 Tricky Store" >&2; return 1; }
     [ -f "$f" ] || { echo "文件不存在：$f" >&2; return 1; }
     ac="$AWK_CMD"; [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || { echo "未找到 awk，读不了补丁表" >&2; return 1; }

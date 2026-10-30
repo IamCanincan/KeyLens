@@ -65,7 +65,7 @@ jobs:
           fail=0
           for g in tests/ui-shape.js tests/accent-theme.mjs tools/kv-shape-check.mjs \
                    tools/md3e-build/icon-gate.mjs tools/md3e-build/check-artifact.mjs \
-                   tools/json-flat-set-check.cjs tools/name-residue-check.mjs; do
+                   tools/json-flat-set-check.cjs tools/name-residue-check.mjs \n                   tools/klpatch-init-check.cjs; do
             printf '\n══ %s\n' "$g"
             if node "$g"; then
               printf 'OK   %s\n' "$g"
