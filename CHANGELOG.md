@@ -50,6 +50,13 @@
 
 #### 修复
 
+* **不用整机重启也能轮换：`ksud soft-reboot` + 真机补齐最后三块**（"你不是可以单单重启进程吗"）。验证出来的边界：从 adb 起的后端 daemon 活不过会话、也不会被开机阶段接管，所以"只杀进程"不够；**`ksud soft-reboot`（用户态重启，内核 uptime 不变）** 会重跑 init 与模块 service 阶段，这才是等价于"重启那几个进程"的做法。三轮用户态重启完成：
+  * **Tricky 真启动（OSS v3.1.0）**：`tee_status` 只有一行 `teeBroken=true` —— 老格式；界面的 AUTO 解析只认四行 `status=…`，于是显示"无法判定"。已加 `teeBroken` 回退（true→证书生成、false→叶证书、unknown→不判定），状态行写出回退理由；真机上 AUTO 卡现在显示"证书生成"，回放按真机 tee_status 断言这条。
+  * **keybox 替换（真机）**：同字节重写 → `saved=1`、sha 不变、生成 `.bak`、权限收到 600；塞坏内容 → 拒绝且文件不动。
+  * **TEESim overrides 写回（真机）**：`attestationSecurityLevel=2` 写入并读回、清空回未设置，`overrides.json` 由无到有再到 `{}`；**编辑非默认 profile**：新建 `ktest2`、写 `mode=generation`、读回 default=patch / ktest2=generation，再删除。
+  * **顺带修一个我自己引入的回归**：软重启后真机名单涨到 137 条，图标分批到货时整页重画把 16 条/批的分批反复打断（回放抓到列表停在 16 条）。改成原位替换首字块（`data-base` + `swapIcons`），不再重画。
+  * **收尾状态（已核对）**：`backend=omk`、OMK daemon 在跑、TEESim/Tricky 模块与它们的 `/data/adb/*` 数据目录全部清除、OMK 的 keybox 与配置未动。三家轮换脚本的互相拆台（Tricky 装 OMK、TEESim 禁 Tricky）已记档。
+
 * **后端轮换的"上游会互相拆台"记一笔（差点删掉用户的 OMK）**：TrickyStoreOSS 的 `customize.sh` 在安装时对 `oh_my_keymint` / `teesim` 直接 `touch remove`（"下次重启时删除"），TEESim 的 `customize.sh` 反过来给 Tricky 打 `disable`。轮换收尾复查时发现 OMK 目录里躺着一个 `remove` 标记 —— **要不是复查，用户下次重启 OMK 模块就没了**（keybox 与配置本身未被改动）。已撤标记；`ksud module enable/disable/uninstall` 实测都只动目标模块，误伤全部来自上游脚本。以后轮换必须在装完对方后检查并撤掉 `remove` 标记，收尾时再确认 `oh_my_keymint` 目录里既无 `remove` 也无 `disable`。
 
 * **真机后端轮换跑完（Tricky + TEESim 各一轮），抓出三个只在真机上才现形的问题**：
