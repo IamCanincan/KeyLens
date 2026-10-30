@@ -405,6 +405,14 @@ chk('换页动画包住标题/内容/页脚，并按方向推入',
   chk('长页入场不缩放/不上下位移（切页动画只横向）',
     /translate3d\(var\(--page-dx,16px\),0,0\)/.test(kf) && !/scale\(/.test(kf), kf.slice(0, 96));
 }
+/* 骨架页/菜单页换成新内容时，旧画面要淡出，不能整页瞬换。 */
+chk('大块内容切换用旧页淡出过渡（不是瞬换）',
+  /\.swap-veil\{[^}]*position:fixed[^}]*transition:opacity/.test(css)
+  && /function fadeOldPage\(el\)/.test(app)
+  && /veil\.classList\.add\('out'\)/.test(app)
+  && /if \(fromPending && !pagePending\) fadeOldPage\(prev\);/.test(app)
+  && /if \(lastPageKey === 'func\/'\) fadeOldPage\(prev\);/.test(app)
+  && /classList\.toggle\('pending-page', pagePending\)/.test(app));
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */

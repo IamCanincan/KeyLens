@@ -404,6 +404,28 @@ function stashPage() {
 function afterPaint(fn) {
   requestAnimationFrame(function () { requestAnimationFrame(fn); });
 }
+/* 大块内容切换的过渡：把旧页（骨架页 / 菜单页）克隆成固定遮罩压在新内容上，
+   200ms 淡出。新内容先就位、旧画面慢慢退场，不再"啪"一下整页换掉。 */
+function fadeOldPage(el) {
+  if (!el || !el.classList || !el.classList.contains('page')) return;
+  if (window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches) return;
+  const r = el.getBoundingClientRect();
+  if (r.width < 24 || r.height < 24) return;
+  const veil = el.cloneNode(true);
+  veil.classList.remove('page-in');
+  veil.classList.remove('pending-page');
+  veil.classList.add('swap-veil');
+  veil.setAttribute('aria-hidden', 'true');
+  veil.style.top = Math.round(r.top) + 'px';
+  veil.style.left = Math.round(r.left) + 'px';
+  veil.style.width = Math.round(r.width) + 'px';
+  veil.style.bottom = '0';
+  veil.style.animation = 'none';
+  document.body.appendChild(veil);
+  void veil.offsetWidth;
+  veil.classList.add('out');
+  setTimeout(function () { veil.remove(); }, 240);
+}
 
 function show(name) {
   /* 先存当前二级页（如果正在看），再切走 —— 下次进来直接贴回。 */
@@ -481,11 +503,14 @@ function draw() {
   const key = S.tab + '/' + S.sub;
   const changed = key !== lastPageKey;
   const toIdx = PAGES.findIndex(function (p) { return p.id === S.tab; });
+  const prev = view.firstElementChild;
   /* 缓存命中：整页原样贴回，不跑 render、不再建节点。贴回后从仓里删掉 ——
-     这一页现在是活的；离开时 stashPage() 会把它重新存回去。 */
+     这一页现在是活的；离开时 stashPage() 会把它重新存回去。
+     从菜单进缓存页时把菜单淡出，避免整页瞬间换掉。 */
   const cached = (S.tab === 'func' && S.sub && changed && !pagePending) ? cachedPage(S.sub) : null;
   if (cached) {
     delete pageCache['func/' + S.sub];
+    if (lastPageKey === 'func/') fadeOldPage(prev);
     if (view.firstElementChild !== cached) { view.textContent = ''; view.appendChild(cached); }
     lastPageKey = key;
     lastTabIndex = toIdx;
@@ -496,8 +521,10 @@ function draw() {
   /* 同页重画（数据异步回来 / 搜索输入）复用同一个 .page 容器：
      否则 show() 先 draw、缓存命中后再 draw，第二次会把正在入场的整页
      换掉，动画就永远看不见。换页时才建新容器并重新触发动画。 */
-  const prev = view.firstElementChild;
   const reuse = !changed && prev && prev.classList && prev.classList.contains('page');
+  /* 骨架页换成真内容：旧骨架还在页面上，先克隆它做淡出遮罩，再重建。 */
+  const fromPending = reuse && prev.classList.contains('pending-page');
+  if (fromPending && !pagePending) fadeOldPage(prev);
   const page = reuse ? prev : h('div', 'page');
   if (reuse) page.textContent = '';
   else { view.textContent = ''; view.appendChild(page); }
@@ -522,6 +549,8 @@ function draw() {
   }
   page.appendChild(body());
   page.appendChild(pageFoot());
+  /* 这一帧是不是骨架页：下一帧真正内容回来时据此把骨架淡出。 */
+  page.classList.toggle('pending-page', pagePending);
   if (changed) {
     let dx = 16;
     if (S.sub && !lastSub) dx = 22;              /* 进二级页：从右侧推入 */

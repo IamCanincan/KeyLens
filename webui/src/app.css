@@ -270,6 +270,12 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
 #view > .page.page-in{animation:page-in 300ms cubic-bezier(.175,.885,.32,1.275)}
 @keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),0,0)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){#view > .page.page-in{animation:none}}
+/* 大块内容切换的过渡：骨架页/旧页整页克隆成固定遮罩，新内容先在底下就位，
+   遮罩 200ms 淡出 —— 不再"啪"一下从骨架换成整页。z-index 在内容之上、
+   顶栏 20 / 底栏 30 之下；pointer-events:none 不挡操作。 */
+.swap-veil{position:fixed;z-index:15;pointer-events:none;overflow:hidden;
+  background:var(--md-sys-color-surface);opacity:1;transition:opacity .2s ease}
+.swap-veil.out{opacity:0}
 /* 行首图标：NoMount 式的单色轮廓图标，无底色块。
    彩色只留给状态与操作按钮；应用列表里的真实图标是内容，不在此列。 */
 .ic-avatar{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
