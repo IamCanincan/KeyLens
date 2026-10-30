@@ -368,6 +368,13 @@ chk('换页动画包住标题/内容/页脚，并按方向推入',
   && /#view > \.page\.page-in\{animation:page-in/.test(css)
   && /var\(--page-dx/.test(css) && /--page-dx/.test(app)
   && /h\('div', 'page'\)/.test(app) && /page\.appendChild\(pageFoot\(\)\)/.test(app));
+/* 长页动画只横向：整页缩放/纵向位移以整页中心为原点，名单页高近万像素时
+   视口顶部的标题会跟着上下跳几十像素 —— 用户看到的"页面突然拉高"。 */
+{
+  const kf = (css.match(/@keyframes page-in\{[^}]*\}/) || [''])[0];
+  chk('长页入场不缩放/不上下位移（切页动画只横向）',
+    /translate3d\(var\(--page-dx,16px\),0,0\)/.test(kf) && !/scale\(/.test(kf), kf.slice(0, 96));
+}
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */

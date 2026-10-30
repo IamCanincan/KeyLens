@@ -453,6 +453,20 @@ async function main() {
         (pf.text.match(/开机写入[^|\n]*/g) || []).slice(0, 2).join(' / '));
     }
     chk('点「目标名单」真的进二级', await tapEntry('目标名单') === 1);
+    /* 入场动画对长页面只做横向推入：整页 scale/translateY 以页中心为原点，
+       名单上百行时视口顶部的标题会被带着上下跳几十像素（用户报的"突然拉高"）。
+       这里在点进去后的 380ms 内逐帧量标题 top，必须是一条水平线。 */
+    {
+      const tops = await ev(`new Promise(function(res){ var t0=performance.now(), out=[];
+        function step(){ var t=document.querySelector('#view .page-title');
+          if (t) out.push(Math.round(t.getBoundingClientRect().top*10)/10);
+          if (performance.now()-t0 < 380) requestAnimationFrame(step); else res(out); }
+        requestAnimationFrame(step); })`);
+      const span = tops && tops.length ? Math.max.apply(null, tops) - Math.min.apply(null, tops) : 999;
+      chk('进入名单页时标题纵向稳定（长页入场不缩放/不纵向位移）',
+        tops && tops.length >= 5 && span <= 2,
+        'top=' + (tops || []).slice(0, 6).join('/') + '… 跨度 ' + span.toFixed(1) + 'px');
+    }
     /* 预取的行为证据：进去后的第一帧只能是"载入占位"或"已带应用名"，
        不能先画包名、等图标到货再原位替换（用户看到的闪一下）。 */
     {

@@ -12,7 +12,7 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const R = path.resolve(__dirname, '..') + '/';
-const files = { screens: R + 'webui/src/screens.js', app: R + 'webui/src/app.js' };
+const files = { screens: R + 'webui/src/screens.js', app: R + 'webui/src/app.js', css: R + 'webui/src/app.css' };
 const orig = {};
 for (const k in files) orig[k] = fs.readFileSync(files[k], 'utf8');
 
@@ -84,6 +84,9 @@ const cases = [
   ['功能菜单不把未读取的属性对照报成 0 项', files.screens,
     "      ? '开机写入已开启' + (S.props.length ? ' · ' + S.props.length + ' 项对照' : '')",
     "      ? '开机写入已开启 · ' + S.props.length + ' 项对照'", 1],
+  ['长页入场不缩放/不上下位移（切页动画只横向）', files.css,
+    '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),0,0)}to{opacity:1;transform:none}}',
+    '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),10px,0) scale(.992)}to{opacity:1;transform:none}}', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

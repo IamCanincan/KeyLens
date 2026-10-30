@@ -235,10 +235,12 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
   border-radius:50%;margin-inline-end:6px;vertical-align:.5px;opacity:.8}
 /* 切页动画：整页（标题 + 内容 + 页脚）一起淡入/推入，方向由 --page-dx 给。
    只在**换页**时播（draw() 里按 tab/sub 变化加 .page-in）：搜索框每次按键都会
-   重画同一页，若无条件播动画就会闪。合成层只动 opacity/transform。 */
+   重画同一页，若无条件播动画就会闪。合成层只动 opacity/transform。
+   不做纵向位移与缩放：名单页高近万像素，整页 translateY/scale 会让视口顶部的
+   标题跟着上下位移几十像素（缩放原点在整页中心），看起来就是"页面突然拉高"。 */
 .page{display:flex;flex-direction:column;min-width:0}
 #view > .page.page-in{animation:page-in 300ms cubic-bezier(.175,.885,.32,1.275)}
-@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),10px,0) scale(.992)}to{opacity:1;transform:none}}
+@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),0,0)}to{opacity:1;transform:none}}
 @media (prefers-reduced-motion: reduce){#view > .page.page-in{animation:none}}
 /* 行首图标：NoMount 式的单色轮廓图标，无底色块。
    彩色只留给状态与操作按钮；应用列表里的真实图标是内容，不在此列。 */
