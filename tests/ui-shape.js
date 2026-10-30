@@ -202,6 +202,10 @@ chk('伪装在功能页的二级里，设置格不再有它',
 chk('外观与界面自检在设置格，不在别处',
   /renderTheme\(\)/.test(setBody) && /selfCheck\(\)/.test(setBody)
   && !/renderTheme/.test(homeBody) && !/selfCheck/.test(subBody) && !/selfCheck/.test(homeBody));
+/* 推迟一帧挂载会让页面进场后再长高约 400px（实测 243 → 641）—— 与长页缩放同类。
+   自检只有五行本地数据，同帧画完。 */
+chk('设置页外观与自检同帧画完（不推迟挂载）',
+  /box\.appendChild\(selfCheck\(\)\)/.test(setBody) && !/setTimeout/.test(setBody));
 /* p[1] 是 id、p[2] 是 label（正则的三个捕获组按 id/label/icon 排）—— 拿 label 去比
    id 的话这条永远红，而"永远红的断言"和"没有断言"等价。 */
 chk('日志仍是第三格', pages.findIndex(p => p[1] === 'log') === 2);

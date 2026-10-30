@@ -511,10 +511,9 @@ export function onOpenSub(fn) { openSubFn = fn; }
 export function renderSettings() {
   const box = h('div', 'stack');
   box.appendChild(renderTheme());
-  setTimeout(function () {
-    if (!box.isConnected) return;
-    box.appendChild(selfCheck());
-  }, 0);
+  /* 自检卡不再推迟一帧：它只有五行本地数据，同帧画完页面高度就是最终值；
+     推迟挂会让页面进场后再长高约 400px（实测 243 → 641），看起来同样是"拉高"。 */
+  box.appendChild(selfCheck());
   return box;
 }
 

@@ -271,8 +271,23 @@ async function main() {
   const switchMs = [];
   for (let i = 0; i < PAGES.length; i++) {
     const want = PAGES[i];
-    await ev(`(function(){ var n=document.getElementById('nav');
-      n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
+    if (i === 3) {
+      /* 设置页的自检卡曾经推迟一帧挂：进场第一帧只有外观卡，随后页面从
+         243px 长到 641px。切页与采样放在同一个任务里，逐帧量页面高度。 */
+      const hs = await ev(`new Promise(function(res){ var t0=performance.now(), out=[];
+        var n=document.getElementById('nav');
+        n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true}));
+        function step(){ var p=document.querySelector('#view > .page');
+          if (p) out.push(Math.round(p.getBoundingClientRect().height));
+          if (performance.now()-t0 < 350) requestAnimationFrame(step); else res(out); }
+        requestAnimationFrame(step); })`);
+      const span = hs && hs.length ? Math.max.apply(null, hs) - Math.min.apply(null, hs) : 999;
+      chk('设置页进场后不再长高（外观与自检同帧画完）',
+        hs && hs.length >= 5 && span <= 2, 'h=' + (hs || []).slice(0, 6).join('/') + '… 跨度 ' + span + 'px');
+    } else {
+      await ev(`(function(){ var n=document.getElementById('nav');
+        n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
+    }
     if (i === 1) {
       const an = await ev(`(function(){ var p=document.querySelector('#view > .page');
         if (!p) return null; var s=getComputedStyle(p);
