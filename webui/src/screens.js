@@ -104,6 +104,15 @@ export function avatar(iconName, colorIdx) {
   return s;
 }
 
+/* 属性行的状态点：比整颗彩色圆底轻 —— 17 行挨着排，圆底会吵，色点刚好。
+   tone: ok / warn / bad / none */
+export function dot(tone) {
+  const s = h('span', 'dot dot-' + (tone || 'none'));
+  s.setAttribute('slot', 'start');
+  s.setAttribute('aria-hidden', 'true');
+  return s;
+}
+
 export function button(label, o) {
   const b = h('md-button');
   b.setAttribute('variant', (o && o.variant) || 'text');
@@ -253,13 +262,16 @@ function propsCards() {
     item({ headline: '开机重置属性', trailing: S.status.props_masking === 'on' ? '已开启' : '已关闭',
       tone: S.status.props_masking === 'on' ? 'ok' : 'warn',
       supporting: '关闭后下次开机不再写入' }),
-    button(S.status.props_masking === 'on' ? '关闭开机写入' : '开启开机写入',
-      { variant: 'tonal', on: function () { write(S.status.props_masking === 'on' ? 'props-off' : 'props-on', '', '已切换'); } }),
-    button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }),
   ]));
+  /* 动作按钮别塞进 md-list：组件会把行里的控件居中，看着像另一行数据 */
+  const acts1 = h('div', 'acts');
+  acts1.appendChild(button(S.status.props_masking === 'on' ? '关闭开机写入' : '开启开机写入',
+    { variant: 'tonal', on: function () { write(S.status.props_masking === 'on' ? 'props-off' : 'props-on', '', '已切换'); } }));
+  acts1.appendChild(button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }));
+  s1.appendChild(acts1);
   const l = h('md-list');
   S.props.forEach(function (p) {
-    l.appendChild(item({
+    const it = item({
       headline: p.name,
       /* "当前"这行必须写在 supporting-text 里（组件是 white-space:pre-wrap，换行会
          正常显示、行高自己长）。以前是往 md-list 里 append 一个裸 div —— 它不在
@@ -267,7 +279,9 @@ function propsCards() {
       supporting: '期望 ' + (p.want || '—') + (p.st === 'diff' ? '\n当前 ' + (p.cur || '—') : ''),
       trailing: p.st === 'ok' ? '一致' : p.st === 'missing' ? '读不到' : '不符',
       tone: p.st === 'ok' ? '' : (p.st === 'missing' ? 'warn' : 'bad'),
-    }));
+    });
+    it.appendChild(dot(p.st === 'ok' ? 'ok' : p.st === 'missing' ? 'warn' : 'bad'));
+    l.appendChild(it);
   });
   s1.appendChild(l);
   c1.appendChild(s1);
@@ -277,7 +291,11 @@ function propsCards() {
   const c2 = card();
   const s2 = section('Verified Boot 哈希', ICON.tee);
   s2.appendChild(list([
-    item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到' }),
+    (function () {
+      const it = item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到' });
+      it.appendChild(dot(bt && bt.current ? 'ok' : 'warn'));
+      return it;
+    })(),
     item({ headline: '模块应用值', supporting: (bt && bt.configured) || '未设置（不写 vbmeta.digest）',
       tone: bt && bt.configured ? 'ok' : 'warn' }),
   ]));
@@ -1095,6 +1113,18 @@ export function renderLog() {
     tailRow.appendChild(chip(String(n) + ' 行', n === S.tail, function () { S.tail = n; S.loaded.log = false; reload(); }));
   });
   s.appendChild(tailRow);
+  /* 级别筛选：排障时只想看要处理的（问题 = 警告 + 错误）。计数写在芯片上，
+     点一下就知道这一档有没有东西，不用滚到底再找颜色。 */
+  const lv = { bad: 0, issue: 0 };
+  S.log.forEach(function (l) {
+    const k = logLevel(l);
+    if (k === 'bad') { lv.bad++; lv.issue++; } else if (k === 'warn') lv.issue++;
+  });
+  const lvRow = h('div', 'acts filter-grid');
+  [['all', '全部 ' + S.log.length], ['issue', '问题 ' + lv.issue], ['bad', '错误 ' + lv.bad]].forEach(function (v) {
+    lvRow.appendChild(chip(v[1], S.logFilter === v[0], function () { S.logFilter = v[0]; redraw(); }));
+  });
+  s.appendChild(lvRow);
   bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read,
     on: function () { S.loaded.log = false; reload(); } }));
   bar.appendChild(button('清空缓冲', { variant: 'text',
@@ -1111,8 +1141,14 @@ export function renderLog() {
   s.appendChild(h('p', 'hint', '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes)
     + '（' + (S.status.log_lines || '?') + ' 行）· 文件 ' + (S.status.log_file || '/data/adb/keylens.log')));
   const console_ = h('div', 'console tall');
+  const shownLines = S.log.filter(function (l) {
+    if (S.logFilter === 'all') return true;
+    const k = logLevel(l);
+    return S.logFilter === 'bad' ? k === 'bad' : (k === 'bad' || k === 'warn');
+  });
   if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
-  else S.log.forEach(function (l) { console_.appendChild(logRow(l)); });
+  else if (!shownLines.length) console_.appendChild(h('p', 'empty', '这一档没有行（' + S.log.length + ' 行里没有符合的）。'));
+  else shownLines.forEach(function (l) { console_.appendChild(logRow(l)); });
   s.appendChild(console_);
   c.appendChild(s);
   box.appendChild(c);

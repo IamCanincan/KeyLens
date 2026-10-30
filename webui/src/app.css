@@ -68,7 +68,20 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .chip-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
-.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:12px}
+.acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
+/* 表单节奏：字段之间 14px；开关/下拉行两端对齐、给足触控高度（以前 .row 一点样式都没有） */
+.form{display:flex;flex-direction:column;gap:14px;margin-top:12px}
+.form-sub{font-size:13px;font-weight:500;color:var(--md-sys-color-on-surface-variant);margin-top:6px}
+.row{display:flex;align-items:center;justify-content:space-between;gap:12px;min-height:48px}
+.row-t{font-size:15px;min-width:0;white-space:nowrap;overflow-wrap:anywhere}
+.row md-select{flex:1 1 auto;min-width:0;margin-left:12px}
+/* 属性行的状态点：一行一个色点，ok=主色 / 读不到=tertiary / 不符=error */
+.dot{width:10px;height:10px;border-radius:50%;flex:none;display:block;margin:0 6px 0 2px}
+.dot-ok{background:var(--md-sys-color-primary)}
+/* MD3 没有 warning 角色；tertiary 与 error 在默认色板里都是粉的，读不到/不符分不开 */
+.dot-warn{background:var(--md-sys-color-warning, #e8a33d)}
+.dot-bad{background:var(--md-sys-color-error)}
+.dot-none{background:var(--md-sys-color-outline)}
 /* 筛选芯片一行横滚（名单 129 / 已装 125 / 未纳入 / 已排除 在 417px 放不下）：
    不折行、可横滑、隐藏滚动条 —— 折成两排会把首屏往下顶两行。 */
 .acts.filter-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}

@@ -102,7 +102,7 @@ export const S = {
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', newPkg: '', overrides: [],
-  icons: {}, log: [], logErr: false, tail: 60, props: [], boot: null,
+  icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], boot: null,
   excluded: [], theme: 'auto',
   loaded: {}, seq: 0,
 };

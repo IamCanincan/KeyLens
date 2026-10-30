@@ -418,8 +418,8 @@ async function main() {
   await goto(2);
   await sleep(900);
   const picked300 = await ev(`(function(){
-    var bs = [].slice.call(document.querySelectorAll('#view md-button'));
-    var b = bs.filter(function(x){ return (x.textContent||'').trim().indexOf('300') >= 0; })[0];
+    var bs = [].slice.call(document.querySelectorAll('#view md-button, #view md-chip'));
+    var b = bs.filter(function(x){ return (x.textContent||'').trim().indexOf('300') >= 0 || (x.getAttribute&&(x.getAttribute('label')||'').indexOf('300') >= 0); })[0];
     if (b) { b.click(); return 1; } return 0; })()`);
   await sleep(2600);
   await goto(0);
