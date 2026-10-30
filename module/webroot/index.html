@@ -89,6 +89,13 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
 .nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
 md-list{display:block}
+/* 列表行之间的呼吸缝：md-list-item 每行各自是一块带底色的圆角面，
+   默认 0px 堆叠 —— 深色下整张卡的行糊成一条，"板块贴板块没有缝"说的就是它。
+   注意别在 md-list 上设 flex+gap：子项由组件 shadow 里的容器排版，
+   宿主的 gap 只是"computed 值变了、布局纹丝不动"（探针量过，两行仍贴死）。
+   margin 落在子项上，哪儿都生效。 */
+#view md-list md-list-item{margin-bottom:8px;border-radius:var(--md-sys-shape-corner-medium, 12px)}
+#view md-list md-list-item:last-child{margin-bottom:0}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
 .hint{font-size:12px;line-height:1.55;color:var(--md-sys-color-on-surface-variant);margin:10px 0 0}
