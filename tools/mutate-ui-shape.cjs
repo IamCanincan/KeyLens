@@ -73,6 +73,8 @@ const cases = [
   ['大块内容切换用旧页淡出过渡（不是瞬换）', files.app,
     '  if (fromPending && !pagePending) fadeOldPage(prev);',
     '  if (false) fadeOldPage(prev);', 1],
+  ['打开 WebUI 有品牌启动页并淡出', files.app,
+    "    splash.classList.add('out');\n", "    splash.remove();\n", 1],
   ['其余二级页首进也等数据再画（不先画"读不到/全部一致"）', files.app,
     '  if (sub === \'props\') return !!S.loaded.props;',
     '  if (sub === \'props\') return true;', 1],

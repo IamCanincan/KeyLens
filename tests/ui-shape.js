@@ -413,6 +413,16 @@ chk('大块内容切换用旧页淡出过渡（不是瞬换）',
   && /if \(fromPending && !pagePending\) fadeOldPage\(prev\);/.test(app)
   && /if \(lastPageKey === 'func\/'\) fadeOldPage\(prev\);/.test(app)
   && /classList\.toggle\('pending-page', pagePending\)/.test(app));
+/* 打开 WebUI 先出品牌启动页，主页在下面画好后淡出 —— 不是裸 spinner 瞬切。 */
+chk('打开 WebUI 有品牌启动页并淡出',
+  /export function bootSplash\(/.test(screens)
+  && /'boot-splash'/.test(screens) && /'boot-brand'/.test(screens)
+  && /bootSplash\(\)/.test(app) && /document\.body\.appendChild\(splash\)/.test(app)
+  && /BOOT_MIN_MS = 460/.test(app)
+  && /splash\.classList\.add\('out'\)/.test(app)
+  && /\.boot-splash\{[^}]*position:fixed[^}]*transition:opacity/.test(css)
+  && /\.boot-spin\{[^}]*animation:boot-spin/.test(css)
+  && !/view\.appendChild\(h\('md-loading-indicator'\)\)/.test(app));
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */

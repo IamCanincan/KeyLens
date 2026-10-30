@@ -34,7 +34,7 @@ const get = p => new Promise((res, rej) => {
 const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const WANT = ['md-top-app-bar', 'md-card', 'md-list',
-  'md-list-item', 'md-button', 'md-loading-indicator', 'md-snackbar'];
+  'md-list-item', 'md-button', 'md-snackbar'];
 /* 顺序 = 底栏四格的顺序（主页 / 功能 / 日志 / 设置）。
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
@@ -771,6 +771,24 @@ async function main() {
       head: it ? (it.getAttribute('headline')||'') : '' }; })()`);
   chk('骨架页在数据到齐后换成完整名单',
     !sk2.load && sk2.rows > 0 && sk2.head === 'Google Play 商店', JSON.stringify(sk2));
+
+  /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；
+     数据就绪后启动页淡出，主页已经在下面画好。 */
+  await send('Page.navigate', { url: URL0 + '&slow=env' });
+  await sleep(200);
+  const bs = await ev(`(function(){ return { splash: !!document.querySelector('.boot-splash'),
+    brand: !!document.querySelector('.boot-brand'), logo: !!document.querySelector('.boot-logo'),
+    page: !!document.querySelector('#view > .page') }; })()`);
+  chk('打开 WebUI 先显示品牌启动页', bs.splash && bs.brand && bs.logo, JSON.stringify(bs));
+  {
+    const sB = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-boot-splash.png'), Buffer.from(sB.data, 'base64'));
+  }
+  await sleep(1600);
+  const bs2 = await ev(`(function(){ return { splash: !!document.querySelector('.boot-splash'),
+    page: !!document.querySelector('#view > .page'), cards: document.querySelectorAll('#view md-card').length }; })()`);
+  chk('数据就绪后启动页淡出并露出主页',
+    !bs2.splash && bs2.page && bs2.cards >= 2, JSON.stringify(bs2));
 
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();

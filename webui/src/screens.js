@@ -311,6 +311,24 @@ export function prefetchListIcons() {
      命令失败也返回 true —— 数据没变也要把首字块状态画定。 */
   return loadIcons(need).then(function () { return true; }, function () { return true; });
 }
+/* 打开 WebUI 的启动页：品牌标识先出来，壳和数据在下面就位后整层淡出。
+   不用裸 spinner —— 空页面突然换成主页就是用户说的"很生硬"。 */
+export function bootSplash() {
+  const s = h('div', 'boot-splash');
+  s.setAttribute('role', 'status');
+  s.setAttribute('aria-label', 'KeyLens 正在启动');
+  const brand = h('div', 'boot-brand');
+  const logo = h('img', 'kl-logo boot-logo');
+  logo.src = logoUrl;
+  logo.alt = '';
+  brand.appendChild(logo);
+  brand.appendChild(h('b', 'boot-name', 'KeyLens'));
+  brand.appendChild(h('span', 'boot-sub', '正在读取设备状态…'));
+  brand.appendChild(h('span', 'boot-spin'));
+  s.appendChild(brand);
+  return s;
+}
+
 /* 过渡加载页（骨架屏）：不是一小张转圈卡 —— 骨架填满首屏、和真实内容同构，
    数据到齐后整页替换，等待时看起来是"正在长出一页"而不是"卡住了"。
    名单 / 日志 / 表单各有自己的形状。 */

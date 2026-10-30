@@ -162,6 +162,29 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .kl-logo{box-sizing:border-box;width:56px;height:56px;border-radius:16px;flex:none;display:block;
   object-fit:cover;background:#FCE4EC;
   border:1px solid color-mix(in srgb, #031019 14%, transparent)}
+/* 打开 WebUI 的启动页：品牌先出现，壳与数据在下面画好后再整层淡出。
+   盖住空壳但不遮住 snackbar（z 55 < 60），启动失败的红条仍能看见。 */
+.boot-splash{position:fixed;inset:0;z-index:55;display:flex;align-items:center;justify-content:center;
+  background:var(--md-sys-color-surface);opacity:1;transition:opacity .28s ease}
+.boot-splash.out{opacity:0}
+.boot-brand{display:flex;flex-direction:column;align-items:center;gap:8px;
+  animation:boot-brand-in .4s cubic-bezier(.2,.8,.2,1) both}
+.boot-logo{width:76px;height:76px;border-radius:22px;margin-bottom:6px;
+  box-shadow:0 12px 36px color-mix(in srgb, var(--md-sys-color-shadow, #000) 28%, transparent)}
+.boot-name{font-size:24px;font-weight:600;line-height:1.2;letter-spacing:-.2px;
+  color:var(--md-sys-color-on-surface)}
+.boot-sub{font-size:13px;line-height:1.5;color:var(--md-sys-color-on-surface-variant)}
+/* 细圆环而不是 MD3E 的变形指示器：启动页里它是一颗蓝色齿轮，抢品牌标识。 */
+.boot-spin{width:22px;height:22px;margin-top:12px;border-radius:50%;
+  border:2px solid color-mix(in srgb, var(--md-sys-color-primary) 20%, transparent);
+  border-top-color:var(--md-sys-color-primary);animation:boot-spin .9s linear infinite}
+@keyframes boot-brand-in{from{opacity:0;transform:translateY(10px) scale(.98)}to{opacity:1;transform:none}}
+@keyframes boot-spin{to{transform:rotate(360deg)}}
+@media (prefers-reduced-motion: reduce){
+  .boot-brand{animation:none}
+  .boot-spin{animation:none}
+  .boot-splash{transition:none}
+}
 .hero-id{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
 .brand-eyebrow{font-size:10px;line-height:14px;font-weight:650;letter-spacing:.18em;
   color:var(--md-sys-color-on-surface-variant)}

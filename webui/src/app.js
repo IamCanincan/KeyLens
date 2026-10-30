@@ -14,7 +14,6 @@ import '@materialwebunofficial/md3e-web/components/md-icon-button.js';
 import '@materialwebunofficial/md3e-web/components/md-switch.js';
 import '@materialwebunofficial/md3e-web/components/md-text-field.js';
 import '@materialwebunofficial/md3e-web/components/md-select.js';
-import '@materialwebunofficial/md3e-web/components/md-loading-indicator.js';
 import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 
 import {
@@ -23,7 +22,7 @@ import {
 import { applyAccent } from './theme.js';
 import {
   ICON, h, renderHome, renderFunc, renderFuncSub, renderLog, renderSettings, FUNC_PAGES,
-  renderPending, targetsPending, prefetchListIcons, swapIcons,
+  renderPending, targetsPending, prefetchListIcons, swapIcons, bootSplash,
   onToast, onReload, onAuto, onApplyTheme, onDraw, onOpenSub,
 } from './screens.js';
 
@@ -649,8 +648,14 @@ nav.addEventListener('change', function (e) {
 });
 
 /* ── 启动 ──────────────────────────────────────────────────────────── */
+/* 启动页至少停 460ms：命令层很快时也不会只闪一下品牌页就切走。 */
+const BOOT_MIN_MS = 460;
 function boot() {
   applyTheme();
+  /* 启动页先出来（盖住空壳），等主页/深链目标页画好两帧后再淡出。 */
+  const splash = bootSplash();
+  document.body.appendChild(splash);
+  const bootAt = performance.now();
   const hit = findBridge();
   attachBridge(hit);
   /* 深链支持 #/func/<二级>：直接落到那个功能的二级页（再按一次返回回菜单） */
@@ -658,14 +663,13 @@ function boot() {
   const m = /^([a-z]+)(?:\/([a-z]+))?$/.exec(rawStart) || [];
   const start = PAGES.some(function (p) { return p.id === m[1]; }) ? m[1] : 'home';
   const startSub = start === 'func' && m[2] && FUNC_PAGES[m[2]] ? m[2] : '';
-  view.appendChild(h('md-loading-indicator'));
   /* 首屏只走一条路：契约 → 基础状态 → 后端信息 → show()。show() 自己会按目标页取数，
      这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。
      backend-info 也要在首画前取：主页的版本胶囊、菜单的条数/keybox 状态都读它，
      否则落地页会先露出 "—"/“未设置”再被替换。取不到也照常画（load 会再试一次）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
     /* 800ms 只是兜底：backend-info 卡住时（桥接的 30s 超时）不能让整页一直停在
-       启动转圈上。正常几十毫秒就回来，超时则先画、由 load('home') 后再补。 */
+       启动页上。正常几十毫秒就回来，超时则先画、由 load('home') 后再补。 */
     return Promise.race([
       ensure('backend').then(function () {}, function () {}),
       new Promise(function (res) { setTimeout(res, 800); }),
@@ -675,10 +679,22 @@ function boot() {
     applyInsets();  /* 状态栏高度也是 env 带回来的 */
     show(start);
     if (startSub) openSub(startSub);
+    revealBoot(splash, bootAt);
   }, function () {
     show('home');
     onToast('基础状态读取失败，界面显示的是空值', true);
+    revealBoot(splash, bootAt);
   });
+}
+/* 目标页已经画好；补足最短停留时间，再等两帧让它真正上屏，然后启动页淡出。 */
+function revealBoot(splash, bootAt) {
+  const wait = Math.max(0, BOOT_MIN_MS - (performance.now() - bootAt));
+  setTimeout(function () {
+    afterPaint(function () {
+      splash.classList.add('out');
+      setTimeout(function () { splash.remove(); }, 340);
+    });
+  }, wait);
 }
 boot();
 export { reloadAll, show, draw, S, DEMO };
