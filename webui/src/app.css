@@ -71,6 +71,8 @@ md-snackbar{position:fixed;left:50%;bottom:calc(var(--nav-h) + var(--inset-botto
 .strip-k{font-size:13px;color:var(--md-sys-color-on-surface-variant);white-space:nowrap}
 .strip-k + .strip-k::before{content:"·";margin-right:10px;color:var(--md-sys-color-outline)}
 .sec-h b{min-width:0;overflow-wrap:anywhere}
+/* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
+.nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
 md-list{display:block}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}

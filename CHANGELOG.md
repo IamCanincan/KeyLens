@@ -50,6 +50,13 @@
 
 #### 修复
 
+* **【后端】格改成【功能】页：一张菜单集成所有功能，长列表默认收进二级**（用户定稿，同日第三次重排）。菜单页五项入口、各带一行**当下状态摘要**（生效条数、守护进程数、keybox 有无、伪装开关），落地即用；目标名单 / 后端配置 / 自动同步 / keybox / 属性伪装（含 Verified Boot）全部收进二级页，点进去才画。伪装与 Verified Boot 归位到【功能】—— 它们是改设备状态的功能；【设置】只留界面自己的事（外观 + 界面自检）。
+  * 二级页压一层 `pushState`（`#/func/<名>`），顶栏 leading 槽出返回箭头（`md-icon-button`），系统返回键由 `popstate` 接管回菜单；一级页之间仍是 `replaceState`，深链 `#/func/targets` 直落二级。
+  * **性能白赚一截**：功能菜单页不再为名单 fork `targets/apps/target-meta/excluded`、也不为伪装问 `props` —— 这些进二级才问（`loadSub` 按需取）。真机（129 条名单）：主页 22ms、功能菜单 24ms、设置 21ms，名单二级走 popstate 路径 198ms / 92 节点。
+  * **台架抓出一个组件行为**：`md-list-item` 会吞合成 `dispatchEvent`/`click()` —— 探针实测事件到了 document capture、元素监听器却不响（连临时挂在同一元素上的监听器都不响）。verify 与 replay 的二级页驱动全部改成 CDP `Input.dispatchMouseEvent` 可信点击，一次就通 —— 也更接近真手指。
+  * 菜单摘要只放文件名不放全路径：`/data/misc/keystore/...` 会从词中间折成三行，全路径在二级页第一行 hint 里本来就有。
+  * 静态闸（`tests/ui-shape.js`）重写层级组：菜单页必须"无长列表"（负面断言剥掉注释再查 —— 下一段的说明注释里就写着 listSection）、二级页按 `FUNC_PAGES` 分发、pushState/popstate/leading 箭头、主页只有状态两卡；变异台 9 把刀全部点名抓住。README 界面节整表重写。
+
 * **自动同步并进【后端】格**（用户定稿，同日第二次挪这张卡）。它维护的就是后端格最上面那张名单文件，跟"这一家的配置面"同格才是它的语境 —— 位置在配置面之后、keybox 之前，与 keybox 一起推迟一帧挂载（都在折叠线以下）。主页只剩状态条 + 三家矩阵，落地页更轻；主页/后端取数不变（自动同步卡的 status/env 本来就在 base 里）。台架与变异台同步：verify 的 home must 移出自动同步两条、backend must 移入；replay 冷启动判据从"三张卡"改"两张卡"；`mutate-ui-shape` 换刀（从后端批里摘掉自动同步必须点名响、往主页塞回一张也要响）。
 
 * **界面不是动态配色**（换 MD3E 时整套丢了的第三发，用户报的）。命令层一直在报 `sys_frro`（SystemUI overlay 的 base64）与 `sys_seed_raw`，界面这头却没人读 —— 上一版的 FRRO 解析、tonal 自检、四级回退与"明度取内置、彩度按实测比值"的映射全在换版时没了，界面退回 MD3E 库默认的静态紫。

@@ -95,7 +95,7 @@ export const S = {
   /* 每个字段都要有读它的地方 —— 曾经躺着但已没人用的那几个
      （appsSrc / selectMode / selected / targetSet / targetBaseSet / logSig）随
      多选与撤销那套界面一起退役，留在这里只会被下一个人当成"还有这条路子"。 */
-  status: {}, env: {}, tab: 'home',
+  status: {}, env: {}, tab: 'home', sub: '',
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   bridge: { kind: '', label: '', seen: [] },
   targets: [], apps: [], targetMeta: {}, listErr: '',

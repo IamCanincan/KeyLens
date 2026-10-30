@@ -13,7 +13,8 @@ import { accentNote } from './theme.js';
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
    越界的名字会被组件当**字面词**画出来，icon-gate 在构建时就会拒绝。 */
 export const ICON = {
-  home: 'home', backend: 'extension', log: 'article', settings: 'settings',
+  home: 'home', func: 'category', log: 'article', settings: 'settings',
+  back: 'arrow_back', next: 'chevron_right',
   about: 'info',
   sync: 'refresh', read: 'download', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
@@ -244,9 +245,7 @@ function propsCards() {
 
 /* 主页：打开就看到"还在不在跑、哪一家在跑"。两张卡都是十几二十个节点，
    没有一项需要推迟挂载 —— 推迟是给名单那种上百行的列表用的，这里推迟
-   只会让落地页"先空一帧再长出来"。
-   自动同步 2026-10-30 用户定稿进了【后端】格：它维护的就是那一格的名单文件，
-   跟"这一家的配置面"放在一起才是它的语境；主页只保留状态。 */
+   只会让落地页"先空一帧再长出来"。 */
 export function renderHome() {
   const box = h('div', 'stack');
   box.appendChild(statusStrip());
@@ -254,36 +253,80 @@ export function renderHome() {
   return box;
 }
 
-/* 后端控制面板：名单 + 自动同步 + 这一家的配置面 + keybox。
-   层级说明：本模块首先是一个**后端控制面板** —— 名单（target.txt / apps[] /
-   scoop）本来就是三家后端自己的配置文件之一，控制它属于面板职责；"自动更新
-   应用列表"是我们附加上去的功能，写的也正是这一格的名单文件，所以跟配置面
-   同格而不是独立目的地。 */
-export function renderBackend() {
-  const bi = S.backendInfo;
+/* ── 功能页：一张菜单 + 各功能的二级页（ui-shape 按这段的相邻次序切函数体，别打散）── */
+
+/* 二级页注册表：id → 标题。app.js 的路由、hash、返回箭头都读它；
+   长列表（名单、属性）默认只在这里留一个入口，点进去才画 —— 菜单页本身
+   必须轻，落地即用。 */
+export const FUNC_PAGES = {
+  targets: '目标名单',
+  config: '后端配置',
+  sync: '自动同步',
+  keybox: 'keybox',
+  props: '属性伪装',
+};
+
+/* 菜单页：所有功能集中在这里，每项带一行**当下的状态摘要**（不是说明书 ——
+   用户不开进二级页就该看到"现在是什么情况"）。二级页里才是长列表与表单。 */
+export function renderFunc() {
+  const bi = S.backendInfo, st = S.status;
+  const cfgDesc = { teesim: 'Profile 表 + overrides.json', tricky: 'TEE 探测 + 全局与按包补丁', omk: 'config.toml + injector.toml + 生效代价' }[bi.backend] || '';
+  /* 摘要里只放文件名不放全路径：/data/misc/keystore/... 会从词中间折成三行，
+     全路径在二级页的第一行 hint 里本来就有。 */
+  const base = p => String(p || '').split('/').filter(Boolean).pop() || '—';
+  const entries = [
+    ['targets', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
+    ['config', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
+    ['sync', '自动同步 · 本模块附加',
+      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
+    ['keybox', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
+    ['props', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
+  ];
+  const c = card();
+  const s = section('功能', ICON.func);
+  const l = h('md-list');
+  entries.forEach(function (e) {
+    const it = item({ headline: e[1], supporting: e[2], interactive: true });
+    const ic = h('span', 'nav-ic', ICON.next);
+    ic.setAttribute('slot', 'end');
+    it.appendChild(ic);
+    it.addEventListener('click', function () { openSubFn(e[0]); });
+    l.appendChild(it);
+  });
+  s.appendChild(l);
+  c.appendChild(s);
   const box = h('div', 'stack');
-  box.appendChild(listSection());
-  if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
-  if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
-  if (bi.backend === 'omk') { box.appendChild(omkReload()); }
-  /* 自动同步与 keybox 卡都在折叠线以下：推迟一帧再挂，把它们的控件从切页
-     关键路径上摘掉。box 已经不在页面上（换页或重画了）就整批放弃 ——
-     不往卸掉的树里塞节点。 */
-  setTimeout(function () {
-    if (!box.isConnected) return;
-    const frag = document.createDocumentFragment();
-    frag.appendChild(autoSyncCard());
-    frag.appendChild(keyboxCard());
-    box.appendChild(frag);
-  }, 0);
+  box.appendChild(c);
   return box;
 }
 
-/* 设置：与后端无关的模块自身开关（属性伪装、Verified Boot）+ 外观 + 界面自检。
-   自检是排障材料，跟着设置走比跟着某一家的配置面走顺手。 */
+/* 二级页：按 FUNC_PAGES 的 id 画对应的功能面。长列表在这里才整批挂出来
+   （listSection 自带 16 条分批）；短卡直接画。 */
+export function renderFuncSub(sub) {
+  const bi = S.backendInfo;
+  const box = h('div', 'stack');
+  if (sub === 'targets') box.appendChild(listSection());
+  if (sub === 'config') {
+    if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
+    if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
+    if (bi.backend === 'omk') { box.appendChild(omkReload()); }
+  }
+  if (sub === 'sync') box.appendChild(autoSyncCard());
+  if (sub === 'keybox') box.appendChild(keyboxCard());
+  if (sub === 'props') box.appendChild(propsCards());
+  return box;
+}
+
+/* 菜单项点击 → app.js 的 openSub（pushState + 返回箭头都在壳那一层）。
+   照 onToast/onReload 的套路注册，screens 不反向 import app。 */
+let openSubFn = function () {};
+export function onOpenSub(fn) { openSubFn = fn; }
+
+/* 设置：界面自己的事（外观）+ 排障材料（界面自检）。
+   属性伪装 / Verified Boot 是**功能**（改设备状态），2026-10-30 起在【功能】页；
+   这里只留"界面偏好与自检"。 */
 export function renderSettings() {
   const box = h('div', 'stack');
-  box.appendChild(propsCards());
   box.appendChild(renderTheme());
   setTimeout(function () {
     if (!box.isConnected) return;
@@ -310,7 +353,7 @@ function backendMatrix() {
   const sv = { tricky: st.tricky_state, teesim: st.teesim_state, omk: st.omk_state };
   const on = BACKENDS.filter(function (b) { return sv[b[0]] === 'active'; });
   const c = card();
-  const s = section('三家后端 · 同一时刻只能一家在跑', ICON.backend);
+  const s = section('三家后端 · 同一时刻只能一家在跑', ICON.func);
   s.appendChild(list(BACKENDS.map(function (b) {
     const cur = st.backend === b[0];
     const rep = BSTATE[sv[b[0]]] || ['none', '读不到状态'];
@@ -864,7 +907,7 @@ function omkReload() {
   c.appendChild(s); box.appendChild(c);
 
   const i = card();
-  const is = section('injector.toml · 名单与路由', ICON.backend);
+  const is = section('injector.toml · 名单与路由', ICON.func);
   is.appendChild(h('p', 'hint', 'scoop 就是目标名单本身，只吃精确包名 —— 加/减包请在「名单」那一格做。'));
   const onN = OMK_INTERCEPTS.filter(function (m) { return String(S.backendInfo['intercept_' + m]) === 'true'; }).length;
   is.appendChild(list([

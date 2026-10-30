@@ -33,24 +33,24 @@ function restore() { for (const k in files) fs.writeFileSync(files[k], orig[k]);
 
 /* [点名哪条断言必须响, 文件, 原文, 改成, 预期命中处数, 附带要响的第二把闸] */
 const cases = [
-  ['自动同步是后端格里的一张卡', files.screens,
-    '    frag.appendChild(autoSyncCard());\n', '\n', 1],
-  ['自动同步不在主页', files.screens,
+  ['二级页按 FUNC_PAGES 分发五个功能面', files.screens,
+    "  if (sub === 'sync') box.appendChild(autoSyncCard());\n", '\n', 1],
+  ['主页只有状态两卡，不带功能', files.screens,
     '  box.appendChild(statusStrip());', '  box.appendChild(statusStrip());\n  box.appendChild(autoSyncCard());', 1],
   ['主页不推迟挂载（落地页晚一帧就是"先空一下"）', files.screens,
     '  box.appendChild(statusStrip());', '  setTimeout(function () { }, 0);\n  box.appendChild(statusStrip());', 1],
   ['外观与界面自检在设置格，不在别处', files.screens,
     '  box.appendChild(backendMatrix());', '  box.appendChild(backendMatrix());\n  box.appendChild(renderTheme());', 1],
-  ['次序是主页/后端/日志/设置', files.app,
-    "  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },\n  { id: 'settings', label: '设置', icon: ICON.settings, need: ['props'] },",
-    "  { id: 'settings', label: '设置', icon: ICON.settings, need: ['props'] },\n  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },", 1],
-  ['伪装并进设置格，没跟着目的地一起消失', files.screens,
-    '  box.appendChild(propsCards());', '', 1],
+  ['次序是主页/功能/日志/设置', files.app,
+    "  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },\n  { id: 'settings', label: '设置', icon: ICON.settings, need: [] },",
+    "  { id: 'settings', label: '设置', icon: ICON.settings, need: [] },\n  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },", 1],
+  ['伪装在功能页的二级里，设置格不再有它', files.screens,
+    "  if (sub === 'props') box.appendChild(propsCards());", '', 1],
   ['重画走注册的回调，不写跨模块自由变量', files.screens, 'redraw();', 'draw();', 6, SCOPE],
-  ['三个页渲染函数都在，且按 主页→后端→设置 相邻（切片前提）', files.screens,
+  ['四个页渲染函数都在，且按 主页→功能→二级→设置 相邻（切片前提）', files.screens,
     'export function renderSettings()', 'function renderSettingsX()', 1],
-  ['keybox 卡在后端格里', files.screens,
-    '    frag.appendChild(keyboxCard());', '', 1],
+  ['keybox 在二级页里，不在主页与设置', files.screens,
+    "  if (sub === 'keybox') box.appendChild(keyboxCard());", '', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

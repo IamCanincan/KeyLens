@@ -35,19 +35,17 @@ const sleep = ms => new Promise(r => setTimeout(r, ms));
 
 const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
   'md-list-item', 'md-button', 'md-loading-indicator', 'md-snackbar'];
-/* 顺序 = 底栏四格的顺序（主页 / 后端 / 日志 / 设置）。
+/* 顺序 = 底栏四格的顺序（主页 / 功能 / 日志 / 设置）。
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
-  /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵（自动同步在【后端】格，
-     是它维护的名单文件的语境）。后两条是矩阵**行**的值（demo 默认 omk：
-     本家"当前生效"，另两家"未安装"）—— 只看区块标题的话，矩阵三行画成
-     空壳也照样绿。 */
+  /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵。 */
   { id: 'home', title: '主页', must: ['三家后端 · 同一时刻只能一家在跑', '未安装', '当前生效的就是这一家'], items: true },
-  /* 后端格是这一家的配置面：名单 + 自动同步（附加功能）+ 各家能力面 + keybox。 */
-  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '自动同步', '本模块附加', '密钥箱 keybox'], items: true },
+  /* 功能格是一张菜单：所有功能集中在这里，每项带状态摘要；
+     长列表在二级页里，菜单页本身落地即用。 */
+  { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '自动同步 · 本模块附加', '密钥箱 keybox', '属性伪装'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
-  /* 设置格收的是与后端无关的模块自身开关：属性伪装 / Verified Boot / 外观 / 自检。 */
-  { id: 'settings', title: '设置', must: ['系统属性', 'Verified Boot 哈希', '外观', '界面自检'], items: true },
+  /* 设置格只留界面自己的事：外观 + 界面自检（伪装/Verified Boot 在【功能】里）。 */
+  { id: 'settings', title: '设置', must: ['外观', '界面自检'], items: true },
 ];
 
 const PROBE = `(function(){
@@ -302,6 +300,49 @@ async function main() {
   }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
+  /* ── 二级页驱动：菜单页落地即用，长列表在点进去之后才画 ─────────────
+     菜单行点开 → 顶栏出二级标题与返回箭头；返回箭头点回去 → 菜单复原。
+     这是"长列表默认收进二级菜单"的运行时证据，静态闸看不到行为。
+     注意点击方式：md-list-item 会吞掉合成 dispatchEvent/click()（探针实测
+     监听器不响），必须用 CDP 的**可信点击** —— 这也正好更接近真手指。 */
+  {
+    const tap = async expr => {
+      const pos = await ev(`(function(){ var e=${expr}; if(!e) return null; var r=e.getBoundingClientRect();
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + Math.min(r.height/2, 44)) }; })()`);
+      if (!pos) return 0;
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      return 1;
+    };
+    const gotoFunc = () => ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+    const headlineText = async () => (await ev(PROBE)).title;
+    const tapEntry = kw => tap(`(function(){ var its=[].slice.call(document.querySelectorAll('#view md-list-item'));
+      return its.filter(function(x){return (x.getAttribute('headline')||'').indexOf(${JSON.stringify(kw)})===0;})[0]; })()`);
+    const tapBack = () => tap(`document.getElementById('bar').querySelector('md-icon-button[label="返回功能菜单"]')`);
+    const backArrow = () => ev(`(function(){ var b=document.getElementById('bar');
+      return b && b.querySelector('md-icon-button[label="返回功能菜单"]') ? 1 : 0; })()`);
+    await gotoFunc(); await sleep(700);
+    chk('菜单页没有返回箭头（它不是二级页）', await backArrow() === 0);
+    chk('点「目标名单」真的进二级', await tapEntry('目标名单') === 1);
+    await sleep(1600);
+    const pT = await ev(PROBE);
+    chk('二级页标题与返回箭头都在', (await headlineText()) === '目标名单' && await backArrow() === 1,
+      '标题=' + (await headlineText()) + ' 箭头=' + (await backArrow()));
+    chk('名单二级页画出了真实的数据行', pT.items >= 2 && /目标文件：|这个后端接受的写法/.test(pT.text || ''),
+      'items=' + pT.items + '（这两行 hint 的值来自 backend-info，空壳画不出）');
+    await tapBack();
+    await sleep(500);
+    chk('返回箭头把人送回菜单', (await headlineText()) === '功能' && /目标名单/.test((await ev(PROBE)).text || ''));
+    /* keybox 二级页单验一条：换 keybox 作废旧密钥的警告必须画出来 */
+    chk('点「密钥箱 keybox」进二级', await tapEntry('密钥箱 keybox') === 1);
+    await sleep(900);
+    const pK = await ev(PROBE);
+    chk('keybox 二级页有换箱代价的警告', (await headlineText()) === 'keybox'
+      && /旧密钥全部作废|替换 keybox/.test(pK.text || ''), '标题=' + (await headlineText()));
+    await tapBack(); await sleep(500);
+  }
+
   /* ── 逐后端驱动：三家各自的能力面只在 backend=<家> 时才画得出来 ──────
      上一版只跑默认那一家（omk），Tricky 分支里 `t.teeBroken` 读错键名
      一路绿到上线前都没人看见 —— 假数据与代码互相自证，两边一起错。
@@ -316,7 +357,7 @@ async function main() {
          真的到了对应那一家的页面上。 */
       '整个组件标签不报'] , tail: '补丁级别' },
     { id: 'teesim', q: 'teesim', must: ['Profile 表', '编辑 profile · default',
-      'overrides.json · 安全等级与版本', 'config.json',
+      'overrides.json · 安全等级与版本',
       '报告 0', '模板令牌必须大写',
       /* overrides 表真画出值才算走到了非降级分支：以前假数据的命令清单里
          漏了 teesim-overrides，hasCmd() 恒 false，这张卡永远显示"命令层没有这条"，
@@ -326,19 +367,28 @@ async function main() {
          假数据才会出现的值。 */
       'attestation 侧安全等级', '留空 = 删掉这一项', 'TrustedEnvironment', '只记录，不上线',
       'deviceLocked', 'supplement', '本模块不提供写入'] , tail: 'overrides.json ·' },
-    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml',
-      /* 矩阵（"未安装 / 当前生效"）2026-10-30 挪进了主页，这里的 must 只留后端格自己的块 */
-      '旧密钥全部作废'],
+    { id: 'omk', q: 'omk', must: ['config.toml · 信任链与设备身份', 'injector.toml · 名单与路由', 'injector.toml'],
       tail: 'config.toml ·' },
   ];
   console.log('── 逐后端驱动（换 ?backend= 重新载入，画那一家的块）──');
+  const tapEntry = async kw => {
+    const pos = await ev(`(function(){ var its=[].slice.call(document.querySelectorAll('#view md-list-item'));
+      var it=its.filter(function(x){return (x.getAttribute('headline')||'').indexOf(${JSON.stringify(kw)})===0;})[0];
+      if(!it) return null; var r=it.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + Math.min(r.height/2, 44)) }; })()`);
+    if (!pos) return 0;
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    return 1;
+  };
   for (const b of BACKENDS) {
     await send('Page.navigate', { url: URL0 + '&backend=' + b.q });
     await sleep(1400);
-    /* 四格之后各家配置面在【后端】那一格（index 1）—— 落地页现在是主页，
-       拿 index:0 去驱动这三家只会一直量到状态条那三张卡。 */
+    /* 各家配置面在【功能】→「后端配置」二级页里：先到菜单（index 1）再点进去 */
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+    await sleep(700);
+    await tapEntry('后端配置');
     await sleep(900);
     const p = await ev(PROBE);
     const miss = b.must.filter(s => p.text.indexOf(s) < 0);
@@ -364,9 +414,11 @@ async function main() {
   /* 读失败与"真的是空的"必须长得不一样 */
   await send('Page.navigate', { url: URL0 + '&backend=tricky&fail=targets' });
   await sleep(1400);
-  /* 名单在后端格（index 1）：错误行要钉在那一格的第一张卡上 */
+  /* 名单在【功能】→「目标名单」二级页里：错误行要钉在那张卡的第一行 */
   await ev(`(function(){ var n=document.getElementById('nav');
     n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('目标名单');
   await sleep(900);
   const pf = await ev(PROBE);
   const hasErr = pf.text.indexOf('名单读不到') >= 0;

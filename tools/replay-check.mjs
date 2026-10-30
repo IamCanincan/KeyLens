@@ -239,6 +239,28 @@ async function main() {
     return b&&b.shadowRoot&&b.shadowRoot.querySelector('.headline-line')?(b.shadowRoot.querySelector('.headline-line').textContent||'').trim():''})()`);
   const goto = i => ev(`(function(){ var n=document.getElementById('nav');
     n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
+  /* 可信点击助手：md-list-item 会吞合成 dispatchEvent/click()（探针实测：
+     事件到了 document capture、元素监听器却不响），台架一律用 CDP 的 Input
+     派发真实指针事件 —— 这也更接近真手指。二级页进出靠它。 */
+  const tapAt = async pos => {
+    await ws.send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    await ws.send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+  };
+  const tapEntry = async kw => {
+    const pos = await ev(`(function(){ var its=[].slice.call(document.querySelectorAll('#view md-list-item'));
+      var it=its.filter(function(x){return (x.getAttribute('headline')||'').indexOf(${JSON.stringify(kw)})===0;})[0];
+      if(!it) return null; var r=it.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + Math.min(r.height/2, 44)) }; })()`);
+    if (!pos) return 0;
+    await tapAt(pos); return 1;
+  };
+  const tapBack = async () => {
+    const pos = await ev(`(function(){ var b=document.getElementById('bar');
+      var e=b&&b.querySelector('md-icon-button[label="返回功能菜单"]'); if(!e) return null;
+      var r=e.getBoundingClientRect(); return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+    if (!pos) return 0;
+    await tapAt(pos); return 1;
+  };
 
   /* 落地页现在是主页（四格：主页/后端/日志/设置）。
      名单那批断言挪到【后端】那一格去量，自检那行挪到【设置】那一格去读 ——
@@ -265,7 +287,15 @@ async function main() {
     fs.writeFileSync(path.join(OUT, 'replay-settings.png'), Buffer.from(s3.data, 'base64'));
   }
 
+  /* 功能页 = 一张菜单；长列表要点进「目标名单」二级才画 */
   await goto(1); await sleep(1500);
+  const pf = await ev(PROBE);
+  chk('功能页是菜单（五项入口）', pf.items === 5 && /目标名单|后端配置|属性伪装/.test(pf.text || ''),
+    'items=' + pf.items);
+  chk('菜单摘要画的是真数（生效 ' + entries + ' 条）', !entries || (pf.text || '').indexOf('生效 ' + entries + ' 条') >= 0,
+    '找「生效 ' + entries + ' 条」');
+  chk('点「目标名单」进二级', await tapEntry('目标名单') === 1);
+  await sleep(2500);
   const pb = await ev(PROBE);
   /* 判据要钉在**真数据**上，不是"画了点什么"：
      名单里有多少条真条目，屏上就该有多少行 —— 桥接卡住时界面仍会画出自检卡那几行，
@@ -273,19 +303,22 @@ async function main() {
   chk('真机名单画到屏上（不是只有框架）', pb.items >= wantItems,
     '列表项 ' + pb.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
   chk('画的是真包名，不是占位', !firstPkg || (pb.text || '').indexOf(firstPkg) >= 0, firstPkg);
+  chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
 
   /* 逐格点一遍：每格都要有**那一格该出现的真东西** */
-  const PAGE_MARK = ['主页', '后端', '日志', '设置'];
+  const androidVer = (store['env'].stdout.match(/^android=(.*)$/m) || [])[1] || '';
+  const PAGE_MARK = ['主页', '功能', '日志', '设置'];
   for (let i = 0; i < PAGE_MARK.length; i++) {
     await goto(i);
-    await sleep(2600);
+    await sleep(2200);
     const q = await ev(PROBE);
     const t2 = await headline();
     /* 每格钉一个"只有真数据才会出现"的东西：
-       主页 = backend-info 的真条数；后端 = 真机第一条包名；
-       日志会剥 emoji，所以取时间戳前缀而不是整行；设置 = 真机属性名前缀 ro. */
-    const needle = i === 0 ? (entries ? '生效 ' + entries + ' 条' : '')
-      : i === 1 ? firstPkg : i === 2 ? firstLog.slice(0, 15).trim() : 'ro.';
+       主页与功能菜单 = backend-info 的真条数；日志会剥 emoji，取时间戳前缀；
+       设置格只剩外观+自检，钉的是自检卡里真机的「Android <版本>」。 */
+    const needle = i === 2 ? firstLog.slice(0, 15).trim()
+      : i === 3 ? ('Android ' + androidVer)
+      : (entries ? '生效 ' + entries + ' 条' : '');
     const hasNeedle = needle ? (q.text || '').indexOf(needle) >= 0 : true;
     const titleOk = t2 === PAGE_MARK[i];
     chk('第 ' + i + ' 格是「' + PAGE_MARK[i] + '」且有真数据', hasNeedle && titleOk && (q.text || '').length > 40,
@@ -308,18 +341,36 @@ async function main() {
             nodes: document.querySelectorAll('#view *').length });
     });});
   }); })()`);
-  for (const [i, label, away] of [[0, '主页', 1], [1, '后端', 0], [3, '设置', 0]]) {
+  for (const [i, label, away] of [[0, '主页', 1], [1, '功能', 0], [3, '设置', 0]]) {
     await goto(away);
     await sleep(150);
     const mt = await measure(i);
     console.log(`     二次进入${label}：首帧 ${mt.firstMs}ms · 稳定 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
     if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
   }
+  {
+    /* 名单二级页：预热一遍（数据与图标都在 S 里），退回菜单，再走 hash →
+       popstate 进二级量 —— 那也是系统返回键真正走的路。 */
+    await goto(1); await sleep(400);
+    await tapEntry('目标名单'); await sleep(2200);
+    await tapBack(); await sleep(500);
+    const mt = await ev(`(function(){ return new Promise(function(res){
+      var t0=performance.now(); location.hash='#/func/targets';
+      var sync=performance.now()-t0;
+      requestAnimationFrame(function(){ requestAnimationFrame(function(){
+        res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
+              nodes: document.querySelectorAll('#view *').length }); }); });
+    }); })()`);
+    console.log(`     二次进入名单二级（popstate 路径）：稳定 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
+    if (mt.ms > 600) { bad++; console.log('✗    名单二级超过 600ms —— 真机上会更慢'); }
+  }
 
   /* 图标：旧版靠 webroot/icons/*.png，新版用 <img> 指同一批文件。加载失败就是
      一个个空白块 —— 只看"有没有 img 元素"不算验过，必须看 naturalWidth。
-     名单现在在【后端】那一格（index 1），探针要跟着搬。 */
+     名单在【功能】→「目标名单」二级页里，先点进去。 */
   await goto(1);
+  await sleep(800);
+  await tapEntry('目标名单');
   await sleep(2500);
   const ic = await ev(`(function(){
     var imgs = [].slice.call(document.querySelectorAll('#view img.app-ic'));
@@ -344,13 +395,17 @@ async function main() {
   /* 分批挂载的两个风险，都要有断言：
      ① 打到一半切走 —— 不许往已经卸掉的列表里继续 append，也不许抛异常；
      ② 不打断时最后必须补齐到全部条目（不能悄悄停在 40 条）。 */
-  await goto(1);
+  await tapBack();
+  await sleep(300);
+  await tapEntry('目标名单');
   await sleep(40);
   await goto(3);
   await sleep(900);
   const afterCut = await ev(`document.getElementById('view').textContent.length`);
   chk('分批加载被打断后不炸（切到设置格仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
   await goto(1);
+  await sleep(400);
+  await tapEntry('目标名单');
   await sleep(2500);
   const done = await ev(`(function(){ return {
     items: document.querySelectorAll('#view md-list-item').length,

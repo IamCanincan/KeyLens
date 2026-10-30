@@ -137,59 +137,81 @@ kvEntries.forEach(([k, v]) => {
 });
 console.log('  ok   声明的 required 键命令层都会输出（逐条查过）');
 
-/* ── ⑤ 层级与四个目的地：主页 / 后端 / 日志 / 设置 ─────────────────── */
+/* ── ⑤ 层级与四个目的地：主页 / 功能 / 日志 / 设置（功能页带二级菜单）── */
 console.log('── 层级 ──');
 const pages = [...app.matchAll(/\{ id: '([a-z]+)', label: '([^']+)', icon: ICON\.([a-z]+)/g)];
 chk('四个目的地', pages.length === 4, pages.map(p => p[2]).join('/'));
-chk('次序是主页/后端/日志/设置', ['主页', '后端', '日志', '设置'].join('/') === pages.map(p => p[2]).join('/'));
+chk('次序是主页/功能/日志/设置', ['主页', '功能', '日志', '设置'].join('/') === pages.map(p => p[2]).join('/'));
 chk('落地页是主页（打开先回答"在不在跑"）', pages[0] && pages[0][1] === 'home' && pages[0][2] === '主页',
   pages[0] && pages[0][1] + '=' + pages[0][2]);
-/* 判据切的是"函数体"，而函数体靠相邻次序切出来 —— 三个 render* 一旦被打散，
+/* 判据切的是"函数体"，而函数体靠相邻次序切出来 —— render* 一旦被打散，
    切片就会拿到空串，下面的断言全部假绿。所以先钉相邻性本身。 */
-const RN = ['renderHome', 'renderBackend', 'renderSettings'];
+const RN = ['renderHome', 'renderFunc', 'renderFuncSub', 'renderSettings'];
 const RI = RN.map(n => screens.indexOf('export function ' + n));
-chk('三个页渲染函数都在，且按 主页→后端→设置 相邻（切片前提）',
-  RI.every(i => i >= 0) && RI[0] < RI[1] && RI[1] < RI[2], RI.join('/'));
-const endSet = screens.indexOf('const BACKENDS', RI[2] < 0 ? 0 : RI[2]);
+chk('四个页渲染函数都在，且按 主页→功能→二级→设置 相邻（切片前提）',
+  RI.every(i => i >= 0) && RI[0] < RI[1] && RI[1] < RI[2] && RI[2] < RI[3], RI.join('/'));
+const endSet = screens.indexOf('const BACKENDS', RI[3] < 0 ? 0 : RI[3]);
 const homeBody = RI[0] >= 0 ? screens.slice(RI[0], RI[1]) : '';
-const backBody = RI[1] >= 0 ? screens.slice(RI[1], RI[2]) : '';
-const setBody = RI[2] >= 0 && endSet > RI[2] ? screens.slice(RI[2], endSet) : '';
-chk('三页函数体都切得到（切片没落空）',
-  homeBody.length > 60 && backBody.length > 60 && setBody.length > 60,
-  [homeBody.length, backBody.length, setBody.length].join('/'));
-/* 2026-10-30 用户定稿：自动同步进后端格（它维护的就是那格的名单文件），
-   但仍旧不占位格 —— 附加功能占一格 = 摆到主体前面。 */
-chk('自动同步不占一个目的地', !pages.some(p => p[1] === 'autosync'));
-chk('自动同步是后端格里的一张卡', /function autoSyncCard\(\)/.test(screens)
-  && /frag\.appendChild\(autoSyncCard\(\)\)/.test(backBody)
-  && !/autosync:\s*render/.test(app));
-chk('自动同步不在主页', !/autoSyncCard/.test(homeBody));
-chk('附加功能仍然自报身份', /本模块附加/.test(screens));
+const funcBody = RI[1] >= 0 ? screens.slice(RI[1], RI[2]) : '';
+const subBody = RI[2] >= 0 ? screens.slice(RI[2], RI[3]) : '';
+const setBody = RI[3] >= 0 && endSet > RI[3] ? screens.slice(RI[3], endSet) : '';
+chk('四段函数体都切得到（切片没落空）',
+  homeBody.length > 60 && funcBody.length > 60 && subBody.length > 60 && setBody.length > 60,
+  [homeBody.length, funcBody.length, subBody.length, setBody.length].join('/'));
+/* 2026-10-30 用户定稿：功能页 = 一张菜单集成所有功能，长列表默认收进二级 ——
+   菜单页本身必须轻（落地即用），列表与表单点进去才画。 */
+/* FUNC_PAGES 声明在 renderFunc 之前、落在 homeBody 切片里 —— 所以注册表查 screens；
+   负面断言（"菜单页不画长列表"）要用**剥掉注释**的函数体：下一段的说明注释里
+   就写着 listSection，注释不算代码。 */
+const funcCode = funcBody.replace(/\/\*[\s\S]*?\*\//g, ' ');
+chk('功能页是菜单：五项入口各带状态摘要，行尾是箭头不是内容',
+  /export const FUNC_PAGES = \{/.test(screens)
+  && ['targets', 'config', 'sync', 'keybox', 'props'].every(k => new RegExp(k + ": '[^']+'").test(screens))
+  && /nav-ic/.test(funcCode) && /openSubFn\(/.test(funcCode));
+chk('菜单页不画长列表（listSection 与表单卡都不在菜单函数里）',
+  !/listSection|teesimProfiles|teesimOverrides|trickyBlocks|omkReload|keyboxCard|propsCards|autoSyncCard/.test(funcCode));
+chk('二级页按 FUNC_PAGES 分发五个功能面',
+  /'targets'\) box\.appendChild\(listSection\(\)\)/.test(subBody)
+  && /'sync'\) box\.appendChild\(autoSyncCard\(\)\)/.test(subBody)
+  && /'keybox'\) box\.appendChild\(keyboxCard\(\)\)/.test(subBody)
+  && /'props'\) box\.appendChild\(propsCards\(\)\)/.test(subBody)
+  && /teesimProfiles\(\)/.test(subBody) && /trickyBlocks\(\)/.test(subBody) && /omkReload\(\)/.test(subBody));
+chk('二级走 pushState + popstate，返回箭头是顶栏 leading 槽',
+  /history\.pushState\(null, '', '#\/func\/' \+ sub\)/.test(app)
+  && /addEventListener\('popstate'/.test(app)
+  && /slot', 'leading'/.test(app) && /history\.back\(\)/.test(app));
+chk('菜单行点击经注册回调进 app（screens 不反向 import app）',
+  /export function onOpenSub\(/.test(screens) && /onOpenSub\(openSub\)/.test(app));
 chk('三家互斥矩阵与状态条在主页',
   /box\.appendChild\(backendMatrix\(\)\)/.test(homeBody) && /box\.appendChild\(statusStrip\(\)\)/.test(homeBody));
 chk('主页不推迟挂载（落地页晚一帧就是"先空一下"）', !/setTimeout/.test(homeBody));
-chk('名单在面板格里，不是独立目的地',
-  !pages.some(p => p[1] === 'targets') && /box\.appendChild\(listSection\(\)\)/.test(backBody));
-chk('keybox 卡在后端格里', /(?:box|frag)\.appendChild\(keyboxCard\(\)\)/.test(backBody)
-  && !/keyboxCard/.test(homeBody) && !/keyboxCard/.test(setBody));
-/* 伪装不再是目的地（一格只放一个开关太薄），但它必须还在设置格里 —— 只在源码里
-   存在不算，得是被 renderSettings 挂上去的。 */
-chk('伪装并进设置格，没跟着目的地一起消失',
-  !pages.some(p => p[1] === 'props') && /propsCards\(\)/.test(setBody) && /function propsCards\(\)/.test(screens));
+chk('主页只有状态两卡，不带功能',
+  !/autoSyncCard|listSection|keyboxCard|propsCards|renderTheme|selfCheck/.test(homeBody.replace(/\/\*[\s\S]*?\*\//g, ' ')));
+chk('名单不再是一个目的地，也不在菜单页上',
+  !pages.some(p => p[1] === 'targets') && !/listSection/.test(funcCode));
+chk('keybox 在二级页里，不在主页与设置',
+  /appendChild\(keyboxCard\(\)\)/.test(subBody)
+  && !/keyboxCard/.test(homeBody) && !/keyboxCard/.test(setBody) && !/keyboxCard/.test(funcBody));
+/* 伪装/Verified Boot 是改设备状态的功能 → 功能页的二级；设置只留界面自己的事。 */
+chk('伪装在功能页的二级里，设置格不再有它',
+  /'props'\) box\.appendChild\(propsCards\(\)\)/.test(subBody)
+  && /function propsCards\(\)/.test(screens) && !/propsCards/.test(setBody));
 chk('外观与界面自检在设置格，不在别处',
   /renderTheme\(\)/.test(setBody) && /selfCheck\(\)/.test(setBody)
-  && !/renderTheme/.test(homeBody) && !/selfCheck/.test(backBody) && !/selfCheck/.test(homeBody));
+  && !/renderTheme/.test(homeBody) && !/selfCheck/.test(subBody) && !/selfCheck/.test(homeBody));
 /* p[1] 是 id、p[2] 是 label（正则的三个捕获组按 id/label/icon 排）—— 拿 label 去比
    id 的话这条永远红，而"永远红的断言"和"没有断言"等价。 */
 chk('日志仍是第三格', pages.findIndex(p => p[1] === 'log') === 2);
-/* 每格取数：主页只问状态与后端（名单是后端格的事，落地页不该为它 fork） */
-chk('主页取数含 base 与 backend、不含 lists',
+/* 每格取数：主页与功能菜单都只问状态与后端（长列表的数据进二级才问） */
+chk('主页与功能菜单取数不含 lists/props',
   /id: 'home'[^}]*need: \[[^\]]*'base'[^\]]*'backend'/.test(app)
-  && !/id: 'home'[^}]*need: \[[^\]]*'lists'/.test(app));
-chk('后端格取数含名单', /id: 'backend'[^}]*need: \[[^\]]*'lists'/.test(app));
-chk('设置格取数含 props', /id: 'settings'[^}]*need: \[[^\]]*'props'/.test(app));
+  && /id: 'func'[^}]*need: \[[^\]]*'base'[^\]]*'backend'/.test(app)
+  && !/id: 'func'[^}]*need: \[[^\]]*'lists'/.test(app));
+chk('二级页取数按需：名单要 lists、伪装要 props',
+  /sub === 'targets'[^}]*'lists', 'excluded'/.test(app.replace(/\n/g, ' '))
+  && /sub === 'props'[^}]*'props'/.test(app.replace(/\n/g, ' ')));
 chk('路由表把四格都接上了',
-  RN.every(n => new RegExp(n + ':?').test(app)) && /home: renderHome/.test(app) && /settings: renderSettings/.test(app));
+  /home: renderHome/.test(app) && /func: renderFunc/.test(app) && /settings: renderSettings/.test(app));
 chk('落地页与 hash 兜底都指回主页',
   /: 'home'/.test(app) && !/show\('backend'\)/.test(app));
 /* screens.js 里那六处重画以前写的是没 import 的 `draw()` —— esbuild 摊平作用域才
