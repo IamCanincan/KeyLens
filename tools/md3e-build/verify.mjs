@@ -234,6 +234,27 @@ async function main() {
     chk('二次进入没有超过 400ms 的页', slow.length === 0,
       switchMs.map(s => `${s[0]}=${s[1]}ms/${s[2]}节点`).join(' '));
   }
+  /* ── 深浅：MD3E 的暗色盘挂在 [data-theme=dark]，只设 color-scheme 一个颜色都不翻 ──
+     demo 的 env 报 sys_dark=1，所以"env 落地后重涂过"的直接证据就是整页进了暗色盘。
+     再点设置里的「浅色」翻回去 —— attribute 与 surface 必须一起动，证明 attribute
+     真的在驱动调色盘，而不是碰巧同值；最后点回「跟随系统」，sys_dark=1 应当赢。 */
+  {
+    const surf = () => ev(`(function(){ return { t: document.documentElement.getAttribute('data-theme'),
+      s: getComputedStyle(document.body).backgroundColor }; })()`);
+    const press = async label => ev(`(function(){
+      var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){return (x.textContent||'').trim()===${JSON.stringify(label)};})[0];
+      if(!b) return 0; b.click(); return 1; })()`);
+    const dk = await surf();
+    chk('env 报 sys_dark=1 → 界面真的进了暗色盘（data-theme=dark）', dk.t === 'dark', JSON.stringify(dk));
+    const pressed = await press('浅色');
+    const lt = await surf();
+    chk('点「浅色」→ attribute 与 surface 一起翻回亮色',
+      pressed === 1 && lt.t === 'light' && lt.s !== dk.s, JSON.stringify(lt));
+    const back = await press('跟随系统');
+    const au = await surf();
+    chk('点回「跟随系统」→ sys_dark=1 赢，仍是暗色', back === 1 && au.t === 'dark' && au.s === dk.s, JSON.stringify(au));
+  }
   chk('无未捕获异常', errs.length === 0, errs.slice(0, 2).join(' | '));
 
   /* ── 逐后端驱动：三家各自的能力面只在 backend=<家> 时才画得出来 ──────

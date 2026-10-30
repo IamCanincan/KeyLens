@@ -47,11 +47,18 @@ const nav = document.getElementById('nav');
 nav.items = PAGES.map(function (p) { return { icon: p.icon, label: p.label }; });
 
 /* 深/浅：跟随系统时优先用管理器报的 sys_dark —— CSS 的 prefers-color-scheme
-   在部分 WebView 里不跟着系统的"深色模式"开关走，而 env.sys_dark 是它自己的真值。 */
+   在部分 WebView 里不跟着系统的"深色模式"开关走，而 env.sys_dark 是它自己的真值。
+   两处都别省：
+   ① MD3E 的暗色盘挂在 [data-theme=dark] 上（tokens.min.css 里唯一的一块），只设
+      color-scheme 翻的是表单控件与滚动条，界面自己画的 99% 是 custom properties，
+      一个都不动 —— 上机当天就是这样的：env 报 sys_dark=1，界面全亮。
+   ② boot 里 applyTheme() 跑在 env 回来之前，S.env.sys_dark 那时还是 undefined；
+      env 落地后必须再涂一遍（boot 与 reloadAll 各一次），否则永远停在首次判断。 */
 function applyTheme() {
   const want = S.theme === 'auto'
     ? (S.env.sys_dark === '1' || (window.matchMedia && window.matchMedia('(prefers-color-scheme: dark)').matches))
     : S.theme === 'dark';
+  document.documentElement.setAttribute('data-theme', want ? 'dark' : 'light');
   document.documentElement.style.setProperty('color-scheme', want ? 'dark' : 'light');
 }
 onApplyTheme(applyTheme);
@@ -121,6 +128,7 @@ function load(name) {
 function reloadAll() {
   S.loaded = {};
   return loadBase().then(function () { return checkContract(); }).then(function () {
+    applyTheme();
     return load(S.tab);
   });
 }
@@ -149,6 +157,7 @@ function boot() {
   /* 首屏只走一条路：契约 → 基础状态 → show()。show() 自己会按目标页取数，
      这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。 */
   Promise.resolve(checkContract()).then(loadBase).then(function () {
+    applyTheme();   /* env.sys_dark 这时才到 —— boot 里第一次涂色时它还是 undefined */
     show(PAGES.some(function (p) { return p.id === start; }) ? start : 'home');
   }, function () {
     show('home');

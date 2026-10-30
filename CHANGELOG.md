@@ -48,6 +48,13 @@
   * 台架自身的两条变异由 `tools/md3e-build/mutate-verify.mjs` 代跑（改源码 → 重新构建 → 跑 verify → 逐字节还原 → 再构建再跑一遍确认回绿），不用手动备份。
   * `check-artifact.mjs` 顺手改两处：默认查**候选**产物 `webui/dist/index.html`（新版还没换掉 `webroot/` 里的旧界面，之前它一直拿旧产物报"3 项不通过"），字节门槛用 `statSync().size` 而不是 `html.length` —— 后者是 UTF-16 码元数，904 KB 的文件量出 347"KB"，看着像被截断。
 
+#### 修复
+
+* **界面不跟随系统深色模式**（换 MD3E 时引入，用户上机当天报的）。两层叠加：
+  ① MD3E 的暗色盘挂在 `[data-theme=dark]` 上（tokens.min.css 里唯一的一块），而 `applyTheme()` 只设了 `color-scheme` —— 它翻的是表单控件与滚动条，界面自己画的 99% 是 custom properties，一个都不动；换成 MD3E 前的旧版是自己映射 `--md-sys-color-*` 的，这步在换版时丢了。
+  ② 就算涂对了地方也白涂：`applyTheme()` 只在 boot 跑一次，而那时 `env` 还没回来，`S.env.sys_dark` 是 undefined —— 永远停在首次判断（demo 数据里 `sys_dark=1`，台架截图却全是亮色，就是这个时序在自证）。现在 boot 与 `reloadAll` 各在 env 落地后重涂一遍。
+  * 台架钉死两层各一条：demo env 报 sys_dark=1 → `data-theme=dark` 且 body 背景是暗盘的 `rgb(20,18,24)`；点「浅色」→ attribute 与 surface **一起**翻回 `rgb(254,247,255)`（证明 attribute 真的在驱动调色盘，不是碰巧同值）；点回「跟随系统」→ sys_dark=1 赢。源码层 `ui-shape` 钉 "setAttribute('data-theme') + 两处重涂"。
+
 #### 新增
 
 * **TEESim 的 `overrides.json` 从"只读"变成能写**：新命令 `teesim-save-overrides` + 新 awk `module/backends/json_flat_set.awk`（扁平 JSON 的定点改/插/删）。界面上那六项（两侧安全等级、两侧版本、启动键哈希两项）从只读行变成表单，其余仍按上游判定显示为不可写。

@@ -214,6 +214,12 @@ chk('证书模式后缀只有 Tricky 有', /tricky: \{[^}]*modes: true/.test(scr
 /* ── ⑦ 桥接与安全底线 ───────────────────────────────────────────── */
 console.log('── 底线 ──');
 chk('桥接候选表在（连不上要能自证扫了什么）', /BRIDGE_CANDIDATES = \[[^\]]*bridge/.test(bridge));
+/* 深浅两半都不能少：MD3E 的暗色盘挂在 [data-theme=dark] 上，只设 color-scheme
+   界面一个颜色都不翻（2026-10-30 上机就是这个症状）；而 boot 时 env 还没回来，
+   sys_dark 那时是 undefined，env 落地后必须重涂一遍，否则永远停在首次判断。 */
+chk('深浅翻的是 data-theme，且 env 落地后重涂（boot 与 reloadAll 各一次）',
+  /setAttribute\('data-theme', want \? 'dark' : 'light'\)/.test(app)
+  && (app.match(/applyTheme\(\);/g) || []).length >= 2);
 chk('crypto 种子不渲染', !/root_kek_seed|kak_seed|shared_secret_seed|shared_secret_nonce|auth_token_hmac_key/.test(screens));
 chk('serial/imei/meid 不进日志或提示', !/console\.log\(.*(serial|imei)/.test(screens));
 chk('命令参数走单引号转义（防注入）', /String\(arg\)\.replace\(\/'\/g, "'\\\\''"\)/.test(bridge));
