@@ -49,7 +49,20 @@ export function item(o) {
   if (o.trailing != null) it.setAttribute('trailing-text', String(o.trailing));
   if (o.tone) it.setAttribute('data-tone', o.tone);
   if (o.interactive) it.setAttribute('interactive', '');
+  /* 行标题 19px/400：照系统设置的行（用户给的对照图）。组件的 headline 字号是
+     shadow 里写死的 16px，四个 typescale 变量都撬不动（var-probe 逐个试过），
+     只能往 shadow 里注一张构造样式表 —— item() 是所有行的唯一出口，这里注一次
+     全部的行都生效。 */
+  try { it.shadowRoot.adoptedStyleSheets = it.shadowRoot.adoptedStyleSheets.concat([rowSkin()]); } catch (e) {}
   return it;
+}
+let skinSheet = null;
+function rowSkin() {
+  if (!skinSheet) {
+    skinSheet = new CSSStyleSheet();
+    skinSheet.replaceSync('.headline{font-size:19px;font-weight:400;line-height:26px;letter-spacing:0}');
+  }
+  return skinSheet;
 }
 
 export function list(items) {
@@ -58,14 +71,17 @@ export function list(items) {
   return l;
 }
 
-/* 系统设置那种"彩色圆底 + 图标"的行首（2026-10-31 用户给的对照图）。
-   底/前景用 MD3 的 tonal 容器色 —— primary/secondary/tertiary 三组轮转，
-   前两组会被动态配色跟着系统强调色重着色。同一行内配对固定，别用全局序号
-   （重画顺序一变，同一行的颜色就换）。 */
+/* 系统设置那种"彩色圆底 + 图标"的行首（2026-10-31 用户给的对照图 + "学得不够到位"）。
+   配色不用 tonal 容器色 —— 那套在深色下又暗又灰，跟参考图对不上；参考图是
+   **亮圆底 + 深色图形，深浅两态同一套**（Android 设置正是这么干的），所以这里
+   放固定色值。interactive 的主色（按钮/选中态）仍走动态配色。 */
 const AVATAR_COLORS = [
-  ['var(--md-sys-color-primary-container)', 'var(--md-sys-color-on-primary-container)'],
-  ['var(--md-sys-color-secondary-container)', 'var(--md-sys-color-on-secondary-container)'],
-  ['var(--md-sys-color-tertiary-container)', 'var(--md-sys-color-on-tertiary-container)'],
+  ['#8ab4f8', '#0d3050'],  // 蓝
+  ['#9ba8f5', '#262e6e'],  // 长春花
+  ['#f8a8c0', '#6e1f3d'],  // 粉
+  ['#ffb37d', '#6b3410'],  // 橙
+  ['#ffd66e', '#5c430a'],  // 黄
+  ['#93d694', '#1c4f26'],  // 绿
 ];
 export function avatar(iconName, colorIdx) {
   const pair = AVATAR_COLORS[(colorIdx == null ? 0 : colorIdx) % AVATAR_COLORS.length];
@@ -297,8 +313,8 @@ export function renderFunc() {
     ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc, 1],
     ['sync', 'refresh', '自动同步',
       (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime), 2],
-    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置', 0],
-    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭', 1],
+    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置', 3],
+    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭', 4],
   ];
   const c = card();
   const s = section('功能', ICON.func);
@@ -625,7 +641,7 @@ function autoSyncCard() {
       supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
   ]);
   rows.children[0].appendChild(avatar('refresh', 0));
-  rows.children[1].appendChild(avatar('article', 1));
+  rows.children[1].appendChild(avatar('article', 5));
   s.appendChild(rows);
   const acts = h('div', 'acts');
   acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
