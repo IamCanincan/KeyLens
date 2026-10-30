@@ -273,12 +273,14 @@ async function main() {
     var n=document.getElementById('nav'), t0=performance.now();
     n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}));
     var sync=performance.now()-t0;
-    requestAnimationFrame(function(){ requestAnimationFrame(function(){
-      res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
+    var first=-1;
+    requestAnimationFrame(function(){ first=Math.round(performance.now()-t0);
+      requestAnimationFrame(function(){
+      res({ ms: Math.round(performance.now()-t0), firstMs: first, syncMs: Math.round(sync),
             nodes: document.querySelectorAll('#view *').length });
     });});
   }); })()`);
-  console.log(`     二次进入后端页 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
+  console.log(`     二次进入后端页：首帧 ${mt.firstMs}ms · 稳定 ${mt.ms}ms（同步 ${mt.syncMs}ms）/ ${mt.nodes} 节点`);
   if (mt.ms > 600) { bad++; console.log('✗    二次进入超过 600ms —— 真机上会更慢'); }
 
   /* 图标：旧版靠 webroot/icons/*.png，新版用 <img> 指同一批文件。加载失败就是

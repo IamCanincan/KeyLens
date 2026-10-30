@@ -248,7 +248,6 @@ export function renderBackend() {
   if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
-  box.appendChild(autoSyncCard());
   /* 首屏之外的卡（keybox / 三家矩阵 / 外观 / 自检）推迟一帧再挂。
      975px 高的视口里它们都在折叠线以下，晚一帧出现没人看得见；而把它们的
      md-list-item / md-button 从切页的关键路径上摘掉，同步渲染与布局都能少一截。
@@ -256,6 +255,7 @@ export function renderBackend() {
   setTimeout(function () {
     if (!box.isConnected) return;
     const frag = document.createDocumentFragment();
+    frag.appendChild(autoSyncCard());
     frag.appendChild(keyboxCard());
     frag.appendChild(backendMatrix());
     frag.appendChild(renderTheme());
@@ -360,7 +360,7 @@ function listSection() {
   s.appendChild(tf);
   const l = h('md-list');
   const LIMIT = 200;
-  const CHUNK = 40;
+  const CHUNK = 16;
   const page = shown.slice(0, LIMIT);
   function rowOf(tok) {
     const b = baseOf(tok), ic = S.icons[b];
@@ -407,8 +407,10 @@ function listSection() {
   c.appendChild(s);
   /* 剩下的分批挂上去。为什么：一次建 144 个 md-list-item 会让"点底栏切页"卡到 1 秒
      —— 实测 1010ms / 448 节点，采样分析器显示耗时在组件自己 getBoundingClientRect /
-     contentSize / 读 CSS 变量，不在我们的渲染函数里。先画 40 条让这一页立刻可交互，
-     其余每帧 40 条补齐；换页或重画时 token 变了就停，不会往已经卸掉的列表里塞节点。 */
+     contentSize / 读 CSS 变量，不在我们的渲染函数里。
+     块大小是量出来的：真机 129 条名单下，首帧 40→24→16 条分别是 259 / 186 / 143ms
+     （稳定 415 / 288 / 250ms）；16 条已经超过一屏（首屏只露 6~7 行）。
+     换页或重画时 token 变了就停，不会往已经卸掉的列表里塞节点。 */
   if (page.length > CHUNK) {
     const token = ++listToken;
     let i = CHUNK;
@@ -512,20 +514,23 @@ function autoSyncCard() {
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
     + '当前后端的名单文件。后端自己的配置在其它几张卡里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
+  /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
   s.appendChild(list([
-    item({ headline: '守护进程', trailing: st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个', tone: st.daemon_alive === '0' ? 'bad' : 'ok' }),
-    item({ headline: '事件监听', trailing: ino, tone: env.inotify_mode === 'none' ? 'bad' : 'ok' }),
-    item({ headline: '目标文件', trailing: (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写'),
-      tone: st.target_exists === '1' && st.target_writable === '1' ? 'ok' : 'bad', supporting: '上次写入 ' + timeLabel(st.target_mtime) }),
-    item({ headline: '日志', trailing: bytesLabel(st.log_bytes), supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
+    item({ headline: '运行', trailing: (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · ' + ino,
+      tone: st.daemon_alive === '0' || env.inotify_mode === 'none' ? 'bad' : 'ok',
+      supporting: '目标文件 ' + (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写')
+        + ' · 上次写入 ' + timeLabel(st.target_mtime) }),
+    item({ headline: '日志', trailing: bytesLabel(st.log_bytes),
+      supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
   ]));
   const acts = h('div', 'acts');
   acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
   acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: function () { reload(); } }));
   s.appendChild(acts);
   s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
-  s.appendChild(h('p', 'hint', '「自动纳入新应用」只有 TEE Simulator 有（profile 级 autoIncludeNewApps）'
-    + (S.backendInfo.backend === 'teesim' ? '，在下方 profile 编辑里逐份设置。' : '；当前后端不是它，这一项不适用。')));
+  if (S.backendInfo.backend === 'teesim') {
+    s.appendChild(h('p', 'hint', '「自动纳入新应用」在下方 profile 编辑里逐份设置（profile 级 autoIncludeNewApps）。'));
+  }
   c.appendChild(s);
   return c;
 }
