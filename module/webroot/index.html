@@ -28,7 +28,7 @@
      管理器注入的优先，浏览器/台架里没有注入值时退回 env()。
      第三项是命令层从 dumpsys 量出来的真实状态栏高度（dp）—— 本机注入值实测
      可能是 0，而 22px 的标题行正好钻到状态栏底下（"头被砍一半"）。 */
-  --inset-top: max(var(--safe-area-inset-top, 0px), var(--window-inset-top, env(safe-area-inset-top, 0px)), var(--statusbar-fallback, 0px));
+  --inset-top: max(var(--safe-area-inset-top, 0px), var(--window-inset-top, 0px), var(--statusbar-fallback, 0px));
   --inset-bottom: max(var(--safe-area-inset-bottom, 0px), var(--window-inset-bottom, env(safe-area-inset-bottom, 0px)));
   --bar-h: 64px;
   --nav-h: 80px;
@@ -41,15 +41,13 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
 
 /* 壳：顶栏贴顶、底栏贴底，中间可滚动。
    用 dvh 不用 vh —— WebView 工具栏收展时 vh 会把底栏顶到屏幕外。
-   背景必须涂在**宿主**上：组件把颜色画在 shadow 里的 .bar 上，宿主自己
-   是透明的，而让位 padding 加在宿主上 —— 不涂的话 padding 那条就是透明带。 */
-md-top-app-bar{position:sticky;top:0;z-index:20;padding-top:var(--inset-top);
-  min-height:calc(var(--bar-h) + var(--inset-top));
+   状态栏让位交给**外层包壳**（#barwrap），顶栏组件自己保持原生 64px：
+   在它宿主上改 padding/min-height 会把它内部的行定位算错 —— 上机实测标题
+   被自己的裁切框切掉上沿（2026-10-31 用户截图）。`--inset-top` 只算管理器
+   注入值与 dumpsys 兜底，**不含 env()**：env 由组件内部的 .bar 自己吃，
+   两边都算就是双倍。 */
+#barwrap{position:sticky;top:0;z-index:20;padding-top:var(--inset-top);
   background:var(--md-sys-color-surface)}
-/* min-height 别换成 height:auto：组件把宿主高度钉在内容的 64px（行全是绝对定位，
-   height:auto 会让宿主塌成只剩 padding），而 border-box 下 padding-top 又是从这
-   64 里抠的 —— .bar 溢出宿主、压住页头。min-height 压得过显式 height：
-   宿主长到 64+inset，padding 让给内容，.bar 不挤不溢。 */
 .view{
   box-sizing:border-box;width:100%;max-width:600px;margin:0 auto;
   padding:var(--gap) var(--gap) calc(var(--nav-h) + var(--inset-bottom) + 16px);
@@ -140,7 +138,7 @@ md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:f
 </style>
 </head>
 <body>
-<md-top-app-bar id="bar" title="KeyLens"></md-top-app-bar>
+<div id="barwrap"><md-top-app-bar id="bar" title="KeyLens"></md-top-app-bar></div>
 <main id="view" class="view"></main>
 <md-navigation-bar id="nav" selected="0"></md-navigation-bar>
 <script>(()=>{var U0=new Set,K0=null;function sl(){K0=null;let i=[...U0];U0.clear();for(let t of i)try{t._deliver()}catch(e){globalThis.reportError?reportError(e):queueMicrotask(()=>{throw e})}}var dt=class{constructor(t){this.callback=t,this.entries=new Map,this.observer=new ResizeObserver(e=>{for(let s of e)this.entries.set(s.target,s);U0.add(this),K0??=requestAnimationFrame(sl)})}observe(t,e){this.observer.observe(t,e)}unobserve(t){this.observer.unobserve(t),this.entries.delete(t)}disconnect(){this.observer.disconnect(),this.entries.clear(),U0.delete(this),!U0.size&&K0!==null&&(cancelAnimationFrame(K0),K0=null)}_deliver(){let t=[...this.entries.values()];this.entries.clear(),t.length&&this.callback(t,this)}};function J(i){if(typeof CSSStyleSheet<"u"&&typeof CSSStyleSheet.prototype.replaceSync=="function")try{let t=new CSSStyleSheet;return t.replaceSync(i+`

@@ -258,24 +258,25 @@ async function main() {
      且宿主自身有底色（组件把颜色画在 shadow 的 .bar 上，宿主透明的话
      padding 那条就是透明带 —— 2026-10-30 上机"状态栏缺一块"的症状）。 */
   {
-    const barInfo = () => ev(`(function(){ var b=document.getElementById('bar');
-      var r=b.getBoundingClientRect(), cs=getComputedStyle(b);
-      return { h: Math.round(r.height), bg: cs.backgroundColor }; })()`);
-    const before = await barInfo();
-    /* demo 的 env 报 sys_statusbar_dp=28、注入 insets 为 0 —— 顶栏必须自己
-       让出这 28px，否则 22px 的标题行正好钻进状态栏底下（"头被砍一半"）。 */
+    const wrapInfo = () => ev(`(function(){ var w=document.getElementById('barwrap'), b=document.getElementById('bar');
+      var wr=w.getBoundingClientRect(), br=b.getBoundingClientRect(), cs=getComputedStyle(w);
+      return { wrapH: Math.round(wr.height), barH: Math.round(br.height), bg: cs.backgroundColor }; })()`);
+    const before = await wrapInfo();
+    /* demo 的 env 报 sys_statusbar_dp=28、注入 insets 为 0 —— 让位必须由外层
+       包壳给出，顶栏组件自己保持原生 64px（在组件宿主上改 padding/min-height
+       会把它内部的行定位算错，上机实测标题被自己的裁切框切掉上沿）。 */
     const fallback = await ev(`getComputedStyle(document.documentElement).getPropertyValue('--statusbar-fallback').trim()`);
     chk('状态栏兜底生效（注入 insets 为 0 时按系统栏高度让位）',
-      fallback === '28px' && before.h === 92, 'fallback=' + fallback + ' barH=' + before.h);
+      fallback === '28px' && before.wrapH === 92 && before.barH === 64,
+      'fallback=' + fallback + ' wrap=' + before.wrapH + ' bar=' + before.barH);
     await ev(`(function(){ document.documentElement.style.setProperty('--safe-area-inset-top','60px'); return 1; })()`);
-    const grown = await barInfo();
+    const grown = await wrapInfo();
     await ev(`(function(){ document.documentElement.style.removeProperty('--safe-area-inset-top'); return 1; })()`);
-    const after = await barInfo();
-    chk('注入值更大时取注入值（60px 赢过兜底 28px）',
-      grown.h === 124, `before=${before.h} grown=${grown.h} after=${after.h}`);
-    chk('顶栏宿主有底色（padding 那条不是透明带）',
-      before.bg !== 'rgba(0, 0, 0, 0)' && before.bg !== 'transparent', before.bg);
-    chk('拿掉假 inset 后顶栏回兜底高度', after.h === before.h, `after=${after.h} before=${before.h}`);
+    const after = await wrapInfo();
+    chk('注入值更大时取注入值（60px 赢过兜底 28px），组件高度不变',
+      grown.wrapH === 124 && grown.barH === 64, `wrap=${grown.wrapH} bar=${grown.barH}`);
+    chk('包壳有底色（让位那条不是透明带）', before.bg !== 'rgba(0, 0, 0, 0)' && before.bg !== 'transparent', before.bg);
+    chk('拿掉假 inset 后回兜底高度', after.wrapH === before.wrapH, `after=${after.wrapH} before=${before.wrapH}`);
     /* 底栏同一类：fixed + padding-bottom，宿主也要有底色，手势条那一条不能透明 */
     const navInfo = () => ev(`(function(){ var n=document.getElementById('nav'); var cs=getComputedStyle(n);
       return { h: Math.round(n.getBoundingClientRect().height), bg: cs.backgroundColor }; })()`);

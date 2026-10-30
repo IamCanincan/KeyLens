@@ -260,9 +260,12 @@ chk('状态栏兜底接上了（命令层量 dp → 界面落 --statusbar-fallba
   /sys_statusbar_dp/.test(sh) && /--statusbar-fallback/.test(css) && /applyInsets\(\)/.test(app));
 /* 顶/底栏组件把颜色画在 shadow 的 .bar 上、宿主透明，而让位 padding 加在宿主上
    —— 宿主不涂底色，padding 那条就是透明带（上机"状态栏缺一块"的另一半）。 */
-chk('顶栏与底栏宿主有底色',
-  /md-top-app-bar\{[^}]*background:var\(--md-sys-color-surface\)/.test(css)
-  && /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
+chk('顶栏让位在外层包壳上，组件保持原生 64px',
+  /#barwrap\{[^}]*padding-top:var\(--inset-top\)[^}]*background:var\(--md-sys-color-surface\)/.test(css)
+  && !/md-top-app-bar\{[^}]*padding-top/.test(css)
+  && /<div id="barwrap"><md-top-app-bar id="bar"/.test(tpl));
+chk('底栏宿主有底色',
+  /md-navigation-bar\{[^}]*background:var\(--navigation-container/.test(css));
 /* 分组列表（参考系统设置）：一个 md-list = 一组，只有首行上角与末行下角是大圆角，
    行距 2px；行里的底色/圆角是**行内样式**，shadow 里的规则必须带 !important
    （探针实测：不带时 computed 仍是组件写的 surface/4px —— 属性看着改了、画面没变）。 */
