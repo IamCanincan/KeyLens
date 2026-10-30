@@ -88,7 +88,11 @@ md-list{display:block}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
 .hint{font-size:12px;line-height:1.55;color:var(--md-sys-color-on-surface-variant);margin:10px 0 0}
-/* 应用图标：只给尺寸，别的东西交给 md-list-item 的 start 槽去排 */
+/* 系统设置那种行首：彩色圆底 + 图标（底/前景色由 .ic-avatar 的两个自定义属性给） */
+.ic-avatar{width:40px;height:40px;border-radius:50%;display:flex;align-items:center;justify-content:center;
+  flex:none;font-family:var(--md-icon-font-family);font-size:22px;line-height:1;
+  color:var(--av-fg, var(--md-sys-color-on-primary-container));background:var(--av-bg, var(--md-sys-color-primary-container))}
+/* 名单的应用图标走 img/首字块，与这个类共用 32px 尺寸 */
 md-list-item img.app-ic{width:32px;height:32px;border-radius:50%;object-fit:cover;display:block}
 /* 图标缺失时的首字块：同尺寸同圆，用容器色，不抢眼 */
 md-list-item .app-ic-fallback{width:32px;height:32px;border-radius:50%;display:flex;align-items:center;justify-content:center;font-size:14px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}

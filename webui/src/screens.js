@@ -58,6 +58,24 @@ export function list(items) {
   return l;
 }
 
+/* 系统设置那种"彩色圆底 + 图标"的行首（2026-10-31 用户给的对照图）。
+   底/前景用 MD3 的 tonal 容器色 —— primary/secondary/tertiary 三组轮转，
+   前两组会被动态配色跟着系统强调色重着色。同一行内配对固定，别用全局序号
+   （重画顺序一变，同一行的颜色就换）。 */
+const AVATAR_COLORS = [
+  ['var(--md-sys-color-primary-container)', 'var(--md-sys-color-on-primary-container)'],
+  ['var(--md-sys-color-secondary-container)', 'var(--md-sys-color-on-secondary-container)'],
+  ['var(--md-sys-color-tertiary-container)', 'var(--md-sys-color-on-tertiary-container)'],
+];
+export function avatar(iconName, colorIdx) {
+  const pair = AVATAR_COLORS[(colorIdx == null ? 0 : colorIdx) % AVATAR_COLORS.length];
+  const s = h('span', 'ic-avatar', iconName);
+  s.setAttribute('slot', 'start');
+  s.style.setProperty('--av-bg', pair[0]);
+  s.style.setProperty('--av-fg', pair[1]);
+  return s;
+}
+
 export function button(label, o) {
   const b = h('md-button');
   b.setAttribute('variant', (o && o.variant) || 'text');
@@ -275,18 +293,19 @@ export function renderFunc() {
      全路径在二级页的第一行 hint 里本来就有。 */
   const base = p => String(p || '').split('/').filter(Boolean).pop() || '—';
   const entries = [
-    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
-    ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
+    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file), 0],
+    ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc, 1],
     ['sync', 'refresh', '自动同步',
-      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
-    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
-    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭'],
+      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime), 2],
+    ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置', 0],
+    ['props', 'verified', '属性伪装', st.props_masking === 'on' ? '开机写入已开启 · ' + S.props.length + ' 项对照' : '开机写入已关闭', 1],
   ];
   const c = card();
   const s = section('功能', ICON.func);
   const l = h('md-list');
   entries.forEach(function (e) {
-    const it = item({ headline: e[2], supporting: e[3], interactive: true, icon: e[1] });
+    const it = item({ headline: e[2], supporting: e[3], interactive: true });
+    it.appendChild(avatar(e[1], e[4]));
     const ic = h('span', 'nav-ic', ICON.next);
     ic.setAttribute('slot', 'end');
     it.appendChild(ic);
@@ -353,16 +372,17 @@ function backendMatrix() {
   const on = BACKENDS.filter(function (b) { return sv[b[0]] === 'active'; });
   const c = card();
   const s = section('三家后端 · 同一时刻只能一家在跑', ICON.func);
-  s.appendChild(list(BACKENDS.map(function (b) {
+  s.appendChild(list(BACKENDS.map(function (b, bi2) {
     const cur = st.backend === b[0];
     const rep = BSTATE[sv[b[0]]] || ['none', '读不到状态'];
-    return item({
+    const it = item({
       headline: b[1],
       supporting: cur ? '当前生效的就是这一家 · ' + b[3] : b[3],
       trailing: (cur ? '● ' : '') + (sv[b[0]] ? rep[1] : '读不到'),
       tone: cur ? 'ok' : rep[0],
-      icon: b[4],
     });
+    it.appendChild(avatar(b[4], bi2));
+    return it;
   })));
   if (st.conflict === '1') {
     s.appendChild(h('p', 'read-err', '同时启用 ' + (on.length || '?') + ' 家（'
@@ -596,14 +616,17 @@ function autoSyncCard() {
     + '当前后端的名单文件（「目标名单」里那份）。后端自己的配置在「后端配置」里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
-  s.appendChild(list([
+  const rows = list([
     item({ headline: '运行', trailing: (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · ' + ino,
       tone: st.daemon_alive === '0' || env.inotify_mode === 'none' ? 'bad' : 'ok',
       supporting: '目标文件 ' + (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写')
         + ' · 上次写入 ' + timeLabel(st.target_mtime) }),
     item({ headline: '日志', trailing: bytesLabel(st.log_bytes),
       supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
-  ]));
+  ]);
+  rows.children[0].appendChild(avatar('refresh', 0));
+  rows.children[1].appendChild(avatar('article', 1));
+  s.appendChild(rows);
   const acts = h('div', 'acts');
   acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
   acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: function () { reload(); } }));
