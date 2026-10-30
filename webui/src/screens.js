@@ -18,7 +18,7 @@ export const ICON = {
   about: 'info',
   sync: 'refresh', read: 'download', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
-  addPkg: 'add', moon: 'dark_mode', edit: 'edit', tune: 'tune',
+  addPkg: 'add', del: 'delete', moon: 'dark_mode', edit: 'edit', tune: 'tune',
   ok: 'check', warn: 'warning', bad: 'error', none: 'help',
 };
 
@@ -899,6 +899,7 @@ function teesimProfiles() {
       : '这一版命令层没有 teesim-profiles —— 重装模块后可以列出并编辑全部 profile。'));
     c.appendChild(s); box.appendChild(c); return box;
   }
+  const cur = S.profiles.filter(function (p) { return p.name === S.profile; })[0] || S.profiles[0];
   const seg = h('div', 'acts');
   S.profiles.forEach(function (p) {
     seg.appendChild(button(p.name + (p.isDefault ? '（默认）' : '') + ' · ' + p.apps + ' 条', {
@@ -907,11 +908,38 @@ function teesimProfiles() {
     }));
   });
   s.appendChild(seg);
-  s.appendChild(h('p', 'hint', '上一版界面只读写 default 这一份；其余 profile 在文件里存在但界面上从来看不见。'));
+  /* 管理：新建（复制 default 的整份配置）+ 删除当前选中的（default 不可删）。
+     删除把选择挪回 default —— 删掉的正好是选中那份时，编辑区的标题和表单
+     不能指向一个已经不存在的 profile。 */
+  const mg = h('div', 'acts');
+  if (!cur.isDefault) {
+    mg.appendChild(button('删除 · ' + cur.name, { variant: 'text', icon: ICON.del, on: function () {
+      const n = cur.name; S.profile = 'default';
+      write('teesim-profile-del', n, '已删除 profile：' + n);
+    } }));
+  }
+  s.appendChild(mg);
+  s.appendChild(fold(function () {
+    const w = h('div', 'form');
+    const tf = h('md-text-field');
+    tf.setAttribute('variant', 'filled');
+    tf.setAttribute('single-line', '');
+    tf.setAttribute('label', '新 profile 的名字（字母数字 . _ -，不能叫 default）');
+    w.appendChild(tf);
+    const a = h('div', 'acts');
+    a.appendChild(button('新建（复制 default）', { variant: 'filled', icon: ICON.addPkg, on: function () {
+      const n = String(tf.value || '').trim();
+      if (!/^[A-Za-z0-9._-]+$/.test(n)) { toast('名字只能用字母、数字、. _ -', true); return; }
+      S.profile = n;
+      write('teesim-profile-new', n, '已新建 profile：' + n);
+    } }));
+    w.appendChild(a);
+    return w;
+  }, '新建 profile'));
+  s.appendChild(h('p', 'hint', 'profile 是名字→配置的表：每份自带 keybox、模式、三档补丁级别与设备身份。新建的 profile 复制 default 的整份配置，再逐项改。'));
   c.appendChild(s);
   box.appendChild(c);
 
-  const cur = S.profiles.filter(function (p) { return p.name === S.profile; })[0] || S.profiles[0];
   const e = card();
   const es = section('编辑 profile · ' + cur.name, ICON.patch);
   /* 表单读的是 backend-info 里 default profile 的那批字段；非 default 的字段值
@@ -969,6 +997,14 @@ function trickyBlocks() {
       on: function () { S.scope = o.scope; redraw(); } }));
   });
   seg.appendChild(button('新按包段', { variant: 'tonal', icon: ICON.addPkg, on: function () { S.scope = S.newPkg || 'com.example'; redraw(); } }));
+  /* 按包段可删：先把选择挪回全局，再发删除 —— 删掉的正好是当前选中的段时，
+     表单不该还指着一个已经不存在的作用域。全局段不给删（命令层也会拒）。 */
+  if (S.scope !== 'global') {
+    seg.appendChild(button('删除这一段', { variant: 'text', icon: ICON.del, on: function () {
+      const sc = S.scope; S.scope = 'global';
+      write('tricky-drop-patch', sc, '已删除补丁段：' + sc);
+    } }));
+  }
   ps.appendChild(seg);
   const cur = S.trickyPatches.filter(function (b) { return b.scope === S.scope; })[0];
   ps.appendChild(h('p', 'hint', cur ? '本段当前：system ' + cur.system + ' · vendor ' + cur.vendor + ' · boot ' + cur.boot

@@ -27,8 +27,8 @@ export const EXPECT_API = 4;
 
 /* 写命令：契约不符时全部拒绝。新增写入口必须同时加进这里。 */
 export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restore-app restore-apps \
-remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config tricky-save-patch keybox-save \
-sync clear-log omk-restart';
+remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config tricky-save-patch \
+tricky-drop-patch keybox-save sync clear-log omk-restart teesim-profile-new teesim-profile-del';
 
 /* 每条命令必须出现的键 —— 这张表是从线上那版抄的，键名以真机 `webui.sh status`
    的实际输出为准。自己凭想象写一份的后果：每条命令都会被判"形状不符"，
@@ -52,6 +52,9 @@ export const KV_REQUIRED = {
   'omk-save-config': 'saved fields',
   'tricky-save-patch': 'saved fields',
   'keybox-save': 'saved keybox_file keybox_bytes',
+  'tricky-drop-patch': 'dropped scope',
+  'teesim-profile-new': 'created profile',
+  'teesim-profile-del': 'removed profile',
   'backend-info': 'backend backend_name target_file target_entries keybox_file keybox_exists',
   'props-apply': 'applied mismatch',
   'props-on': 'props_masking',
@@ -430,7 +433,7 @@ function demoResult(cmd, arg) {
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种

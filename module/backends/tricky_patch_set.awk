@@ -50,6 +50,30 @@ END {
         }
     }
     want = (scope == "" ? "global" : scope)
+
+    # 删除模式：-v drop=<包名> 时只删那个 [包名] 块（段头 + 块体 + 块前的一个空行）。
+    # 全局段不许删 —— 它就是补丁表的主体，删掉等于清空整张表。
+    #   状态：ok / missing（没有这一段）/ refused（要删全局段）
+    if (drop != "") {
+        if (drop == "global") { print "refused" > statusfile; for (i = 1; i <= nl; i++) print lines[i]; exit }
+        idx = 0
+        for (s = 1; s <= nsec; s++) if (secn[s] == drop) { idx = s; break }
+        if (!idx) { print "missing" > statusfile; for (i = 1; i <= nl; i++) print lines[i]; exit }
+        lo = secl[idx]; hi = (idx < nsec ? secl[idx + 1] : nl + 1)
+        # 块尾：紧邻下一个段头的空行/注释属于**下一段**（"# b 段" 这种说明），留着。
+        while (hi - 1 >= lo && (lines[hi - 1] ~ /^[ \t]*$/ || lines[hi - 1] ~ /^[ \t]*#/)) hi--
+        # 块头：紧贴段头的说明注释算这个块的；再往前那个空行也一起收掉。
+        lo2 = lo
+        while (lo2 - 1 >= 1 && lines[lo2 - 1] ~ /^[ \t]*#/) lo2--
+        if (lo2 - 1 >= 1 && lines[lo2 - 1] ~ /^[ \t]*$/) lo2--
+        for (i = 1; i <= nl; i++) {
+            if (i >= lo2 && i < hi) continue
+            print lines[i]
+        }
+        print "ok" > statusfile
+        exit
+    }
+
     newblk = ""
     if (want == "global") { lo = 1; hi = (nsec ? secl[1] : nl + 1) }
     else {

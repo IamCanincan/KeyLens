@@ -56,9 +56,9 @@ ICONS_SUBDIR="icons"
 KL_API=4
 KL_COMMANDS="status env targets target-meta apps icons log clear-log props props-apply \
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
-backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch keybox-save \
+backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides"
+teesim-save-overrides teesim-profile-new teesim-profile-del"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -868,6 +868,65 @@ cmd_tricky_save_patch() {
     kv scope "$sc"
 }
 
+# 用法：tricky-drop-patch <包名>；删掉 security_patch.txt 里那个 [包名] 块
+cmd_tricky_drop_patch() {
+    local scope="${1:-}" target out status st dir
+
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    if [ "$KL_BACKEND" != "tricky" ]; then echo "当前后端不是 Tricky Store" >&2; return 1; fi
+    case "$scope" in
+        ''|global) echo "只能删按包段（[包名]）；全局段是补丁表的主体，不能删" >&2; return 1 ;;
+    esac
+    printf '%s' "$scope" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$' \
+        || { echo "scope 必须是合法包名：$scope" >&2; return 1; }
+    [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_patch_set.awk" ] || { echo "缺少 tricky_patch_set.awk" >&2; return 1; }
+
+    target="$TSTORE_DIR/security_patch.txt"
+    [ -f "$target" ] || { echo "补丁表不存在：$target" >&2; return 1; }
+    dir="${KL_DIR}/.kl_drop.$$"
+    mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
+    out="$TSTORE_DIR/.security_patch.txt.keylens.$$"
+    status="$dir/status"
+    webui_lock || { rm -rf "$dir"; return 1; }
+    $AWK_CMD -v drop="$scope" -v pairsfile=/dev/null -v statusfile="$status" \
+        -f "${KL_PATCH%/*}/tricky_patch_set.awk" "$target" > "$out" 2>/dev/null
+    st=$(cat "$status" 2>/dev/null)
+    case "$st" in
+        ok)
+            if cmp -s "$out" "$target" 2>/dev/null; then
+                rm -f "$out" 2>/dev/null
+            elif ! commit_backend_file "$target" "$out" "security_patch.txt.bak"; then
+                rm -f "$out" 2>/dev/null
+                release_lock "${KL_DIR}/.kl_lock"
+                rm -rf "$dir"
+                echo "写入失败：$target" >&2
+                return 1
+            fi
+            ;;
+        missing)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "补丁表里没有 [$scope] 这一段" >&2
+            return 1
+            ;;
+        *)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "补丁表删除失败" >&2
+            return 1
+            ;;
+    esac
+    release_lock "${KL_DIR}/.kl_lock"
+    rm -rf "$dir" 2>/dev/null
+    log_info "🧩 WebUI 删除 Tricky 补丁段（scope=$scope）"
+    kv dropped 1
+    kv scope "$scope"
+}
+
 # 用法：keybox-save <base64(xml)>；写到当前后端的活动 keybox
 cmd_keybox_save() {
     local enc="${1:-}" bcmd dir target tmp bytes st ac kbc kbmsg
@@ -949,6 +1008,120 @@ cmd_teesim_profiles() {
     [ -n "$ac" ] || { echo "未找到 awk，读不了 profile 列表" >&2; return 1; }
     [ -f "${KL_PATCH%/*}/teesim_profiles.awk" ] || { echo "缺少 teesim_profiles.awk" >&2; return 1; }
     $ac -f "${KL_PATCH%/*}/teesim_profiles.awk" "$TEESIM_CONFIG"
+}
+
+# 用法：teesim-profile-new <名字>；把 default 的对象整份复制成一份新 profile。
+# 复制而不是新建空白：上游 profile 有一批必填字段（keybox / mode / patchLevel /
+# apps），缺了行为未定义；从 default 复制出来至少是一份能用、能再改的配置。
+cmd_teesim_profile_new() {
+    local name="${1:-}" out status st dir
+
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    [ -f "$TEESIM_CONFIG" ] || { echo "配置不存在：$TEESIM_CONFIG" >&2; return 1; }
+    case "$name" in
+        ''|default) echo "名字不能为空，也不能叫 default" >&2; return 1 ;;
+    esac
+    printf '%s' "$name" | grep -Eq '^[A-Za-z0-9._-]+$' \
+        || { echo "名字只能用字母、数字、. _ -：$name" >&2; return 1; }
+    [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_profile.awk" ] || { echo "缺少 teesim_profile.awk" >&2; return 1; }
+
+    dir="${KL_DIR}/.kl_prof.$$"
+    mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
+    out="$TEESIM_DIR/.config.json.keylens.$$"
+    status="$dir/status"
+    webui_lock || { rm -rf "$dir"; return 1; }
+    $AWK_CMD -v mode=new -v name="$name" -v statusfile="$status" \
+        -f "${KL_PATCH%/*}/teesim_profile.awk" "$TEESIM_CONFIG" > "$out" 2>/dev/null
+    st=$(cat "$status" 2>/dev/null)
+    case "$st" in
+        ok)
+            if ! commit_backend_file "$TEESIM_CONFIG" "$out" "config.json.bak"; then
+                rm -f "$out" 2>/dev/null
+                release_lock "${KL_DIR}/.kl_lock"
+                rm -rf "$dir"
+                echo "写入失败：$TEESIM_CONFIG" >&2
+                return 1
+            fi
+            ;;
+        exists)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "profile 已存在：$name" >&2
+            return 1
+            ;;
+        *)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "新建 profile 失败（配置里找不到 profiles.default？）" >&2
+            return 1
+            ;;
+    esac
+    release_lock "${KL_DIR}/.kl_lock"
+    rm -rf "$dir" 2>/dev/null
+    log_info "🧰 WebUI 新建 TEESim profile（$name，复制自 default）"
+    kv created 1
+    kv profile "$name"
+}
+
+# 用法：teesim-profile-del <名字>；删掉那个 profile（default 不许删）
+cmd_teesim_profile_del() {
+    local name="${1:-}" out status st dir
+
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    if [ "$KL_BACKEND" != "teesim" ]; then echo "当前后端不是 TEE Simulator" >&2; return 1; fi
+    [ -f "$TEESIM_CONFIG" ] || { echo "配置不存在：$TEESIM_CONFIG" >&2; return 1; }
+    case "$name" in
+        ''|default) echo "default 是兜底 profile，不能删" >&2; return 1 ;;
+    esac
+    printf '%s' "$name" | grep -Eq '^[A-Za-z0-9._-]+$' \
+        || { echo "名字只能用字母、数字、. _ -：$name" >&2; return 1; }
+    [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_profile.awk" ] || { echo "缺少 teesim_profile.awk" >&2; return 1; }
+
+    dir="${KL_DIR}/.kl_prof.$$"
+    mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
+    out="$TEESIM_DIR/.config.json.keylens.$$"
+    status="$dir/status"
+    webui_lock || { rm -rf "$dir"; return 1; }
+    $AWK_CMD -v mode=del -v name="$name" -v statusfile="$status" \
+        -f "${KL_PATCH%/*}/teesim_profile.awk" "$TEESIM_CONFIG" > "$out" 2>/dev/null
+    st=$(cat "$status" 2>/dev/null)
+    case "$st" in
+        ok)
+            if ! commit_backend_file "$TEESIM_CONFIG" "$out" "config.json.bak"; then
+                rm -f "$out" 2>/dev/null
+                release_lock "${KL_DIR}/.kl_lock"
+                rm -rf "$dir"
+                echo "写入失败：$TEESIM_CONFIG" >&2
+                return 1
+            fi
+            ;;
+        missing)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "没有这个 profile：$name" >&2
+            return 1
+            ;;
+        *)
+            rm -f "$out" 2>/dev/null
+            release_lock "${KL_DIR}/.kl_lock"
+            rm -rf "$dir"
+            echo "删除 profile 失败" >&2
+            return 1
+            ;;
+    esac
+    release_lock "${KL_DIR}/.kl_lock"
+    rm -rf "$dir" 2>/dev/null
+    log_info "🧰 WebUI 删除 TEESim profile（$name）"
+    kv removed 1
+    kv profile "$name"
 }
 
 # 输出：present=0|1，另有 status / category / service_error_code / tee_broken。
@@ -1872,6 +2045,9 @@ cmd_help() {
   omk-save-injector <b64> OhMyKeymint injector.toml 字段（payload）
   omk-save-config <b64>  OhMyKeymint config.toml 字段（payload）
   tricky-save-patch <b64> Tricky security_patch.txt 全局值（payload）
+  tricky-drop-patch <包名> 删掉 Tricky security_patch.txt 里的 [包名] 段
+  teesim-profile-new <名字> 复制 default 新建一份 TEESim profile
+  teesim-profile-del <名字> 删除一个 TEESim profile（default 不可删）
   keybox-save <b64>      替换当前后端的 keybox.xml（base64 XML）
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
@@ -1905,6 +2081,9 @@ case "$CMD" in
     omk-save-injector) cmd_omk_save_injector "$ARG" ;;
     omk-save-config) cmd_omk_save_config "$ARG" ;;
     tricky-save-patch) cmd_tricky_save_patch "$ARG" ;;
+    tricky-drop-patch) cmd_tricky_drop_patch "$ARG" ;;
+    teesim-profile-new) cmd_teesim_profile_new "$ARG" ;;
+    teesim-profile-del) cmd_teesim_profile_del "$ARG" ;;
     keybox-save) cmd_keybox_save "$ARG" ;;
     apps)        cmd_apps ;;
     icons)       cmd_icons ;;
