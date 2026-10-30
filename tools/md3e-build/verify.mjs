@@ -311,6 +311,9 @@ async function main() {
     console.log(`     ${stable ? 'ok  ' : '✗   '} 底栏不跳  y ${m.topBefore}→${m.topAfter} · 高 ${m.hBefore}→${m.hAfter}`
       + `  ${atTop ? 'ok  ' : '✗   '} 停在页首 scrollTop=${m.scrollTop}`
       + `  ·  二次进入 ${m.ms}ms（同步 ${m.syncMs}ms）/ ${m.nodes} 节点`);
+    /* 上面刚做了一次“切走再切回”的计时，标签还在 0.26s 的展开过渡里；
+       截图等它落定，否则会拍到上一条的半个字（台架截图不是运行时状态）。 */
+    await sleep(320);
     const shot = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-' + want.id + '.png'), Buffer.from(shot.data, 'base64'));
   }

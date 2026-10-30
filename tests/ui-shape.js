@@ -267,7 +267,8 @@ chk('顶栏让位在外层包壳上，组件保持原生 64px',
 chk('底栏是悬浮药丸（不贴边 + 模糊 + 阴影）',
   /<nav id="nav" class="bottom-nav"/.test(tpl)
   && /\.bottom-nav\{[^}]*position:fixed/.test(css)
-  && /\.bottom-nav\{[^}]*width:min\(calc\(100% - 32px\)/.test(css)
+  && /\.bottom-nav\{[^}]*width:fit-content/.test(css)
+  && /\.bottom-nav\{[^}]*justify-content:center[^}]*gap:4px/.test(css)
   && /\.bottom-nav\{[^}]*border-radius:999px/.test(css)
   && /\.bottom-nav\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
   && /\.bottom-nav\{[^}]*backdrop-filter:blur/.test(css)
