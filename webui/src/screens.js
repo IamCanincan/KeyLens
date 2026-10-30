@@ -260,6 +260,62 @@ function loadIconsFor(shown) {
      打断、几秒都走不完 —— 回放台架在软重启后的真机上就这么抓到的。 */
   loadIcons(need.slice(0, 120)).then(swapIcons, function () {});
 }
+/* 首进名单的预取：先拿 lists 的包名，再一次性取图标/显示名，最后才画列表。
+   这样第一帧就是应用名 + 图标，不会先露出包名再原位替换。
+   预取范围就是**当前档**要画的那 200 条（与 listSection 的 LIMIT 对齐）；
+   切档后新增的那些仍由 loadIconsFor 增量补。 */
+const PREFETCH_ICONS = 200;
+/* 当前档位的数据源：与 listSection 的 src 同一套规则（targets / apps / missing / excluded）。
+   两处各写一份的话，预取与真正画出来的集合一旦分叉，就会出现"预取了没画"或
+   "画了没预取" —— 后者正是首帧闪一下。 */
+function listSource() {
+  if (S.view === 'apps') return S.apps;
+  if (S.view === 'excluded') return S.excluded;
+  if (S.view === 'missing') {
+    const baseSet = {};
+    S.targets.forEach(function (t) { const b = baseOf(t); if (b) baseSet[b] = 1; });
+    return S.apps.filter(function (a) { return !baseSet[a]; });
+  }
+  return S.targets;
+}
+function listBases() {
+  const bases = [], seen = {};
+  listSource().forEach(function (t) {
+    const b = baseOf(t);
+    if (!b || seen[b]) return;
+    seen[b] = 1;
+    bases.push(b);
+  });
+  return bases;
+}
+/* 返回 true = 这次进入还需要等预取（lists 还没到，或这一档前 200 个包还没被问过） */
+export function listIconsPending() {
+  if (!S.loaded || !S.loaded.lists) return true;
+  const bases = listBases().slice(0, PREFETCH_ICONS);
+  for (let i = 0; i < bases.length; i++) if (!askedIcons[bases[i]]) return true;
+  return false;
+}
+export function prefetchListIcons() {
+  const need = [];
+  listBases().slice(0, PREFETCH_ICONS).forEach(function (b) {
+    if (askedIcons[b]) return;
+    askedIcons[b] = 1;
+    need.push(b);
+  });
+  if (!need.length) return Promise.resolve();
+  return loadIcons(need).then(function () {}, function () {});
+}
+export function renderListLoading() {
+  const box = h('div', 'stack');
+  const c = card();
+  const w = h('div', 'list-load');
+  w.appendChild(h('md-loading-indicator'));
+  w.appendChild(h('p', 'hint', '正在加载应用名与图标…'));
+  c.appendChild(w);
+  box.appendChild(c);
+  return box;
+}
+
 function swapIcons() {
   if (S.tab !== 'func' || S.sub !== 'targets') return;
   [].forEach.call(document.querySelectorAll('#view md-list-item[data-base]'), function (it) {
@@ -560,9 +616,7 @@ function listSection() {
     seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; redraw(); }));
   });
   s.appendChild(seg);
-  const src = S.view === 'apps' ? S.apps
-    : S.view === 'missing' ? S.apps.filter(function (a) { return !baseSet[a]; })
-    : S.view === 'excluded' ? S.excluded : S.targets;
+  const src = listSource();
   const q = (S.search || '').toLowerCase();
   const shown = q ? src.filter(function (t) {
     return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0

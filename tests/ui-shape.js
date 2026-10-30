@@ -224,6 +224,16 @@ chk('重画走注册的回调，不写跨模块自由变量',
   /* 判"裸 draw()"：`redraw();` 里就含着 `draw();`，所以要求前面不是字母 ——
      不然这条断言会在自己人身上假红。 */
   && !/(?:^|[^A-Za-z])draw\(\);/.test(screens) && /function redraw\(\)/.test(screens));
+/* 目标名单首进预取：lists 到手后先把应用名/图标取齐，再画第一帧。
+   没有这条，第一帧画包名+首字块、图标到货再原位替换 —— 看起来就是闪一下。 */
+chk('目标名单首次进入先预取应用名/图标再画（无首帧闪动）',
+  /export function listIconsPending\(/.test(screens)
+  && /export function prefetchListIcons\(/.test(screens)
+  && /export function renderListLoading\(/.test(screens)
+  && /listPending = sub === 'targets' && listIconsPending\(\)/.test(app)
+  && /prefetchListIcons\(\)\.then\(function \(\) \{ listPending = false; draw\(\); \}\)/.test(app)
+  && /renderListLoading\(\)/.test(app)
+  && /\.list-load\{[^}]*background:var\(--md-sys-color-surface-container\)/.test(css));
 
 /* ── ⑥ 三家语法差异有单一出处 ───────────────────────────────────── */
 console.log('── 语法分叉 ──');

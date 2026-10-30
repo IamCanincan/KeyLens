@@ -23,6 +23,7 @@ import {
 import { applyAccent } from './theme.js';
 import {
   ICON, h, renderHome, renderFunc, renderFuncSub, renderLog, renderSettings, FUNC_PAGES,
+  renderListLoading, listIconsPending, prefetchListIcons,
   onToast, onReload, onAuto, onApplyTheme, onDraw, onOpenSub,
 } from './screens.js';
 
@@ -337,6 +338,7 @@ function show(name) {
      而顶栏标题、取数、#hash 说的是另一格 —— 四格各说各话。 */
   S.tab = p;
   S.sub = '';
+  listPending = false;
   headline();
   syncBackBtn();
   setNavSelected(PAGES.findIndex(function (x) { return x.id === p; }));
@@ -351,6 +353,9 @@ function openSub(sub) {
   if (!FUNC_PAGES[sub]) return;
   S.tab = 'func';
   S.sub = sub;
+  /* 名单首进先挂"载入中"：lists 到手后一次性预取应用名/图标再画，
+     否则第一帧是包名+首字块，随后原位替换，看起来就是闪一下。 */
+  listPending = sub === 'targets' && listIconsPending();
   headline();
   syncBackBtn();
   try { history.pushState(null, '', '#/func/' + sub); } catch (e) { location.hash = '#/func/' + sub; }
@@ -367,6 +372,7 @@ window.addEventListener('popstate', function () {
   const raw = (location.hash || '').replace(/^#\//, '');
   const m = /^func\/([a-z]+)$/.exec(raw);
   S.sub = m && FUNC_PAGES[m[1]] ? m[1] : '';
+  listPending = S.sub === 'targets' && listIconsPending();
   headline();
   syncBackBtn();
   resetScrollState();
@@ -374,6 +380,8 @@ window.addEventListener('popstate', function () {
   loadSub(S.sub);
 });
 onOpenSub(openSub);
+/* 名单首次进入时是否还在等预取（只影响"目标名单"这一页的占位态） */
+let listPending = false;
 let lastPageKey = '';
 let lastTabIndex = -1;
 let lastSub = '';
@@ -399,7 +407,11 @@ function draw() {
     log: renderLog,
     settings: renderSettings,
   }[S.tab] || renderHome;
-  if (S.tab === 'func' && S.sub) body = function () { return renderFuncSub(S.sub); };
+  if (S.tab === 'func' && S.sub) {
+    body = function () {
+      return S.sub === 'targets' && listPending ? renderListLoading() : renderFuncSub(S.sub);
+    };
+  }
   page.appendChild(body());
   page.appendChild(pageFoot());
   if (changed) {
@@ -439,7 +451,12 @@ function loadSub(sub) {
     need.push(b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : 'omk');
   }
   if (!need.length) return Promise.resolve();
-  return Promise.all(need.map(ensure)).then(draw, function () { draw(); });
+  return Promise.all(need.map(ensure)).then(function () {
+    /* 名单：lists 到手后先把前 200 个包的应用名/图标取齐，再画第一帧；
+       画占位页的这段时间正好用来取。取不到也照常画（退回首字块）。 */
+    if (sub !== 'targets') { draw(); return Promise.resolve(); }
+    return prefetchListIcons().then(function () { listPending = false; draw(); });
+  }, function () { listPending = false; draw(); });
 }
 function reloadAll() {
   S.loaded = {};

@@ -55,6 +55,9 @@ const cases = [
     "  if (S.backendInfo && S.backendInfo.module_version) {\n    id.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));\n  }", '', 1],
   ['OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）', files.screens,
     '  const rt = omkRuntime();\n  if (rt) box.appendChild(rt);\n', '', 1],
+  ['目标名单首次进入先预取应用名/图标再画（无首帧闪动）', files.app,
+    '    return prefetchListIcons().then(function () { listPending = false; draw(); });',
+    '    listPending = false; draw();', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

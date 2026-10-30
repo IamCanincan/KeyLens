@@ -445,6 +445,17 @@ async function main() {
     await gotoFunc(); await sleep(700);
     chk('菜单页没有返回箭头（它不是二级页）', await backArrow() === 0);
     chk('点「目标名单」真的进二级', await tapEntry('目标名单') === 1);
+    /* 预取的行为证据：进去后的第一帧只能是"载入占位"或"已带应用名"，
+       不能先画包名、等图标到货再原位替换（用户看到的闪一下）。 */
+    {
+      const early = await ev(`(function(){
+        if (document.querySelector('#view .list-load')) return { loading: 1 };
+        var it = document.querySelector('#view md-list-item[data-base="com.android.vending"]');
+        return { loading: 0, head: it ? it.getAttribute('headline') : '' };
+      })()`);
+      chk('名单第一帧不闪包名（载入占位或已是应用名）',
+        !!(early && (early.loading || early.head === 'Google Play 商店')), JSON.stringify(early));
+    }
     await sleep(1600);
     const pT = await ev(PROBE);
     chk('二级页标题与返回箭头都在', (await headlineText()) === '目标名单' && await backArrow() === 1,
