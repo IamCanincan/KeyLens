@@ -23,7 +23,7 @@ import {
 import { applyAccent } from './theme.js';
 import {
   ICON, h, renderHome, renderFunc, renderFuncSub, renderLog, renderSettings, FUNC_PAGES,
-  renderPending, targetsPending, prefetchListIcons,
+  renderPending, targetsPending, prefetchListIcons, swapIcons,
   onToast, onReload, onAuto, onApplyTheme, onDraw, onOpenSub,
 } from './screens.js';
 
@@ -380,7 +380,34 @@ function pendingKind() {
   return S.sub === 'targets' ? 'list' : 'rows';
 }
 
+/* 二级页缓存：离开时把**已经画完的整页 DOM**存起来，再次进入直接贴回。
+   配置页这类组件多的页面一次构建要几百毫秒；重复构建就是"点进去卡一下"。
+   写入/重新读取会清空整仓；keybox 的说明依赖当前 profile，签名不同就不复用。 */
+const CACHE_SUBS = { targets: 1, props: 1, config: 1, sync: 1, keybox: 1 };
+/* 重页面首进先挂骨架、延后一拍再构建，点击当帧就有反馈；轻页面（keybox/sync）
+   数据通常已在启动时取好，直接画，不额外闪一下骨架。 */
+const HEAVY_SUBS = { targets: 1, props: 1, config: 1 };
+const pageCache = {};
+function cacheSig(sub) { return sub === 'keybox' ? S.profile : ''; }
+function cachedPage(sub) {
+  const hit = pageCache['func/' + sub];
+  if (!hit) return null;
+  if (hit.sig !== cacheSig(sub)) { delete pageCache['func/' + sub]; return null; }
+  return hit.el;
+}
+function stashPage() {
+  if (S.tab !== 'func' || !S.sub || pagePending || !CACHE_SUBS[S.sub]) return;
+  const pg = view.firstElementChild;
+  if (!pg || !pg.classList || !pg.classList.contains('page')) return;
+  pageCache['func/' + S.sub] = { el: pg, sig: cacheSig(S.sub) };
+}
+function afterPaint(fn) {
+  requestAnimationFrame(function () { requestAnimationFrame(fn); });
+}
+
 function show(name) {
+  /* 先存当前二级页（如果正在看），再切走 —— 下次进来直接贴回。 */
+  stashPage();
   const p = PAGES.some(function (x) { return x.id === name; }) ? name : 'home';
   /* S.tab 存**校正过**的那一格：存原始 hash 的话，draw() 里的表查不到会悄悄画主页，
      而顶栏标题、取数、#hash 说的是另一格 —— 四格各说各话。 */
@@ -400,17 +427,25 @@ function show(name) {
    数据按需取 —— 菜单页不问 lists/props，进二级才问。 */
 function openSub(sub) {
   if (!FUNC_PAGES[sub]) return;
+  stashPage();
   S.tab = 'func';
   S.sub = sub;
-  /* 数据没到先挂"载入中"：等到的第一帧就是完整内容（名单还包括图标预取），
-     不会先画一张"读不到/全部一致/0 项"的假页面再被替换。 */
-  setPagePending(!subReady(sub));
+  const cached = cachedPage(sub);
+  if (cached) setPagePending(false);
+  else if (HEAVY_SUBS[sub]) setPagePending(true);
+  else setPagePending(!subReady(sub));
   headline();
   syncBackBtn();
   try { history.pushState(null, '', '#/func/' + sub); } catch (e) { location.hash = '#/func/' + sub; }
   resetScrollState();
   draw();
-  loadSub(sub);
+  if (cached) return;   /* 整页已经在 DOM 缓存里，draw() 直接贴回，不取数也不重建 */
+  if (HEAVY_SUBS[sub]) {
+    /* 先让骨架屏真上屏（两帧），再做构建 —— 点击处理器不再同步跑几百毫秒。 */
+    afterPaint(function () { if (S.tab === 'func' && S.sub === sub) loadSub(sub); });
+  } else {
+    loadSub(sub);
+  }
 }
 /* 系统返回键 / 顶栏返回箭头都会走到这：按当前 hash 校正二级状态，
    不对 hash 编故事 —— hash 不在表里就当菜单。
@@ -418,15 +453,25 @@ function openSub(sub) {
      写一行会被当成 `(?:|x)` 那类空分支误伤。） */
 window.addEventListener('popstate', function () {
   if (S.tab !== 'func') return;
+  stashPage();
   const raw = (location.hash || '').replace(/^#\//, '');
   const m = /^func\/([a-z]+)$/.exec(raw);
   S.sub = m && FUNC_PAGES[m[1]] ? m[1] : '';
-  setPagePending(!!S.sub && !subReady(S.sub));
+  const sub = S.sub;
+  const cached = sub ? cachedPage(sub) : null;
+  if (cached) setPagePending(false);
+  else if (sub && HEAVY_SUBS[sub]) setPagePending(true);
+  else setPagePending(!!sub && !subReady(sub));
   headline();
   syncBackBtn();
   resetScrollState();
   draw();
-  loadSub(S.sub);
+  if (cached) return;
+  if (sub && HEAVY_SUBS[sub]) {
+    afterPaint(function () { if (S.tab === 'func' && S.sub === sub) loadSub(sub); });
+  } else {
+    loadSub(sub);
+  }
 });
 onOpenSub(openSub);
 let lastPageKey = '';
@@ -436,6 +481,18 @@ function draw() {
   const key = S.tab + '/' + S.sub;
   const changed = key !== lastPageKey;
   const toIdx = PAGES.findIndex(function (p) { return p.id === S.tab; });
+  /* 缓存命中：整页原样贴回，不跑 render、不再建节点。贴回后从仓里删掉 ——
+     这一页现在是活的；离开时 stashPage() 会把它重新存回去。 */
+  const cached = (S.tab === 'func' && S.sub && changed && !pagePending) ? cachedPage(S.sub) : null;
+  if (cached) {
+    delete pageCache['func/' + S.sub];
+    if (view.firstElementChild !== cached) { view.textContent = ''; view.appendChild(cached); }
+    lastPageKey = key;
+    lastTabIndex = toIdx;
+    lastSub = S.sub;
+    if (S.sub === 'targets') swapIcons();
+    return;
+  }
   /* 同页重画（数据异步回来 / 搜索输入）复用同一个 .page 容器：
      否则 show() 先 draw、缓存命中后再 draw，第二次会把正在入场的整页
      换掉，动画就永远看不见。换页时才建新容器并重新触发动画。 */
@@ -491,13 +548,18 @@ function pageOf(id) { return PAGES.filter(function (p) { return p.id === id; })[
 function load(name) {
   const need = pageOf(name).need.slice();
   const key = name + '/';
-  return Promise.all(need.map(ensure)).then(function () { finishLoad(key); },
-    function () { finishLoad(key); });
+  return Promise.all(need.map(ensure)).then(function (res) {
+    /* 只有真的读到新数据才重画：show() 已经用缓存画过一帧，ensure 全部命中
+       缓存时再整页重建一次，只是把点击后的构建成本翻倍。 */
+    if (res.some(Boolean) || pagePending) finishLoad(key);
+  }, function () { finishLoad(key); });
 }
-/* 二级页取数：名单要 lists+excluded（Tricky 还要 tee_status）；伪装要 props。 */
-function loadSub(sub) {
+/* 二级页取数：名单要 lists+excluded（Tricky 还要 tee_status）；伪装要 props。
+   force=true 用于 reloadAll：即便这一页没有额外取数命令（自动同步），也要重画。 */
+function loadSub(sub, force) {
   const need = [];
   const key = 'func/' + sub;
+  const wasPending = pagePending;
   if (sub === 'targets') {
     need.push('lists', 'excluded');
     /* Tricky 行尾「自动 →」的判定读 tee_status：跟名单一起取，首帧就画对，
@@ -509,16 +571,27 @@ function loadSub(sub) {
     const b = S.backendInfo.backend;
     need.push(b === 'teesim' ? 'teesim' : b === 'tricky' ? 'tricky' : 'omk');
   }
-  if (!need.length) { finishLoad(key); return Promise.resolve(); }
-  return Promise.all(need.map(ensure)).then(function () {
+  if (!need.length) {
+    if (force || wasPending) finishLoad(key);
+    return Promise.resolve();
+  }
+  return Promise.all(need.map(ensure)).then(function (res) {
+    const did = res.some(Boolean);
+    if (sub !== 'targets') {
+      if (force || wasPending || did) finishLoad(key);
+      return Promise.resolve();
+    }
     /* 名单：lists 到手后先把前 200 个包的应用名/图标取齐，再画第一帧；
-       画占位页的这段时间正好用来取。取不到也照常画（退回首字块）。 */
-    if (sub !== 'targets') { finishLoad(key); return Promise.resolve(); }
-    return prefetchListIcons().then(function () { finishLoad(key); });
+       全命中缓存（没有新数据/没有新图标）时不重画，openSub 那一帧就是最终态。 */
+    return prefetchListIcons().then(function (didIcons) {
+      if (force || wasPending || did || didIcons) finishLoad(key);
+    });
   }, function () { finishLoad(key); });
 }
 function reloadAll() {
   S.loaded = {};
+  /* 数据要重取了，整页缓存全部作废（当前页会由 loadSub(force) 重建）。 */
+  Object.keys(pageCache).forEach(function (k) { delete pageCache[k]; });
   return loadBase().then(function () { return checkContract(); }).then(function () {
     applyTheme();
     applyInsets();
@@ -528,7 +601,7 @@ function reloadAll() {
   }).then(function () {
     /* 当前在二级页就重取这一页 —— 以前只重取基本状态，写完名单/属性/配置后
        界面还停在旧值，要退出去再进来才看得到新数据。 */
-    return S.sub ? loadSub(S.sub) : load(S.tab);
+    return S.sub ? loadSub(S.sub, true) : load(S.tab);
   });
 }
 onReload(reloadAll);

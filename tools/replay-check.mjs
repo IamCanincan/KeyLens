@@ -224,6 +224,7 @@ async function main() {
     });
     return { vw: vw, scrollW: document.documentElement.scrollWidth,
       items: document.querySelectorAll('#view md-list-item').length,
+      rows: document.querySelectorAll('#view .app-row').length,
       cards: document.querySelectorAll('#view md-card').length,
       text: txt, self: self, calls: (window.__replayLog||[]).length };
   })()`;
@@ -309,22 +310,22 @@ async function main() {
   /* 判据要钉在**真数据**上，不是"画了点什么"：
      名单里有多少条真条目，屏上就该有多少行 —— 桥接卡住时界面仍会画出自检卡那几行，
      只看 cards/items 下限抓不到（第一次就是这么假绿的）。 */
-  chk('真机名单画到屏上（不是只有框架）', pb.items >= wantItems,
-    '列表项 ' + pb.items + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
+  chk('真机名单画到屏上（不是只有框架）', pb.rows >= wantItems,
+    '列表项 ' + pb.rows + '，真机名单 ' + realTargets.length + ' 条（门槛 ' + wantItems + '）');
   chk('画的是真包名，不是占位', !firstPkg || (pb.text || '').indexOf(firstPkg) >= 0, firstPkg);
   {
     const gap = await ev(`(function(){ var tf=document.querySelector('#view md-text-field'),
-      l=document.querySelector('#view md-list'); if(!tf||!l) return null;
+      l=document.querySelector('#view .app-list'); if(!tf||!l) return null;
       var a=tf.getBoundingClientRect(), b=l.getBoundingClientRect();
       return Math.round(b.top - a.bottom); })()`);
     chk('真机搜索框与名单之间有分组间距', gap != null && gap >= 18,
       gap == null ? '没找到搜索框或名单' : gap + 'px');
   }
   {
-    const rowCenter = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
-      if (!it||!it.shadowRoot) return null; var r=it.shadowRoot.querySelector('.item'), c=it.shadowRoot.querySelector('.content');
-      if (!r||!c) return null; var a=r.getBoundingClientRect(), b=c.getBoundingClientRect();
-      return { row: Math.round(a.top+a.height/2), text: Math.round(b.top+b.height/2) }; })()`);
+    const rowCenter = await ev(`(function(){ var it=document.querySelector('#view .app-row');
+      if (!it) return null; var r=it.getBoundingClientRect(), c=it.querySelector('.app-row-text');
+      if (!c) return null; var b=c.getBoundingClientRect();
+      return { row: Math.round(r.top+r.height/2), text: Math.round(b.top+b.height/2) }; })()`);
     chk('真机行内文字与行中心对齐', !!rowCenter && Math.abs(rowCenter.row - rowCenter.text) <= 2,
       rowCenter ? '行中心 ' + rowCenter.row + ' / 文字中心 ' + rowCenter.text : '没读到');
   }
@@ -495,7 +496,7 @@ async function main() {
   const ic = await ev(`(function(){
     var imgs = [].slice.call(document.querySelectorAll('#view img.app-ic'));
     var ok = imgs.filter(function (i) { return i.naturalWidth > 0; }).length;
-    var rows = document.querySelectorAll('#view md-list-item').length;
+    var rows = document.querySelectorAll('#view .app-row').length;
     var fb = document.querySelectorAll('#view .app-ic-fallback').length;
     var srcs = imgs.map(function (i) { return i.getAttribute('src'); });
     return { total: imgs.length, ok: ok, rows: rows, fb: fb, srcs: srcs,
@@ -525,25 +526,31 @@ async function main() {
     fs.writeFileSync(path.join(OUT, 'replay-list.png'), Buffer.from(s0.data, 'base64'));
   }
 
-  /* 分批挂载的两个风险，都要有断言：
-     ① 打到一半切走 —— 不许往已经卸掉的列表里继续 append，也不许抛异常；
-     ② 不打断时最后必须补齐到全部条目（不能悄悄停在 40 条）。 */
+  /* 轻量行一次画全：点进去 40ms 后行数就应该到全部（不再有分批挂载，
+     也没有"已显示 N"）。切走再切回也不允许往回掉。 */
   await tapBack();
   await sleep(300);
   await tapEntry('目标名单');
   await sleep(40);
+  const quick = await ev(`(function(){ return {
+    rows: document.querySelectorAll('#view .app-row').length,
+    hint: (document.getElementById('view').textContent.match(/已显示\\s*\\d+/) || [''])[0] }; })()`);
+  chk('名单一次画全（40ms 后已是全部行，没有分批）',
+    quick.rows >= Math.min(realTargets.length, 200) && !quick.hint,
+    'rows=' + quick.rows + (quick.hint ? ' · ' + quick.hint : ''));
   await goto(3);
-  await sleep(900);
+  await sleep(700);
   const afterCut = await ev(`document.getElementById('view').textContent.length`);
-  chk('分批加载被打断后不炸（切到设置格仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
+  chk('名单画全后切走不炸（设置格仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
   await goto(1);
   await sleep(400);
   await tapEntry('目标名单');
-  await sleep(2500);
+  await sleep(500);
   const done = await ev(`(function(){ return {
-    items: document.querySelectorAll('#view md-list-item').length,
+    rows: document.querySelectorAll('#view .app-row').length,
     hint: (document.getElementById('view').textContent.match(/共 \\d+ 条[^|]*/) || [''])[0] }; })()`);
-  chk('分批加载最终补齐到全部条目', done.items >= Math.min(realTargets.length, 200), done.hint);
+  chk('再次进入名单仍一次画全且计数正确',
+    done.rows >= Math.min(realTargets.length, 200) && /共 \d+ 条/.test(done.hint), done.hint);
 
   /* 日志页 300 行：用户在日志页能点的最大档，也是这页最重的形态。
      量"切走再切回"的时间——数据已在 S.log 里，量到的是渲染本身。 */

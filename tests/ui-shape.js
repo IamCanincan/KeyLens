@@ -232,9 +232,29 @@ chk('重画走注册的回调，不写跨模块自由变量',
 chk('目标名单首次进入先预取应用名/图标再画（无首帧闪动）',
   /export function targetsPending\(/.test(screens)
   && /export function prefetchListIcons\(/.test(screens)
-  && /prefetchListIcons\(\)\.then\(function \(\) \{ finishLoad\(key\); \}\)/.test(app)
+  && /prefetchListIcons\(\)\.then\(function \(didIcons\) \{/.test(app)
   && /setPagePending\(!subReady\(sub\)\)/.test(app)
   && /export function renderPending\(/.test(screens));
+/* 缓存命中时 openSub 已经画过一帧；ensure 全命中缓存就不许再整页重建一次
+   （配置页 4 倍限速下 358ms 里有一半是这次重复构建）。 */
+chk('缓存命中不重画当前页（没有新数据就跳过第二次构建）',
+  /if \(res\.some\(Boolean\) \|\| pagePending\) finishLoad\(key\);/.test(app)
+  && /if \(force \|\| wasPending \|\| did\) finishLoad\(key\);/.test(app)
+  && /if \(force \|\| wasPending \|\| did \|\| didIcons\) finishLoad\(key\);/.test(app)
+  && /return prefetchListIcons\(\)\.then\(function \(didIcons\)/.test(app)
+  && /loadSub\(S\.sub, true\)/.test(app));
+/* 配置/属性/名单这类重页面：首进先让骨架屏上屏、延后两帧构建；
+   离开时把整页 DOM 存起来，再次进入直接贴回，不再重建。 */
+chk('重页面首进先骨架后构建，重复进入直接贴回缓存',
+  /const CACHE_SUBS = \{ targets: 1, props: 1, config: 1, sync: 1, keybox: 1 \}/.test(app)
+  && /const HEAVY_SUBS = \{ targets: 1, props: 1, config: 1 \}/.test(app)
+  && /function stashPage\(\)/.test(app)
+  && /pageCache\['func\/' \+ S\.sub\] = \{ el: pg, sig: cacheSig\(S\.sub\) \}/.test(app)
+  && /const cached = \(S\.tab === 'func' && S\.sub && changed && !pagePending\) \? cachedPage\(S\.sub\) : null/.test(app)
+  && /delete pageCache\['func\/' \+ S\.sub\]/.test(app)
+  && /afterPaint\(function \(\) \{ if \(S\.tab === 'func' && S\.sub === sub\) loadSub\(sub\); \}\)/.test(app)
+  && /if \(S\.sub === 'targets'\) swapIcons\(\)/.test(app)
+  && /Object\.keys\(pageCache\)\.forEach\(function \(k\) \{ delete pageCache\[k\]; \}\)/.test(app));
 /* 等待期间不是一小张转圈卡：骨架屏填满首屏、和真实内容同构，数据到齐整页替换。 */
 chk('首进是过渡骨架页（名单/日志/表单各有形状）',
   /skRows\(7\)/.test(screens) && /skConsole\(\)/.test(screens)
@@ -275,7 +295,7 @@ chk('boot 首画前取 backend-info（版本/条数/keybox 不空一拍）',
   /then\(loadBase\)\.then\(function \(\) \{[\s\S]*?ensure\('backend'\)[\s\S]*?show\(start\)/.test(app));
 /* 写完名单/属性/配置后必须重取当前二级页，否则屏上停在旧值。 */
 chk('写后 reloadAll 重取当前二级页',
-  /return S\.sub \? loadSub\(S\.sub\) : load\(S\.tab\)/.test(app));
+  /return S\.sub \? loadSub\(S\.sub, true\) : load\(S\.tab\)/.test(app));
 /* 名单增删会改 backend-info 的 target_entries：写后刷新也要重取它，
    否则主页/菜单的"生效 N 条"停在旧数。 */
 chk('写后 reloadAll 也重取 backend-info（条数不落后）',
@@ -392,6 +412,17 @@ chk('分组圆角：首行上角、末行下角大圆角',
   /md-list-item:first-child\{border-top-left-radius:22px/.test(css)
   && /md-list-item:last-child\{border-bottom-left-radius:22px/.test(css)
   && /#view md-list md-list-item\{border-radius:6px;margin-bottom:2px\}/.test(css));
+/* 名单行体量太大，不用 md-list-item：4 倍 CPU 限速下 129 行 div 43ms、
+   md-list-item 881ms。轻量行一次画全，页高第一帧就是最终值。 */
+chk('目标名单用轻量行一次画全（不建 md-list-item、不分批）',
+  /const l = h\('div', 'app-list'\)/.test(screens)
+  && /const r = h\('div', 'app-row'\)/.test(screens)
+  && /page\.forEach\(function \(t\) \{ l\.appendChild\(rowOf\(t\)\); \}\)/.test(screens)
+  && /\.app-row\{[^}]*min-height:72px[^}]*background:var\(--md-sys-color-surface-container\)/.test(css)
+  && /\.app-list > \.app-row:first-child\{border-top-left-radius:22px/.test(css)
+  && /\.app-row-sub\{[^}]*font-family:var\(--kl-mono\)/.test(css)
+  && /app-row-act-ic/.test(screens) && /app-row-mode/.test(screens)
+  && !/listToken/.test(screens) && !/CHUNK/.test(screens));
 chk('行面的底色与圆角用 !important 压过组件行内样式',
   /\.item\{background:var\(--md-sys-color-surface-container\)!important;border-radius:inherit!important\}/.test(screens));
 chk('行内文字、图标、行尾都在行中轴（钉到 50%）',

@@ -183,10 +183,10 @@ md-list{display:block}
 /* 搜索框与第一行之间留一口气（以前 2px 的缝，看着像粘住） */
 /* 版块间距：同类行/芯片贴紧（2–8px），不同类的内容之间至少 16–20px。
    搜索框、筛选芯片、名单、日志台是四种东西，粘在一起时分不清边界。 */
-md-text-field + md-list{margin-top:20px}
+md-text-field + md-list, md-text-field + .app-list{margin-top:20px}
 .acts.filter-grid + md-text-field{margin-top:16px}
 .hint + .acts{margin-top:16px}
-md-list + .hint{margin-top:12px}
+md-list + .hint, .app-list + .hint{margin-top:12px}
 .acts + .row{margin-top:12px}
 /* 列表 / 按钮 / 输入框 / 表单是四类块：两两之间留 16–20px。
    属性伪装页的「按钮夹在两段属性列表之间」与「输入框贴着应用值」就是缺这组规则。 */
@@ -209,6 +209,31 @@ md-list + .form{margin-top:20px}
 #view md-list md-list-item{border-radius:6px;margin-bottom:2px}
 #view md-list md-list-item:first-child{border-top-left-radius:22px;border-top-right-radius:22px}
 #view md-list md-list-item:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px;margin-bottom:0}
+/* 目标名单的轻量行（不用 md-list-item）：4 倍 CPU 限速下 129 行 div 43ms，
+   md-list-item 881ms —— 后者就是"点进二级页卡一下"的根因。外观与 md-list
+   分组一致：72px、surface-container、组首/末 22px 圆角、2px 缝；行尾按钮
+   也走原生 <button>（图标字体连字 / 文本按钮），不再每行带一个组件。 */
+.app-list{display:flex;flex-direction:column;gap:2px}
+.app-row{box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:72px;padding:0 16px;
+  border-radius:6px;background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface)}
+.app-list > .app-row:first-child{border-top-left-radius:22px;border-top-right-radius:22px}
+.app-list > .app-row:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px}
+.app-row-text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
+.app-row-title{font-size:16px;font-weight:500;line-height:22px;letter-spacing:0;
+  white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-row-sub{font-family:var(--kl-mono);font-size:13px;line-height:20px;letter-spacing:0;
+  color:var(--md-sys-color-on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.app-row-act{box-sizing:border-box;width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;
+  padding:0;border:0;border-radius:50%;background:transparent;color:var(--md-sys-color-on-surface-variant);
+  font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
+.app-row-act:active{background:color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent)}
+.app-row-act-ic{font-family:var(--md-icon-font-family);font-size:24px;line-height:1;font-variation-settings:'FILL' 0,'wght' 400}
+.app-row-mode{box-sizing:border-box;height:40px;flex:none;padding:0 12px;border:0;border-radius:20px;background:transparent;
+  color:var(--md-sys-color-primary);font-size:14px;font-weight:500;line-height:20px;font-family:inherit;white-space:nowrap;
+  cursor:pointer;-webkit-tap-highlight-color:transparent}
+.app-row-mode:active{background:color-mix(in srgb, var(--md-sys-color-primary) 10%, transparent)}
+.app-row-mode[data-tone="warn"]{color:var(--kl-warn)}
+.app-row-mode[data-tone="bad"]{color:var(--kl-bad)}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-warn) 38%, transparent);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
@@ -251,10 +276,10 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
   flex:none;font-family:var(--md-icon-font-family);font-size:24px;line-height:1;
   font-variation-settings:'FILL' 0,'wght' 400;
   color:var(--md-sys-color-on-surface-variant);background:transparent}
-/* 名单的应用图标走 img/首字块，与行首图标同一尺寸/圆角 */
-md-list-item img.app-ic{width:40px;height:40px;border-radius:12px;object-fit:cover;display:block}
+/* 名单的应用图标走 img/首字块，与行首图标同一尺寸/圆角（md-list 与轻量行共用） */
+#view img.app-ic{width:40px;height:40px;border-radius:12px;flex:none;object-fit:cover;display:block}
 /* 图标缺失时的首字块：同尺寸同圆角，用容器色，不抢眼 */
-md-list-item .app-ic-fallback{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
+#view .app-ic-fallback{width:40px;height:40px;border-radius:12px;flex:none;display:flex;align-items:center;justify-content:center;font-size:15px;font-weight:600;background:var(--md-sys-color-secondary-container);color:var(--md-sys-color-on-secondary-container)}
 .empty{font-size:13px;color:var(--md-sys-color-on-surface-variant);margin:6px 0 0}
 .read-err{font-size:12px;line-height:1.55;margin:10px 0 0;color:var(--md-sys-color-on-error-container);background:var(--md-sys-color-error-container);padding:8px 12px;border-radius:12px}
 .warn-text{margin:0;font-size:14px;line-height:1.5}

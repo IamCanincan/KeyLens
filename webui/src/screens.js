@@ -238,26 +238,26 @@ function modeButton(tok, meta, tee) {
   const label = kind === 'auto'
     ? '自动 → ' + (r.to === 'none' ? '不匹配' : (MODE_LABEL[r.to] || '未探测'))
     : MODE_LABEL[kind];
-  const el = button(label, { variant: 'text', on: function () {
-      const order = ['auto', 'leaf', 'generate'];
-      const next = order[(order.indexOf(kind) + 1) % 3];
-      write('set-mode', baseOf(tok) + ' ' + next, '已切换为' + MODE_LABEL[next]);
-    } });
+  /* 名单行尾的三态按钮也走轻量 <button>：129 行各带一个 md-button 时，
+     光组件本身就能把进页面拖到几百毫秒（见 listSection 的实测）。 */
+  const el = h('button', 'app-row-mode', label);
+  el.type = 'button';
   el.setAttribute('data-tone', r.tone);
+  el.addEventListener('click', function () {
+    const order = ['auto', 'leaf', 'generate'];
+    const next = order[(order.indexOf(kind) + 1) % 3];
+    write('set-mode', baseOf(tok) + ' ' + next, '已切换为' + MODE_LABEL[next]);
+  });
   return { el: el, note: r.note };
 }
 
 let askedIcons = {};
-/* 名单分批挂载的令牌：换页/重画时 +1，正在跑的分批循环看到它不是自己那批就停手
-   （否则会往已经卸掉的列表里继续 append，白烧一帧还可能报错）。 */
-let listToken = 0;
 function loadIconsFor(shown) {
   const need = [];
   shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
   if (!need.length) return;
-  /* 图标异步到货后**原位替换**首字块，不整页重画：重画会把 16 条/批的分批
-     从头再来一遍，名单一大（真机 137 条）图标又分批到达时，列表会被反复
-     打断、几秒都走不完 —— 回放台架在软重启后的真机上就这么抓到的。 */
+  /* 图标异步到货后**原位替换**首字块，不整页重画：重画会打断滚动，
+     名单一大时还会把已经建好的行全拆掉重建。 */
   loadIcons(need.slice(0, 120)).then(swapIcons, function () {});
 }
 /* 首进名单的预取：先拿 lists 的包名，再一次性取图标/显示名，最后才画列表。
@@ -306,8 +306,10 @@ export function prefetchListIcons() {
     askedIcons[b] = 1;
     need.push(b);
   });
-  if (!need.length) return Promise.resolve();
-  return loadIcons(need).then(function () {}, function () {});
+  if (!need.length) return Promise.resolve(false);
+  /* true = 这次真的发起了图标读取（调用方据此决定要不要重画）；
+     命令失败也返回 true —— 数据没变也要把首字块状态画定。 */
+  return loadIcons(need).then(function () { return true; }, function () { return true; });
 }
 /* 过渡加载页（骨架屏）：不是一小张转圈卡 —— 骨架填满首屏、和真实内容同构，
    数据到齐后整页替换，等待时看起来是"正在长出一页"而不是"卡住了"。
@@ -375,25 +377,35 @@ export function renderPending(text, kind) {
   return box;
 }
 
-function swapIcons() {
+export function swapIcons() {
   if (S.tab !== 'func' || S.sub !== 'targets') return;
-  [].forEach.call(document.querySelectorAll('#view md-list-item[data-base]'), function (it) {
+  [].forEach.call(document.querySelectorAll('#view .app-row[data-base]'), function (it) {
     const b = it.getAttribute('data-base');
     const ic = S.icons[b];
     if (!ic) return;
     /* 显示名也一起补：首次进入若先画了包名，图标到货后标题要原位变成应用名，
        否则会和第二次进入（缓存命中、直接画应用名）长得不一样。 */
-    if (ic.label) {
+    const sup = (function () {
+      if (!ic.label) return '';
       const tok = it.getAttribute('data-tok') || b || '';
       const note = it.getAttribute('data-note') || '';
+      return [tok, note].filter(Boolean).join(' · ');
+    })();
+    if (ic.label) {
+      const t = it.querySelector('.app-row-title');
+      if (t) t.textContent = ic.label;
       it.setAttribute('headline', ic.label);
-      it.setAttribute('supporting-text', [tok, note].filter(Boolean).join(' · '));
+      it.setAttribute('supporting-text', sup);
+      const tx = it.querySelector('.app-row-text');
+      let s = it.querySelector('.app-row-sub');
+      if (!s && sup && tx) { s = h('span', 'app-row-sub', sup); tx.appendChild(s); }
+      else if (s) s.textContent = sup;
     }
     if (!ic.src || it.querySelector('img.app-ic')) return;
     const fb = it.querySelector('.app-ic-fallback');
     if (!fb) return;
     const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
-    img.setAttribute('slot', 'start'); img.loading = 'lazy'; img.decoding = 'async';
+    img.loading = 'lazy'; img.decoding = 'async';
     img.addEventListener('error', function () { /* 贴图打不开就保持首字块 */ });
     fb.parentNode.replaceChild(img, fb);
   });
@@ -690,101 +702,80 @@ function listSection() {
   tf.setAttribute('label', '搜索包名或应用名');
   tf.addEventListener('input', function () { S.search = String(tf.value || ''); redraw(); });
   s.appendChild(tf);
-  const l = h('md-list');
+  /* 名单行不用 md-list-item：129 行时，轻量 div 行构建+布局 43ms，
+     md-list-item 要 881ms（4 倍 CPU 限速同机实测）—— 后者就是"点进二级页
+     卡一下"的根因。轻量行一次画全，页面高度第一帧就是最终值，也不再分批撑高。 */
+  const l = h('div', 'app-list');
   const LIMIT = 200;
-  const CHUNK = 16;
   const page = shown.slice(0, LIMIT);
+  function letterBlock(text) {
+    return h('span', 'app-ic-fallback', (String(text || '?').trim().charAt(0) || '?').toUpperCase());
+  }
+  function leading(ic, title) {
+    if (ic && ic.src) {
+      /* 图片必须有尺寸（CSS 里 40px）：裸 img 会按原图 256px 渲染，整行被撑开。 */
+      const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
+      img.loading = 'lazy'; img.decoding = 'async';
+      /* 图标文件缺失时不要留浏览器的破图符：退回"首字块"。 */
+      img.addEventListener('error', function () {
+        const fb = letterBlock(ic.label || title);
+        if (img.parentNode) img.parentNode.replaceChild(fb, img);
+      });
+      return img;
+    }
+    return letterBlock((ic && ic.label) || title);
+  }
   function rowOf(tok) {
     const b = baseOf(tok), ic = S.icons[b];
     const meta = (S.targetMeta || {})[tok];
     const isTrickyTargets = S.view === 'targets' && bi.backend === 'tricky' && syn.modes;
     const m = isTrickyTargets ? modeButton(tok, meta, S.teeStatus) : null;
     const detail = (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : '');
-    const it = item({
-      headline: (ic && ic.label) || b || tok,
-      supporting: [detail, m && m.note].filter(Boolean).join(' · '),
-      interactive: true,
-      mono: true,
-    });
-    /* 记住基础包名与 token/模式说明：图标与显示名异步到货后原位更新，
-       不能只换图不换标题（否则第一次进是包名、第二次进才是应用名）。 */
-    it.setAttribute('data-base', b || tok);
-    it.setAttribute('data-tok', tok);
-    it.setAttribute('data-note', m ? (m.note || '') : '');
-    if (ic && ic.src) {
-      /* 必须进 start 槽并给尺寸：裸 img 落在默认槽里会按原图 256px 渲染，
-         整行被一个巨大图标撑开（截图里 Grok 那张就是这样）。 */
-      const img = h('img', 'app-ic'); img.src = ic.src; img.alt = '';
-      img.setAttribute('slot', 'start');
-      img.loading = 'lazy'; img.decoding = 'async';
-      /* 图标文件缺失时不要留浏览器的破图符：退回"首字块"（旧版就是这个退路）。 */
-      img.addEventListener('error', function () {
-        const letter = ((ic.label || b || tok).trim().charAt(0) || '?').toUpperCase();
-        const fb = h('span', 'app-ic-fallback', letter);
-        fb.setAttribute('slot', 'start');
-        if (img.parentNode) img.parentNode.replaceChild(fb, img);
-      });
-      it.appendChild(img);
-    } else if (b || tok) {
-      /* 首帧这个包的图标还没取回来（icons 是异步命令）：先画首字块，别留空。
-         不画的话第一次进名单整列都是空的，看起来像"没有图标"。图标到了
-         由 loadIconsFor 触发一次重画把 img 换上来。 */
-      const fb = h('span', 'app-ic-fallback', ((ic && ic.label ? ic.label : b || tok).trim().charAt(0) || '?').toUpperCase());
-      fb.setAttribute('slot', 'start');
-      it.appendChild(fb);
-    }
+    const title = (ic && ic.label) || b || tok;
+    const note = m ? (m.note || '') : '';
+    const sup = [detail, note].filter(Boolean).join(' · ');
+    const r = h('div', 'app-row');
+    /* 行属性给台架读（真实文字在下面的 DOM 里）：headline / supporting-text
+       与旧 md-list-item 的属性同形，第一/第二次进入的对照不用改判据。 */
+    r.setAttribute('headline', title);
+    r.setAttribute('supporting-text', sup);
+    r.setAttribute('data-base', b || tok);
+    r.setAttribute('data-tok', tok);
+    r.setAttribute('data-note', note);
+    r.setAttribute('data-mono', '');
+    r.appendChild(leading(ic, title));
+    const tx = h('div', 'app-row-text');
+    tx.appendChild(h('b', 'app-row-title', title));
+    if (sup) tx.appendChild(h('span', 'app-row-sub', sup));
+    r.appendChild(tx);
     if (m) {
-      it.appendChild(m.el);
+      r.appendChild(m.el);
     } else {
       /* 行尾图标按钮（照系统设置）：文本"移出/加入"夹在标题后面会把行撑乱，
-         而且小屏上最想一眼看全的是应用名。标签走 label 属性，无障碍不丢。
+         而且小屏上最想一眼看全的是应用名。标签走 aria-label，无障碍不丢。
          两个写命令用**字面量**分支调用：写成三目会让 ui-shape 的 write('…')
          扫描看不见它们（算出来的参数是那道闸的盲区）。 */
-      const act = h('md-icon-button');
       const isTargets = S.view === 'targets';
-      act.setAttribute('slot', 'end');
-      act.setAttribute('icon', isTargets ? 'remove' : 'add');
-      act.setAttribute('label', (isTargets ? '移出 ' : '加入 ') + (b || tok));
+      const act = h('button', 'app-row-act');
+      act.type = 'button';
+      act.setAttribute('aria-label', (isTargets ? '移出 ' : '加入 ') + (b || tok));
+      act.appendChild(h('span', 'app-row-act-ic', isTargets ? 'remove' : 'add'));
       act.addEventListener('click', function () {
         if (isTargets) write('remove-apps', b || tok, '已移出：' + (b || tok));
         else write('restore-apps', b || tok, '已加入：' + (b || tok));
       });
-      it.appendChild(act);
+      r.appendChild(act);
     }
-    return it;
+    return r;
   }
-  page.slice(0, CHUNK).forEach(function (t) { l.appendChild(rowOf(t)); });
+  page.forEach(function (t) { l.appendChild(rowOf(t)); });
   s.appendChild(l);
-  /* 空态也放 md-list **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
+  /* 空态也放列表 **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
   if (!shown.length) s.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
   const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
-  const countHint = h('p', 'hint', '共 ' + shown.length + ' 条' + overLimit);
-  s.appendChild(countHint);
+  s.appendChild(h('p', 'hint', '共 ' + shown.length + ' 条' + overLimit));
   c.appendChild(s);
-  /* 剩下的分批挂上去。为什么：一次建 144 个 md-list-item 会让"点底栏切页"卡到 1 秒
-     —— 实测 1010ms / 448 节点，采样分析器显示耗时在组件自己 getBoundingClientRect /
-     contentSize / 读 CSS 变量，不在我们的渲染函数里。
-     块大小是量出来的：真机 129 条名单下，首帧 40→24→16 条分别是 259 / 186 / 143ms
-     （稳定 415 / 288 / 250ms）；16 条已经超过一屏（首屏只露 6~7 行）。
-     换页或重画时 token 变了就停，不会往已经卸掉的列表里塞节点。 */
-  if (page.length > CHUNK) {
-    const token = ++listToken;
-    let i = CHUNK;
-    const step = function () {
-      if (token !== listToken) return;
-      const end = Math.min(i + CHUNK, page.length);
-      const frag = document.createDocumentFragment();
-      for (; i < end; i++) frag.appendChild(rowOf(page[i]));
-      l.appendChild(frag);
-      loadIconsFor(page.slice(0, i));
-      countHint.textContent = '共 ' + shown.length + ' 条' + overLimit + ' · 已显示 ' + i;
-      if (i < page.length) setTimeout(step, 16);
-      else countHint.textContent = '共 ' + shown.length + ' 条' + overLimit;
-    };
-    setTimeout(step, 16);
-  } else {
-    loadIconsFor(page);
-  }
+  loadIconsFor(page);
   return c;
 }
 

@@ -103,6 +103,7 @@ const PROBE = `(function(){
     title: head, tip: bar ? (bar.getAttribute('title') || '') : '',
     text: txt,
     items: document.querySelectorAll('#view md-list-item').length,
+    rows: document.querySelectorAll('#view .app-row').length,
     cards: document.querySelectorAll('#view md-card').length,
     inSet: w('home'), outSet: w('security'), fam: fam,
     missFam: missFam, declared: Object.keys(declared).join(' ') };
@@ -487,7 +488,7 @@ async function main() {
     {
       const early = await ev(`(function(){
         if (document.querySelector('#view .load-card')) return { loading: 1 };
-        var it = document.querySelector('#view md-list-item[data-base="com.android.vending"]');
+        var it = document.querySelector('#view .app-row[data-base="com.android.vending"]');
         return { loading: 0, head: it ? it.getAttribute('headline') : '' };
       })()`);
       chk('名单第一帧不闪包名（载入占位或已是应用名）',
@@ -497,24 +498,25 @@ async function main() {
     const pT = await ev(PROBE);
     chk('二级页标题与返回箭头都在', (await headlineText()) === '目标名单' && await backArrow() === 1,
       '标题=' + (await headlineText()) + ' 箭头=' + (await backArrow()));
-    chk('名单二级页画出了真实的数据行', pT.items >= 2 && /目标文件：|这个后端接受的写法/.test(pT.text || ''),
-      'items=' + pT.items + '（这两行 hint 的值来自 backend-info，空壳画不出）');
+    chk('名单二级页画出了真实的数据行', pT.rows >= 2 && /目标文件：|这个后端接受的写法/.test(pT.text || ''),
+      'rows=' + pT.rows + '（这两行 hint 的值来自 backend-info，空壳画不出）');
+    chk('名单一次画全（没有分批挂载的"已显示 N"）',
+      pT.rows >= 2 && !/已显示\s*\d+/.test(pT.text || ''), 'rows=' + pT.rows);
     {
       const gap = await ev(`(function(){ var tf=document.querySelector('#view md-text-field'),
-        l=document.querySelector('#view md-list'); if(!tf||!l) return null;
+        l=document.querySelector('#view .app-list'); if(!tf||!l) return null;
         var a=tf.getBoundingClientRect(), b=l.getBoundingClientRect();
         return Math.round(b.top - a.bottom); })()`);
       chk('搜索框与名单之间有分组间距（不同类版块不紧贴）',
         gap != null && gap >= 18, gap == null ? '没找到搜索框或名单' : gap + 'px');
     }
     {
-      const mono = await ev(`(function(){ var it=document.querySelector('#view md-list-item[data-mono]');
-        if (!it || !it.shadowRoot) return ''; var s=it.shadowRoot.querySelector('.supporting-text');
+      const mono = await ev(`(function(){ var s=document.querySelector('#view .app-row[data-mono] .app-row-sub');
         return s ? getComputedStyle(s).fontFamily : ''; })()`);
-      chk('包名等技术值走等宽字', /mono/i.test(mono), mono || '没找到 data-mono 行');
+      chk('包名等技术值走等宽字', /mono/i.test(mono), mono || '没找到等宽 supporting 行');
     }
     const captureRows = () => ev(`(function(){ var out=[];
-      [].slice.call(document.querySelectorAll('#view md-list-item[data-base]')).slice(0, 5).forEach(function(it){
+      [].slice.call(document.querySelectorAll('#view .app-row[data-base]')).slice(0, 5).forEach(function(it){
         out.push([it.getAttribute('headline')||'', it.getAttribute('supporting-text')||'']); });
       return out; })()`);
     const rows1 = await captureRows();
@@ -755,20 +757,20 @@ async function main() {
     rows: document.querySelectorAll('#view .sk-row').length,
     search: !!document.querySelector('#view .sk-search'),
     chips: document.querySelectorAll('#view .sk-chip').length,
-    items: document.querySelectorAll('#view md-list-item').length }; })()`);
+    real: document.querySelectorAll('#view .app-row').length }; })()`);
   chk('名单首进先显示骨架加载页（不是一小张转圈卡）',
-    sk.load && sk.rows >= 5 && sk.search && sk.chips >= 3 && sk.items === 0, JSON.stringify(sk));
+    sk.load && sk.rows >= 5 && sk.search && sk.chips >= 3 && sk.real === 0, JSON.stringify(sk));
   {
     const sS = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-loading-skeleton.png'), Buffer.from(sS.data, 'base64'));
   }
   await sleep(1200);
-  const sk2 = await ev(`(function(){ var it=document.querySelector('#view md-list-item[data-base="com.android.vending"]');
+  const sk2 = await ev(`(function(){ var it=document.querySelector('#view .app-row[data-base="com.android.vending"]');
     return { load: !!document.querySelector('#view .load-card'),
-      items: document.querySelectorAll('#view md-list-item').length,
+      rows: document.querySelectorAll('#view .app-row').length,
       head: it ? (it.getAttribute('headline')||'') : '' }; })()`);
   chk('骨架页在数据到齐后换成完整名单',
-    !sk2.load && sk2.items > 0 && sk2.head === 'Google Play 商店', JSON.stringify(sk2));
+    !sk2.load && sk2.rows > 0 && sk2.head === 'Google Play 商店', JSON.stringify(sk2));
 
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();

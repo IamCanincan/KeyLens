@@ -30,6 +30,9 @@ function run(cmd) {
 const SHAPE = 'node "' + R + 'tests/ui-shape.js"';
 const SCOPE = 'node "' + R + 'tools/module-scope-check.mjs"';
 function restore() { for (const k in files) fs.writeFileSync(files[k], orig[k]); }
+/* 中途抛异常/被中断也不能把刀留在源码里（上一轮就因为进程被打断，
+   boot 的 ensure 行被留在删除状态，后面的变异台自己找不到锚点）。 */
+process.on('exit', restore);
 
 /* [点名哪条断言必须响, 文件, 原文, 改成, 预期命中处数, 附带要响的第二把闸] */
 const cases = [
@@ -59,8 +62,14 @@ const cases = [
   ['OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）', files.screens,
     '  const rt = omkRuntime();\n  if (rt) box.appendChild(rt);\n', '', 1],
   ['目标名单首次进入先预取应用名/图标再画（无首帧闪动）', files.app,
-    '    return prefetchListIcons().then(function () { finishLoad(key); });',
+    '    return prefetchListIcons().then(function (didIcons) {\n      if (force || wasPending || did || didIcons) finishLoad(key);\n    });',
     '    finishLoad(key);', 1],
+  ['缓存命中不重画当前页（没有新数据就跳过第二次构建）', files.app,
+    '      if (force || wasPending || did) finishLoad(key);',
+    '      finishLoad(key);', 1],
+  ['重页面首进先骨架后构建，重复进入直接贴回缓存', files.app,
+    "  const cached = (S.tab === 'func' && S.sub && changed && !pagePending) ? cachedPage(S.sub) : null;",
+    '  const cached = null;', 1],
   ['其余二级页首进也等数据再画（不先画"读不到/全部一致"）', files.app,
     '  if (sub === \'props\') return !!S.loaded.props;',
     '  if (sub === \'props\') return true;', 1],
@@ -77,7 +86,7 @@ const cases = [
   ['boot 首画前取 backend-info（版本/条数/keybox 不空一拍）', files.app,
     "      ensure('backend').then(function () {}, function () {}),\n", '', 1],
   ['写后 reloadAll 重取当前二级页', files.app,
-    '    return S.sub ? loadSub(S.sub) : load(S.tab);',
+    '    return S.sub ? loadSub(S.sub, true) : load(S.tab);',
     '    return load(S.tab);', 1],
   ['写后 reloadAll 也重取 backend-info（条数不落后）', files.app,
     "    return ensure('backend').then(function () {}, function () {});\n", '', 1],
@@ -92,6 +101,8 @@ const cases = [
     '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),10px,0) scale(.992)}to{opacity:1;transform:none}}', 1],
   ['首进是过渡骨架页（名单/日志/表单各有形状）', files.screens,
     '    w.appendChild(skRows(7));\n', '    w.appendChild(skRows(2));\n', 1],
+  ['目标名单用轻量行一次画全（不建 md-list-item、不分批）', files.screens,
+    "    const r = h('div', 'app-row');", "    const r = h('md-list-item', 'app-row');", 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`
