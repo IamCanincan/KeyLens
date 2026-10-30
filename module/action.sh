@@ -32,8 +32,8 @@ if backends_conflict; then
 fi
 
 detect_backend "$MODDIR"
-TMP="${KL_DIR}/.kl__tmp"
-LOCK_DIR="${KL_DIR}/.kl__lock"
+TMP="${KL_DIR}/.kl_tmp"
+LOCK_DIR="${KL_DIR}/.kl_lock"
 
 echo "================================================"
 echo "        🚀 KeyLens 手动同步工具"

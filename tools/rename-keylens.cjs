@@ -33,7 +33,7 @@ const RULES = [
   [/\b_taa_log\b/g, '_kl_log'],
   [/\b_taa_lib\b/g, '_kl_lib'],
   [/\b_taa_part\b/g, '_kl_part'],
-  [/\.ts_[a-z_]+/g, m => '.kl_' + m.slice(3)],
+  [/\.ts_[a-z_]+/g, m => '.kl_' + m.slice(4)],
 ];
 
 /* 扫这些目录/文件；产物与依赖不碰（产物由 build 重新生成） */

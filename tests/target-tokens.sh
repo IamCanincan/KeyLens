@@ -31,7 +31,7 @@ chk_has() { grep -q -- "$2" "$1" && printf '  ok   %s\n' "$3" || { printf '  ✗
 chk_no() { grep -q -- "$2" "$1" && { printf '  ✗    %s\n' "$3"; fail=1; } || printf '  ok   %s\n' "$3"; }
 list() { current_target_apps | tr '\n' ' ' | sed 's/ $//'; }
 req() { printf '%s\n' "$@" > "$T/req"; }
-state() { KL_DIR="$T/state"; mkdir -p "$KL_DIR"; ST_INSTALLED="$KL_DIR/.kl__installed_last"; ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"; ST_EVER="$KL_DIR/.kl__ever"; ST_EVER_NEW="$KL_DIR/.kl__ever.new"; : > "$ST_EVER"; }
+state() { KL_DIR="$T/state"; mkdir -p "$KL_DIR"; ST_INSTALLED="$KL_DIR/.kl_installed_last"; ST_INSTALLED_NEW="$KL_DIR/.kl_installed.new"; ST_EVER="$KL_DIR/.kl_ever"; ST_EVER_NEW="$KL_DIR/.kl_ever.new"; : > "$ST_EVER"; }
 state
 
 echo "── 1 Tricky target.txt：注释 / 后缀 / 非法行 ──"
@@ -97,7 +97,7 @@ echo "── 5 快照差分：卸载清变体、uid 保留、新装不重复 ─
 KL_BACKEND="teesim"
 TARGET_FILE="$T/config2.json"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10","uid:10123"]}}}' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl_installed_last"
 FAKE_INSTALLED="com.a"
 build_app_list "$T/out"; chk "卸载 b 后 @10 一起消失，uid 保留" "com.a uid:10123" "$(sed '/^$/d' "$T/out" | tr '\n' ' ' | sed 's/ $//')"
 chk_has "$ST_EVER_NEW" '^com\.b$' "ever 记的是 b（不是 b@10）"
@@ -105,12 +105,12 @@ chk_has "$ST_EVER_NEW" '^com\.b$' "ever 记的是 b（不是 b@10）"
 KL_BACKEND="tricky"
 TARGET_FILE="$T/target2.txt"
 printf 'com.a\ncom.b?\n' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl_installed_last"
 FAKE_INSTALLED="com.a"
 build_app_list "$T/out"; chk "卸载 b 后 b? 一起消失" "com.a" "$(sed '/^$/d' "$T/out")"
 
 printf 'com.a\ncom.b@10\n' > "$TARGET_FILE"
-printf 'com.a\ncom.b\n' > "$KL_DIR/.kl__installed_last"
+printf 'com.a\ncom.b\n' > "$KL_DIR/.kl_installed_last"
 KL_BACKEND="teesim"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10"]}}}' > "$TARGET_FILE"
 FAKE_INSTALLED="com.a

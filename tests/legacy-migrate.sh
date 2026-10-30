@@ -92,6 +92,21 @@ KL_LOG="$D/new2/keylens.log"; mkdir -p "$D/new2"
 migrate_legacy_paths; rc=$?
 [ "$rc" = 0 ] && ok '缺目录退 0（迁移失败不该阻断开机）' || bad "缺目录时退 $rc"
 
+printf '── 迁移搬的名字，必须是代码真在用的名字 ──\n'
+# 这一条抓的是"迁移与代码各说各话"：改名那次把 .ts_lock 切成了 .kl__lock（双下划线），
+# 30 处代码自己是一致的、看着能用，但迁移生成的是 .kl_lock —— 搬过去的文件新代码永远看不见。
+used=$(grep -oh '\.kl_[a-z_.]*' module/*.sh module/lib/*.sh 2>/dev/null | sed 's/\.$//' | sort -u)
+for n in lock ever installed_last fingerprint daemon_pids.list removed; do
+    printf '%s\n' "$used" | grep -qx "\.kl_$n" \
+        || bad "代码里没有 .kl_$n（迁移搬过去的文件它会看不见）"
+done
+ok '六类运行时文件名在代码里都对得上'
+if printf '%s\n' "$used" | grep -q '\.kl__'; then
+    bad '出现了 .kl__（双下划线）：改名脚本切片偏了一位，迁移与代码会对不上'
+else
+    ok '没有 .kl__ 双下划线'
+fi
+
 printf '── 零残留：老名字只许在白名单里 ──\n'
 if command -v node >/dev/null 2>&1; then
     node tools/name-residue-check.mjs >/tmp/_res 2>&1 && ok 'name-residue 闸门通过' \

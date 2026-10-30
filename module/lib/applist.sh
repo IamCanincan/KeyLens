@@ -130,7 +130,7 @@ entries_to_bases() {
 }
 
 # ---------- 应用列表生成（快照差分） ----------
-# 说明：was = 上一次成功同步时见到的已装集合（.kl__installed_last）。
+# 说明：was = 上一次成功同步时见到的已装集合（.kl_installed_last）。
 #   首次运行（没有基线）时 was 为空，等于把所有已装应用都当"新装"加一遍；
 #   只有"目标文件为空 + 没有基线"时才加种子。
 #   **OhMyKeymint 例外**：首次接入且 scoop 已有内容时沿用现有名单（不批量加入
@@ -240,7 +240,7 @@ build_app_list() {
 }
 
 # ---------- 「已排除」= 已装、曾经在名单里、但现在文件里没有 ----------
-# 说明：用 ever（.kl__ever，历次写进去的并集）判断"曾经纳入"，而不是已装基线：
+# 说明：用 ever（.kl_ever，历次写进去的并集）判断"曾经纳入"，而不是已装基线：
 #       OhMyKeymint 首次接入沿用现有 scoop 时，基线包含全部已装，用基线会把
 #       从未纳入的应用误标成"已排除"。
 #       三份集合都落临时文件再交给 awk：toybox awk 的 -v 不接受换行，
@@ -255,7 +255,7 @@ excluded_apps() {
 
     # 只读命令不创建状态目录；没有 ever 时排除表就是空
     [ -d "$KL_DIR" ] || return 0
-    base="${KL_DIR}/.kl__excl.$$"
+    base="${KL_DIR}/.kl_excl.$$"
     mkdir -p "$base" 2>/dev/null || return 0
     printf '%s\n' "$inst" | sed '/^[[:space:]]*$/d' | sort -u > "$base/inst" 2>/dev/null
     printf '%s\n' "$cur"  | sed '/^[[:space:]]*$/d' > "$base/cur" 2>/dev/null
@@ -279,6 +279,6 @@ excluded_apps() {
 #       失败时保留，便于回退旧版本时仍读得到。
 # 用法：drop_legacy_state
 drop_legacy_state() {
-    rm -f "$KL_DIR/.kl__written_last" "$KL_DIR/.kl__written.new" \
-          "$KL_DIR/.kl__removed" "$KL_DIR/.kl__removed.new" 2>/dev/null
+    rm -f "$KL_DIR/.kl_written_last" "$KL_DIR/.kl_written.new" \
+          "$KL_DIR/.kl_removed" "$KL_DIR/.kl_removed.new" 2>/dev/null
 }

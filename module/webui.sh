@@ -136,7 +136,7 @@ webui_lock() {
     local timeout="$LOCK_TIMEOUT" lock_rc
 
     LOCK_TIMEOUT=6
-    acquire_lock "${KL_DIR}/.kl__lock"
+    acquire_lock "${KL_DIR}/.kl_lock"
     lock_rc=$?
     LOCK_TIMEOUT="$timeout"
     if [ "$lock_rc" != 0 ]; then
@@ -384,7 +384,7 @@ cmd_restore_app() {
   webui_lock || return 1
   add_target_app "$pkg"
   rc=$?
-  release_lock "${KL_DIR}/.kl__lock"
+  release_lock "${KL_DIR}/.kl_lock"
 
   case "$rc" in
     0)
@@ -411,7 +411,7 @@ cmd_restore_apps() {
   [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
 
   detect_backend "$MODDIR"
-  file="${KL_DIR}/.kl__restore.req.$$"
+  file="${KL_DIR}/.kl_restore.req.$$"
   : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
 
   oldifs=$IFS
@@ -437,7 +437,7 @@ cmd_restore_apps() {
   webui_lock || { rm -f "$file" 2>/dev/null; return 1; }
   add_target_apps "$file"
   rc=$?
-  release_lock "${KL_DIR}/.kl__lock"
+  release_lock "${KL_DIR}/.kl_lock"
   rm -f "$file" 2>/dev/null
 
   case "$rc" in
@@ -464,7 +464,7 @@ cmd_remove_apps() {
   [ -n "$raw" ] || { echo "参数为空" >&2; return 1; }
 
   detect_backend "$MODDIR"
-  file="${KL_DIR}/.kl__remove.req.$$"
+  file="${KL_DIR}/.kl_remove.req.$$"
   : > "$file" 2>/dev/null || { echo "无法创建临时文件：$file" >&2; return 1; }
 
   oldifs=$IFS
@@ -491,7 +491,7 @@ cmd_remove_apps() {
   remove_target_apps "$file"
   rc=$?
   after=$(current_target_apps 2>/dev/null | sed 's/\r$//' | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
-  release_lock "${KL_DIR}/.kl__lock"
+  release_lock "${KL_DIR}/.kl_lock"
   rm -f "$file" 2>/dev/null
 
   case "$rc" in
@@ -529,7 +529,7 @@ cmd_teesim_save() {
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
     [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/teesim_set.awk" ] || { echo "缺少 teesim_set.awk" >&2; return 1; }
 
-    dir="${KL_DIR}/.kl__save.$$"
+    dir="${KL_DIR}/.kl_save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -573,7 +573,7 @@ cmd_teesim_save() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${KL_DIR}/.kl__lock"
+                release_lock "${KL_DIR}/.kl_lock"
                 rm -rf "$dir"
                 echo "写入失败：$TEESIM_CONFIG" >&2
                 return 1
@@ -582,13 +582,13 @@ cmd_teesim_save() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${KL_DIR}/.kl__lock"
+            release_lock "${KL_DIR}/.kl_lock"
             rm -rf "$dir"
             echo "配置定位失败：$TEESIM_CONFIG" >&2
             return 1
             ;;
     esac
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
 
     [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 TEE Simulator 配置（profile=$prof，$n 项）"
@@ -608,7 +608,7 @@ cmd_omk_save_injector() {
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
     [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
 
-    dir="${KL_DIR}/.kl__save.$$"
+    dir="${KL_DIR}/.kl_save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"; norm="$dir/pairs.norm"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -646,7 +646,7 @@ cmd_omk_save_injector() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${KL_DIR}/.kl__lock"
+                release_lock "${KL_DIR}/.kl_lock"
                 rm -rf "$dir"
                 echo "写入失败：$OMK_INJECTOR" >&2
                 return 1
@@ -655,13 +655,13 @@ cmd_omk_save_injector() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${KL_DIR}/.kl__lock"
+            release_lock "${KL_DIR}/.kl_lock"
             rm -rf "$dir"
             echo "配置定位失败：$OMK_INJECTOR" >&2
             return 1
             ;;
     esac
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
     [ "$saved" = 1 ] && { omk_restart injector; log_info "🧩 WebUI 更新 OMK injector.toml（$n 项）"; }
     kv saved "$saved"
@@ -708,7 +708,7 @@ cmd_omk_save_config() {
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
     [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/omk_set.awk" ] || { echo "缺少 omk_set.awk" >&2; return 1; }
 
-    dir="${KL_DIR}/.kl__save.$$"
+    dir="${KL_DIR}/.kl_save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -755,7 +755,7 @@ cmd_omk_save_config() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${KL_DIR}/.kl__lock"
+                release_lock "${KL_DIR}/.kl_lock"
                 rm -rf "$dir"
                 echo "写入失败：$cfg" >&2
                 return 1
@@ -764,13 +764,13 @@ cmd_omk_save_config() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${KL_DIR}/.kl__lock"
+            release_lock "${KL_DIR}/.kl_lock"
             rm -rf "$dir"
             echo "配置定位失败：$cfg" >&2
             return 1
             ;;
     esac
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
     scope=restart
     note=""
@@ -805,7 +805,7 @@ cmd_tricky_save_patch() {
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
     [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_patch_set.awk" ] || { echo "缺少 tricky_patch_set.awk" >&2; return 1; }
 
-    dir="${KL_DIR}/.kl__save.$$"
+    dir="${KL_DIR}/.kl_save.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -845,7 +845,7 @@ cmd_tricky_save_patch() {
                 saved=1
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${KL_DIR}/.kl__lock"
+                release_lock "${KL_DIR}/.kl_lock"
                 rm -rf "$dir"
                 echo "写入失败：$target" >&2
                 return 1
@@ -854,13 +854,13 @@ cmd_tricky_save_patch() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${KL_DIR}/.kl__lock"
+            release_lock "${KL_DIR}/.kl_lock"
             rm -rf "$dir"
             echo "补丁表写入失败" >&2
             return 1
             ;;
     esac
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
     [ "$saved" = 1 ] && log_info "🧩 WebUI 更新 Tricky 补丁表（scope=$sc，$n 项）"
     kv saved "$saved"
@@ -880,7 +880,7 @@ cmd_keybox_save() {
 
     backend_keybox_path
     target="$KEYBOX_PATH"
-    dir="${KL_DIR}/.kl__keybox.$$"
+    dir="${KL_DIR}/.kl_keybox.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     tmp="${target%/*}/.${target##*/}.keylens.$$"
     printf '%s' "$enc" | $bcmd -d > "$tmp" 2>/dev/null || { rm -rf "$dir"; rm -f "$tmp"; echo "keybox 解码失败" >&2; return 1; }
@@ -920,7 +920,7 @@ cmd_keybox_save() {
         rm -f "$tmp" 2>/dev/null
         st=0
     fi
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
 
     [ "$st" = 1 ] || { echo "写入失败：$target" >&2; return 1; }
@@ -1065,7 +1065,7 @@ cmd_teesim_save_overrides() {
     [ -n "$ac" ] || { echo "未找到 awk，写不了 overrides.json" >&2; return 1; }
     [ -f "${KL_PATCH%/*}/json_flat_set.awk" ] || { echo "缺少 json_flat_set.awk" >&2; return 1; }
 
-    dir="${KL_DIR}/.kl__ov.$$"
+    dir="${KL_DIR}/.kl_ov.$$"
     mkdir -p "$dir" 2>/dev/null && chmod 700 "$dir" 2>/dev/null || return 1
     pairs="$dir/pairs"
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
@@ -1120,7 +1120,7 @@ cmd_teesim_save_overrides() {
                 chmod 644 "$ov" 2>/dev/null
             else
                 rm -f "$out" 2>/dev/null
-                release_lock "${KL_DIR}/.kl__lock"
+                release_lock "${KL_DIR}/.kl_lock"
                 rm -rf "$dir"
                 echo "写入失败：$ov" >&2
                 return 1
@@ -1129,13 +1129,13 @@ cmd_teesim_save_overrides() {
         same) rm -f "$out" 2>/dev/null ;;
         *)
             rm -f "$out" 2>/dev/null
-            release_lock "${KL_DIR}/.kl__lock"
+            release_lock "${KL_DIR}/.kl_lock"
             rm -rf "$dir"
             echo "overrides.json 定位失败（不是可写的扁平对象？）：$ov" >&2
             return 1
             ;;
     esac
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
     # 上游是 FileObserver 监听 overrides.json → resolveAndPush，不需要重启任何进程
     # （ConfigStore.kt:204-214）。它自家界面也是等 600ms 再回读 /status。
@@ -1205,7 +1205,7 @@ cmd_set_mode() {
     webui_lock || return 1
     set_tricky_mode "$pkg" "$mode"
     rc=$?
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
 
     case "$rc" in
         0) log_info "🧩 WebUI 把 $pkg 的模式改为 $mode"; kv changed 1 ;;
@@ -1379,10 +1379,10 @@ cmd_status() {
 
     # 守护进程：pids 文件里仍存活的进程数
     alive=0; p=""
-    if [ -f "${KL_DIR}/.kl__daemon_pids.list" ]; then
+    if [ -f "${KL_DIR}/.kl_daemon_pids.list" ]; then
         while read -r p; do
             [ -n "$p" ] && kill -0 "$p" 2>/dev/null && alive=$((alive + 1))
-        done < "${KL_DIR}/.kl__daemon_pids.list"
+        done < "${KL_DIR}/.kl_daemon_pids.list"
     fi
     kv daemon_alive "$alive"
 
@@ -1666,9 +1666,9 @@ cmd_sync() {
     # 用户显式点了「立即同步」：允许把"读到空已装列表"当成真的清空处理；
     # 后台守护进程不加这个标记（读取失败时宁可不写）。
     KL_EMPTY_OK=1
-    run_sync "$PROP_FILE" "${KL_DIR}/.kl__tmp"
+    run_sync "$PROP_FILE" "${KL_DIR}/.kl_tmp"
     rc=$?
-    release_lock "${KL_DIR}/.kl__lock"
+    release_lock "${KL_DIR}/.kl_lock"
 
     kv rc "$rc"
     kv count "$KL_COUNT"

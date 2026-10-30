@@ -9,7 +9,7 @@ TS="/data/adb/tricky_store"
 SIM="/data/adb/teesim"
 
 # ---------- 结束守护进程 ----------
-for f in "$TS/.kl__daemon_pids.list" "$SIM/.kl__daemon_pids.list"; do
+for f in "$TS/.kl_daemon_pids.list" "$SIM/.kl_daemon_pids.list"; do
     [ -f "$f" ] || continue
     while read -r pid; do
         if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
@@ -33,14 +33,14 @@ pkill -f "inotifyd.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 
 # ---------- 删除本模块运行文件与常驻列表 ----------
-rm -rf "$TS/.kl__lock" "$TS/.kl__debounce" "$TS/.kl__tmp" \
-       "$SIM/.kl__lock" "$SIM/.kl__debounce" "$SIM/.kl__tmp" \
-       "/data/adb/omk/.kl__lock" "/data/adb/omk/.kl__debounce" "/data/adb/omk/.kl__tmp" 2>/dev/null
+rm -rf "$TS/.kl_lock" "$TS/.kl_debounce" "$TS/.kl_tmp" \
+       "$SIM/.kl_lock" "$SIM/.kl_debounce" "$SIM/.kl_tmp" \
+       "/data/adb/omk/.kl_lock" "/data/adb/omk/.kl_debounce" "/data/adb/omk/.kl_tmp" 2>/dev/null
 rm -f "/data/adb/omk/injector.toml.bak" 2>/dev/null
-rm -f "$TS/.kl__fingerprint" "$SIM/.kl__fingerprint" 2>/dev/null
-for f in .kl__installed_last .kl__rules_last .kl__written_last .kl__removed \
-         .kl__installed.new .kl__rules.new .kl__written.new .kl__removed.new \
-         .kl__ever .kl__ever.new .kl__fingerprint .kl__daemon_pids.list; do
+rm -f "$TS/.kl_fingerprint" "$SIM/.kl_fingerprint" 2>/dev/null
+for f in .kl_installed_last .kl_rules_last .kl_written_last .kl_removed \
+         .kl_installed.new .kl_rules.new .kl_written.new .kl_removed.new \
+         .kl_ever .kl_ever.new .kl_fingerprint .kl_daemon_pids.list; do
     rm -f "$TS/$f" "$SIM/$f" "/data/adb/omk/$f" 2>/dev/null
 done
 rm -f "$TS/.last_month" "$TS/security_patch.txt.bak" 2>/dev/null

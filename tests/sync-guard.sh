@@ -18,10 +18,10 @@ trap 'rm -rf "$T"' EXIT
 KL_DIR="$T"
 AWK_CMD="awk"
 KL_PATCH="$ROOT/module/backends/teesim.awk"
-ST_INSTALLED="$T/.kl__installed_last"
-ST_INSTALLED_NEW="$T/.kl__installed.new"
-ST_EVER="$T/.kl__ever"
-ST_EVER_NEW="$T/.kl__ever.new"
+ST_INSTALLED="$T/.kl_installed_last"
+ST_INSTALLED_NEW="$T/.kl_installed.new"
+ST_EVER="$T/.kl_ever"
+ST_EVER_NEW="$T/.kl_ever.new"
 
 # 已装清单读空（模拟 pm 读取失败）；日志与描述写入都桩掉
 cmd() { :; }

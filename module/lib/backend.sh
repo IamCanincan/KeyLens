@@ -83,10 +83,10 @@ use_backend() {
     # 状态：上次成功同步时见到的「已装第三方」+ 历次写进去的并集（ever）。
     # 由 build_app_list 写到 *.new，再由 sync_* 在**写入成功后**提交；
     # 失败不推进，否则那次卸载事件会被当成"已经处理过"而永远漏掉。
-    ST_INSTALLED="$KL_DIR/.kl__installed_last"
-    ST_INSTALLED_NEW="$KL_DIR/.kl__installed.new"
-    ST_EVER="$KL_DIR/.kl__ever"
-    ST_EVER_NEW="$KL_DIR/.kl__ever.new"
+    ST_INSTALLED="$KL_DIR/.kl_installed_last"
+    ST_INSTALLED_NEW="$KL_DIR/.kl_installed.new"
+    ST_EVER="$KL_DIR/.kl_ever"
+    ST_EVER_NEW="$KL_DIR/.kl_ever.new"
 }
 
 # ---------- 当前目标文件里有哪些包名 ----------
@@ -154,7 +154,7 @@ add_target_apps() {
     [ -f "$list" ] || return 2
 
     cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d')
-    dir="${KL_DIR}/.kl__restore.$$"
+    dir="${KL_DIR}/.kl_restore.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' | sort -u > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
@@ -232,7 +232,7 @@ add_target_apps() {
 # 用法：add_target_app <包名>
 # 返回：0=已加入 1=本来就在 2=失败
 add_target_app() {
-    local f="${KL_DIR}/.kl__restore.one.$$" rc
+    local f="${KL_DIR}/.kl_restore.one.$$" rc
 
     mkdir -p "${f%/*}" 2>/dev/null
     printf '%s\n' "$1" > "$f" 2>/dev/null || { rm -f "$f" 2>/dev/null; return 2; }
@@ -263,7 +263,7 @@ remove_target_apps() {
     fi
     cur=$(printf '%s\n' "$cur" | sed 's/\r$//' | sed '/^[[:space:]]*$/d')
 
-    dir="${KL_DIR}/.kl__remove.$$"
+    dir="${KL_DIR}/.kl_remove.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' > "$dir/cur" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$list" | sort -u > "$dir/req" 2>/dev/null
@@ -379,7 +379,7 @@ set_tricky_mode() {
     [ -n "${AWK_CMD:-}" ] || AWK_CMD=$(find_awk)
     [ -n "$AWK_CMD" ] && [ -f "${KL_PATCH%/*}/tricky_mode.awk" ] || return 2
 
-    dir="${KL_DIR}/.kl__mode.$$"
+    dir="${KL_DIR}/.kl_mode.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     out="$dir/out"; status="$dir/status"
     $AWK_CMD -v pkg="$pkg" -v mode="$mode" -v statusfile="$status" \

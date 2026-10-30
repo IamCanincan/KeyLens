@@ -65,18 +65,18 @@ chmod 0755 "$MODPATH/action.sh" 2>/dev/null
 # ---------- [4/5] 清理旧版残留 ----------
 ui_print " "
 ui_print "🧹 [4/5] 清理旧版文件"
-rm -rf "$TSTORE_DIR/.kl__lock" "$TSTORE_DIR/.kl__debounce" "$TSTORE_DIR/.kl__tmp" \
-       "$TEESIM_DIR/.kl__lock" "$TEESIM_DIR/.kl__debounce" "$TEESIM_DIR/.kl__tmp" \
-       "$OMK_STATE_DIR/.kl__lock" "$OMK_STATE_DIR/.kl__debounce" "$OMK_STATE_DIR/.kl__tmp" \
-       "$TSTORE_DIR"/.kl__daemon*.pid "$TEESIM_DIR"/.kl__daemon*.pid "$OMK_STATE_DIR"/.kl__daemon*.pid 2>/dev/null
-rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.kl__fingerprint" "$TEESIM_DIR/.kl__fingerprint" "$OMK_STATE_DIR/.kl__fingerprint" 2>/dev/null
+rm -rf "$TSTORE_DIR/.kl_lock" "$TSTORE_DIR/.kl_debounce" "$TSTORE_DIR/.kl_tmp" \
+       "$TEESIM_DIR/.kl_lock" "$TEESIM_DIR/.kl_debounce" "$TEESIM_DIR/.kl_tmp" \
+       "$OMK_STATE_DIR/.kl_lock" "$OMK_STATE_DIR/.kl_debounce" "$OMK_STATE_DIR/.kl_tmp" \
+       "$TSTORE_DIR"/.kl_daemon*.pid "$TEESIM_DIR"/.kl_daemon*.pid "$OMK_STATE_DIR"/.kl_daemon*.pid 2>/dev/null
+rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.kl_fingerprint" "$TEESIM_DIR/.kl_fingerprint" "$OMK_STATE_DIR/.kl_fingerprint" 2>/dev/null
 rm -f "$TSTORE_DIR/taa_sys.txt" 2>/dev/null
 rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 
 # ---------- [5/5] 初始同步 ----------
 ui_print " "
 ui_print "🔄 [5/5] 运行初始同步"
-run_sync "$MODPATH/module.prop" "${KL_DIR}/.kl__tmp"
+run_sync "$MODPATH/module.prop" "${KL_DIR}/.kl_tmp"
 rc=$?
 ui_print "  📦 应用总数：$KL_COUNT"
 case "$rc" in

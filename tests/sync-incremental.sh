@@ -34,10 +34,10 @@ T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 KL_DIR="$T"
 TARGET_FILE="$T/target.txt"
-ST_INSTALLED="$T/.kl__installed_last"
-ST_INSTALLED_NEW="$T/.kl__installed.new"
-ST_EVER="$T/.kl__ever"
-ST_EVER_NEW="$T/.kl__ever.new"
+ST_INSTALLED="$T/.kl_installed_last"
+ST_INSTALLED_NEW="$T/.kl_installed.new"
+ST_EVER="$T/.kl_ever"
+ST_EVER_NEW="$T/.kl_ever.new"
 
 FAKE_INSTALLED=""
 cmd() { printf '%s\n' "$FAKE_INSTALLED" | sed 's/^/package:/'; }
@@ -47,8 +47,8 @@ current_target_apps() { [ -f "$TARGET_FILE" ] && sed '/^[[:space:]]*$/d' "$TARGE
 reset() {
     : > "$TARGET_FILE"
     rm -f "$ST_INSTALLED" "$ST_INSTALLED_NEW" "$ST_EVER" "$ST_EVER_NEW"
-    rm -f "$KL_DIR/.kl__written_last" "$KL_DIR/.kl__written.new" \
-          "$KL_DIR/.kl__removed" "$KL_DIR/.kl__removed.new"
+    rm -f "$KL_DIR/.kl_written_last" "$KL_DIR/.kl_written.new" \
+          "$KL_DIR/.kl_removed" "$KL_DIR/.kl_removed.new"
 }
 put() { f="$1"; shift; printf '%s\n' "$@" > "$f"; }
 run() { build_app_list "$T/out"; }
@@ -164,15 +164,15 @@ si=$(sed '/^$/d' "$ST_INSTALLED_NEW" | sort | tr '\n' ' ')
 [ "$si" = "b.inst " ] && printf '  ok   状态-已装 = b.inst\n' || { printf '  ✗   状态-已装 = %s\n' "$si"; fail=1; }
 grep -qx "a.manual" "$ST_INSTALLED_NEW" && { printf '  ✗   手工项混进了「已装」状态\n'; fail=1; } \
     || printf '  ok   手工项没有混进「已装」状态\n'
-[ ! -f "$KL_DIR/.kl__written.new" ] && [ ! -f "$KL_DIR/.kl__removed.new" ] \
+[ ! -f "$KL_DIR/.kl_written.new" ] && [ ! -f "$KL_DIR/.kl_removed.new" ] \
     && printf '  ok   不再产生写入清单/墓碑\n' \
     || { printf '  ✗   仍然产生了写入清单或墓碑\n'; fail=1; }
 
 echo "── 13 旧版本遗留状态在成功同步后清掉 ──"
-put "$KL_DIR/.kl__written_last" "x"; put "$KL_DIR/.kl__removed" "y"
+put "$KL_DIR/.kl_written_last" "x"; put "$KL_DIR/.kl_removed" "y"
 put "$TARGET_FILE" "a.inst"; put "$ST_INSTALLED" "a.inst"; FAKE_INSTALLED="a.inst"
 run; commit
-if [ ! -f "$KL_DIR/.kl__written_last" ] && [ ! -f "$KL_DIR/.kl__removed" ]; then
+if [ ! -f "$KL_DIR/.kl_written_last" ] && [ ! -f "$KL_DIR/.kl_removed" ]; then
     printf '  ok   墓碑与写入清单已清掉\n'
 else
     printf '  ✗   旧状态文件还在\n'; fail=1

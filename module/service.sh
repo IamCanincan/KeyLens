@@ -41,11 +41,11 @@ fi
 # ---------- 后端探测 ----------
 detect_backend "$MODDIR"
 
-TMP="${KL_DIR}/.kl__tmp"
-LOCK_DIR="${KL_DIR}/.kl__lock"
-DEBOUNCE_LOCK="${KL_DIR}/.kl__debounce"
-PIDS_FILE="${KL_DIR}/.kl__daemon_pids.list"
-FP_FILE="${KL_DIR}/.kl__fingerprint"
+TMP="${KL_DIR}/.kl_tmp"
+LOCK_DIR="${KL_DIR}/.kl_lock"
+DEBOUNCE_LOCK="${KL_DIR}/.kl_debounce"
+PIDS_FILE="${KL_DIR}/.kl_daemon_pids.list"
+FP_FILE="${KL_DIR}/.kl_fingerprint"
 
 log_info "🔍 后端：$(backend_name)（配置：$TARGET_FILE，状态：$KL_DIR）"
 if [ "$KL_BACKEND" != "tricky" ] && [ -z "$AWK_CMD" ]; then
@@ -198,7 +198,7 @@ watch_fails=0
         [ -d "$WATCH_DIR" ] || { sleep 5; continue; }
         watch_started=$(date +%s 2>/dev/null)
 
-        # 事件按名字过滤：目录里其它文件（config.json / target.txt / .kl__tmp /
+        # 事件按名字过滤：目录里其它文件（config.json / target.txt / .kl_tmp /
         # 各框架自己的 usage.json 等）的写入会落到 case 的默认分支被丢掉，
         # 不会触发同步；本模块自己的写入也就多一次 echo 进程，不成环。
         case "$INOTIFY_MODE" in
