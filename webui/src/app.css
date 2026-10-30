@@ -23,6 +23,17 @@
   --nav-h: 80px;
   --gap: 20px;
   --line: var(--md-sys-color-outline-variant, #cac4d0);
+  /* KeyLens 的信号色：只给状态用，不跟动态主色走 —— 动态色管交互，
+     青/琥珀/红管“正常/注意/问题”，两套语义分开。 */
+  --kl-ok: #0b7a5e;
+  --kl-warn: #9a6400;
+  --kl-bad: #b3261e;
+  --kl-mono: ui-monospace, SFMono-Regular, "Cascadia Mono", Menlo, Consolas, monospace;
+}
+[data-theme=dark]{
+  --kl-ok: #57e3b7;
+  --kl-warn: #f2c35c;
+  --kl-bad: #ff9aa2;
 }
 
 html,body{margin:0;padding:0;background:var(--md-sys-color-surface);color:var(--md-sys-color-on-surface)}
@@ -65,14 +76,18 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 /* 分组标题 = NoMount 式的短标签：14px/500/主色，不带图标。
    图标留给行首，一个区块标题不再占一个彩色圆点。 */
 .sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
+/* 分组标题的光圈点：外环 + 中心点，和主页的镜头标识同源 */
+.sec-h::before{content:"";width:8px;height:8px;flex:none;border-radius:50%;
+  border:1.5px solid var(--md-sys-color-primary);
+  background:radial-gradient(circle at center, var(--md-sys-color-primary) 0 1.4px, transparent 1.6px)}
 .sec-h b{font-size:14px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-primary)}
 
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
   background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface-variant)}
-.chip-ok{background:var(--md-sys-color-primary-container);color:var(--md-sys-color-on-primary-container)}
-.chip-warn{background:var(--md-sys-color-warning-container, var(--md-sys-color-secondary-container));color:var(--md-sys-color-on-warning-container, inherit)}
-.chip-bad{background:var(--md-sys-color-error-container);color:var(--md-sys-color-on-error-container)}
+.chip-ok{background:color-mix(in srgb, var(--kl-ok) 16%, transparent);color:var(--kl-ok)}
+.chip-warn{background:color-mix(in srgb, var(--kl-warn) 18%, transparent);color:var(--kl-warn)}
+.chip-bad{background:color-mix(in srgb, var(--kl-bad) 18%, transparent);color:var(--kl-bad)}
 .chip-none{background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface-variant)}
 
 .acts{display:flex;flex-wrap:wrap;gap:8px;margin-top:14px}
@@ -88,10 +103,9 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 .row md-select{flex:0 1 210px;min-width:0;margin-left:12px}
 /* 属性行的状态点：一行一个色点，ok=主色 / 读不到=tertiary / 不符=error */
 .dot{width:10px;height:10px;border-radius:50%;flex:none;display:block;margin:0 6px 0 2px}
-.dot-ok{background:var(--md-sys-color-primary)}
-/* MD3 没有 warning 角色；tertiary 与 error 在默认色板里都是粉的，读不到/不符分不开 */
-.dot-warn{background:var(--md-sys-color-warning, #e8a33d)}
-.dot-bad{background:var(--md-sys-color-error)}
+.dot-ok{background:var(--kl-ok)}
+.dot-warn{background:var(--kl-warn)}
+.dot-bad{background:var(--kl-bad)}
 .dot-none{background:var(--md-sys-color-outline)}
 /* 筛选芯片一行横滚（名单 129 / 已装 125 / 未纳入 / 已排除 在 417px 放不下）：
    不折行、可横滑、隐藏滚动条 —— 折成两排会把首屏往下顶两行。 */
@@ -100,12 +114,29 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-secondary-container);
 .acts.filter-grid md-chip{flex:0 0 auto}
 /* 主页英雄卡：状态芯片 + 大字后端名 + 三个小统计。
    以前是四段小字用 · 连成一行（.strip-*），信息都在但要凑近读。 */
-.hero .hero-top{display:flex;align-items:center;gap:10px;flex-wrap:wrap}
+.hero .hero-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+/* KeyLens 的镜头 + 钥匙孔标识：外圈颜色 = 当前状态色 */
+.lens-badge{width:56px;height:56px;border-radius:18px;display:flex;align-items:center;justify-content:center;
+  flex:none;background:color-mix(in srgb, var(--md-sys-color-surface) 22%, transparent)}
+.lens-mark{width:38px;height:38px;display:block}
+.lens-ring{fill:none;stroke:currentColor;stroke-width:2.4;stroke-dasharray:104 16;stroke-linecap:round;
+  transform:rotate(-38deg);transform-origin:24px 24px;opacity:.9}
+.lens-key{fill:none;stroke:currentColor;stroke-width:2.4}
+.lens-stem{fill:none;stroke:currentColor;stroke-width:4;stroke-linecap:round}
+.lens-ok{color:var(--kl-ok)}
+.lens-warn{color:var(--kl-warn)}
+.lens-bad{color:var(--kl-bad)}
+.lens-none{color:var(--md-sys-color-on-secondary-container)}
+.hero-id{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 auto}
+.brand-eyebrow{font-size:10px;line-height:14px;font-weight:650;letter-spacing:.18em;
+  color:color-mix(in srgb, var(--md-sys-color-on-secondary-container) 62%, transparent)}
 .hero-name{font-size:var(--md-sys-typescale-size-headline-small, 24px);line-height:1.25;
   letter-spacing:-.3px;min-width:0;overflow-wrap:anywhere}
 .hero-ver{font-size:12px;line-height:18px;padding:2px 8px;border-radius:999px;white-space:nowrap;
+  align-self:flex-start;margin-top:2px;
   background:color-mix(in srgb, var(--md-sys-color-surface) 30%, transparent);
   color:var(--md-sys-color-on-secondary-container);font-variant-numeric:tabular-nums}
+.hero-state{margin-inline-start:auto;flex:none}
 .hero-stats{display:flex;gap:28px;margin-top:14px;flex-wrap:wrap}
 .hero-stat{display:flex;flex-direction:column;gap:2px}
 .hero-k{font-size:13px;color:color-mix(in srgb, var(--md-sys-color-on-secondary-container) 72%, transparent)}
@@ -144,10 +175,12 @@ md-list + .form{margin-top:20px}
 #view md-list md-list-item:first-child{border-top-left-radius:22px;border-top-right-radius:22px}
 #view md-list md-list-item:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px;margin-bottom:0}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
-md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
+md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-warn) 38%, transparent);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
 /* 页脚：短页下半屏的空白因此显得是有意留的，也顺手报出版本/契约/机型 */
 .page-foot{font-size:13px;color:var(--md-sys-color-outline);text-align:center;margin:28px 0 8px}
+.page-foot::before{content:"";display:inline-block;width:7px;height:7px;border:1.5px solid currentColor;
+  border-radius:50%;margin-inline-end:6px;vertical-align:.5px;opacity:.8}
 /* 切页淡入：只在合成层做 opacity/transform，慢机上也不掉帧；系统要求减少动效时关掉 */
 /* 只在**换页**时播（draw() 里按 tab/sub 变化加 .page-in）：搜索框每次按键都会
    重画同一个 stack，若无条件播动画就会闪。 */

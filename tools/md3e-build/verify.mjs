@@ -171,6 +171,10 @@ async function main() {
     chk('页标题在内容里且是 28px 大标题（随页滚走）',
       !!pageTitle && pageTitle.fs === '28px' && pageTitle.text === '主页',
       pageTitle ? pageTitle.fs + ' / ' + pageTitle.text : '没读到');
+    const brand = await ev(`(function(){ var b=document.querySelector('#view .brand-eyebrow');
+      return { text: b ? (b.textContent||'').trim() : '', lens: document.querySelectorAll('#view .lens-mark').length }; })()`);
+    chk('主页有 KeyLens 镜头标识与品牌眉题', brand.text === 'KEYLENS' && brand.lens === 1,
+      brand.text + ' / lens=' + brand.lens);
     const barTitles = await ev(`(function(){ var b=document.getElementById('bar');
       var t=b&&b.shadowRoot&&b.shadowRoot.querySelector('.titles');
       return t ? { vis: getComputedStyle(t).visibility, op: getComputedStyle(t).opacity } : null; })()`);
@@ -378,6 +382,12 @@ async function main() {
         return Math.round(b.top - a.bottom); })()`);
       chk('搜索框与名单之间有分组间距（不同类版块不紧贴）',
         gap != null && gap >= 18, gap == null ? '没找到搜索框或名单' : gap + 'px');
+    }
+    {
+      const mono = await ev(`(function(){ var it=document.querySelector('#view md-list-item[data-mono]');
+        if (!it || !it.shadowRoot) return ''; var s=it.shadowRoot.querySelector('.supporting-text');
+        return s ? getComputedStyle(s).fontFamily : ''; })()`);
+      chk('包名等技术值走等宽字', /mono/i.test(mono), mono || '没找到 data-mono 行');
     }
     await tapBack();
     await sleep(500);

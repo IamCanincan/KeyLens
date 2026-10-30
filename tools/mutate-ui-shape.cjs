@@ -52,7 +52,7 @@ const cases = [
   ['keybox 在二级页里，不在主页与设置', files.screens,
     "  if (sub === 'keybox') box.appendChild(keyboxCard());", '', 1],
   ['主页状态条显示后端版本', files.screens,
-    "  if (S.backendInfo && S.backendInfo.module_version) {\n    top.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));\n  }", '', 1],
+    "  if (S.backendInfo && S.backendInfo.module_version) {\n    id.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));\n  }", '', 1],
   ['OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）', files.screens,
     '  const rt = omkRuntime();\n  if (rt) box.appendChild(rt);\n', '', 1],
 ];

@@ -45,6 +45,7 @@ export function item(o) {
   if (o.supporting != null) it.setAttribute('supporting-text', String(o.supporting));
   if (o.trailing != null) it.setAttribute('trailing-text', String(o.trailing));
   if (o.tone) it.setAttribute('data-tone', o.tone);
+  if (o.mono) it.setAttribute('data-mono', '');
   if (o.interactive) it.setAttribute('interactive', '');
   /* 行标题 16px/500：照 NoMount 的行（比系统设置的 19px 安静一档）。
      组件的 headline 字号写死在 shadow 里，四个 typescale 变量都撬不动
@@ -66,6 +67,11 @@ function rowSkin() {
     skinSheet.replaceSync(
       '.headline{font-size:16px;font-weight:500;line-height:22px;letter-spacing:0}'
       + '.supporting-text{font-size:14px;line-height:20px}'
+      /* 技术值（包名、摘要、指纹）走等宽字，和正文分开 —— 这是 KeyLens 的仪表感 */
+      + ':host([data-mono]) .supporting-text{font-family:var(--kl-mono);font-size:13px;letter-spacing:0}'
+      + ':host([data-tone="ok"]) .trailing{color:var(--kl-ok)!important}'
+      + ':host([data-tone="warn"]) .trailing{color:var(--kl-warn)!important}'
+      + ':host([data-tone="bad"]) .trailing{color:var(--kl-bad)!important}'
       + '.item{background:var(--md-sys-color-surface-container)!important;border-radius:inherit!important}'
       + '.leading-slot{top:50%!important;transform:translateY(-50%)!important}'
       + '.trailing{top:50%!important;transform:translateY(-50%)!important;font:500 13px/18px system-ui,sans-serif}'
@@ -90,6 +96,25 @@ export function avatar(iconName) {
   const s = h('span', 'ic-avatar', iconName);
   s.setAttribute('slot', 'start');
   s.setAttribute('aria-hidden', 'true');
+  return s;
+}
+
+/* KeyLens 自己的标识：外圈是镜头，中心是钥匙孔。颜色跟状态走（ok/warn/bad），
+   让主页英雄卡读作“镜头对准当前后端”，而不是一张通用统计卡。 */
+function lensMark() {
+  const ns = 'http://www.w3.org/2000/svg';
+  const s = document.createElementNS(ns, 'svg');
+  s.setAttribute('viewBox', '0 0 48 48');
+  s.setAttribute('class', 'lens-mark');
+  s.setAttribute('aria-hidden', 'true');
+  const el = function (tag, attrs) {
+    const n = document.createElementNS(ns, tag);
+    for (const k in attrs) n.setAttribute(k, attrs[k]);
+    s.appendChild(n);
+  };
+  el('circle', { cx: '24', cy: '24', r: '19', class: 'lens-ring' });
+  el('circle', { cx: '24', cy: '20.5', r: '5.4', class: 'lens-key' });
+  el('path', { d: 'M24 26v9', class: 'lens-stem' });
   return s;
 }
 
@@ -308,12 +333,13 @@ function propsCards() {
   const s2 = section('Verified Boot 哈希', ICON.tee);
   s2.appendChild(list([
     (function () {
-      const it = item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到' });
+      const it = item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到',
+        mono: !!(bt && bt.current) });
       it.appendChild(dot(bt && bt.current ? 'ok' : 'warn'));
       return it;
     })(),
     item({ headline: '模块应用值', supporting: (bt && bt.configured) || '未设置（不写 vbmeta.digest）',
-      tone: bt && bt.configured ? 'ok' : 'warn' }),
+      tone: bt && bt.configured ? 'ok' : 'warn', mono: !!(bt && bt.configured) }),
   ]));
   /* 这个值要能改：旧版有 props-boot-hash 这条写命令，新版不给入口就是退步。
      校验按十六进制 64 位来，与命令层一致；清空 = 不应用。 */
@@ -480,13 +506,20 @@ function statusStrip() {
   const [tone, label] = toneOfState(st.state);
   const c = card('hero');
   const top = h('div', 'hero-top');
-  top.appendChild(h('span', 'chip chip-' + tone, label));
-  top.appendChild(h('b', 'hero-name', st.backend_name || '未探测到后端'));
+  /* 镜头 + 钥匙孔：外圈颜色就是状态色；KEYLENS 是品牌眉题，后端名才是正文。 */
+  const badge = h('span', 'lens-badge lens-' + tone);
+  badge.appendChild(lensMark());
+  top.appendChild(badge);
+  const id = h('div', 'hero-id');
+  id.appendChild(h('span', 'brand-eyebrow', 'KEYLENS'));
+  id.appendChild(h('b', 'hero-name', st.backend_name || '未探测到后端'));
   /* 后端自己的版本（module.prop 的 version）与 KeyLens 版本是两件事：
      换后端 / 升级后端之后，第一眼要能看出设备上现在跑的是哪一版。 */
   if (S.backendInfo && S.backendInfo.module_version) {
-    top.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));
+    id.appendChild(h('span', 'hero-ver', S.backendInfo.module_version));
   }
+  top.appendChild(id);
+  top.appendChild(h('span', 'chip chip-' + tone + ' hero-state', label));
   c.appendChild(top);
   const stats = h('div', 'hero-stats');
   [['版本', st.mod_version || '—'],
@@ -558,6 +591,7 @@ function listSection() {
       headline: (ic && ic.label) || b || tok,
       supporting: [detail, m && m.note].filter(Boolean).join(' · '),
       interactive: true,
+      mono: true,
     });
     /* 记住基础包名：图标异步到货后据此原位换上 <img>（见 swapIcons） */
     it.setAttribute('data-base', b || tok);
@@ -1197,7 +1231,7 @@ function keyboxCard() {
     item({ headline: '路径', supporting: (bi.keybox_file || '—') + (kbNote ? ' · ' + kbNote : ''),
       trailing: bi.keybox_exists === '1' ? '存在' : '不存在', tone: bi.keybox_exists === '1' ? 'ok' : 'bad' }),
     item({ headline: '大小与指纹', supporting: (bi.keybox_bytes || '?') + ' 字节 · ' + (bi.keybox_hash_algo || 'sha256') }),
-    item({ headline: '指纹', supporting: bi.keybox_hash || '—' }),
+    item({ headline: '指纹', supporting: bi.keybox_hash || '—', mono: !!bi.keybox_hash }),
   ]));
   s.appendChild(h('p', 'hint', KEYBOX_HINT[bi.backend] || KEYBOX_HINT.tricky));
   /* 多行输入也走 MD3 文本框（min/max-lines 决定高度），不再用裸 textarea ——
