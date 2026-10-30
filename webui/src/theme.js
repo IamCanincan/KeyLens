@@ -162,7 +162,7 @@ export function applyAccent(env){
   if (!rgb) { const s = parseSeed(env.sys_seed_raw); if (s) { rgb = s; src = env.sys_seed_src || 'seed'; } }
   let hue;
   if (!rgb) {
-    rgb = FALLBACK_RGB; src = '平台默认 system_accent1（框架 #4b5d8b）';
+    rgb = FALLBACK_RGB; src = '平台默认 system_accent1';
     hue = HUE_NEAR_NEUTRAL;
   } else {
     const a = srgbToOklch(rgb.r, rgb.g, rgb.b);

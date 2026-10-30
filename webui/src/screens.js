@@ -71,7 +71,7 @@ function rowSkin() {
       '.headline{font-size:19px;font-weight:400;line-height:26px;letter-spacing:0}'
       + '.item{background:var(--md-sys-color-surface-container-high)!important;border-radius:inherit!important}'
       + '.leading-slot{top:50%!important;transform:translateY(-50%)!important}'
-      + '.trailing{top:50%!important;transform:translateY(-50%)!important}'
+      + '.trailing{top:50%!important;transform:translateY(-50%)!important;font:500 13px/18px system-ui,sans-serif}'
     );
   }
   return skinSheet;
@@ -144,7 +144,10 @@ export function toneOfState(st) {
 function insetNote() {
   const cs = getComputedStyle(document.documentElement);
   const g = k => (cs.getPropertyValue(k) || '').trim() || '—';
-  return '顶部让位 ' + g('--inset-top') + '（注入 ' + g('--safe-area-inset-top')
+  /* --inset-top 是 max() 表达式，自定义属性取出来不解析；要读**用出来的**值
+     就量包壳的 padding-top。 */
+  const used = (getComputedStyle(document.getElementById('barwrap')).paddingTop || '').trim() || '0px';
+  return '顶部让位 ' + used + '（注入 ' + g('--safe-area-inset-top')
     + ' / 兜底 ' + g('--statusbar-fallback') + '）';
 }
 
@@ -1112,8 +1115,7 @@ export function renderTheme() {
   const s = section('外观', ICON.moon);
   const seg = h('div', 'acts');
   [['auto', '跟随系统'], ['light', '浅色'], ['dark', '深色']].forEach(function (v) {
-    seg.appendChild(button(v[1], { variant: v[0] === S.theme ? 'filled' : 'text',
-      on: function () { S.theme = v[0]; applyThemeFn(); redraw(); } }));
+    seg.appendChild(chip(v[1], v[0] === S.theme, function () { S.theme = v[0]; applyThemeFn(); redraw(); }));
   });
   s.appendChild(seg);
   s.appendChild(h('p', 'hint', '跟随系统时读 env 的 sys_dark（管理器报告的 mComputedNightMode），'

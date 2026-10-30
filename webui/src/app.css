@@ -21,7 +21,7 @@
   --inset-bottom: max(var(--safe-area-inset-bottom, 0px), var(--window-inset-bottom, env(safe-area-inset-bottom, 0px)));
   --bar-h: 64px;
   --nav-h: 80px;
-  --gap: var(--md-sys-spacing-l, 16px);
+  --gap: 20px;
   --line: var(--md-sys-color-outline-variant, #cac4d0);
 }
 
@@ -54,9 +54,11 @@ md-card.card{--md-card-container-color:transparent;--md-card-padding:0}
 md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high);
   --md-card-padding:18px;border-radius:22px}
 .sec{display:block}
-.sec-h{display:flex;align-items:center;gap:8px;margin:0 0 10px}
-.sec-h b{font-size:var(--md-sys-typescale-size-title-medium, 16px);font-weight:600;letter-spacing:-.1px}
-.sec-i{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-primary)}
+/* 分组标题 = 安静的小标签（14px/500/次要色），主角让给行；
+   组与组之间 20px（--gap），标题离自己的组 8px。 */
+.sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
+.sec-h b{font-size:14px;font-weight:500;letter-spacing:0;color:var(--md-sys-color-on-surface-variant)}
+.sec-i{font-family:var(--md-icon-font-family);font-size:18px;line-height:1;color:var(--md-sys-color-primary)}
 
 /* 状态芯片：只有"要处理"的才着色，正常态不上色 */
 .chip{font-size:13px;font-weight:600;padding:4px 12px;border-radius:999px;
@@ -95,7 +97,7 @@ md-list{display:block}
 #view md-list md-list-item:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px;margin-bottom:0}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid var(--md-sys-color-error-container);outline-offset:-2px;border-radius:12px}
-.hint{font-size:12px;line-height:1.55;color:var(--md-sys-color-on-surface-variant);margin:10px 0 0}
+.hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
 /* 系统设置那种行首：彩色圆底 + 图标（底/前景色由 .ic-avatar 的两个自定义属性给）。
    48px 圆 + 24px 图形，与参考图一致；list-item 的 leading 槽给 52px 宽，放得下。 */
 .ic-avatar{width:48px;height:48px;border-radius:50%;display:flex;align-items:center;justify-content:center;

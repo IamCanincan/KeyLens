@@ -239,10 +239,19 @@ async function main() {
   {
     const surf = () => ev(`(function(){ return { t: document.documentElement.getAttribute('data-theme'),
       s: getComputedStyle(document.body).backgroundColor }; })()`);
-    const press = async label => ev(`(function(){
-      var bs=[].slice.call(document.querySelectorAll('#view md-button'));
-      var b=bs.filter(function(x){return (x.textContent||'').trim()===${JSON.stringify(label)};})[0];
-      if(!b) return 0; b.click(); return 1; })()`);
+    /* md-button / md-chip 都可能吞合成 click（列表行那类行为），统一走 CDP 可信点击 */
+    const press = async label => {
+      const pos = await ev(`(function(){
+        var bs=[].slice.call(document.querySelectorAll('#view md-button, #view md-chip'));
+        /* md-button 的画法文本在 textContent；md-chip 只认 label 属性（槽里不写文本） */
+        var b=bs.filter(function(x){var t=(x.textContent||'').trim(); return t===${JSON.stringify(label)} || (x.getAttribute('label')||'')===${JSON.stringify(label)};})[0];
+        if(!b) return null; var r=b.getBoundingClientRect();
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+      if (!pos) return 0;
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      return 1;
+    };
     const dk = await surf();
     chk('env 报 sys_dark=1 → 界面真的进了暗色盘（data-theme=dark）', dk.t === 'dark', JSON.stringify(dk));
     const pressed = await press('浅色');
