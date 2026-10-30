@@ -144,8 +144,12 @@ chk('落地页是后端控制面板', pages[0] && pages[0][1] === 'backend' && p
 /* 2026-10-30：自动同步从独立目的地降成后端页里的一张卡 —— 给它一个位格
    等于把附加功能摆在主体前面。这条断言钉住"它不许再长出自己的一格"。 */
 chk('自动同步不再占一个目的地', !pages.some(p => p[1] === 'autosync'));
+/* 判的是"它在后端页里"，不是"它被哪个变量 append 的" —— 上一版写成
+   box.appendChild(...)，卡片挪进推迟批（frag.appendChild）后这条就假红了。 */
+const backBody = screens.split('export function renderBackend')[1].split('function statusStrip')[0];
 chk('自动同步是后端页里的一张卡', /function autoSyncCard\(\)/.test(screens)
-  && /box\.appendChild\(autoSyncCard\(\)\)/.test(screens.split('export function renderBackend')[1].split('function statusStrip')[0]));
+  && /(?:box|frag)\.appendChild\(autoSyncCard\(\)\)/.test(backBody)
+  && !/autosync:\s*render/.test(app));
 chk('附加功能仍然自报身份', /本模块附加/.test(screens));
 chk('名单在后端面板内，不是独立目的地',
   !pages.some(p => p[1] === 'targets') && /function listSection\(\)/.test(screens));
