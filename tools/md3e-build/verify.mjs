@@ -38,10 +38,9 @@ const WANT = ['md-top-app-bar', 'md-navigation-bar', 'md-card', 'md-list',
 /* 顺序 = 底栏四格的顺序。must 是这一页必须出现的区块标题：
    功能页那几块正是三家后端各自的能力面，缺一个就说明分支渲染没跑到。 */
 const PAGES = [
-  /* 落地页是后端控制面板：名单在里面（它是后端的配置文件之一），
-     自动更新是单独一格且排在面板之后 —— 那是我们附加的功能，不是主体。 */
-  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '密钥箱 keybox', '界面自检'], items: true },
-  { id: 'autosync', title: '自动更新', must: ['自动更新应用列表', '本模块附加的功能', '守护进程', '事件监听'], items: true },
+  /* 落地页是后端控制面板：名单在里面（它是后端的配置文件之一），自动同步是
+     它下面的一张卡 —— 那是我们附加的功能，不占独立位格。 */
+  { id: 'backend', title: '后端', must: ['目标名单', '生效代价', '密钥箱 keybox', '自动同步', '本模块附加', '界面自检'], items: true },
   { id: 'props', title: '伪装', must: ['系统属性', 'Verified Boot 哈希'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
 ];

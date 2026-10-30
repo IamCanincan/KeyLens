@@ -139,15 +139,19 @@ console.log('  ok   声明的 required 键命令层都会输出（逐条查过�
 /* ── ⑤ 层级与目的地：主体是后端面板 ─────────────────────────────── */
 console.log('── 层级 ──');
 const pages = [...app.matchAll(/\{ id: '([a-z]+)', label: '([^']+)', icon: ICON\.([a-z]+)/g)];
-chk('四格目的地', pages.length === 4, pages.map(p => p[2]).join('/'));
+chk('三个目的地', pages.length === 3, pages.map(p => p[2]).join('/'));
 chk('落地页是后端控制面板', pages[0] && pages[0][1] === 'backend' && pages[0][2] === '后端', pages[0] && pages[0][1] + '=' + pages[0][2]);
-chk('自动更新排在面板之后（它是附加功能，不是主体）',
-  pages.findIndex(p => p[1] === 'autosync') === 1);
+/* 2026-10-30：自动同步从独立目的地降成后端页里的一张卡 —— 给它一个位格
+   等于把附加功能摆在主体前面。这条断言钉住"它不许再长出自己的一格"。 */
+chk('自动同步不再占一个目的地', !pages.some(p => p[1] === 'autosync'));
+chk('自动同步是后端页里的一张卡', /function autoSyncCard\(\)/.test(screens)
+  && /box\.appendChild\(autoSyncCard\(\)\)/.test(screens.split('export function renderBackend')[1].split('function statusStrip')[0]));
+chk('附加功能仍然自报身份', /本模块附加/.test(screens));
 chk('名单在后端面板内，不是独立目的地',
   !pages.some(p => p[1] === 'targets') && /function listSection\(\)/.test(screens));
-chk('自动更新那一格在第二位', pages.findIndex(p => p[1] === 'props') === 2);
-chk('自动更新页明说这是本模块附加的', /这是本模块附加的功能/.test(screens));
-chk('落地页取数含名单与后端', /id: 'backend'[^}]*need: \[[^\]]*'backend'[^\]]*'lists'/.test(app));
+chk('伪装与日志的次序不变', pages.findIndex(p => p[1] === 'props') === 1 && pages.findIndex(p => p[1] === 'log') === 2);
+chk('落地页取数含 base（自动同步卡要用 status/env）',
+  /id: 'backend'[^}]*need: \[[^\]]*'base'/.test(app) && /id: 'backend'[^}]*need: \[[^\]]*'lists'/.test(app));
 
 /* ── ⑥ 三家语法差异有单一出处 ───────────────────────────────────── */
 console.log('── 语法分叉 ──');

@@ -248,6 +248,7 @@ export function renderBackend() {
   if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
   if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
   if (bi.backend === 'omk') { box.appendChild(omkReload()); }
+  box.appendChild(autoSyncCard());
   /* 首屏之外的卡（keybox / 三家矩阵 / 外观 / 自检）推迟一帧再挂。
      975px 高的视口里它们都在折叠线以下，晚一帧出现没人看得见；而把它们的
      md-list-item / md-button 从切页的关键路径上摘掉，同步渲染与布局都能少一截。
@@ -500,13 +501,16 @@ function teesimOverrides() {
 }
 
 /* ── 自动更新：本模块附加的功能，不是后端自带的 ─────────────────────── */
-export function renderAutoSync() {
+/* 自动同步：本模块附加的功能，不是后端自带的能力。
+   2026-10-30 从独立目的地降为后端页里的一张卡 —— 给它一个位格等于把附加功能
+   摆在了主体（后端控制面板）前面。这里同时吸掉了原来那张"自动纳入"卡：
+   只有 TEESim 有这个概念，用一段说明带过即可。 */
+function autoSyncCard() {
   const st = S.status, env = S.env;
-  const box = h('div', 'stack');
   const c = card();
-  const s = section('自动更新应用列表', ICON.sync);
-  s.appendChild(h('p', 'hint', '这是本模块附加的功能：三家后端自己都不主动改名单，模块在开机与文件变化时'
-    + '把已装应用同步进当前后端的名单文件。后端配置本身在「后端」那一格。'));
+  const s = section('自动同步 · 本模块附加', ICON.sync);
+  s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
+    + '当前后端的名单文件。后端自己的配置在其它几张卡里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   s.appendChild(list([
     item({ headline: '守护进程', trailing: st.daemon_alive === '0' ? '未运行' : st.daemon_alive + ' 个', tone: st.daemon_alive === '0' ? 'bad' : 'ok' }),
@@ -520,19 +524,10 @@ export function renderAutoSync() {
   acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: function () { reload(); } }));
   s.appendChild(acts);
   s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
+  s.appendChild(h('p', 'hint', '「自动纳入新应用」只有 TEE Simulator 有（profile 级 autoIncludeNewApps）'
+    + (S.backendInfo.backend === 'teesim' ? '，在下方 profile 编辑里逐份设置。' : '；当前后端不是它，这一项不适用。')));
   c.appendChild(s);
-  box.appendChild(c);
-
-  /* 自动纳入：OMK/Tricky 没有这个概念，只有 TEESim 的 autoIncludeNewApps 有 */
-  const a = card();
-  const as = section('自动纳入新应用', ICON.addPkg);
-  as.appendChild(h('p', 'hint', '只有 TEE Simulator 有这一项（profile 级 autoIncludeNewApps）。'
-    + '它依赖一份只冻结一次的基线包名表，且只在守护进程 rescan 时展开 —— 开关打开不等于立刻生效。'));
-  as.appendChild(h('p', 'empty', S.backendInfo.backend === 'teesim' ? '当前后端：TEE Simulator，可在下方 profile 里逐份设置。'
-    : '当前后端不是 TEE Simulator，这一项不适用。'));
-  a.appendChild(as);
-  box.appendChild(a);
-  return box;
+  return c;
 }
 
 /* 同一个 `no` 在两家意思相反，同一个 `yyyy` 在两家一边能认一边不认 ——

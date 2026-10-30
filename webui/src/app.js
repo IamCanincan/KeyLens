@@ -21,7 +21,7 @@ import {
   S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, hasCmd,
 } from './bridge.js';
 import {
-  ICON, h, renderBackend, renderAutoSync, renderProps, renderLog,
+  ICON, h, renderBackend, renderProps, renderLog,
   onToast, onReload, onAuto, onApplyTheme,
 } from './screens.js';
 
@@ -34,8 +34,7 @@ import {
    上一版把生效数当英雄数字、把"立即同步"当主按钮、把名单提成独立目的地，
    等于把附加功能放在了主体前面。 */
 const PAGES = [
-  { id: 'backend', label: '后端', icon: ICON.backend, need: ['backend', 'lists', 'excluded'] },
-  { id: 'autosync', label: '自动更新', icon: ICON.sync, need: ['base', 'lists', 'log'] },
+  { id: 'backend', label: '后端', icon: ICON.backend, need: ['base', 'backend', 'lists', 'excluded'] },
   { id: 'props', label: '伪装', icon: ICON.tune, need: ['props'] },
   { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },
 ];
@@ -99,7 +98,7 @@ function show(name) {
 function draw() {
   view.textContent = '';
   const body = {
-    backend: renderBackend, autosync: renderAutoSync,
+    backend: renderBackend,
     props: renderProps, log: renderLog,
   }[S.tab] || renderBackend;
   view.appendChild(body());

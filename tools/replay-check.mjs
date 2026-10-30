@@ -246,8 +246,8 @@ async function main() {
   chk('无未捕获异常', !(ws.errs || []).length, (ws.errs || []).slice(0, 2).join(' | '));
 
   /* 逐格点一遍：每格都要有**那一格该出现的真东西** */
-  const PAGE_MARK = ['后端', '自动更新', '伪装', '日志'];
-  for (let i = 0; i < 4; i++) {
+  const PAGE_MARK = ['后端', '伪装', '日志'];
+  for (let i = 0; i < 3; i++) {
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:${i}},bubbles:true})); return 1; })()`);
     await sleep(2600);
@@ -257,7 +257,7 @@ async function main() {
     /* 每格钉一个"只有真数据才会出现"的东西：
        日志页会剥 emoji（stripEmoji），所以取时间戳前缀而不是整行；
        自动更新页不显示包名，钉的是真机名单条数。 */
-    const needle = i === 3 ? firstLog.slice(0, 15).trim() : (i === 2 ? 'ro.' : (i === 1 ? String(realTargets.length) : firstPkg));
+    const needle = i === 2 ? firstLog.slice(0, 15).trim() : (i === 1 ? 'ro.' : firstPkg);
     const hasNeedle = needle ? (q.text || '').indexOf(needle) >= 0 : true;
     chk('第 ' + i + ' 格有真数据', hasNeedle && (q.text || '').length > 40,
       '标题=' + t2 + ' 列表项=' + q.items + ' 找「' + needle + '」' + (hasNeedle ? '✓'
@@ -267,7 +267,7 @@ async function main() {
 
   /* 切页手感：数据已缓存时"二次进入后端页"要多久（含同步渲染与组件布局）。
      真机名单 128 条，这一页是全场最重的一页 —— 手机上的耗时只会比这里更长。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
   await sleep(150);
   const mt = await ev(`(function(){ return new Promise(function(res){
     var n=document.getElementById('nav'), t0=performance.now();
@@ -313,7 +313,7 @@ async function main() {
   await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
   await sleep(900);
   const afterCut = await ev(`document.getElementById('view').textContent.length`);
-  chk('分批加载被打断后不炸（切到自动更新页仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
+  chk('分批加载被打断后不炸（切到伪装页仍有内容）', typeof afterCut === 'number' && afterCut > 20, '文本长度 ' + afterCut);
   await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true}))`);
   await sleep(2500);
   const done = await ev(`(function(){ return {
@@ -323,18 +323,18 @@ async function main() {
 
   /* 日志页 300 行：用户在日志页能点的最大档，也是这页最重的形态。
      量"切走再切回"的时间——数据已在 S.log 里，量到的是渲染本身。 */
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true}))`);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
   await sleep(900);
   const picked300 = await ev(`(function(){
     var bs = [].slice.call(document.querySelectorAll('#view md-button'));
     var b = bs.filter(function(x){ return (x.textContent||'').trim().indexOf('300') >= 0; })[0];
     if (b) { b.click(); return 1; } return 0; })()`);
   await sleep(2600);
-  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}))`);
+  await ev(`document.getElementById('nav').dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true}))`);
   await sleep(150);
   const logM = await ev(`(function(){ return new Promise(function(res){
     var n=document.getElementById('nav'), t0=performance.now();
-    n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true}));
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:2},bubbles:true}));
     var sync=performance.now()-t0;
     requestAnimationFrame(function(){ requestAnimationFrame(function(){
       res({ ms: Math.round(performance.now()-t0), syncMs: Math.round(sync),
