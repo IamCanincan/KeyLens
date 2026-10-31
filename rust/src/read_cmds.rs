@@ -619,6 +619,98 @@ fn tricky_patches_rows(text: &str) -> Vec<(String, String, String, String)> {
         .collect()
 }
 
+const TEESIM_FIELDS: &[&str] = &[
+    "attestationSecurityLevel",
+    "keymasterSecurityLevel",
+    "attestationVersion",
+    "keymasterVersion",
+    "verifiedBootKey",
+    "verifiedBootHash",
+];
+
+/// flat(obj, key)：扁平对象里某键的原始值（字符串/数字/true/false/null），没有则 ""。
+fn flat(obj: &[u8], key: &str) -> String {
+    let needle = format!("\"{}\"", key);
+    let Some(p) = find_from(obj, 0, needle.as_bytes()) else { return String::new() };
+    let Some(cpos) = find_from(obj, p + needle.len(), b":") else { return String::new() };
+    let mut i = cpos + 1;
+    while i < obj.len() && matches!(obj[i], b' ' | b'\t' | b'\r' | b'\n') {
+        i += 1;
+    }
+    if i < obj.len() && obj[i] == b'"' {
+        let start = i + 1;
+        let mut j = start;
+        while j < obj.len() && obj[j] != b'"' {
+            j += 1;
+        }
+        return String::from_utf8_lossy(&obj[start..j]).into_owned();
+    }
+    for lit in [b"false".as_slice(), b"true".as_slice(), b"null".as_slice()] {
+        if obj[i..].starts_with(lit) {
+            return String::from_utf8_lossy(lit).into_owned();
+        }
+    }
+    let mut s = String::new();
+    while i < obj.len() && matches!(obj[i], b'0'..=b'9' | b'.' | b'e' | b'E' | b'+' | b'-') {
+        s.push(obj[i] as char);
+        i += 1;
+    }
+    s
+}
+
+/// sub_obj(root, field)：root 里 \"field\" 后的 {...} 文本。
+fn sub_obj(root: &[u8], field: &str) -> Vec<u8> {
+    if root.is_empty() {
+        return Vec::new();
+    }
+    let needle = format!("\"{}\"", field);
+    let Some(p) = find_from(root, 0, needle.as_bytes()) else { return Vec::new() };
+    let Some(o) = find_from(root, p + needle.len(), b"{") else { return Vec::new() };
+    let Some(e) = match_close(root, o) else { return Vec::new() };
+    root[o..=e].to_vec()
+}
+
+/// cmd_teesim_overrides：overrides.json + harvested.json → 字段/值/可编辑/来源。
+pub fn teesim_overrides() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    let ov = std::fs::read(p.teesim_dir.join("overrides.json")).unwrap_or_default();
+    let ha = std::fs::read(p.teesim_dir.join("harvested.json")).unwrap_or_default();
+    if ov.is_empty() && ha.is_empty() {
+        std::process::exit(1);
+    }
+    let hobj = sub_obj(&ha, "overrides");
+    for f in TEESIM_FIELDS {
+        let v = flat(&ov, f);
+        let sobj = sub_obj(&hobj, f);
+        let mut ed = "1";
+        let mut src = "unset".to_string();
+        if !sobj.is_empty() {
+            let s2 = flat(&sobj, "source");
+            if !s2.is_empty() {
+                src = s2;
+            }
+            let e2 = flat(&sobj, "editable");
+            if e2 == "false" {
+                ed = "0";
+            } else if e2 == "true" {
+                ed = "1";
+            } else if src == "required" {
+                ed = "1";
+            }
+        }
+        if (*f == "verifiedBootKey" || *f == "verifiedBootHash") && src != "synthesized" && src != "supplement" {
+            ed = "0";
+        }
+        println!("{}\t{}\t{}\t{}", f, if v.is_empty() { "-".to_string() } else { v }, ed, src);
+    }
+}
+
 /// cmd_tricky_patches：只读解析 security_patch.txt。
 pub fn tricky_patches() {
     let root = Root::from_env();

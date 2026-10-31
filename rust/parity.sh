@@ -426,5 +426,31 @@ cmd_tricky_patches
 EOF
 chk 'tricky-patches：global/包段/all' "$(sh "$T/tp.sh" "$TP/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TP" "$B" tricky-patches)"
 
+echo "── teesim-overrides（overrides + harvested 可编辑性）──"
+TO="$T/toroot"
+mkdir -p "$TO/data/adb/modules/teesim" "$TO/data/adb/teesim"
+cat > "$TO/data/adb/teesim/overrides.json" <<'EOF'
+{"attestationSecurityLevel":2,"verifiedBootKey":"abc123","verifiedBootHash":null}
+EOF
+cat > "$TO/data/adb/teesim/harvested.json" <<'EOF'
+{"overrides":{"attestationSecurityLevel":{"editable":false,"source":"required"},"verifiedBootKey":{"editable":true,"source":"synthesized"},"verifiedBootHash":{"editable":true,"source":"harvested"}}}
+EOF
+cat > "$T/to.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/tools.sh
+. module/lib/backend.sh
+MODDIR="$PWD/module"
+KL_PATCH="$PWD/module/backends/teesim.awk"
+TEESIM_DIR="$1"
+TEESIM_CONFIG="$1/config.json"
+TEESIM_MODULE="$1/../modules/teesim"
+TRICKY_MODULE="$1/../modules/none-tricky"
+OMK_MODULE="$1/../modules/none-omk"
+detect_backend "$MODDIR"
+EOF
+sed -n '/^cmd_teesim_overrides() {/,/^}/p' module/webui.sh >> "$T/to.sh"
+echo 'cmd_teesim_overrides' >> "$T/to.sh"
+chk 'teesim-overrides：字段/可编辑/来源' "$(sh "$T/to.sh" "$TO/data/adb/teesim")" "$(KEYLENS_ROOT="$TO" "$B" teesim-overrides)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
