@@ -501,6 +501,36 @@ pub fn boot_hash() {
     println!("status={}", status);
 }
 
+/// cmd_tee_status：读 Tricky 自己写的 tee_status（present/file + 四个已知键）。
+pub fn tee_status() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let f = p.tstore_dir.join("tee_status");
+    if !f.is_file() {
+        println!("present=0");
+        return;
+    }
+    println!("present=1");
+    println!("file={}", f.display());
+    let text = std::fs::read_to_string(&f).unwrap_or_default();
+    for line in text.split('\n') {
+        let line = line.trim_end_matches('\r');
+        if line.is_empty() {
+            continue;
+        }
+        let Some(eq) = line.find('=') else { continue };
+        let (k, rest) = (&line[..eq], &line[eq + 1..]);
+        let key = match k {
+            "status" => "status",
+            "category" => "category",
+            "serviceErrorCode" => "service_error_code",
+            "teeBroken" => "tee_broken",
+            _ => continue,
+        };
+        println!("{}={}", key, rest);
+    }
+}
+
 /// cmd_target_meta：tok<TAB>base<TAB>kind<TAB>detail（三家的语义在 cmd 里分叉）。
 pub fn target_meta() {
     let root = Root::from_env();

@@ -346,5 +346,21 @@ chk 'boot-hash：ok' "$(PATH="$T/bin:$PATH" KL_BOOT_HASH="$T/bhroot/data/adb/key
 rm -f "$T/bhroot/data/adb/keylens.boot_hash"
 chk 'boot-hash：unset' "$(PATH="$T/bin:$PATH" KL_BOOT_HASH="$T/bhroot/data/adb/keylens.boot_hash" sh "$T/bh.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$T/bhroot" "$B" boot-hash)"
 
+echo "── tee-status（无尾换行的四行键值）──"
+TS3="$T/ts3"
+mkdir -p "$TS3/data/adb/tricky_store"
+printf 'status=ok\ncategory=tee\nserviceErrorCode=0\nteeBroken=false' > "$TS3/data/adb/tricky_store/tee_status"
+cat > "$T/tee.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/backend.sh
+kv() { printf '%s=%s\n' "$1" "$2"; }
+TSTORE_DIR="$1"
+EOF
+sed -n '/^cmd_tee_status() {/,/^}/p' module/webui.sh >> "$T/tee.sh"
+echo 'cmd_tee_status' >> "$T/tee.sh"
+chk 'tee-status：四行含无尾换行' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TS3" "$B" tee-status)"
+rm -f "$TS3/data/adb/tricky_store/tee_status"
+chk 'tee-status：文件缺失 present=0' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TS3" "$B" tee-status)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
