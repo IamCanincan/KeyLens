@@ -6,7 +6,7 @@
  *  - Tricky 有 tee_status（为什么只能走 leaf hack）与按包 [包名] 补丁块；
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
-import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons,
+import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons, loadDoctor,
   daemonLabel, daemonDown, propsMaskLabel } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
@@ -638,12 +638,50 @@ export function onOpenSub(fn) { openSubFn = fn; }
 /* 设置：界面自己的事（外观）+ 排障材料（界面自检）。
    属性伪装 / Verified Boot 是**功能**（改设备状态），2026-10-30 起在【功能】页；
    这里只留"界面偏好与自检"。 */
+/* 体检卡：只读、可重跑，结果留在 S.doctor 里，切页回来还在。 */
+function doctorCard() {
+  const c = card();
+  const s = section('体检', ICON.ok);
+  s.appendChild(h('p', 'hint', '逐层查"为什么没生效"：只读，不改任何文件。每行末尾是下一步。'));
+  const acts = h('div', 'acts');
+  acts.appendChild(button(S.doctor ? '重新体检' : '运行体检', { variant: 'filled', icon: ICON.ok, on: run }));
+  s.appendChild(acts);
+  const box = h('div');
+  s.appendChild(box);
+  const LABEL = { ok: '正常', warn: '注意', bad: '有问题', skip: '跳过' };
+  function run() {
+    box.textContent = '';
+    box.appendChild(h('p', 'hint', '正在体检…（约 1 秒）'));
+    loadDoctor().then(paint);
+  }
+  function paint() {
+    box.textContent = '';
+    if (S.doctorErr) { box.appendChild(h('p', 'read-err', '体检命令读失败 —— 命令层可能不是这一版。')); return; }
+    if (!S.doctor) { box.appendChild(h('p', 'hint', '点上面的按钮开始。')); return; }
+    const kv = S.doctor.kv || {};
+    box.appendChild(h('p', 'hint', '共 ' + (kv.checks || '?') + ' 项 · 有问题 ' + (kv.bad || '0')
+      + ' · 注意 ' + (kv.warn || '0') + ' · 跳过 ' + (kv.skip || '0')));
+    const l = h('md-list');
+    S.doctor.rows.forEach(function (r) {
+      const st = r[1];
+      /* skip 不染色：它既不是成功也不是问题，涂绿会让人以为"这项也查过了" */
+      const tone = st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : '';
+      l.appendChild(item({ headline: r[0], trailing: LABEL[st] || st, tone: tone || undefined,
+        supporting: (r[2] || '') + (r[3] ? ' · 下一步：' + r[3] : '') }));
+    });
+    box.appendChild(l);
+  }
+  if (S.doctor || S.doctorErr) paint(); else box.appendChild(h('p', 'hint', '点上面的按钮开始。'));
+  c.appendChild(s);
+  return c;
+}
 export function renderSettings() {
   const box = h('div', 'stack');
   box.appendChild(renderTheme());
   /* 自检卡不再推迟一帧：它只有五行本地数据，同帧画完页面高度就是最终值；
      推迟挂会让页面进场后再长高约 400px（实测 243 → 641），看起来同样是"拉高"。 */
   box.appendChild(selfCheck());
+  box.appendChild(doctorCard());
   return box;
 }
 

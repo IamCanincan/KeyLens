@@ -953,6 +953,30 @@ async function main() {
   }
 
   console.log('\n截图：' + SHOT_DIR);
+  /* 体检：设置页点「运行体检」，demo 里应出 6 行、其中"名单"是 warn 档。
+     同时验它按 TSV 行画成了行（不是一坨文本）。 */
+  await send('Page.navigate', { url: URL0 });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true})); return 1; })()`);
+  await sleep(800);
+  const dbtn = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+    var b=bs.filter(function(x){return (x.textContent||'').indexOf('运行体检')>=0;})[0];
+    if(!b) return null; var r=b.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+  if (dbtn) {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: dbtn.x, y: dbtn.y, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dbtn.x, y: dbtn.y, button: 'left', clickCount: 1 });
+  }
+  await sleep(1200);
+  const doc = await ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view md-list-item'));
+    var tone=function(x){return x.getAttribute('data-tone')||'';};
+    var warn=rows.filter(function(x){return tone(x)==='warn';}).map(function(x){return x.getAttribute('headline');});
+    return { n: rows.length, warn: warn.join(','),
+      hasSummary: (document.getElementById('view').textContent||'').indexOf('共 ')>=0 }; })()`);
+  chk('体检：点一次出 6 行 TSV，名单那行是 warn 档，且有汇总句',
+    dbtn && doc.n >= 6 && doc.warn.indexOf('名单') >= 0 && doc.hasSummary, JSON.stringify(doc).slice(0, 220));
+
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);
 }

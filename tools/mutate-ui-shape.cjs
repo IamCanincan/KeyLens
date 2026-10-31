@@ -136,6 +136,9 @@ const cases = [
   /* 这一把是"闸的盲区"的证据：旧版 ui-shape 只 grep `write('x'`，而 omk-save-config
      是经 form(spec, fields, cmd, …) 的第三个参数进来的 —— 把它从 WRITE_CMDS 里删掉，
      旧闸一声不响（契约不符时这条写命令就停不住）。现在扫调用点，必须点名响。 */
+  ['体检卡：只读命令、skip 不涂绿、非 ok 行带下一步', files.screens,
+    "st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''",
+    "st === 'bad' ? 'ok' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''", 1],
   ['日志关键字按显示文本匹配，且只重画日志台', files.screens,
     'stripEmoji(l).toLowerCase().indexOf(q) >= 0', 'l.toLowerCase().indexOf(q) >= 0', 1],
   ['日志切级别只重画日志台，不整页重建', files.screens,

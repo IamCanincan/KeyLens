@@ -202,7 +202,7 @@ console.log('       已豁免（命令层有、界面不直调）：'
   + writeCmds.filter(c => !used.includes(c) && EXEMPT_UNUSED.includes(c)).join(' '));
 /* 读命令不许出现在 write() 里：它会被契约闸门误拦 */
 const reads = ['status', 'env', 'targets', 'apps', 'log', 'props', 'contract', 'icons', 'target-meta',
-  'backend-info', 'teesim-profiles', 'tee-status', 'tricky-patches', 'excluded', 'boot-hash'];
+  'backend-info', 'teesim-profiles', 'tee-status', 'tricky-patches', 'excluded', 'boot-hash', 'doctor'];
 const misRead = [...new Set(used)].filter(c => reads.includes(c));
 chk('没有把读命令当写命令调', misRead.length === 0, misRead.join(' '));
 console.log('       界面可达的写命令：直接 ' + new Set(directWrite).size + ' 条 + 经 form 转手 '
@@ -237,6 +237,10 @@ Object.keys(draftUse).forEach(function (fn) {
 chk('同页重建前 capture、换页时作废、重建后还光标',
   app.includes('if (changed) clearEdits(); else captureEdits(prev);')
   && app.includes('restoreEditFocus(page)'), '');
+chk('体检卡：只读命令、skip 不涂绿、非 ok 行带下一步',
+  screens.includes("section('体检'") && screens.includes('loadDoctor()')
+  && screens.includes("st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''")
+  && screens.includes("' · 下一步：'"), '');
 chk('日志关键字按显示文本匹配，且只重画日志台',
   screens.includes('S.logQuery = String(qTf.value') && screens.includes('stripEmoji(l).toLowerCase().indexOf(q)')
   && screens.includes("q ? '没有匹配「'"), '');

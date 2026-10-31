@@ -68,6 +68,7 @@ export const KV_REQUIRED = {
   'clear-log': 'cleared',
   'tee-status': 'present',
   'omk-restart': 'restarted trigger',
+  doctor: 'checks bad warn',
 };
 
 export const BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
@@ -111,7 +112,7 @@ export const S = {
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
   icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
-  excluded: [], theme: 'auto',
+  excluded: [], theme: 'auto', doctor: null, doctorErr: false,
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，
      存一份就把另一份正在粘的内容吃掉；keybox 页粘完整份再点 profile 芯片也一样没。
@@ -381,6 +382,19 @@ export function loadIcons(pkgs) {
     });
   }, function () {});
 }
+/* 体检：只读命令。行是 TSV（名称/状态/说明/下一步），汇总走 kv。 */
+export function loadDoctor() {
+  return call('doctor').then(function (r) {
+    S.doctorErr = !r.ok;
+    var rows = [];
+    if (r.ok) {
+      splitLines(r.text).forEach(function (l) {
+        if (l.indexOf('	') > 0) rows.push(l.split('	'));
+      });
+    }
+    S.doctor = { kv: r.ok ? parseKV(r.text) : {}, rows: rows };
+  }, function () { S.doctorErr = true; S.doctor = { kv: {}, rows: [] }; });
+}
 export function loadExcluded() {
   if (S.contract.checked && !hasCmd('excluded')) { S.excluded = []; return Promise.resolve(); }
   return call('excluded').then(function (r) { S.excluded = r.ok ? splitLines(r.text) : []; },
@@ -453,6 +467,15 @@ function demoResult(cmd, arg) {
   /* 三家各有一套路径与条目语法。台架默认 omk，切 ?backend=tricky 才会画到
      tee_status、按包补丁块和 ?/! 后缀那一套分支 —— 上一版只跑 omk，
      结果 Tricky 分支里的键名读错也没人看见。 */
+  if (cmd === 'doctor') {
+    return { errno: 0, stdout: 'checks=11\nbad=1\nwarn=1\nskip=0\n'
+      + '权限\tok\t以 root 运行\t\n'
+      + '后端\tok\tOhMyKeymint · 配置 ' + demoFiles().dir + '/' + demoFiles().target + '\t\n'
+      + '守护进程\tok\t1 个进程在跑\t\n'
+      + '名单\twarn\t已装 127 个 · 名单 120 条（只比数量，可能只是你手动排除过）\t点「立即同步一次」，或等下一次安装/卸载自动触发\n'
+      + 'keybox\tok\tkeybox.xml 结构通过校验\t\n'
+      + '启动哈希\tskip\t没有配置 vbmeta digest\t\n' };
+  }
   var B = demoFiles();
   var toks = {
     omk: ['com.android.vending', 'app.mihon', 'com.tencent.mm'],
@@ -493,7 +516,7 @@ function demoResult(cmd, arg) {
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种

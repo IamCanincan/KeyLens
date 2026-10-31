@@ -66,7 +66,7 @@ KL_COMMANDS="status env targets target-meta apps icons log clear-log props props
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides teesim-profile-new teesim-profile-del"
+teesim-save-overrides teesim-profile-new teesim-profile-del doctor"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -1296,7 +1296,147 @@ for _kl_c in $KL_WRITE_CMDS; do
 done
 unset _kl_c
 
+# ---------- 体检（只读） ----------
+# 说明：用户说"不生效"时，最费时间的是判断坏在哪一层。这里按依赖顺序把各层过一遍，
+#       每项给 ok/warn/bad/skip 和一句"下一步"。**只读**：不写任何文件、不重启后端，
+#       所以可以随便点。skip 不是失败，是"这一家/这一环境没有这个面"。
+# 输出：先 4 行汇总 kv（checks/bad/warn/skip），再每项一行 TSV：
+#       名称 <TAB> 状态 <TAB> 说明 <TAB> 下一步
+# 用法：cmd_doctor
+cmd_doctor() {
+    local rows="" have_backend=0 np=0 pid pfile lk p nl_ ni dif cur raw ino counts
+
+    detect_backend "$MODDIR"   # 读路径的分派不会代替命令自己探测（与 backend-info 一致）
+
+    _doc() {
+        rows="$rows$1$TAB$2$TAB$3$TAB${4:-}$NL"
+    }
+
+    if kl_is_root; then _doc '权限' ok '以 root 运行' ''
+    else _doc '权限' bad '不是 root' '在管理器里给本模块 / WebUI root 权限'; fi
+
+    if [ -n "$KL_BACKEND" ]; then
+        have_backend=1
+        _doc '后端' ok "$(backend_name) · 配置 $TARGET_FILE" ''
+    else
+        _doc '后端' bad '没探测到已启用的后端' '装好 OMK / TEESimulator / TrickyStore 之一并启用'
+    fi
+
+    if [ "$have_backend" = 1 ]; then
+        # 守护进程：只数"cmdline 认得出本模块"的（名单里的旧 pid 可能已经被复用）
+        pfile="${KL_DIR}/.kl_daemon_pids.list"
+        if [ -f "$pfile" ]; then
+            while read -r pid; do
+                [ -n "$pid" ] && kl_pid_is_ours "$pid" && np=$((np + 1))
+            done < "$pfile"
+        fi
+        if [ "$np" -gt 0 ]; then _doc '守护进程' ok "$np 个进程在跑" ''
+        else _doc '守护进程' bad '没有守护进程在跑' '现在装/卸应用不会自动进名单：重启一次，或重新刷入模块'; fi
+
+        if [ -f "$TARGET_FILE" ]; then
+            if [ -w "$TARGET_FILE" ]; then _doc '目标文件' ok "$TARGET_FILE 存在且可写" ''
+            else _doc '目标文件' warn "$TARGET_FILE 不可写" '检查是否被别的模块或后端改成了只读'; fi
+        else
+            _doc '目标文件' bad "不存在：$TARGET_FILE" '让后端先跑一轮生成默认文件，或在名单页点「立即同步」'
+        fi
+
+        # 名单 vs 已装：**只比数量**（不逐个对），所以文案里写清"可能"
+        nl_=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+        ni=$(cmd package list packages -3 --user all 2>/dev/null | grep -c . )
+        if [ "${ni:-0}" -gt 0 ]; then
+            if [ "${nl_:-0}" -lt "$ni" ]; then
+                _doc '名单' warn "已装 $ni 个 · 名单 $nl_ 条（只比数量，可能只是你手动排除过）" '点「立即同步一次」，或等下一次安装/卸载自动触发'
+            else
+                _doc '名单' ok "已装 $ni 个 · 名单 $nl_ 条" ''
+            fi
+        else
+            _doc '名单' skip '读不到已装应用列表' ''
+        fi
+
+        backend_keybox_path
+        if [ ! -f "$KEYBOX_PATH" ]; then
+            _doc 'keybox' bad "不存在：$KEYBOX_PATH" '在「密钥箱」页粘贴一份，或让后端生成默认 keybox'
+        else
+            raw="${AWK_CMD:-$(find_awk)}"
+            if [ -n "$raw" ] && [ -f "${KL_PATCH%/*}/keybox_check.awk" ]; then
+                if ino=$($raw -v backend="$KL_BACKEND" -f "${KL_PATCH%/*}/keybox_check.awk" "$KEYBOX_PATH" 2>&1); then
+                    _doc 'keybox' ok "${KEYBOX_PATH##*/} 结构通过校验" ''
+                else
+                    _doc 'keybox' bad "结构不合格：${ino#err$TAB}" '在「密钥箱」页重新粘贴一份完整的 keybox.xml'
+                fi
+            else
+                _doc 'keybox' skip '缺少 awk 或校验脚本，跳过结构检查' ''
+            fi
+        fi
+
+        if props_disabled; then
+            _doc '属性伪装' ok '开机写入已关闭（开关文件存在）' ''
+        else
+            dif=0
+            while read -r p raw; do
+                [ -n "$p" ] || continue
+                prop_now "$p"; cur="$PROP_NOW"
+                [ -n "$cur" ] && [ "$cur" = "$raw" ] || dif=$((dif + 1))
+            done <<PAIRS
+$(props_expect_pairs)
+PAIRS
+            if [ "${dif:-0}" -gt 0 ]; then
+                _doc '属性伪装' warn "开机写入已开启，$dif 项与期望值不符" '点「立即应用一次」；仍不符就看属性页里那几行的当前值'
+            else
+                _doc '属性伪装' ok '开机写入已开启，对照项全部一致' ''
+            fi
+        fi
+
+        raw=$(boot_hash_get)
+        prop_now ro.boot.vbmeta.digest; cur="$PROP_NOW"
+        if [ -z "$raw" ]; then
+            _doc '启动哈希' skip '没有配置 vbmeta digest' ''
+        elif ! boot_hash_valid "$raw"; then
+            _doc '启动哈希' bad '配置的哈希格式不对' '只接受 64/128 位十六进制，在「属性伪装」页重填'
+        elif [ "$(printf '%s' "$cur" | tr 'A-F' 'a-f')" = "$raw" ]; then
+            _doc '启动哈希' ok '当前值等于配置值' ''
+        else
+            _doc '启动哈希' warn '当前值与配置值不一致' '点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了'
+        fi
+
+        ino=$(find_inotify_cmd)
+        if [ -n "$ino" ]; then _doc '监听工具' ok "${ino%%:*}" ''
+        else _doc '监听工具' bad '没找到 inotify 工具' '模块靠它感知安装/卸载；这期间只能手动同步'; fi
+
+        lk="${KL_DIR}/.kl_lock"
+        if [ -d "$lk" ]; then
+            p=$(cat "$lk/pid" 2>/dev/null)
+            if [ -n "$p" ] && kl_lock_holder_alive "$p"; then
+                _doc '并发锁' warn "正在写入（pid $p）" '等几秒再试；长期不释放的会在日志里留一条'
+            else
+                _doc '并发锁' warn '有残留锁，持有者已不在' '不用管，下一次写入会自动接管'
+            fi
+        else
+            _doc '并发锁' ok '空闲' ''
+        fi
+
+        if [ -f "$KL_LOG" ]; then
+            _doc '日志' ok "${KL_LOG##*/} $(wc -c < "$KL_LOG" 2>/dev/null | tr -d ' ') 字节" ''
+        else
+            _doc '日志' skip '还没有日志文件（没发生过同步）' ''
+        fi
+    else
+        for p in '守护进程' '目标文件' '名单' 'keybox' '属性伪装' '启动哈希' '监听工具' '并发锁' '日志'; do
+            _doc "$p" skip '没有后端，跳过' ''
+        done
+    fi
+
+    counts=$(printf '%s' "$rows" | ${AWK_CMD:-awk} -F"$TAB" '{c[$2]++} END {printf "%d %d %d %d\n", c["ok"]+0, c["warn"]+0, c["bad"]+0, c["skip"]+0}')
+    set -- $counts
+    kv checks "$((${1:-0} + ${2:-0} + ${3:-0} + ${4:-0}))"
+    kv bad "${3:-0}"
+    kv warn "${2:-0}"
+    kv skip "${4:-0}"
+    print -r -- "$rows"
+}
+
 case "$CMD" in
+    doctor)      cmd_doctor ;;
     contract)    cmd_contract ;;
     excluded)    cmd_excluded ;;
     status)      cmd_status ;;
