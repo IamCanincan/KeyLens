@@ -1,0 +1,17 @@
+[package]
+name = "keylens"
+version = "0.1.0"
+edition = "2021"
+description = "KeyLens command layer (Rust, staged rewrite of the shell layer)"
+license = "MIT"
+
+[[bin]]
+name = "keylens"
+path = "src/main.rs"
+
+[profile.release]
+opt-level = "z"
+lto = true
+codegen-units = 1
+panic = "abort"
+strip = true

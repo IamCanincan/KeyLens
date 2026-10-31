@@ -1,0 +1,53 @@
+name: Rust CLI
+
+on:
+  push:
+    branches: [ "main" ]
+    paths:
+      - 'rust/**'
+      - 'docs/RUST-REWRITE.md'
+      - '.github/workflows/rust-build.yml'
+  pull_request:
+    branches: [ "main" ]
+    paths:
+      - 'rust/**'
+      - '.github/workflows/rust-build.yml'
+  workflow_dispatch:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Rust targets
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: aarch64-linux-android,x86_64-unknown-linux-musl
+
+      - name: Configure NDK linker
+        run: |
+          NDK="${ANDROID_NDK_HOME:-$(ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null | tail -1)}"
+          echo "NDK=$NDK"
+          mkdir -p .cargo
+          printf '[target.aarch64-linux-android]\nlinker = "%s/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"\n' "$NDK" > .cargo/config.toml
+
+      - name: Build (aarch64 Android, static)
+        run: cargo build --manifest-path rust/Cargo.toml --release --target aarch64-linux-android
+
+      - name: Build (x86_64 musl, for parity test)
+        run: cargo build --manifest-path rust/Cargo.toml --release --target x86_64-unknown-linux-musl
+
+      - name: Contract parity（Rust 输出 == webui.sh 的 KL_COMMANDS）
+        run: |
+          EXPECTED=$(awk '/^KL_COMMANDS="/{f=1} f{ gsub(/^KL_COMMANDS="/,""); gsub(/"$/,""); gsub(/\\$/,""); print }' module/webui.sh | tr '\n' ' ' | tr -s ' ' | sed 's/ $//')
+          ACTUAL=$(rust/target/x86_64-unknown-linux-musl/release/keylens contract | sed -n 's/^commands=//p')
+          test "$EXPECTED" = "$ACTUAL" || { echo "契约不一致"; echo "expected: $EXPECTED"; echo "actual:   $ACTUAL"; exit 1; }
+          echo "契约一致（$(printf '%s' "$ACTUAL" | wc -w) 条命令）"
+
+      - name: Upload binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: keylens-aarch64
+          path: rust/target/aarch64-linux-android/release/keylens
+          if-no-files-found: error
