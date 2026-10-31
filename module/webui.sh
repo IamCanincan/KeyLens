@@ -634,8 +634,13 @@ cmd_backend_info() {
     # 注入。这两条只读状态由本模块自己看（OMK 没有自报），pid 文件里的 pid 还要
     # 核对 cmdline —— PID 会被复用，单看 kill -0 会把陌生进程当成 daemon。
     if [ "$KL_BACKEND" = "omk" ]; then
-        omk_d1=$(cat "$OMK_STATE_DIR/keymint-daemon.pid" 2>/dev/null)
-        omk_d2=$(cat "$OMK_STATE_DIR/injector-daemon.pid" 2>/dev/null)
+        # pid 文件用内置 read 取（$(cat …) 是一次子壳，真机约 40ms；这两个文件每次
+        # backend-info 都要读）
+        omk_d1=""; omk_d2=""
+        [ -f "$OMK_STATE_DIR/keymint-daemon.pid" ] && \
+            { IFS= read -r omk_d1 < "$OMK_STATE_DIR/keymint-daemon.pid" 2>/dev/null || :; }
+        [ -f "$OMK_STATE_DIR/injector-daemon.pid" ] && \
+            { IFS= read -r omk_d2 < "$OMK_STATE_DIR/injector-daemon.pid" 2>/dev/null || :; }
         if [ -n "$omk_d1" ] && kill -0 "$omk_d1" 2>/dev/null \
            && [ "$(tr '\0' '\n' < "/proc/$omk_d1/cmdline" 2>/dev/null | sed -n '2p')" = "$OMK_MODULE/daemon" ]; then
             omk_d1_alive=1
@@ -644,7 +649,8 @@ cmd_backend_info() {
            && [ "$(tr '\0' '\n' < "/proc/$omk_d2/cmdline" 2>/dev/null | sed -n '2p')" = "$OMK_MODULE/daemon-injector" ]; then
             omk_d2_alive=1
         fi
-        omk_ks=$(pidof keystore2 2>/dev/null | awk '{print $1; exit}')
+        # pidof 可能给多个 pid，取第一个 —— 用 set -- 拿，省掉管道里的 awk
+        omk_ks=""; set -- $(pidof keystore2 2>/dev/null); omk_ks="${1:-}"
         if [ -n "$omk_ks" ] && [ -f "$OMK_STATE_DIR/injector.payload" ]; then
             read -r omk_pay_pid omk_pay_id < "$OMK_STATE_DIR/injector.payload" 2>/dev/null
             [ "$omk_pay_pid" = "$omk_ks" ] && [ -n "$omk_pay_id" ] && omk_injected=1
@@ -658,10 +664,12 @@ cmd_backend_info() {
     fi
 
     kv backend "$KL_BACKEND"
-    kv backend_name "$(backend_name)"
+    backend_name_into; kv backend_name "$KL_BACKEND_NAME"
     kv module_dir "$mdir"
 
     if [ -f "$mdir/module.prop" ]; then
+        # 注意：$mdir 是**当前后端**的模块目录（OMK/Tricky/TEESim 自己的），不是本模块，
+        #      所以这里不能用 mod_prop（那个读的是 $PROP_FILE = 我们自己的 module.prop）。
         ver=$(sed -n 's/^version=//p' "$mdir/module.prop" 2>/dev/null | head -n 1)
     fi
     kv module_version "$ver"
@@ -749,7 +757,7 @@ cmd_status() {
 
     conflict=0
     backends_conflict && conflict=1
-    bname=$(backend_name)
+    backend_name_into; bname="$KL_BACKEND_NAME"
 
     kv state "$state"
     kv description "$desc"

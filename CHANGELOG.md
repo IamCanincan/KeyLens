@@ -110,6 +110,15 @@
   * **顺带撤回一个我报过的数**：上一条消息里说 `$(id -u)` 一次 68ms，那是错的。那个数来自一台把 stderr 丢进 /dev/null 的量测台 —— 它的变异版因为 sed 转义把参数展开写坏了，脚本在第 42 行就"需要 root 权限"退出，**少干了 68ms 的活**而不是省了 68ms。真数是 **9~37ms**（新旧两份完整命令交替跑、并且比对输出，跑不完就会露馅）。同一个坑的教训写进了 `tests/write-lazy.sh` 的注释：量测台必须自证"被测的东西真的跑完了"。
   * 5 个套子（keybox-shape / omk-apply-scope / omk-validation / patch-keywords / teesim-overrides-write）与 2 个静态闸（ui-shape / kv-shape-check）改成看"命令层整体"而不是单个 `webui.sh`：实现搬家之后只读一个文件会集体报"抽不到 case 分支"（kv-shape 一次报 34 处假警）。共用入口是 `tests/lib/kl-src.sh`（拼一份完整源码给套子，放在 `tests/lib/` 里所以不会被 CI 的 `tests/*.sh` 当成套子跑）。
 
+* **写路径与热路径的静态账：`backend-info` 再去掉 71ms**（"你自己再检查优化"）。先补一个仪器：`fork-budget` 式地数每条命令实现里有多少次 `$(子壳)` 与外部命令行 —— `backend_info` 15 处子壳、`env` 20 处、各条写命令 10~20 处外部命令。挑了关键路径上确定能省的四处置换：
+  * 两个 OMK pid 文件的 `$(cat …)` → 内置 `IFS= read -r … < 文件`；
+  * `$(pidof keystore2 | awk '{print $1}')` → `set -- $(pidof keystore2)`（少一个管道成员）；
+  * `kv backend_name "$(backend_name)"` 与 `bname=$(backend_name)` → 新增 `backend_name_into`（把显示名放进 `$KL_BACKEND_NAME`，不输出），`backend_name` 保留成它的 echo 包装给 `$(backend_name)` 的老调用方；
+  * 一次**自己差点改坏**的记录：本想顺手把 `ver=$(sed -n 's/^version=//p' "$mdir/module.prop" | head -n 1)` 换成 `mod_prop version` —— 但 `$mdir` 是**当前后端**的模块目录（`module_version=1.2.5-17b0eb6` 是 OMK 的版本），而 `mod_prop` 读的是我们自己的 `$PROP_FILE`，换了就会把本模块版本号当后端版本报出去。已回退并在原地写了注释；逐行比对正是为这种错准备的（换了之后 `backend-info` 那一行就会不一样）。
+* **配对实测**（同一会话交替各 15 次取中位数）：`backend-info` 588 → **517ms**（省 71ms）、`status` 206→201、`targets` 239→230。七条命令（`status/backend-info/boot-hash/env/targets/apps/log`）输出**逐行相同**，含 `omk_keymint_alive`、`omk_injector_alive`、`omk_keystore_pid`、`module_version`、`target_entries` 这几行最容易被改坏的。
+* **顺手纠正一处我自己写过的成本模型**：`$(子壳)` 并不恒值 40ms —— 40ms 那次量的是 `$(backend_state …)`，而它内部含一个外部 `printf`，等于"子壳 + fork"。纯内置的 `$(backend_name …)`（内部只有一次 printf）实测只值约 5ms，所以 `status` 这一轮只动了 5ms。**结论：别拿"每次 fork 20~40ms"当定律去推算收益，只有同会话交替配对的整命令数算数。**
+
+
 
 #### 修复
 

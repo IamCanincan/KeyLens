@@ -431,13 +431,24 @@ write_atomic_preserve() {
 
 # ---------- 后端名称 ----------
 # 说明：用于日志与模块描述展示
-# 用法：backend_name
-backend_name() {
+# 用法：backend_name_into —— 只把显示名放进 $KL_BACKEND_NAME（不输出）
+#       backend_name       —— echo 那份，留给 $(backend_name) 的老调用方
+# 为什么两份：status 与 backend-info 每条命令都要这个名字，而 $(backend_name) 是
+#       一次子壳（真机约 40ms）。热路径走 _into，脚本里给人看的那行继续用 echo 那份。
+KL_BACKEND_NAME=""
+backend_name_into() {
     case "$KL_BACKEND" in
-        teesim) echo "TEE Simulator" ;;
-        omk)    echo "OhMyKeymint" ;;
-        *)      echo "Tricky Store" ;;
+        teesim) KL_BACKEND_NAME='TEE Simulator' ;;
+        omk)    KL_BACKEND_NAME='OhMyKeymint' ;;
+        *)      KL_BACKEND_NAME='Tricky Store' ;;
     esac
+}
+
+backend_name() {
+    backend_name_into
+    # 用 printf 而不是 mksh 的 print：这份库也会被 tests/ 在主机 shell 里 source，
+    # 那边没有 print 内置。热路径已经不走这里了（调用方直接用 $KL_BACKEND_NAME）。
+    printf '%s\n' "$KL_BACKEND_NAME"
 }
 
 # ---------- OhMyKeymint 写入 ----------
