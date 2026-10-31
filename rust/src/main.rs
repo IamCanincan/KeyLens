@@ -8,6 +8,7 @@ mod b64;
 mod backend;
 mod payload;
 mod lock;
+mod ov_valid;
 mod read_cmds;
 
 use std::process::exit;
