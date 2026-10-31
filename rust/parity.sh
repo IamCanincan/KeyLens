@@ -662,5 +662,58 @@ mkdir -p "$PA/data/adb"; : > "$PA/data/adb/keylens.props_off"
 chk 'props-apply：开关关闭时拒绝' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
 rm -f "$PA/data/adb/keylens.props_off"
 
+echo "── tricky-drop-patch（删 [scope] 段）──"
+mk_drop_harness() { # <root>
+  {
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { cp "$1" "$1.pre"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/dp.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/dp.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/dp.sh"
+  sed -n '/^cmd_tricky_drop_patch() {/,/^}/p' module/lib/write.sh >> "$T/dp.sh"
+  echo 'detect_backend "$MODDIR"; cmd_tricky_drop_patch "$1"' >> "$T/dp.sh"
+}
+DP="$T/dp-root"
+mk_dp_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  cat > "$1/data/adb/tricky_store/security_patch.txt" <<'EOF'
+2026-10-05
+system=2026-10-01
+
+# 说明：下面按包覆盖
+[com.example.a]
+all=2026-07-01
+
+[com.example.b]
+system=2026-06-01
+EOF
+  mkdir -p "$1/data/adb/tricky_store"
+}
+DPS="$DP-s"; DPR="$DP-r"
+mk_dp_fixture "$DPS"; mk_dp_fixture "$DPR"
+mk_drop_harness "$DPS"
+chk 'drop-patch：删段输出' "$(sh "$T/dp.sh" com.example.a 2>&1)" "$(KEYLENS_ROOT="$DPR" "$B" tricky-drop-patch com.example.a 2>&1)"
+chk 'drop-patch：两侧结果逐字节一致' "$(cat "$DPS/data/adb/tricky_store/security_patch.txt")" "$(cat "$DPR/data/adb/tricky_store/security_patch.txt")"
+chk 'drop-patch：备份已生成' "$([ -f "$DPR/data/adb/tricky_store/security_patch.txt.bak" ] && echo yes)" "yes"
+chk 'drop-patch：段不存在' "$(sh "$T/dp.sh" com.nothere 2>&1)" "$(KEYLENS_ROOT="$DPR" "$B" tricky-drop-patch com.nothere 2>&1)"
+chk 'drop-patch：拒绝全局段' "$(sh "$T/dp.sh" global 2>&1)" "$(KEYLENS_ROOT="$DPR" "$B" tricky-drop-patch global 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

@@ -1221,6 +1221,130 @@ pub fn props_switch(want: &str) {
     println!("props_masking={}", want);
 }
 
+/// tricky_patch_set.awk 的 drop 分支：删掉 `[scope]` 段（含段前注释与空行）。
+fn tricky_drop_rewrite(text: &str, scope: &str) -> (String, &'static str) {
+    let lines: Vec<&str> = {
+        let mut v: Vec<&str> = text.split('\n').collect();
+        if text.ends_with('\n') {
+            v.pop();
+        }
+        v
+    };
+    let n = lines.len();
+    let is_blank = |s: &str| s.chars().all(|c| c == ' ' || c == '\t');
+    let is_comment = |s: &str| s.trim_start_matches([' ', '\t']).starts_with('#');
+    let mut secl: Vec<usize> = Vec::new();
+    let mut secn: Vec<String> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_matches([' ', '\t']);
+        if t.starts_with('[') && t.ends_with(']') && t.len() >= 3 {
+            let name = &t[1..t.len() - 1];
+            if !name.is_empty()
+                && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-')
+            {
+                secl.push(i + 1);
+                secn.push(name.to_string());
+            }
+        }
+    }
+    let Some(idx) = secn.iter().position(|s| s == scope) else {
+        return (text.to_string(), "missing");
+    };
+    let lo = secl[idx];
+    let mut hi = if idx + 1 < secl.len() { secl[idx + 1] } else { n + 1 };
+    while hi >= lo + 1 && hi - 1 >= lo && (is_blank(lines[hi - 2]) || is_comment(lines[hi - 2])) {
+        hi -= 1;
+    }
+    let mut lo2 = lo;
+    while lo2 >= 2 && is_comment(lines[lo2 - 2]) {
+        lo2 -= 1;
+    }
+    if lo2 >= 2 && is_blank(lines[lo2 - 2]) {
+        lo2 -= 1;
+    }
+    let mut out = String::new();
+    for (i, line) in lines.iter().enumerate() {
+        let one = i + 1;
+        if one >= lo2 && one < hi {
+            continue;
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    (out, "ok")
+}
+
+/// cmd_tricky_drop_patch：删掉 security_patch.txt 里的 [scope] 段。
+pub fn tricky_drop_patch(scope: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Tricky {
+        eprintln!("当前后端不是 Tricky Store");
+        std::process::exit(1);
+    }
+    if scope.is_empty() || scope == "global" {
+        eprintln!("只能删按包段（[包名]）；全局段是补丁表的主体，不能删");
+        std::process::exit(1);
+    }
+    if !valid_pkg(scope) {
+        eprintln!("scope 必须是合法包名：{}", scope);
+        std::process::exit(1);
+    }
+    let target = p.tstore_dir.join("security_patch.txt");
+    if !target.is_file() {
+        eprintln!("补丁表不存在：{}", target.display());
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read_to_string(&target).unwrap_or_default();
+    let (new_text, status) = tricky_drop_rewrite(&old, scope);
+    let rc = match status {
+        "missing" => {
+            crate::lock::release(&lockdir);
+            eprintln!("补丁表里没有 [{}] 这一段", scope);
+            std::process::exit(1);
+        }
+        "ok" => {
+            if new_text == old {
+                0
+            } else {
+                let bak = b.dir.join("security_patch.txt.bak");
+                let _ = std::fs::copy(&target, &bak);
+                let tmp = b.dir.join(format!(".kl_restore.{}", std::process::id()));
+                let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok();
+                let ok = ok && std::fs::rename(&tmp, &target).is_ok();
+                if !ok {
+                    let _ = std::fs::remove_file(&tmp);
+                    2
+                } else {
+                    0
+                }
+            }
+        }
+        _ => 2,
+    };
+    crate::lock::release(&lockdir);
+    if rc != 0 {
+        eprintln!("补丁表删除失败");
+        std::process::exit(1);
+    }
+    log_line(&p, &format!("🧩 WebUI 删除 Tricky 补丁段（scope={}）", scope));
+    println!("dropped=1");
+    println!("scope={}", scope);
+}
+
 /// cmd_set_mode：Tricky 条目模式改写（auto/leaf/generate），输出 changed。
 pub fn set_mode(pkg: &str, mode: &str) {
     let root = Root::from_env();
