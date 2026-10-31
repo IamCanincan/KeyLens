@@ -836,11 +836,25 @@ async function main() {
     empty: !document.querySelector('#view > .page') }; })()`);
   chk('契约一到就画壳：状态未到时主页位置已是骨架（不是空屏）',
     hs.hero && !hs.empty && hs.stats === 3 && hs.rows >= 3 && hs.cards === 0, JSON.stringify(hs));
+  /* 再等到启动页真的开始淡出 —— DOM 里有骨架不等于屏上看得见。status 被延后到
+     900ms，所以"淡出"与"骨架换成真页"之间还剩一段窗口，截图要落在那一段里。 */
+  for (let i = 0; i < 14; i++) {
+    const fading = await ev(`!!(!document.querySelector('.boot-splash') || document.querySelector('.boot-splash.out'))`);
+    if (fading) break;
+    await sleep(50);
+  }
+  await sleep(160);
+  const hsShot = await ev(`(function(){ var s = document.querySelector('.boot-splash');
+    return { hero: !!document.querySelector('#view .sk-hero'),
+      cards: document.querySelectorAll('#view md-card').length,
+      opacity: s ? getComputedStyle(s).opacity : '0' }; })()`);
+  chk('启动页淡出那一刻屏上就是主页骨架（不是空屏）',
+    hsShot.hero && hsShot.cards === 0 && Number(hsShot.opacity) < 0.6, JSON.stringify(hsShot));
   {
     const sH = await send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(SHOT_DIR, 'new-home-skeleton.png'), Buffer.from(sH.data, 'base64'));
   }
-  await sleep(1200);
+  await sleep(1000);
   const hs2 = await ev(`(function(){ return { hero: !!document.querySelector('#view .sk-hero'),
     cards: document.querySelectorAll('#view md-card').length }; })()`);
   chk('状态到齐后骨架换成真主页', !hs2.hero && hs2.cards >= 2, JSON.stringify(hs2));
