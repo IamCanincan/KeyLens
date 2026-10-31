@@ -370,7 +370,51 @@ fn omk_scoop(buf: &[u8]) -> Option<Vec<String>> {
     Some(quoted_strings(&buf[ob + 1..cb]))
 }
 
-/// cmd_targets：当前后端的目标列表。
+/// cmd_target_meta：tok<TAB>base<TAB>kind<TAB>detail（三家的语义在 cmd 里分叉）。
+pub fn target_meta() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    if !b.target.is_file() {
+        eprintln!("目标文件不存在：{}", b.target.display());
+        std::process::exit(1);
+    }
+    let data = std::fs::read(&b.target).unwrap_or_default();
+    let tokens: Vec<String> = match b.id {
+        BackendId::Tricky => tricky_tokens(&String::from_utf8_lossy(&data)),
+        BackendId::Teesim => teesim_apps(&data).unwrap_or_default(),
+        BackendId::Omk => omk_scoop(&data).unwrap_or_default(),
+    };
+    for tok in tokens {
+        let (base, kind, detail): (String, &str, String) = match b.id {
+            BackendId::Tricky => {
+                if let Some(stripped) = tok.strip_suffix('?') {
+                    (stripped.to_string(), "leaf", String::new())
+                } else if let Some(stripped) = tok.strip_suffix('!') {
+                    (stripped.to_string(), "generate", String::new())
+                } else {
+                    (tok.clone(), "auto", String::new())
+                }
+            }
+            BackendId::Teesim => {
+                if let Some(rest) = tok.strip_prefix("uid:") {
+                    (String::new(), "uid", rest.to_string())
+                } else if let Some(at) = tok.rfind('@') {
+                    let detail = &tok[at + 1..];
+                    if !detail.is_empty() && detail.bytes().all(|c| c.is_ascii_digit()) {
+                        (tok[..at].to_string(), "user", detail.to_string())
+                    } else {
+                        (tok.clone(), "plain", String::new())
+                    }
+                } else {
+                    (tok.clone(), "plain", String::new())
+                }
+            }
+            BackendId::Omk => (tok.clone(), "plain", String::new()),
+        };
+        println!("{}\t{}\t{}\t{}", tok, base, kind, detail);
+    }
+}
 pub fn targets() {
     let root = Root::from_env();
     let p = Paths::new(&root);

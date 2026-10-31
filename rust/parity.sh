@@ -232,5 +232,47 @@ EOF
 mk_targets_harness "$OS"
 chk 'omk scoop 数组（注释/多行/段名不误匹配）' "$(sh "$T/h3.sh")" "$(KEYLENS_ROOT="$OS" "$B" targets)"
 
+echo "── target-meta（三家 tok/base/kind/detail）──"
+mk_meta_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+  } > "$T/h4.sh"
+  sed -n '/^cmd_targets() {/,/^}/p' module/webui.sh >> "$T/h4.sh"
+  sed -n '/^cmd_target_meta() {/,/^}/p' module/webui.sh >> "$T/h4.sh"
+  cat >> "$T/h4.sh" <<'EOF'
+detect_backend "$MODDIR"
+cmd_target_meta
+EOF
+}
+# tricky：沿用 $TT（?→leaf、!→generate、其余 auto）
+mk_meta_harness "$TT"
+chk 'meta tricky：leaf/generate/auto' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$TT" "$B" target-meta)"
+# teesim：@用户 / uid: 两种
+TS2="$T/ts2"
+mkdir -p "$TS2/data/adb/modules/teesim" "$TS2/data/adb/teesim"
+cat > "$TS2/data/adb/teesim/config.json" <<'EOF'
+{"profiles":{"default":{"apps":["com.a","com.b@10","uid:10123"]}}}
+EOF
+mk_meta_harness "$TS2"
+chk 'meta teesim：user/uid/plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$TS2" "$B" target-meta)"
+# omk：一律 plain
+mk_meta_harness "$OS"
+chk 'meta omk：plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$OS" "$B" target-meta)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
