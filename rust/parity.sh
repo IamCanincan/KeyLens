@@ -956,5 +956,49 @@ chk 'profile-del：备份已生成' "$([ -f "$PDR/data/adb/teesim/config.json.ba
 chk 'profile-del：不存在' "$(sh "$T/pd.sh" nope 2>&1)" "$(KEYLENS_ROOT="$PDR" "$B" teesim-profile-del nope 2>&1)"
 chk 'profile-del：拒绝 default' "$(sh "$T/pd.sh" default 2>&1)" "$(KEYLENS_ROOT="$PDR" "$B" teesim-profile-del default 2>&1)"
 
+echo "── teesim-profile-new（复制 default）──"
+mk_pn_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/pn.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/pn.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pn.sh"
+  sed -n '/^cmd_teesim_profile_new() {/,/^}/p' module/lib/write.sh >> "$T/pn.sh"
+  echo 'detect_backend "$MODDIR"; cmd_teesim_profile_new "$1"' >> "$T/pn.sh"
+}
+PN="$T/pn-root"
+mk_pn_fixture() {
+  mkdir -p "$1/data/adb/modules/teesim" "$1/data/adb/teesim"
+  printf '{\n    "profiles": {\n        "default": {"apps": ["com.a"]}\n    }\n}\n' > "$1/data/adb/teesim/config.json"
+}
+PNS="$PN-s"; PNR="$PN-r"
+mk_pn_fixture "$PNS"; mk_pn_fixture "$PNR"
+mk_pn_harness "$PNS"
+chk 'profile-new：输出' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new work 2>&1)"
+chk 'profile-new：两侧 config 逐字节一致' "$(cat "$PNS/data/adb/teesim/config.json")" "$(cat "$PNR/data/adb/teesim/config.json")"
+chk 'profile-new：备份已生成' "$([ -f "$PNR/data/adb/teesim/config.json.bak" ] && echo yes)" "yes"
+chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new work 2>&1)"
+chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

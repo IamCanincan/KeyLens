@@ -2317,3 +2317,113 @@ fn member_span(b: &[u8], ob: usize, oc: usize, key: &str) -> Option<crate::json_
     }
     None
 }
+
+/// cmd_teesim_profile_new：把 profiles.default 整份复制成一份新 profile。
+pub fn teesim_profile_new(name: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    if !p.teesim_config.is_file() {
+        eprintln!("配置不存在：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    if name.is_empty() || name == "default" {
+        eprintln!("名字不能为空，也不能叫 default");
+        std::process::exit(1);
+    }
+    if !name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
+        eprintln!("名字只能用字母、数字、. _ -：{}", name);
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read(&p.teesim_config).unwrap_or_default();
+    // profiles 对象
+    let found = (|| {
+        let pp = find_from(&old, 0, b"\"profiles\"")?;
+        let colon = find_from(&old, pp + 10, b":")?;
+        let mut i = colon + 1;
+        while i < old.len() && matches!(old[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+        if old.get(i) != Some(&b'{') { return None; }
+        let end = match_close(&old, i)?;
+        Some((i, end))
+    })();
+    let Some((ob, oc)) = found else {
+        crate::lock::release(&lockdir);
+        eprintln!("新建 profile 失败（配置里找不到 profiles.default？）");
+        std::process::exit(1);
+    };
+    if member_span(&old, ob, oc, name).is_some() {
+        crate::lock::release(&lockdir);
+        eprintln!("profile 已存在：{}", name);
+        std::process::exit(1);
+    }
+    let Some(d) = member_span(&old, ob, oc, "default") else {
+        crate::lock::release(&lockdir);
+        eprintln!("新建 profile 失败（配置里找不到 profiles.default？）");
+        std::process::exit(1);
+    };
+    let dobj = &old[d.ks..=d.ke];
+    // 成员缩进：default 键那一行的行首空白
+    let mut line_start = d.kbs;
+    while line_start > ob + 1 && old[line_start - 1] != b'\n' { line_start -= 1; }
+    let mut memberind = String::new();
+    let mut i = line_start;
+    while i < d.kbs && matches!(old[i], b' ' | b'\t') { memberind.push(old[i] as char); i += 1; }
+    // 收尾花括号的缩进
+    let mut closeind = String::new();
+    let mut k = oc;
+    while k > ob + 1 && matches!(old[k - 1], b' ' | b'\t') { k -= 1; closeind.insert(0, old[k] as char); }
+    let _ = closeind;
+    let mut closeind = String::new();
+    let mut j = oc;
+    while j > ob + 1 && matches!(old[j - 1], b' ' | b'\t') { j -= 1; closeind.insert(0, old[j] as char); }
+    let mut before = old[ob..oc].to_vec();
+    while let Some(&last) = before.last() {
+        if matches!(last, b' ' | b'\t' | b'\r' | b'\n') { before.pop(); } else { break; }
+    }
+    if !matches!(before.last(), Some(&b'{') | Some(&b',')) { before.push(b','); }
+    let mut newpobj: Vec<u8> = Vec::new();
+    newpobj.extend_from_slice(&before);
+    newpobj.push(b'\n');
+    newpobj.extend_from_slice(memberind.as_bytes());
+    newpobj.extend_from_slice(format!("\"{}\": ", name).as_bytes());
+    newpobj.extend_from_slice(dobj);
+    newpobj.push(b'\n');
+    newpobj.extend_from_slice(closeind.as_bytes());
+    newpobj.push(b'}');
+    let mut out: Vec<u8> = Vec::new();
+    out.extend_from_slice(&old[..ob]);
+    out.extend_from_slice(&newpobj);
+    out.extend_from_slice(&old[oc + 1..]);
+    let bak = b.dir.join("config.json.bak");
+    let _ = std::fs::copy(&p.teesim_config, &bak);
+    let mode = std::fs::metadata(&p.teesim_config).ok().map(|m| m.permissions());
+    let tmp = b.dir.join(format!(".config.json.keylens.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &out).is_ok() && std::fs::rename(&tmp, &p.teesim_config).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        crate::lock::release(&lockdir);
+        eprintln!("写入失败：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    if let Some(m) = mode { let _ = std::fs::set_permissions(&p.teesim_config, m); }
+    crate::lock::release(&lockdir);
+    log_line(&p, &format!("🧰 WebUI 新建 TEESim profile（{}，复制自 default）", name));
+    println!("created=1");
+    println!("profile={}", name);
+}

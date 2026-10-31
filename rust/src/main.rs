@@ -101,6 +101,7 @@ fn main() {
         "keybox-save" => read_cmds::keybox_save(arg),
         "backup-restore" => read_cmds::backup_restore(arg),
         "teesim-profile-del" => read_cmds::teesim_profile_del(arg),
+        "teesim-profile-new" => read_cmds::teesim_profile_new(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
