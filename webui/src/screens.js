@@ -1483,6 +1483,19 @@ function keyboxCard() {
 }
 
 /* ── 日志页 ───────────────────────────────────────────────────────── */
+/* 只重画日志台（不动芯片/按钮/开关）。切级别档以前走 redraw() —— 整页重建，
+   60 行日志（每行三个节点）重造一遍，还会把滚动位置与焦点一起丢掉。 */
+function paintLogRows(console_) {
+  console_.textContent = '';
+  const shown = S.log.filter(function (l) {
+    if (S.logFilter === 'all') return true;
+    const k = logLevel(l);
+    return S.logFilter === 'bad' ? k === 'bad' : (k === 'bad' || k === 'warn');
+  });
+  if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
+  else if (!shown.length) console_.appendChild(h('p', 'empty', '这一档没有行（' + S.log.length + ' 行里没有符合的）。'));
+  else shown.forEach(function (l) { console_.appendChild(logRow(l)); });
+}
 export function renderLog() {
   const box = h('div', 'stack');
   const c = card();
@@ -1502,8 +1515,18 @@ export function renderLog() {
     if (k === 'bad') { lv.bad++; lv.issue++; } else if (k === 'warn') lv.issue++;
   });
   const lvRow = h('div', 'acts filter-grid');
+  const lvChips = [];
   [['all', '全部 ' + S.log.length], ['issue', '问题 ' + lv.issue], ['bad', '错误 ' + lv.bad]].forEach(function (v) {
-    lvRow.appendChild(chip(v[1], S.logFilter === v[0], function () { S.logFilter = v[0]; redraw(); }));
+    lvChips.push({ v: v[0], el: chip(v[1], S.logFilter === v[0], function () {
+      S.logFilter = v[0];
+      /* 芯片的选中态就地改：整页重建会把正在看的那一屏连同滚动位置一起重来。 */
+      lvChips.forEach(function (o) {
+        o.el.selected = (o.v === v[0]);
+        if (o.v === v[0]) o.el.setAttribute('selected', ''); else o.el.removeAttribute('selected');
+      });
+      paintLogRows(console_);
+    }) });
+    lvRow.appendChild(lvChips[lvChips.length - 1].el);
   });
   s.appendChild(lvRow);
   bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read,
@@ -1522,14 +1545,7 @@ export function renderLog() {
   s.appendChild(h('p', 'hint', '末尾 ' + S.log.length + ' 行 · 缓冲 ' + bytesLabel(S.status.log_bytes)
     + '（' + (S.status.log_lines || '?') + ' 行）· 文件 ' + (S.status.log_file || '/data/adb/keylens.log')));
   const console_ = h('div', 'console tall');
-  const shownLines = S.log.filter(function (l) {
-    if (S.logFilter === 'all') return true;
-    const k = logLevel(l);
-    return S.logFilter === 'bad' ? k === 'bad' : (k === 'bad' || k === 'warn');
-  });
-  if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
-  else if (!shownLines.length) console_.appendChild(h('p', 'empty', '这一档没有行（' + S.log.length + ' 行里没有符合的）。'));
-  else shownLines.forEach(function (l) { console_.appendChild(logRow(l)); });
+  paintLogRows(console_);
   s.appendChild(console_);
   c.appendChild(s);
   box.appendChild(c);

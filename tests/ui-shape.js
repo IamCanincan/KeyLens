@@ -237,6 +237,10 @@ Object.keys(draftUse).forEach(function (fn) {
 chk('同页重建前 capture、换页时作废、重建后还光标',
   app.includes('if (changed) clearEdits(); else captureEdits(prev);')
   && app.includes('restoreEditFocus(page)'), '');
+chk('日志切级别只重画日志台，不整页重建',
+  screens.includes('function paintLogRows(console_)')
+  && (screens.match(/paintLogRows\(console_\);/g) || []).length >= 2
+  && !/S\.logFilter = v\[0\]; redraw\(\);/.test(screens), '');
 /* 时间戳三态：读不到 ≠ 0。以前 status 读失败时「上次写入」印的是"从未"。 */
 chk('timeLabel 分得开"读不到"与"从未"',
   /if \(epoch == null \|\| epoch === ''\) return '读不到';/.test(bridge)

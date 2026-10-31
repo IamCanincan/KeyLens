@@ -53,7 +53,7 @@ const cases = [
     "  { id: 'settings', label: '设置', icon: ICON.settings, need: [] },\n  { id: 'log', label: '日志', icon: ICON.log, need: ['log'] },", 1],
   ['伪装在功能页的二级里，设置格不再有它', files.screens,
     "  if (sub === 'props') box.appendChild(propsCards());", '', 1],
-  ['重画走注册的回调，不写跨模块自由变量', files.screens, 'redraw();', 'draw();', 6, SCOPE],
+  ['重画走注册的回调，不写跨模块自由变量', files.screens, 'redraw();', 'draw();', 5, SCOPE],
   ['四个页渲染函数都在，且按 主页→功能→二级→设置 相邻（切片前提）', files.screens,
     'export function renderSettings()', 'function renderSettingsX()', 1],
   ['keybox 在二级页里，不在主页与设置', files.screens,
@@ -136,6 +136,8 @@ const cases = [
   /* 这一把是"闸的盲区"的证据：旧版 ui-shape 只 grep `write('x'`，而 omk-save-config
      是经 form(spec, fields, cmd, …) 的第三个参数进来的 —— 把它从 WRITE_CMDS 里删掉，
      旧闸一声不响（契约不符时这条写命令就停不住）。现在扫调用点，必须点名响。 */
+  ['日志切级别只重画日志台，不整页重建', files.screens,
+    '      paintLogRows(console_);\n', '      redraw();\n', 1],
   ['每个写命令都在 WRITE_CMDS 里（否则契约不符时停不住）', files.bridge,
     'omk-save-injector omk-save-config tricky-save-patch \\', 'omk-save-injector tricky-save-patch \\', 1],
 ];
