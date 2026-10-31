@@ -11,11 +11,11 @@ import { fileURLToPath } from 'node:url';
 const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '../..');
 const SRC = path.join(repo, 'webui', 'src');
-/* 默认查**候选**产物（webui/dist），因为新版还没换掉 webroot 里的旧界面；
-   换版之后按 `check-artifact.mjs module/webroot/index.html` 查真正上机的那份。 */
+/* 默认查**上机产物**（module/webroot/index.html）——CI 不重建 dist，查构建目录
+   必然"找不到产物"；dist 只是本地构建的中间产物。需要查候选产物时显式传路径。 */
 const OUT = process.argv[2]
   ? path.resolve(repo, process.argv[2])
-  : path.join(repo, 'webui', 'dist', 'index.html');
+  : path.join(repo, 'module', 'webroot', 'index.html');
 
 let bad = 0;
 const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
