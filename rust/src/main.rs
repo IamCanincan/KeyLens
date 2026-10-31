@@ -24,22 +24,41 @@ const COMMANDS: &[&str] = &[
 ];
 
 const USAGE: &str = "\
-KeyLens 命令层（Rust）
-
-用法：keylens <命令> [参数]
-
-  contract            打印契约号与命令清单
-  log <行数>          日志缓冲末尾内容（默认 60，夹取 1..400）
-  backups             .bak 列表：名称<TAB>字节<TAB>mtime<TAB>目标文件
-  help                打印本帮助
-
-读命令：status env targets target-meta apps icons log props boot-hash excluded
-        backend-info teesim-profiles tee-status tricky-patches teesim-overrides
-        doctor backups
-写命令：props-apply props-on props-off props-boot-hash restore-app restore-apps
-        remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector
-        omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync
-        clear-log omk-restart teesim-profile-new teesim-profile-del backup-restore
+用法：sh webui.sh <命令> [参数]
+  status                 全部运行状态（key=value）
+  env                    环境能力（resetprop / awk / base64 / inotify）
+  targets                当前生效的应用列表（保留 pkg? / pkg! / pkg@用户 / uid: 原样）
+  target-meta            目标条目元数据（token<TAB>base<TAB>kind<TAB>detail）
+  apps                   已安装的第三方应用
+  icons <包名,...>       从桌面图标缓存导出 PNG 与显示名（包名<TAB>显示名<TAB>相对路径）
+  log <行数>             日志缓冲末尾内容
+  clear-log              清空日志缓冲
+  props                  属性名/当前值/期望值/状态（TAB 分隔）
+  props-apply            立刻按期望表写一次属性
+  props-on|props-off     开关开机属性伪装
+  boot-hash              读取 Verified Boot 哈希配置与当前 digest
+  props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
+  restore-app <包名>     把未纳入或已排除的应用加入目标名单
+  restore-apps <包名,...> 批量加入（逗号分隔；只写一次目标文件）
+  remove-apps <包名,...> 批量移出（逗号分隔；只写一次；至少保留一条）
+  set-mode <包名> <模式>  Tricky 专用：auto / leaf / generate
+  backend-info           当前后端的配置摘要
+  teesim-profiles        TEE Simulator：列出所有 profile（名字/关键/模式/条目数/是否默认）
+  tee-status             Tricky：读它自己写的 TEE 探测结果（present/status/teeBroken…）
+  teesim-overrides       TEE Simulator：读 overrides.json（安全等级/版本/启动键哈希，含各项可否编辑）
+  tricky-patches         Tricky：列出 security_patch.txt 的全局与按包补丁块
+  omk-restart <范围>     OhMyKeymint：触发重载，范围 = keymint | injector | all
+  teesim-save <b64>      TEE Simulator default profile 字段（payload）
+  omk-save-injector <b64> OhMyKeymint injector.toml 字段（payload）
+  omk-save-config <b64>  OhMyKeymint config.toml 字段（payload）
+  tricky-save-patch <b64> Tricky security_patch.txt 全局值（payload）
+  tricky-drop-patch <包名> 删掉 Tricky security_patch.txt 里的 [包名] 段
+  teesim-profile-new <名字> 复制 default 新建一份 TEESim profile
+  teesim-profile-del <名字> 删除一个 TEESim profile（default 不可删）
+  keybox-save <b64>      替换当前后端的 keybox.xml（base64 XML）
+  sync                   立即同步一次应用列表
+  contract               自报命令层契约号与命令清单
+  excluded               列出被人为排除（手动删除）的包名
 ";
 
 fn main() {

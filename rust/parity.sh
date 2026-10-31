@@ -23,6 +23,10 @@ A=$($B contract | sed -n 's/^commands=//p')
 chk 'commands 列表逐字一致' "$E" "$A"
 chk 'api 号一致' "api=4" "$($B contract | head -1)"
 
+echo "── help（逐字节）──"
+sed -n '/^cmd_help() {/,/^}/p' module/webui.sh > "$T/help.sh"
+chk 'help 输出逐字节一致' "$(sh -c '. "$1"; cmd_help' sh "$T/help.sh")" "$($B help)"
+
 echo "── log（进程内等价，取自 webui.sh 的真函数）──"
 sed -n '/^clamp_int() {/,/^}/p' module/webui.sh > "$T/fn.sh"
 sed -n '/^cmd_log() {/,/^}/p' module/webui.sh >> "$T/fn.sh"

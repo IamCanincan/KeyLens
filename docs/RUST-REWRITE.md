@@ -44,3 +44,9 @@
 
 - 本机**没有 Rust 工具链**，构建放 CI（`.github/workflows/rust-build.yml`）。
 - `rust/` 目前是阶段 0 骨架，未接入模块、不影响发布。
+
+## 进度
+
+- ✅ 阶段 0：分发表（40 条与 KL_COMMANDS 逐字同序）+ contract + rust/parity.sh。
+- ✅ 阶段 1（部分）：help（逐字节）、log（clamp/tail/logcat 兜底，9 例）、backups（.bak 映射/tsv/mtime，3 例）、后端探测（backend.rs，4 个单测）。对拍合计 15 项全绿；后端探测带 KEYLENS_ROOT 测试缝。
+- ⏳ 阶段 1 余项：status / env / backend-info / targets / apps / excluded / boot-hash / props / tee-status / teesim-* / tricky-patches / doctor。
