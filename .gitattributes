@@ -20,5 +20,5 @@ LICENSE     text eol=lf
 module/META-INF/com/google/android/update-binary  text eol=lf
 module/META-INF/com/google/android/update-script  text eol=lf
 
-# Rust ???? LF?Windows ???/??????? CRLF??? CI ? diff ?????????
+# Rust 源码固定 LF：Windows 上检出成 CRLF 会污染 diff，也可能让 CI 构建出岔
 rust/**   text eol=lf
