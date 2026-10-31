@@ -1971,3 +1971,109 @@ pub fn teesim_save_overrides(payload: &str) {
     println!("fields={}", n);
     println!("apply_note={}", if saved == 1 { "已写入，TEESim 监听该文件自行热生效，不需要重启" } else { "内容与现有一致，未写入" });
 }
+
+/// 当前后端的 keybox 路径（teesim 以 config 里的 default.keybox 为准）。
+fn keybox_path_for(p: &Paths, id: BackendId) -> std::path::PathBuf {
+    match id {
+        BackendId::Tricky => p.tstore_dir.join("keybox.xml"),
+        BackendId::Omk => p.omk_dir.join("keybox.xml"),
+        BackendId::Teesim => {
+            let cfg = std::fs::read(&p.teesim_config).unwrap_or_default();
+            let mut name = String::new();
+            if let Some(pp) = find_from(&cfg, 0, b"\"profiles\"") {
+                if let Some(colon) = find_from(&cfg, pp + 10, b":") {
+                    let mut i = colon + 1;
+                    while i < cfg.len() && matches!(cfg[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+                    if i < cfg.len() && cfg[i] == b'{' {
+                        if let Some(pend) = match_close(&cfg, i) {
+                            let obj = &cfg[i..=pend];
+                            if let Some(d) = find_from(obj, 0, b"\"default\"") {
+                                let mut m = d + 9;
+                                while m < obj.len() && matches!(obj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                                if m < obj.len() && obj[m] == b':' {
+                                    m += 1;
+                                    while m < obj.len() && matches!(obj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                                    if m < obj.len() && obj[m] == b'{' {
+                                        if let Some(e) = match_close(obj, m) {
+                                            name = obj_string(&obj[m..=e], "keybox");
+                                        }
+                                    }
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+            if name.is_empty() { name = "keybox.xml".to_string(); }
+            if name.starts_with('/') { std::path::PathBuf::from(name) } else { p.teesim_dir.join(name) }
+        }
+    }
+}
+
+/// cmd_keybox_save：base64 XML → 结构校验 → 备份 → 落盘（600）。
+pub fn keybox_save(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if payload.is_empty() {
+        eprintln!("keybox 内容为空");
+        std::process::exit(1);
+    }
+    if payload.len() > 180000 {
+        eprintln!("keybox 过大（上限约 128KB）");
+        std::process::exit(1);
+    }
+    let data = match crate::b64::decode(payload) {
+        Some(v) => v,
+        None => { eprintln!("keybox 解码失败"); std::process::exit(1); }
+    };
+    let bytes = data.len();
+    if !(64..=131072).contains(&bytes) {
+        eprintln!("keybox 大小不合法");
+        std::process::exit(1);
+    }
+    let bname = match b.id { BackendId::Teesim => "TEE Simulator", BackendId::Omk => "OhMyKeymint", BackendId::Tricky => "Tricky Store" };
+    if let Err(msg) = crate::keybox::check(&data, b.id.as_str()) {
+        eprintln!("keybox 结构不合格（{}）：{}", bname, msg);
+        std::process::exit(1);
+    }
+    let target = keybox_path_for(&p, b.id);
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let bak = b.dir.join("keybox.xml.bak");
+    if target.is_file() { let _ = std::fs::copy(&target, &bak); }
+    let tmp = b.dir.join(format!(".keybox.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &data).is_ok() && std::fs::rename(&tmp, &target).is_ok();
+    if ok {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600));
+        }
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    crate::lock::release(&lockdir);
+    if !ok {
+        eprintln!("写入失败：{}", target.display());
+        std::process::exit(1);
+    }
+    log_line(&p, &format!("🔑 WebUI 替换 keybox：{}（{} 字节）", target.display(), bytes));
+    let sha = std::process::Command::new("sha256sum").arg(&target).output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string())
+        .unwrap_or_default();
+    println!("saved=1");
+    println!("keybox_file={}", target.display());
+    println!("keybox_bytes={}", bytes);
+    println!("keybox_sha={}", sha);
+}

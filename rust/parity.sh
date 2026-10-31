@@ -819,5 +819,54 @@ printf '{"overrides":{"verifiedBootHash":{"editable":false,"source":"harvested"}
 BADOV=$(printf 'verifiedBootHash=%s' "$(printf '%s' "$HX" | base64 | tr -d '\n')" | base64 | tr -d '\n')
 chk 'save-overrides：不可编辑字段拒绝' "$(sh "$T/ovs.sh" "$BADOV" 2>&1)" "$(KEYLENS_ROOT="$OVSR" "$B" teesim-save-overrides "$BADOV" 2>&1)"
 
+echo "── keybox-save（结构校验 + 备份 + 600）──"
+mk_kb_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo 'backend_name() { case "$KL_BACKEND" in teesim) echo "TEE Simulator";; omk) echo "OhMyKeymint";; *) echo "Tricky Store";; esac; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/kb.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/kb.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/kb.sh"
+  sed -n '/^backend_keybox_path() {/,/^}/p' module/webui.sh >> "$T/kb.sh"
+  sed -n '/^cmd_keybox_save() {/,/^}/p' module/lib/write.sh >> "$T/kb.sh"
+  echo 'detect_backend "$MODDIR"; backend_keybox_path; cmd_keybox_save "$1"' >> "$T/kb.sh"
+}
+KB="$T/kb-root"
+mk_kb_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf '<AndroidAttestation><Keybox><Key algorithm="ec"><PrivateKey>p</PrivateKey><CertificateChain><Certificate>c</Certificate></CertificateChain></Key></Keybox></AndroidAttestation>\n' > "$1/data/adb/tricky_store/keybox.xml"
+}
+KBS="$KB-s"; KBR="$KB-r"
+mk_kb_fixture "$KBS"; mk_kb_fixture "$KBR"
+mk_kb_harness "$KBS"
+NEWKB='<AndroidAttestation><Keybox><Key algorithm="ec"><PrivateKey>NEWPRIV</PrivateKey><CertificateChain><Certificate>c1</Certificate></CertificateChain></Key></Keybox></AndroidAttestation>'
+KBPL=$(printf '%s' "$NEWKB" | base64 | tr -d '\n')
+chk 'keybox-save：输出' "$(sh "$T/kb.sh" "$KBPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')" "$(KEYLENS_ROOT="$KBR" "$B" keybox-save "$KBPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')"
+chk 'keybox-save：两侧文件逐字节一致' "$(cat "$KBS/data/adb/tricky_store/keybox.xml")" "$(cat "$KBR/data/adb/tricky_store/keybox.xml")"
+chk 'keybox-save：备份已生成' "$([ -f "$KBS/data/adb/tricky_store/keybox.xml.bak" ] && echo yes)" "$([ -f "$KBR/data/adb/tricky_store/keybox.xml.bak" ] && echo yes)"
+BADKB='<Keybox><Key algorithm="ec"/></Keybox>'
+BADPL=$(printf '%s' "$BADKB" | base64 | tr -d '\n')
+chk 'keybox-save：结构不合格拒绝' "$(sh "$T/kb.sh" "$BADPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')" "$(KEYLENS_ROOT="$KBR" "$B" keybox-save "$BADPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
