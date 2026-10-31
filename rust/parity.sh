@@ -1011,5 +1011,21 @@ for c in $LEFT; do
   fi
 done
 
+echo "── 未迁移清单与实际实现的漂移闸 ──"
+# 用空的 KEYLENS_ROOT 跑一遍，任何写命令都只会落在临时目录里，没有副作用。
+mkdir -p "$T/empty" 2>/dev/null || true
+ACTUAL=""
+for c in $($B contract | sed -n 's/^commands=//p'); do
+  KEYLENS_ROOT="$T/empty" "$B" "$c" >/dev/null 2>&1
+  [ "$?" = 2 ] && ACTUAL="$ACTUAL $c"
+done
+ACTUAL=$(printf '%s' "$ACTUAL" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//')
+DECL=$(printf '%s' "$LEFT" | tr ' ' '\n' | sed '/^$/d' | sort | tr '\n' ' ' | sed 's/ $//')
+if [ "$ACTUAL" = "$DECL" ]; then
+  echo "  ok   未迁移清单与实现一致（$(printf '%s' "$ACTUAL" | wc -w) 条）"
+else
+  echo "  ✗   清单漂移"; echo "       声明: $DECL"; echo "       实际: $ACTUAL"; fail=1
+fi
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
