@@ -121,3 +121,18 @@
 | env | webui.sh:809 | 工具探测 + 缓存 + FRRO |
 | icons | webui.sh:1098 | sqlite3 + app_process(icondump.dex) + 缓存 |
 | doctor | webui.sh:1334 | 11 项聚合检查 |
+
+## 未推送提交的备份（网络受阻时的兜底）
+
+2026-11-01：GitHub 域名 DNS 解析失败、本机无代理监听，已有 57 个提交只存在于本机。
+已导出 git bundle（仓库上一级目录）：keylens-unpushed-2026-11-01.bundle（约 86 KB）。
+
+恢复方式（任意克隆后）：
+
+`sh
+git fetch /path/to/keylens-unpushed-2026-11-01.bundle main:recovered
+git log --oneline main..recovered      # 应列出那批提交
+git merge recovered                     # 或 cherry-pick
+`
+
+网络恢复后先 git push origin main，再删掉这份 bundle。
