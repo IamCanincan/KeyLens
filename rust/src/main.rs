@@ -80,6 +80,7 @@ fn main() {
         "boot-hash" => read_cmds::boot_hash(),
         "tee-status" => read_cmds::tee_status(),
         "props" => read_cmds::props(),
+        "tricky-patches" => read_cmds::tricky_patches(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
         // 尚未迁移的命令：明确返回 2，别假装成功。

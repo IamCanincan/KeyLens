@@ -560,6 +560,88 @@ pub fn props() {
     }
 }
 
+/// tricky_patches.awk 的等价：global + `[包名]` 段，system/vendor/boot/all，
+/// 输出「范围<TAB>system<TAB>vendor<TAB>boot」，空值记 "-"；无任何值退出 1。
+fn tricky_patches_rows(text: &str) -> Vec<(String, String, String, String)> {
+    use std::collections::HashMap;
+    let mut order: Vec<String> = Vec::new();
+    let mut v_sys: HashMap<String, String> = HashMap::new();
+    let mut v_vnd: HashMap<String, String> = HashMap::new();
+    let mut v_btm: HashMap<String, String> = HashMap::new();
+    let mut cur = "global".to_string();
+    let mut flush = |cur: &String, order: &mut Vec<String>, a: &HashMap<String, String>, b: &HashMap<String, String>, c: &HashMap<String, String>| {
+        if cur.is_empty() {
+            return;
+        }
+        let s = a.get(cur).map(|v| !v.is_empty()).unwrap_or(false)
+            || b.get(cur).map(|v| !v.is_empty()).unwrap_or(false)
+            || c.get(cur).map(|v| !v.is_empty()).unwrap_or(false);
+        if s {
+            order.push(cur.clone());
+        }
+    };
+    for raw in text.split('\n') {
+        let mut line = raw.strip_suffix('\r').unwrap_or(raw).to_string();
+        if let Some(h) = line.find('#') {
+            line.truncate(h);
+        }
+        let line = line.trim_matches(|c: char| c == ' ' || c == '\t').to_string();
+        if line.is_empty() {
+            continue;
+        }
+        if line.len() >= 3 && line.starts_with('[') && line.ends_with(']') && !line[1..line.len() - 1].contains(']') {
+            flush(&cur, &mut order, &v_sys, &v_vnd, &v_btm);
+            cur = line[1..line.len() - 1].to_string();
+            continue;
+        }
+        let Some(e) = line.find('=') else { continue };
+        let k = line[..e].trim_matches(|c: char| c == ' ' || c == '\t').to_string();
+        let v = line[e + 1..].trim_matches(|c: char| c == ' ' || c == '\t').to_string();
+        match k.as_str() {
+            "system" => { v_sys.insert(cur.clone(), v); }
+            "vendor" => { v_vnd.insert(cur.clone(), v); }
+            "boot" => { v_btm.insert(cur.clone(), v); }
+            "all" => {
+                v_sys.insert(cur.clone(), v.clone());
+                v_vnd.insert(cur.clone(), v.clone());
+                v_btm.insert(cur.clone(), v);
+            }
+            _ => {}
+        }
+    }
+    flush(&cur, &mut order, &v_sys, &v_vnd, &v_btm);
+    order
+        .into_iter()
+        .map(|s| {
+            let get = |m: &HashMap<String, String>| m.get(&s).filter(|v| !v.is_empty()).cloned().unwrap_or_else(|| "-".to_string());
+            (s.clone(), get(&v_sys), get(&v_vnd), get(&v_btm))
+        })
+        .collect()
+}
+
+/// cmd_tricky_patches：只读解析 security_patch.txt。
+pub fn tricky_patches() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    if b.id != BackendId::Tricky {
+        eprintln!("当前后端不是 Tricky Store");
+        std::process::exit(1);
+    }
+    let f = p.tstore_dir.join("security_patch.txt");
+    if !f.is_file() {
+        eprintln!("文件不存在：{}", f.display());
+        std::process::exit(1);
+    }
+    let rows = tricky_patches_rows(&std::fs::read_to_string(&f).unwrap_or_default());
+    if rows.is_empty() {
+        std::process::exit(1);
+    }
+    for (s, a, b2, c) in rows {
+        println!("{}\t{}\t{}\t{}", s, a, b2, c);
+    }
+}
+
 /// cmd_tee_status：读 Tricky 自己写的 tee_status（present/file + 四个已知键）。
 pub fn tee_status() {
     let root = Root::from_env();

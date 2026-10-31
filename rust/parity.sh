@@ -395,5 +395,36 @@ sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pr.sh"
 echo 'cmd_props' >> "$T/pr.sh"
 chk 'props：missing/diff/ok 与规则行' "$(PATH="$T/bin:$PATH" sh "$T/pr.sh")" "$(PATH="$T/bin:$PATH" "$B" props)"
 
+echo "── tricky-patches（global + 包段 + all=）──"
+TP="$T/tproot"
+mkdir -p "$TP/data/adb/modules/tricky_store" "$TP/data/adb/tricky_store"
+cat > "$TP/data/adb/tricky_store/security_patch.txt" <<'EOF'
+# 注释
+2026-10-05
+system=2026-10-01
+[vendor]
+vendor=2026-09-05
+boot=2026-08-01
+[com.example.a]
+all=2026-07-01
+# 行尾注释
+[com.example.b]
+system = 2026-06-01
+EOF
+cat > "$T/tp.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/tools.sh
+. module/lib/backend.sh
+MODDIR="$PWD/module"
+EOF
+sed -n '/^cmd_tricky_patches() {/,/^}/p' module/webui.sh >> "$T/tp.sh"
+cat >> "$T/tp.sh" <<'EOF'
+TSTORE_DIR="$1"
+KL_PATCH="$PWD/module/backends/tricky.awk"
+detect_backend "$MODDIR"
+cmd_tricky_patches
+EOF
+chk 'tricky-patches：global/包段/all' "$(sh "$T/tp.sh" "$TP/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TP" "$B" tricky-patches)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
