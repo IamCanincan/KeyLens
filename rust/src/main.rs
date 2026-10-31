@@ -5,6 +5,7 @@
 //! 便于对拍时区分「还没做」与「做错了」。
 
 mod backend;
+mod lock;
 mod read_cmds;
 
 use std::process::exit;
