@@ -117,6 +117,10 @@
   * 一次**自己差点改坏**的记录：本想顺手把 `ver=$(sed -n 's/^version=//p' "$mdir/module.prop" | head -n 1)` 换成 `mod_prop version` —— 但 `$mdir` 是**当前后端**的模块目录（`module_version=1.2.5-17b0eb6` 是 OMK 的版本），而 `mod_prop` 读的是我们自己的 `$PROP_FILE`，换了就会把本模块版本号当后端版本报出去。已回退并在原地写了注释；逐行比对正是为这种错准备的（换了之后 `backend-info` 那一行就会不一样）。
 * **配对实测**（同一会话交替各 15 次取中位数）：`backend-info` 588 → **517ms**（省 71ms）、`status` 206→201、`targets` 239→230。七条命令（`status/backend-info/boot-hash/env/targets/apps/log`）输出**逐行相同**，含 `omk_keymint_alive`、`omk_injector_alive`、`omk_keystore_pid`、`module_version`、`target_entries` 这几行最容易被改坏的。
 * **顺手纠正一处我自己写过的成本模型**：`$(子壳)` 并不恒值 40ms —— 40ms 那次量的是 `$(backend_state …)`，而它内部含一个外部 `printf`，等于"子壳 + fork"。纯内置的 `$(backend_name …)`（内部只有一次 printf）实测只值约 5ms，所以 `status` 这一轮只动了 5ms。**结论：别拿"每次 fork 20~40ms"当定律去推算收益，只有同会话交替配对的整命令数算数。**
+* **滚动那一层：加了仪器，然后发现自己的假设是错的**（"那你测试吧"）。给 `tools/replay-check.mjs` 补了一条真触摸甩动的滚动量测：CDP `Input.dispatchTouchEvent` 在 417 视口上甩两下，同时采 rAF 帧间隔、`longtask` 条目，以及 `Performance.getMetrics` 的累计 `LayoutDuration + RecalcStyleDuration`（滚动前后作差）。
+  * 假设是：滚动处理器每帧读 `document.documentElement.scrollHeight` 判"是不是长页"，而同一帧里先 toggle 过 class → 强制同步重排 → 掉帧。**量下来不成立**：真机 129 行数据、4 倍降速下，两趟甩动期间布局+重算样式总共 **11.3ms**（约 70 帧，摊到每帧 0.16ms），`>34ms` 的帧 **0/132**，长任务 **0** 个，p50 16.6ms / p95 32.8ms 就是 60Hz 的 1 帧与 2 帧。所以**没有改代码** —— 为一个量不出差别的地方动渲染路径，正是这轮之前刚撤回过的那类事（`find_awk`）。
+  * 两个仪器自身的坑，都写进了注释：① 帧间隔被 vsync 锁住，1× 与 4× 降速量出来一模一样（都是 p50 16.6 / p95 33），**主线程变慢的表现是丢帧不是间隔变长**，所以只量帧间隔等于没量；② `Performance.getMetrics` 在 `Performance.enable` 之前返回空表，第一版因此读出"布局 0.0ms"并差点把它当成"没有强制重排"的证据 —— 现在有一条前置断言要求四项计数器存在且累计 > 0（当场读出 Layout 231ms / Recalc 362ms / Task 1434ms 才算仪器会响）。
+  * **台架证不了的那一半**：KernelSU 的 WebView 没开调试口（设备上 `@chrome_devtools_remote` 属于 `com.microsoft.emmx`，不是管理器），所以"你屏幕上真实掉帧率"只能从系统侧取 —— `dumpsys gfxinfo me.weishu.kernelsu` 可用（现量：累计 11090 帧、janky 1.20%、legacy 7.38%），归因到名单页需要一次"清零 → 你甩几下 → 读回"的配合。
 
 
 

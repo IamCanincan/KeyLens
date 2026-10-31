@@ -187,6 +187,9 @@ async function main() {
   await ws.open;
   await ws.send('Runtime.enable');
   await ws.send('Page.enable');
+  /* getMetrics 在 enable 之前会返回空表 —— 第一版就是这么拿到"布局 0.0ms"并差点
+     把它当成"没有强制重排"的证据。仪器要先自证会出数（下面 perf 那条会断言）。 */
+  await ws.send('Performance.enable');
   await ws.send('Page.addScriptToEvaluateOnNewDocument', { source: shim });
   await ws.send('Emulation.setDeviceMetricsOverride', { width: 417, height: 975, deviceScaleFactor: 1, mobile: true });
 
@@ -577,6 +580,83 @@ async function main() {
   chk('日志页 300 行切回不卡（<400ms）', logM.ms < 400,
     `${logM.ms}ms（同步 ${logM.syncMs}ms）/ ${logM.nodes} 节点 / ${logLines} 行`
     + (picked300 ? '' : '  · 没找到 300 行按钮，量的是当前档'));
+  /* ── 名单页滚动帧采样（真机 129 行，页高约万像素）───────────────────────
+     为什么量这个：滚动处理器每帧要判断"这是不是长页"，写法是读
+     document.documentElement.scrollHeight —— 在同一个 rAF 里先改了 class 再读
+     布局量，会强制同步重排，页面越高越贵。这条判据就是为它准备的。
+     仪器要先自证会动：CDP 触摸甩动如果没让页面真的滚起来，退回脚本滚动，
+     并且把"是哪一种产出的数"写进判词。 */
+  await goto(1); await sleep(400);
+  await tapEntry('目标名单'); await sleep(2200);
+  /* 1× CPU 下 p95 就贴着阈值（实测 33.0ms），分不出"每帧强制重排"和抖动 ——
+     所以量之前先按 4 倍降速，这也是 verify.mjs 用的同一档。 */
+  await ws.send('Emulation.setCPUThrottlingRate', { rate: 4 });
+  await sleep(200);
+  await ev(`(function(){
+    window.__f = []; window.__lt = []; window.__last = performance.now();
+    if (window.PerformanceObserver) { try {
+      new PerformanceObserver(function (l) { l.getEntries().forEach(function (e) {
+        window.__lt.push(Math.round(e.duration)); }); }).observe({ entryTypes: ['longtask'] });
+    } catch (e) {} }
+    (function tick(){ window.__f.push(performance.now() - window.__last);
+      window.__last = performance.now();
+      if (window.__f.length < 260) requestAnimationFrame(tick); })();
+    return 1; })()`);
+  const fling = async () => {
+    await ws.send('Input.dispatchTouchEvent', { type: 'touchStart', touchPoints: [{ x: 210, y: 820 }] });
+    for (let i = 1; i <= 12; i++) {
+      await ws.send('Input.dispatchTouchEvent', { type: 'touchMove', touchPoints: [{ x: 210, y: 820 - i * 50 }] });
+      await sleep(16);
+    }
+    await ws.send('Input.dispatchTouchEvent', { type: 'touchEnd', touchPoints: [] });
+  };
+  /* 帧间隔看不出问题：rAF 被 vsync 锁住，主线程变慢的表现是"丢帧"而不是"间隔变长"，
+     1× 与 4× 降速量出来一模一样（实测都是 p50 16.6 / p95 33）。所以改量**成本本身**：
+     Performance.getMetrics 的累计 LayoutDuration / RecalcStyleDuration / ScriptDuration，
+     滚动前后各取一次作差。每帧强制同步重排的那种写法，只会在这里现形。 */
+  const perf = async () => {
+    const r = await ws.send('Performance.getMetrics');
+    const m = {}; for (const x of r.metrics) m[x.name] = x.value;
+    return m;
+  };
+  /* 仪器自证：这四项计数器必须存在且在动（页面已经排过版），否则"0.0ms"只是没开表 */
+  const pv = await perf();
+  const hasK = ['LayoutDuration', 'RecalcStyleDuration', 'ScriptDuration', 'TaskDuration']
+    .every(k => typeof pv[k] === 'number');
+  chk('滚动量测的仪器会出数（Performance 四项计数器存在且累计 > 0）',
+    hasK && (pv.LayoutDuration + pv.RecalcStyleDuration + pv.TaskDuration) > 0,
+    hasK ? `Layout ${(pv.LayoutDuration * 1000).toFixed(0)}ms · Recalc ${(pv.RecalcStyleDuration * 1000).toFixed(0)}ms · Task ${(pv.TaskDuration * 1000).toFixed(0)}ms`
+      : '拿不到计数器（' + Object.keys(pv).length + ' 项）');
+  let p0 = await perf();
+  await fling(); await sleep(500); await fling(); await sleep(400);
+  let how = 'CDP 触摸甩动';
+  const moved = await ev(`Math.round(window.scrollY)`);
+  if (!(moved > 200)) {
+    how = '脚本滚动（触摸事件没让页面滚起来）';
+    p0 = await perf();
+    await ev(`(function(){ var n=0; (function step(){ window.scrollBy(0, 46);
+      if (++n < 120) requestAnimationFrame(step); })(); return 1; })()`);
+    await sleep(2200);
+  }
+  const p1 = await perf();
+  await ev(`window.scrollTo(0, 0)`); await sleep(300);
+  const fr = await ev(`(function(){
+    var raw = (window.__f || []).slice(3).filter(function (x) { return x > 0 && x < 3000; })
+      .sort(function (a, b) { return a - b; });
+    var q = function (p) { return raw.length ? +raw[Math.min(raw.length - 1, Math.floor(raw.length * p))].toFixed(1) : -1; };
+    var over = raw.filter(function (x) { return x > 34; }).length;
+    var lt = window.__lt || [];
+    return { n: raw.length, p50: q(0.5), p95: q(0.95), worst: raw.length ? +raw[raw.length - 1].toFixed(1) : -1,
+      over: over, ltN: lt.length, ltWorst: lt.length ? Math.max.apply(null, lt) : 0 }; })()`);
+  const costMs = (((p1.LayoutDuration || 0) - (p0.LayoutDuration || 0))
+    + ((p1.RecalcStyleDuration || 0) - (p0.RecalcStyleDuration || 0))) * 1000;
+  const scriptMs = ((p1.ScriptDuration || 0) - (p0.ScriptDuration || 0)) * 1000;
+  chk('名单页滚动不掉帧（p95 帧间隔 < 34ms，长任务不超 200ms）',
+    fr.n > 40 && fr.p95 < 34 && fr.ltWorst < 200,
+    `${how} · p50 ${fr.p50}ms p95 ${fr.p95}ms 最差 ${fr.worst}ms · >34ms 的帧 ${fr.over}/${fr.n} · `
+    + `长任务 ${fr.ltN} 个最久 ${fr.ltWorst}ms · 布局+重算样式 ${costMs.toFixed(1)}ms · 脚本 ${scriptMs.toFixed(1)}ms`);
+  await ws.send('Emulation.setCPUThrottlingRate', { rate: 1 });
+
   /* 整趟驱动下来，界面有没有问过台架答不了的命令？
      shim 对答不上的命令只记一行"静默不回调"就返回 undefined —— 真机上那条
      promise 永远不落地，界面会停在加载页。exec 计数抓不到它（反而多算一行），
