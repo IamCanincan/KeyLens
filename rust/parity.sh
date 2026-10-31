@@ -868,5 +868,49 @@ BADKB='<Keybox><Key algorithm="ec"/></Keybox>'
 BADPL=$(printf '%s' "$BADKB" | base64 | tr -d '\n')
 chk 'keybox-save：结构不合格拒绝' "$(sh "$T/kb.sh" "$BADPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')" "$(KEYLENS_ROOT="$KBR" "$B" keybox-save "$BADPL" 2>&1 | sed 's/kb-root-[sr]/kb-root/g')"
 
+echo "── backup-restore（还原 + 保留权限）──"
+mk_br_harness() { # <root>
+  {
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/br.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/br.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/br.sh"
+  sed -n '/^backend_keybox_path() {/,/^}/p' module/webui.sh >> "$T/br.sh"
+  sed -n '/^cmd_backup_restore() {/,/^}/p' module/lib/write.sh >> "$T/br.sh"
+  echo 'detect_backend "$MODDIR"; cmd_backup_restore "$1"' >> "$T/br.sh"
+}
+BR="$T/br-root"
+mk_br_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf 'new\n' > "$1/data/adb/tricky_store/security_patch.txt"
+  printf 'old\n' > "$1/data/adb/tricky_store/security_patch.txt.bak"
+  chmod 640 "$1/data/adb/tricky_store/security_patch.txt"
+}
+BRS="$BR-s"; BRR="$BR-r"
+mk_br_fixture "$BRS"; mk_br_fixture "$BRR"
+mk_br_harness "$BRS"
+chk 'backup-restore：输出' "$(sh "$T/br.sh" security_patch.txt.bak 2>&1)" "$(KEYLENS_ROOT="$BRR" "$B" backup-restore security_patch.txt.bak 2>&1)"
+chk 'backup-restore：两侧文件逐字节一致' "$(cat "$BRS/data/adb/tricky_store/security_patch.txt")" "$(cat "$BRR/data/adb/tricky_store/security_patch.txt")"
+chk 'backup-restore：权限保留 640' "$(stat -c '%a' "$BRS/data/adb/tricky_store/security_patch.txt")" "$(stat -c '%a' "$BRR/data/adb/tricky_store/security_patch.txt")"
+chk 'backup-restore：非法备份名' "$(sh "$T/br.sh" '../etc/passwd' 2>&1)" "$(KEYLENS_ROOT="$BRR" "$B" backup-restore '../etc/passwd' 2>&1)"
+chk 'backup-restore：后端无关的备份名' "$(sh "$T/br.sh" nope.bak 2>&1)" "$(KEYLENS_ROOT="$BRR" "$B" backup-restore nope.bak 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

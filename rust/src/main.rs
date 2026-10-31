@@ -99,6 +99,7 @@ fn main() {
         "teesim-overrides" => read_cmds::teesim_overrides(),
         "teesim-save-overrides" => read_cmds::teesim_save_overrides(arg),
         "keybox-save" => read_cmds::keybox_save(arg),
+        "backup-restore" => read_cmds::backup_restore(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),

@@ -2077,3 +2077,87 @@ pub fn keybox_save(payload: &str) {
     println!("keybox_bytes={}", bytes);
     println!("keybox_sha={}", sha);
 }
+
+/// cmd_backup_restore：把 KL_DIR/<name> 还原回它对应的后端文件（保留属主与权限）。
+pub fn backup_restore(name: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if name.is_empty() || name.contains('/') || name.contains("..") {
+        eprintln!("备份名不合法：{}", name);
+        std::process::exit(1);
+    }
+    let src = b.dir.join(name);
+    let Some(tgt) = backup_target(&b, &p, name) else {
+        eprintln!("当前后端没有这个备份：{}", name);
+        std::process::exit(1);
+    };
+    let Ok(md) = std::fs::metadata(&src) else { eprintln!("备份不存在或为空：{}", src.display()); std::process::exit(1) };
+    if md.len() == 0 {
+        eprintln!("备份不存在或为空：{}", src.display());
+        std::process::exit(1);
+    }
+    if name == "keybox.xml.bak" {
+        let data = std::fs::read(&src).unwrap_or_default();
+        if let Err(msg) = crate::keybox::check(&data, b.id.as_str()) {
+            eprintln!("这份 keybox 备份结构不合格：{}", msg);
+            std::process::exit(1);
+        }
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    // 记下目标文件原有的属主/权限，写完还原
+    let mut own = String::new();
+    let mut mode = None;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::{MetadataExt, PermissionsExt};
+        if let Ok(m) = std::fs::metadata(&tgt) {
+            own = format!("{}:{}", m.uid(), m.gid());
+            mode = Some(m.permissions().mode() & 0o7777);
+        }
+    }
+    let pre = b.dir.join(format!("{}.pre-restore", name));
+    if tgt.is_file() {
+        let _ = std::fs::copy(&tgt, &pre);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&pre, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    let tmp = b.dir.join(format!(".kl_restore.bak.{}", std::process::id()));
+    let copied = std::fs::copy(&src, &tmp).is_ok();
+    let moved = copied && std::fs::rename(&tmp, &tgt).is_ok();
+    if moved {
+        if !own.is_empty() {
+            let _ = std::process::Command::new("chown").arg(&own).arg(&tgt).output();
+        }
+        #[cfg(unix)]
+        if let Some(m) = mode {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tgt, std::fs::Permissions::from_mode(m));
+        }
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    crate::lock::release(&lockdir);
+    if !moved {
+        eprintln!("回滚失败：{} 没被改动", tgt.display());
+        std::process::exit(1);
+    }
+    let base = tgt.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+    log_line(&p, &format!("♻️ WebUI 用备份还原了 {}（来源 {}）", base, name));
+    println!("restored=1");
+    println!("name={}", name);
+}
