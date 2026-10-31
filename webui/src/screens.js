@@ -459,7 +459,10 @@ function propsCards() {
   const diff = S.props.filter(function (p) { return p.st !== 'ok'; });
 
   const c1 = card();
-  const s1 = section('系统属性 · ' + (diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);
+  /* 读不到时既不能说"全部一致"也不能说"0 项不符" —— 那是把"我不知道"画成
+     "没问题"。写法与名单页的 S.listErr 同一条路（.read-err 一行说明）。 */
+  const s1 = section('系统属性 · ' + (S.propsErr ? '读不到' : diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);
+  if (S.propsErr) s1.appendChild(h('p', 'read-err', '属性对照读不到：这一屏没有比对结果，"一致 / 不符"都无从判断。'));
   s1.appendChild(list([
     item({ headline: '开机重置属性', trailing: S.status.props_masking === 'on' ? '已开启' : '已关闭',
       tone: S.status.props_masking === 'on' ? 'ok' : 'warn',

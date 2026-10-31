@@ -859,6 +859,23 @@ async function main() {
     cards: document.querySelectorAll('#view md-card').length }; })()`);
   chk('状态到齐后骨架换成真主页', !hs2.hero && hs2.cards >= 2, JSON.stringify(hs2));
 
+  /* props 命令失败的那一次：属性页要说"读不到"。静态那条闸只钉写法，这一条钉
+     真跑出来的一屏 —— 失败被吞成空数组时，标题会写成「系统属性 · 全部一致」。 */
+  await send('Page.navigate', { url: URL0 + '&fail=props' });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(500);
+  await tapEntry('属性伪装');
+  await sleep(1200);
+  const pfail = await ev(`(function(){ var t = (document.getElementById('view').textContent || '');
+    return { saysUnread: t.indexOf('属性对照读不到') >= 0,
+      titleUnread: /系统属性 · 读不到/.test(t),
+      liesOk: /系统属性 · 全部一致/.test(t),
+      rows: document.querySelectorAll('#view md-list-item').length }; })()`);
+  chk('props 读失败时属性页报"读不到"，不谎报"全部一致"',
+    pfail.saysUnread && pfail.titleUnread && !pfail.liesOk, JSON.stringify(pfail));
+
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

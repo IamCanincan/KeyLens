@@ -221,8 +221,16 @@ chk('主页与功能菜单取数不含 lists/props',
   && /id: 'func'[^}]*need: \[[^\]]*'base'[^\]]*'backend'/.test(app)
   && !/id: 'func'[^}]*need: \[[^\]]*'lists'/.test(app));
 chk('二级页取数按需：名单要 lists、伪装要 props',
-  /sub === 'targets'[^}]*'lists', 'excluded'/.test(app.replace(/\n/g, ' '))
-  && /sub === 'props'[^}]*'props'/.test(app.replace(/\n/g, ' ')));
+  /sub === 'props'[^}]*'props'/.test(app.replace(/\n/g, ' '))
+  && /sub === 'targets'[^}]*'lists', 'excluded'/.test(app.replace(/\n/g, ' ')));
+/* 属性对照读不到时，那一屏的标题不能说"全部一致"。以前 loadProps 把失败吞成
+   空数组，ensure 照样记"已加载"，于是 props 命令超时的那一次画的是
+   「系统属性 · 全部一致」+ 零行 —— 把"我不知道"画成"没问题"，是这套界面
+   最不该出现的一类假状态（名单/日志/tee_status 早就各自有错误位了）。 */
+chk('属性对照读不到时报"读不到"，不报"全部一致"',
+  /S\.propsErr = !r\.ok/.test(bridge) && /S\.props = \[\]; S\.propsErr = true/.test(bridge)
+  && /S\.propsErr \? '读不到'/.test(screens)
+  && /if \(S\.propsErr\) s1\.appendChild\(h\('p', 'read-err'/.test(screens));
 chk('路由表把四格都接上了',
   /home: renderHome/.test(app) && /func: renderFunc/.test(app) && /settings: renderSettings/.test(app));
 chk('落地页与 hash 兜底都指回主页',

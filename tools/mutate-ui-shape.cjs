@@ -113,6 +113,11 @@ const cases = [
   ['名单搜索只重画行，不整页重建（保焦点/保查询）', files.screens,
     '    searchTimer = setTimeout(function () { if (tf.isConnected) paintRows(); }, 90);',
     '    redraw();', 1],
+  /* 把"读不到"那个分支摘掉，属性页就会在 props 失败时画成「全部一致」——
+     那正是这次修掉的假状态，刀必须被点名。 */
+  ['属性对照读不到时报"读不到"，不报"全部一致"', files.screens,
+    "  const s1 = section('系统属性 · ' + (S.propsErr ? '读不到' : diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);",
+    "  const s1 = section('系统属性 · ' + (diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);", 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

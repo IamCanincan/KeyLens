@@ -110,7 +110,7 @@ export const S = {
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', newPkg: '', overrides: [],
-  icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], boot: null,
+  icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], theme: 'auto',
   loaded: {}, seq: 0,
 };
@@ -329,12 +329,16 @@ export function loadTrickyPatches() {
 }
 
 export function loadProps() {
+  /* 读不到必须留痕：以前失败也被吞成空数组，ensure 照样记"已加载"，
+     于是属性页在 props 命令超时的那一次里画成「系统属性 · 全部一致」——
+     零行 + 一句"全部一致"，正是这套界面最不该出现的那种假状态。 */
   return call('props').then(function (r) {
+    S.propsErr = !r.ok;
     S.props = r.ok ? splitLines(r.text).map(function (line) {
       var f = line.split('\t');
       return { name: f[0] || '', cur: f[1] || '', want: f[2] || '', st: f[3] || 'missing' };
     }) : [];
-  }, function () { S.props = []; });
+  }, function () { S.props = []; S.propsErr = true; });
 }
 export function loadIcons(pkgs) {
   if (!pkgs.length || (S.contract.checked && !hasCmd('icons'))) return Promise.resolve();
