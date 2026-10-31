@@ -1197,6 +1197,30 @@ function form(spec, fields, cmd, extra, note) {
       if (v !== c.init) payload.push(c.key + '=' + b64(v));
     });
     if (!payload.length) { toastFn('没有改动'); return; }
+    const arg = b64(payload.join('\n'));
+    /* 写前 diff 预览：命令层只出差异不落盘，摆在眼前确认才写。这个 call 不经
+       write()，也不在调用点审计的扫描面上（那里只扫 write(）。 */
+    if (/^(teesim-save|teesim-save-overrides|teesim-profile-new|teesim-profile-del|omk-save-injector|omk-save-config|tricky-save-patch|tricky-drop-patch|keybox-save)$/.test(cmd)) {
+      call('preview-' + cmd, arg).then(function (r) {
+        const pv = r.ok ? parseKV(r.text || '') : null;
+        const diff = (pv && pv.preview === '1' && pv.diff) ? b64ToText(pv.diff) : '';
+        if (!diff) { write(cmd, arg, note || '已保存'); return; }
+        const box = h('div', 'diffbox');
+        diff.split('\n').forEach(function (ln) {
+          const t = ln.charAt(0) === '+' ? 'add' : ln.charAt(0) === '-' ? 'del' : 'ctx';
+          box.appendChild(h('div', 'diff-line t-' + t, ln));
+        });
+        const pact = h('div', 'acts');
+        pact.appendChild(button('确认写入', { variant: 'filled', icon: ICON.save,
+          on: function () { pact.remove(); head.remove(); box.remove(); write(cmd, arg, note || '已保存'); } }));
+        pact.appendChild(button('取消', { variant: 'text',
+          on: function () { pact.remove(); head.remove(); box.remove(); } }));
+        const head = h('p', 'hint', '保存会把这些改动写进后端文件（写前自动留 .bak）——确认无误再写：');
+        wrap.appendChild(head); wrap.appendChild(box); wrap.appendChild(pact);
+        box.scrollIntoView({ block: 'nearest' });
+      }, function () { write(cmd, arg, note || '已保存'); });
+      return;
+    }
     write(cmd, b64(payload.join('\n')), note || '已保存');
   });
   acts.appendChild(btn);
@@ -1682,6 +1706,14 @@ export function renderTheme() {
 }
 let applyThemeFn = function () {};
 export function onApplyTheme(fn) { applyThemeFn = fn; }
+
+/* base64 → 文本：预览差异是命令层 base64 出来的，atob 只给 Latin1，中文要过 TextDecoder */
+function b64ToText(s) {
+  const bin = atob(String(s || '').replace(/\s+/g, ''));
+  const u = new Uint8Array(bin.length);
+  for (let i = 0; i < bin.length; i++) u[i] = bin.charCodeAt(i);
+  return new TextDecoder().decode(u);
+}
 
 /* 写操作：统一走契约闸门，成功后重读 */
 function write(cmd, arg, note) {

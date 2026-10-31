@@ -200,6 +200,7 @@ _kl_log_append() {
 # 说明：双写一条日志（level 为 logger 的级别名：info / warn / err）
 # 用法：_kl_log <level> <消息>
 _kl_log() {
+    [ "${KL_PREVIEW:-0}" = "1" ] && return 0   # 预览不落日志：还没真写
     local level="$1" ts
     shift
 

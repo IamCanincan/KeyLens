@@ -15,6 +15,41 @@
 #=============================================================================
 # 说明：把「未纳入」或「已排除」的应用加入目标文件。等价于手动写回文件；只改 apps 数组 /
 #       target.txt，别的内容原样保留。包名来自界面列表，这里仍按规则再校验一次。
+# ---------- 写前 diff 预览 ----------
+# 说明：KL_PREVIEW=1 时 commit_backend_file 不落盘，把「现文件 → 新文件」的行级
+#       差异（LCS，一次 awk 跑完，不逐行 fork）攒进 $KL_PREVIEW_DIFF 交给界面确认；
+#       照常返回 0，调用方的 saved=1 / 日志 / 重启请求由各自的 KL_PREVIEW 闸门拦住。
+# 用法：kl_capture_diff <旧文件> <新文件>   → stdout："- 旧行" / "+ 新行"
+kl_capture_diff() {
+    [ -f "$1" ] || return 0
+    [ -n "${AWK_CMD:-}" ] || AWK_CMD=$(find_awk)
+    [ -n "$AWK_CMD" ] || return 0
+    "$AWK_CMD" 'FILENAME == ARGV[1] { old[++n] = $0; next }
+{ new[++m] = $0 }
+END {
+  for (i = 0; i <= n; i++) L[i, 0] = 0
+  for (j = 0; j <= m; j++) L[0, j] = 0
+  for (i = 1; i <= n; i++) for (j = 1; j <= m; j++) L[i, j] = (old[i] == new[j]) ? L[i-1, j-1] + 1 : ((L[i-1, j] >= L[i, j-1]) ? L[i-1, j] : L[i, j-1])
+  i = n; j = m; k = 0
+  while (i > 0 && j > 0) {
+    if (old[i] == new[j]) { i--; j--; continue }
+    if (L[i-1, j] >= L[i, j-1]) { o[++k] = "- " old[i]; i-- }
+    else { o[++k] = "+ " new[j]; j-- }
+  }
+  while (i > 0) { o[++k] = "- " old[i--] }
+  while (j > 0) { o[++k] = "+ " new[j--] }
+  for (i = k; i >= 1; i--) print o[i]
+}' "$1" "$2" 2>/dev/null
+}
+commit_backend_file() {
+    local target="$1" temp="$2" name="$3"
+    if [ "${KL_PREVIEW:-0}" = "1" ]; then
+        KL_PREVIEW_DIFF="${KL_PREVIEW_DIFF:-}$(kl_capture_diff "$target" "$temp")"
+        rm -f "$temp" 2>/dev/null
+        return 0
+    fi
+    write_atomic_preserve "$target" "$temp" "${KL_DIR}/${name}"
+}
 cmd_restore_app() {
   local pkg="$1" rc
 
@@ -304,7 +339,7 @@ cmd_omk_save_injector() {
     esac
     release_lock "${KL_DIR}/.kl_lock"
     rm -rf "$dir" 2>/dev/null
-    [ "$saved" = 1 ] && { omk_restart injector; log_info "🧩 WebUI 更新 OMK injector.toml（$n 项）"; }
+    [ "$saved" = 1 ] && [ "${KL_PREVIEW:-0}" != "1" ] && { omk_restart injector; log_info "🧩 WebUI 更新 OMK injector.toml（$n 项）"; }
     kv saved "$saved"
     kv fields "$n"
 }
@@ -387,7 +422,7 @@ cmd_omk_save_config() {
     rm -rf "$dir" 2>/dev/null
     scope=restart
     note=""
-    if [ "$saved" = 1 ]; then
+    if [ "$saved" = 1 ] && [ "${KL_PREVIEW:-0}" != "1" ]; then
         scope=$(omk_apply_scope $keys)
         if [ "$scope" = hot ]; then
             # 四个补丁字段整组热生效：不重启，TA 原地更新，在途操作与 per-boot 计数不丢

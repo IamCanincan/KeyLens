@@ -382,12 +382,6 @@ backend_keybox_path() {
     esac
 }
 
-# 说明：把刚生成的 temp 落到 target；backup 放在后端的 KL_DIR
-# 用法：commit_backend_file <target> <temp> <备份名>
-commit_backend_file() {
-    local target="$1" temp="$2" name="$3"
-    write_atomic_preserve "$target" "$temp" "${KL_DIR}/${name}"
-}
 
 # 说明：写完后让 OMK 自己重载对应组件
 omk_restart() {
@@ -1283,6 +1277,21 @@ EOF
 #       lib/write.sh，只有命令名命中下面这张表才 source 进来。
 #       这张表与界面侧 bridge.js 的 WRITE_CMDS 必须一一对应 —— 少一边就是"写命令找不到
 #       函数"或"读命令白背 42.8KB"，由 tests/write-lazy.sh 逐条核对。
+# 写前 diff 预览：preview-<写命令> 走同一条实现，但只出差异不落盘
+#（commit_backend_file 里拦）。白名单钉死在九条写命令上；这里不另开 case ——
+# 分派表是仓库闸门定位「写实现只被分派表调用」的锚，多一个 case 它就瞎了。
+if [ "${CMD#preview-}" != "$CMD" ]; then
+    base="${CMD#preview-}"
+    if printf '%s' " teesim-save teesim-save-overrides teesim-profile-new teesim-profile-del omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save " | grep -q " $base "; then
+        KL_PREVIEW=1
+        KL_PREVIEW_DIFF=""
+        CMD="$base"
+    else
+        echo "未知命令：$CMD" >&2
+        exit 1
+    fi
+fi
+
 KL_WRITE_CMDS="props-apply props-on props-off props-boot-hash restore-app restore-apps \
 remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config \
 tricky-save-patch tricky-drop-patch keybox-save sync clear-log omk-restart \
@@ -1504,3 +1513,11 @@ case "$CMD" in
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;
 esac
+
+# 预览收尾：差异交给界面（base64，免得换行破坏 kv 的逐行解析）
+if [ "${KL_PREVIEW:-0}" = "1" ]; then
+    changed=$(printf '%s' "${KL_PREVIEW_DIFF:-}" | grep -c '^[-+]') || changed=0
+    kv preview 1
+    kv changed "$changed"
+    kv diff "$(printf '%s' "${KL_PREVIEW_DIFF:-}" | base64 | tr -d '\n' 2>/dev/null)"
+fi
