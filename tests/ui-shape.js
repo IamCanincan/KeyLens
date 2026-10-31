@@ -26,7 +26,13 @@ const screens = read('webui/src/screens.js');
 const app = read('webui/src/app.js');
 const css = read('webui/src/app.css');
 const tpl = read('webui/src/index.html');
-const sh = read('module/webui.sh');
+/* 命令层的源码现在分两份：webui.sh（读路径 + 分派）与 lib/write.sh（写命令的实现，
+   按命令名懒加载）。这里要抽的是"命令层某条命令的实现"，所以按顺序拼成一份看 ——
+   只读 webui.sh 的话，写命令的字段对账会集体报"抽不到 case 分支"（实现搬家≠判据变了）。
+   webui.sh 放最前，`case "$CMD" in … esac` 的分派区抽取仍然命中它自己那一段。 */
+const sh = read('module/webui.sh') + '\n'
+  + fs.readdirSync(path.join(ROOT, 'module', 'lib')).filter(f => /\.sh$/.test(f)).sort()
+      .map(f => read('module/lib/' + f)).join('\n');
 const theme = fs.existsSync(SRC('webui/src/theme.js')) ? read('webui/src/theme.js') : '';
 
 let fail = 0;

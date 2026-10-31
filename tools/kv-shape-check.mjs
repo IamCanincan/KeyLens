@@ -26,7 +26,12 @@ const here = path.dirname(fileURLToPath(import.meta.url));
 const repo = path.resolve(here, '..');
 const read = (p) => fs.readFileSync(path.join(repo, p), 'utf8');
 
-const SH = read('module/webui.sh');
+/* 命令层的源码分两份：webui.sh（读路径 + 分派）与 lib/write.sh（写命令的实现，按命令名
+   懒加载）。"命令层实际会输出哪些键"必须看全，否则写命令那批键（saved / fields / rc /
+   restored / removed / changed …）会集体报成"界面读了命令层没有的键"—— 34 处假警。 */
+const SH = read('module/webui.sh') + '\n'
+  + fs.readdirSync(path.join(repo, 'module', 'lib')).filter((f) => f.endsWith('.sh')).sort()
+      .map((f) => read('module/lib/' + f)).join('\n');
 
 /* ── 1. 命令层实际会输出的键 ─────────────────────────────────────── */
 /* kv 的调用形状：kv <键> <值>；键一律是字面量（不是 $1 那种）。 */

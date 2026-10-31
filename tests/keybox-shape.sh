@@ -17,6 +17,7 @@
 #=============================================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
+. tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 AWK=${AWK:-awk}
 fail=0
 AWKF=module/backends/keybox_check.awk
@@ -120,12 +121,12 @@ expect_err '单行化 + 证书数不符' "$D/oneline3.xml" omk '声明 3 张证�
 printf '── 命令层是否还留着那份共用判据 ──\n'
 # 先剔掉注释行：这条判的是"代码里还有没有那句共用判据"，不是"文件里有没有这个字"。
 # 第一版没剔，被自己写在 webui.sh 里的那句说明顶了回来，差点去改掉注释。
-if grep -vE '^[[:space:]]*#' module/webui.sh | grep -q 'AndroidAttestation'; then
+if grep -vE '^[[:space:]]*#' "$KL_SRC" | grep -q 'AndroidAttestation'; then
   printf '  ✗    webui.sh 的代码里还留着按根元素名判死的旧写法，应改为调用 keybox_check.awk\n'; fail=1
 else
   printf '  ok   webui.sh 不再自带 keybox 判据\n'
 fi
-grep -q 'keybox_check.awk' module/webui.sh \
+grep -q 'keybox_check.awk' "$KL_SRC" \
   && printf '  ok   cmd_keybox_save 接上了分叉后的 awk 校验\n' \
   || { printf '  ✗    cmd_keybox_save 没调用 keybox_check.awk\n'; fail=1; }
 

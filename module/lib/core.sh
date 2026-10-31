@@ -36,6 +36,35 @@ KL_BOOT_HASH="/data/adb/keylens.boot_hash"
 # 可被同名环境变量覆盖，测试台架用临时目录时不碰真机状态。
 KL_ENV_CACHE="${KL_ENV_CACHE:-/data/adb/keylens.env.cache}"
 
+# 读自己 uid 用的 proc 文件。同样可被覆盖 —— 只给测试台架喂假 Uid 行，真机不设。
+KL_PROC_STATUS="${KL_PROC_STATUS:-/proc/self/status}"
+
+# ---------- root 检查 ----------
+# 说明：这条检查每条命令都要付。以前写成 [ "$(id -u)" -eq 0 ]，而 $(id -u) 是 fork+exec，
+#       真机现量**一次 68ms**，占掉每次调用固定成本（115ms）的六成。改成读
+#       /proc/self/status 的 Uid 行（纯内置，零 fork）；文件读不到、或里面没有 Uid 行时
+#       退回 id -u —— 宁可慢，也不能不检查。
+kl_is_root() {
+    local l uid=""
+
+    if [ -r "$KL_PROC_STATUS" ]; then
+        while IFS= read -r l; do
+            case "$l" in
+                Uid:*)
+                    uid="${l#Uid:}"                     # 去掉键名
+                    uid="${uid#"${uid%%[0-9]*}"}"       # 去掉前导制表/空白
+                    uid="${uid%%[!0-9]*}"               # 只留第一个数字段（real uid）
+                    break ;;
+            esac
+        done < "$KL_PROC_STATUS"
+        if [ -n "$uid" ]; then
+            [ "$uid" = 0 ] && return 0
+            return 1
+        fi
+    fi
+    [ "$(id -u)" -eq 0 ]
+}
+
 # 改名前的旧路径（只用于迁移与卸载清理，运行期不再读它们）
 KL_LEGACY_LOG="/data/adb/ts_auto.log"
 KL_LEGACY_PROPS_OFF="/data/adb/ts_auto.props_off"

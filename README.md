@@ -68,6 +68,7 @@ module/
 │  ├─ applist.sh          # 目标名单生成（增量 + 手动删除尊重）
 │  ├─ backend.sh          # 后端探测、后端写入、模块描述、同步入口
 │  ├─ props.sh            # 系统属性伪装（期望值表 + 伪装开关）
+│  ├─ write.sh            # 只有写命令才用的 19 个实现（webui.sh 按命令名懒加载，见下）
 │  ├─ icondump.dex        # 取图标用的小 dex（源在 tools/icondump/，可重放）
 │  └─ watch.sh            # 监听重启退避（纯函数，被 tests/ 直接 source）
 ├─ backends/
@@ -183,6 +184,7 @@ sh /data/adb/modules/keylens/action.sh
 - **每格从上的顺序**：主页 = 状态条 → 三家互斥矩阵（**都不推迟**，落地页晚一帧就是"打开先空一下"）；功能 = 一张菜单（无长列表）；二级页各自是一到两张功能卡（名单一次画全，不分批）；设置 = 外观 → 界面自检（同帧画完，入场后不再长高）。
 - **打开 WebUI：壳先出来，数据在后台填**：先显示带 KL 标识的品牌页（"正在读取设备状态…" + 细圆环），**至少停留 460ms**；契约一到就画壳与落地页（数据没到就是主页骨架：三格统计 + 分组行），`status` / `env` / `backend-info` 并行在后台 join，`env` 到位（或 1200ms 兜底）后整层淡出。以前是三条全回来才让壳出来 —— 命令层慢 1 秒就是空屏 1 秒。淡出用 280ms，不会只闪一下品牌页，也不会露出空壳。
 - **命令层每行输出不许 fork 一次进程**（"还是没它那么丝滑"查出来的真正大头）：Android 的 `/system/bin/sh` 是 mksh，**它没有 printf 内置命令**（`type printf` → `/system/bin/printf` → toybox），所以 `kv() { printf '%s=%s\n' … }` 是每写一行 fork+exec 一次 —— 真机实测一行 13~21ms，status 21 行、env 30 行、backend-info 23 行、props 每行还另加一次 `getprop`。现在 `kv`/`tsv` 走内置的 `print -r --`（不展开转义，字节形状与 `printf '%s=%s\n'` 一致），没有 `print` 的 shell 自动退回 printf；`backend_state` 改成把结果放全局（`$( )` 一次子壳约 40ms）。**同一会话配对实测**：`status` 547→**180ms**、`env`（缓存命中）733→**301ms**、`backend-info` 992→**606ms**、`props` 672→**372ms**，六条读命令的输出与旧写法逐字节相同。守它的是 `tests/kv-writer.sh`（两条变异：改回每行 printf / 摘掉兜底，都要点名响）。**开屏那一趟四条命令并行**（`contract`/`status`/`env`/`backend-info`）在真机上从约 1100ms（等最慢那条）降到 **272~369ms** —— 这是"点开到数据填齐"那一段，不含 WebView 载入产物。
+- **每次调用的固定地板也要砍**（"尽全力优化"这一轮）。先把地板拆开量：同一份 98KB 脚本，真跑中位数 142ms、把每行换成 `:` 空操作 62ms、空脚本 26ms —— **读+lex 约 36ms，把两百多个函数定义建出来约 80ms**，"脚本有多大"本身就是每条命令都在付的钱。两处下手：① 入口的 root 检查从 `[ "$(id -u)" -eq 0 ]`（`id` 在这个 shell 里是外部命令 = 一次 fork）改成读 `/proc/self/status` 的 `Uid:` 行，取第一个数字段当 real uid；**读不到文件或缺那一行时必须退回 `id -u`**，宁可慢也不能不检查。② 19 个只有写命令才用的实现（949 行 / 42.8KB）搬进 `lib/write.sh`，`webui.sh` 只在命令名命中 `KL_WRITE_CMDS` 时 source 它 —— 界面读 status/env/backend-info 时一行都用不到。边界由 `tests/write-lazy.sh` 钉：与界面 `bridge.js` 的 `WRITE_CMDS` 逐条相同、写实现只被分派表调用、`common.sh` 不许加载 write.sh。**配对实测**（同会话交替各 15 次取中位数）：contract 127→91ms、status 82→65、env 230→197、backend-info 618→561、props 528→496、targets 283→242 —— 每条命令省 17~57ms，七条读命令输出逐行相同。
 - **命令层把每次开界面都要重跑的读量缓存起来**（同机对照过 DuckToolbox：它的 `status` ~200ms、`system info` ~160ms）：`env` 的 15 个静态字段 + 3 格 FRRO 走 `/data/adb/keylens.env.cache`（`600`，键含 `module.prop` 与 `/system/build.prop` 的 mtime，改了模块或系统就自动失效），`sys_dark` 每次现量，FRRO 只在路径/mtime 变了才重新编码 —— **同一会话配对实测**（交替各 5 次）：`env` 无缓存平均 1102ms → **命中平均 741ms**（冷缓存那一次 1511ms；再叠加上面那条"每行不许 fork"之后命中是 **301ms**）。试过又撤掉的一条：`find_awk` 懒加载 —— `status` 旧 782 / 新 798ms、`backend-info` 旧 995 / 新 1002ms，量不出差别（`find_awk` 本身约 9ms，而 backend-info 迟早要用 awk），所以改动全部回滚，别照着这段再"优化"一遍。真机数据回放的冷启动是 **239ms**。
 - **点击反馈与二级页缓存**：配置 / 属性 / 名单这三个组件多的二级页首进先画骨架，`afterPaint` 两帧后再构建（点击当帧不再同步跑几百毫秒）；离开时把整页 DOM 存进 `pageCache`，再次进入直接贴回，不跑 render、不建节点（名单贴回后跑一次 `swapIcons` 补异步图标；keybox 按 `S.profile` 签名失效；写入 / 重新读取清空整仓）。
 - **大块内容切换的过渡**：骨架页换成真内容、或从菜单进入缓存页时，旧页整页克隆成固定遮罩压在新内容上，新内容先在底下就位，遮罩 200ms 淡出 —— 不再整页"啪"一下换掉。遮罩 `pointer-events:none`，z-index 在内容与顶/底栏之间；`prefers-reduced-motion` 下直接切换。
@@ -226,7 +228,7 @@ node tests/ui-shape.js                   # 表单字段 ↔ webui.sh 的 case �
 node tools/module-scope-check.mjs        # 界面三份源码里跨模块的名字都 import / 注册过
 node tools/mutate-scope.cjs              # 上面那条闸自己的牙（4 条变异，含"变异下在坏 strip 会失明的位置"）
 node tools/json-flat-set-check.cjs       # 扁平 JSON 定点改写（含"留空即删除"的四种位置）
-sh tests/*.sh                            # 24 个 shell 套子（CI 里循环全跑，一个都不漏）
+sh tests/*.sh                            # 26 个 shell 套子（CI 里循环全跑，一个都不漏）
 sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
 ```
 

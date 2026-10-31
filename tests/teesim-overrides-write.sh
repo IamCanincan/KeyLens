@@ -20,6 +20,7 @@
 #=============================================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
+. tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 T=$(mktemp -d 2>/dev/null) || T="/tmp/tov-$$"
 mkdir -p "$T"
 # 建不出来就自己说清楚：这里死过一次（rc≠0 却一条 ✗ 都没打），只看得出"失败了"，
@@ -33,11 +34,11 @@ bad() { printf '  ✗    %s\n' "$1"; fail=1; }
 
 # 抽 webui.sh 里的真函数（抄一份的话，改坏实现测试也不会响）
 for fn in valid_ov_level valid_ov_version valid_ov_hex; do
-    start=$(grep -n "^$fn() {" module/webui.sh | cut -d: -f1 | head -1)
+    start=$(grep -n "^$fn() {" "$KL_SRC" | cut -d: -f1 | head -1)
     [ -n "$start" ] || { bad "抽不到 $fn"; exit 1; }
-    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' module/webui.sh)
+    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' "$KL_SRC")
     [ -n "$end" ] || { bad "$fn 找不到结尾"; exit 1; }
-    eval "$(sed -n "${start},${end}p" module/webui.sh)"
+    eval "$(sed -n "${start},${end}p" "$KL_SRC")"
 done
 ok "从 webui.sh 抽出三个校验函数"
 
@@ -91,7 +92,7 @@ a valid_ov_hex "${H64%?}g"   1 '混进非十六进制字符'
 a valid_ov_hex "0x0x$H64"    1 '前缀重复'
 
 printf '── 白名单：锁死字段当场拒，不静默收下 ──\n'
-fn=$(awk '/^cmd_teesim_save_overrides\(\) \{/,/^\}/' module/webui.sh)
+fn=$(awk '/^cmd_teesim_save_overrides\(\) \{/,/^\}/' "$KL_SRC")
 [ -n "$fn" ] || { bad '抽不到 cmd_teesim_save_overrides'; echo "有断言失败"; exit 1; }
 for k in attestationSecurityLevel keymasterSecurityLevel attestationVersion keymasterVersion verifiedBootKey verifiedBootHash; do
     printf '%s' "$fn" | grep -q "$k" && : || bad "六个可写字段里 $k 没出现在白名单里"
@@ -163,9 +164,9 @@ chk3=$(cat "$T/st3")
 cmp -s "$T/out3" "$T/overrides2.json" && ok 'same 那一趟产物逐字节不变' || bad 'same 却改了内容'
 
 printf '── 命令层接线 ──\n'
-grep -q 'teesim-save-overrides) cmd_teesim_save_overrides' module/webui.sh \
+grep -q 'teesim-save-overrides) cmd_teesim_save_overrides' "$KL_SRC" \
     && ok '分发接上了 teesim-save-overrides' || bad '命令没接进分发'
-grep -q 'teesim-save-overrides' module/webui.sh \
+grep -q 'teesim-save-overrides' "$KL_SRC" \
     && ok 'KL_COMMANDS 里声明了（界面才会摆出这个输入框）' || bad '没进声明清单'
 
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"

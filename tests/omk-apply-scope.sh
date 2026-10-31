@@ -16,15 +16,16 @@
 #=============================================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
+. tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 fail=0
 
 # 抽 webui.sh 里的真函数（抄一份的话，改坏实现测试也不会响）
 for fn in omk_apply_scope omk_reboot_needed; do
-    start=$(grep -n "^$fn() {" module/webui.sh | cut -d: -f1 | head -1)
+    start=$(grep -n "^$fn() {" "$KL_SRC" | cut -d: -f1 | head -1)
     [ -n "$start" ] || { printf '  ✗    抽不到 %s\n' "$fn"; exit 1; }
-    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' module/webui.sh)
+    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' "$KL_SRC")
     [ -n "$end" ] || { printf '  ✗    %s 找不到结尾\n' "$fn"; exit 1; }
-    eval "$(sed -n "${start},${end}p" module/webui.sh)"
+    eval "$(sed -n "${start},${end}p" "$KL_SRC")"
     printf '  ok   从 webui.sh 抽出 %s（第 %s–%s 行）\n' "$fn" "$start" "$end"
 done
 
@@ -58,7 +59,7 @@ omk_reboot_needed "" "" "" "" ; chk '没提交这两个字段不算' 1 "$?"
 omk_reboot_needed random random random auto ; chk 'vb_key 没变但 vb_hash 变了 → 仍要重启' 0 "$?"
 
 printf '── 写路径确实接上了分类，不再无条件重启 ──\n'
-fn=$(awk '/^cmd_omk_save_config\(\) \{/,/^\}/' module/webui.sh)
+fn=$(awk '/^cmd_omk_save_config\(\) \{/,/^\}/' "$KL_SRC")
 printf '%s' "$fn" | grep -q 'omk_apply_scope \$keys' \
     && printf '  ok   保存路径按提交的字段集算代价\n' \
     || { printf '  ✗    cmd_omk_save_config 没调用 omk_apply_scope\n'; fail=1; }

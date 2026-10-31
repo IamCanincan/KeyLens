@@ -21,6 +21,7 @@
 #=============================================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
+. tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 fail=0
 ok()  { printf '  ok   %s\n' "$1"; }
 bad() { printf '  ✗    %s\n' "$1"; fail=1; }
@@ -28,11 +29,11 @@ bad() { printf '  ✗    %s\n' "$1"; fail=1; }
 # 抽 webui.sh 里的真函数来跑（抄一份的话，改坏了实现测试也不会响）
 extract() {
     local start end
-    start=$(grep -n "^$1() {" module/webui.sh | cut -d: -f1 | head -1)
+    start=$(grep -n "^$1() {" "$KL_SRC" | cut -d: -f1 | head -1)
     [ -n "$start" ] || { echo "抽不到 $1" >&2; return 1; }
-    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' module/webui.sh)
+    end=$(awk -v s="$start" 'NR>s && /^\}/{ print NR; exit }' "$KL_SRC")
     [ -n "$end" ] || { echo "$1 找不到结尾" >&2; return 1; }
-    sed -n "${start},${end}p" module/webui.sh
+    sed -n "${start},${end}p" "$KL_SRC"
     printf '%s\n' "$1 第 ${start}-${end} 行" >&2
 }
 
@@ -96,7 +97,7 @@ if valid_patch 'today' && ! valid_tricky_patch 'today'; then ok 'today 只有 TE
 if valid_tricky_patch 'prop' && ! valid_patch 'prop'; then ok 'prop/device_default 只有 Tricky 认'; else bad 'prop 的分叉没体现出来'; fi
 
 printf '── 报错文案带上了被拒的字段与值（只说"不合法"用户没法改） ──\n'
-n=$(grep -ac '补丁值不合法：$k = $v' module/webui.sh)
+n=$(grep -ac '补丁值不合法：$k = $v' "$KL_SRC")
 if [ "$n" -ge 2 ]; then ok "两处写路径都点名 \$k = \$v（命中 ${n} 处）"; else bad "只有 ${n} 处点名，另一家还停在只报字段名"; fi
 
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"

@@ -10,19 +10,20 @@
 #=============================================================================
 set -u
 cd "$(dirname "$0")/.." || exit 1
+. tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 fail=0
 
 # 把 webui.sh 里那段校验函数抽出来跑（不 source 整个文件 —— 它末尾有 dispatch）。
 # 起点取 valid_log_level 而不是 valid_omk_date：最后那组断言要同时跑
 # config.toml 与 injector.toml 两条级别校验，只抽一条会调到不存在的函数，
 # 得到的是"函数没定义"而不是"校验放过了坏值"。
-start=$(grep -n '^valid_log_level() {' module/webui.sh | cut -d: -f1)
-end=$(grep -n '^valid_inj_log_level() {' module/webui.sh | tail -1 | cut -d: -f1)
-end=$(awk -v s="$end" 'NR>=s && /^\}/{ print NR; exit }' module/webui.sh)
+start=$(grep -n '^valid_log_level() {' "$KL_SRC" | cut -d: -f1)
+end=$(grep -n '^valid_inj_log_level() {' "$KL_SRC" | tail -1 | cut -d: -f1)
+end=$(awk -v s="$end" 'NR>=s && /^\}/{ print NR; exit }' "$KL_SRC")
 if [ -z "$start" ] || [ -z "$end" ]; then
     printf '  ✗    抽不到校验函数（webui.sh 结构变了？）\n'; exit 1
 fi
-eval "$(sed -n "${start},${end}p" module/webui.sh)"
+eval "$(sed -n "${start},${end}p" "$KL_SRC")"
 for f in valid_log_level valid_inj_log_level valid_omk_patch valid_omk_boot valid_omk_hash valid_omk_os_version; do
     # 每个函数都要真的存在，缺一个就是抽漏了
     if ! command -v "$f" >/dev/null 2>&1; then
@@ -87,7 +88,7 @@ else printf '  ✗    valid_log_level 竟然收了 warning —— 两条校验�
 printf '── 接线：校验函数必须真的挂在保存路径上 ──\n'
 # 上面那些只证明"函数本身对"。如果 cmd_omk_save_config 里忘了换调用，
 # 这些断言照样全绿，而坏值仍旧能存进去 —— 所以这一段单独钉"谁被调用了"。
-body=$(awk '/^cmd_omk_save_config\(\) \{/,/^\}/' module/webui.sh)
+body=$(awk '/^cmd_omk_save_config\(\) \{/,/^\}/' "$KL_SRC")
 if [ -z "$body" ]; then printf '  ✗    抽不到 cmd_omk_save_config 函数体\n'; fail=1; fi
 # 判据要跟着 case 分支走：一个分支可能并列多个键（`a|b|c)`），
 # 所以"键后面紧跟右括号"那种写法会漏掉并列在中间的键。
@@ -108,7 +109,7 @@ for pair in "trust_os_version:valid_omk_os_version" "trust_vb_key:valid_omk_hash
     if wired "$keys" "$fn"; then printf '  ok   %s → %s\n' "$keys" "$fn"
     else printf '  ✗    %s 没接上 %s（校验函数存在但没人调）\n' "$keys" "$fn"; fail=1; fi
 done
-inj=$(awk '/^cmd_omk_save_injector\(\) \{/,/^\}/' module/webui.sh)
+inj=$(awk '/^cmd_omk_save_injector\(\) \{/,/^\}/' "$KL_SRC")
 if printf '%s' "$inj" | grep -q 'inj_log_level) valid_inj_log_level'; then
     printf '  ok   inj_log_level → valid_inj_log_level（带 warning 别名那条）\n'
 else
