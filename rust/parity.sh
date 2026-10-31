@@ -204,5 +204,33 @@ KEYLENS_ROOT="$TT2" "$B" targets >/dev/null 2>"$T/e2"; rc2=$?
 chk '目标文件缺失：退出码一致' "$rc1" "$rc2"
 chk '目标文件缺失：报错文案一致' "$(cat "$T/e1")" "$(cat "$T/e2")"
 
+# teesim：profiles.default.apps（work 的 apps 不许出现；default 内有嵌套对象）
+TS="$T/tsroot"
+mkdir -p "$TS/data/adb/modules/teesim" "$TS/data/adb/teesim"
+cat > "$TS/data/adb/teesim/config.json" <<'EOF'
+{"version":1,"profiles":{"work":{"apps":["should.not.appear"]},"default":{"patchLevel":{"system":"today"},"apps":["com.a","com.b@10"]}}}
+EOF
+mk_targets_harness "$TS"
+chk 'teesim default.apps（跳过嵌套与其它 profile）' "$(sh "$T/h3.sh")" "$(KEYLENS_ROOT="$TS" "$B" targets)"
+
+# omk：scoop 数组（注释/多行/[scoop.pkg] 段不误匹配）
+OS="$T/osroot"
+mkdir -p "$OS/data/adb/modules/oh_my_keymint" "$OS/data/misc/keystore/omk"
+cat > "$OS/data/misc/keystore/omk/injector.toml" <<'EOF'
+# comment
+[main]
+log_level = "info"
+
+scoop = [
+  "com.x",
+  "com.y",
+]
+
+[scoop.com.z]
+deny = true
+EOF
+mk_targets_harness "$OS"
+chk 'omk scoop 数组（注释/多行/段名不误匹配）' "$(sh "$T/h3.sh")" "$(KEYLENS_ROOT="$OS" "$B" targets)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

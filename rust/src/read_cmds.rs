@@ -244,7 +244,133 @@ fn tricky_tokens(text: &str) -> Vec<String> {
     order.into_iter().map(|b| last[&b].clone()).collect()
 }
 
-/// cmd_targets：当前后端的目标列表（tricky 已迁；另两家在后续阶段）。
+/// 在 `s[from..]` 找 needle 的字节下标（等价 awk 的 findstr）。
+fn find_from(s: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
+    if from >= s.len() || needle.is_empty() {
+        return None;
+    }
+    s[from..]
+        .windows(needle.len())
+        .position(|w| w == needle)
+        .map(|p| p + from)
+}
+
+/// 与 open 处的 `{`/`[` 配对的闭合下标；跳过字符串与转义（等价 awk 的 matchclose）。
+fn match_close(s: &[u8], open: usize) -> Option<usize> {
+    let mut depth = 0i32;
+    let mut instr = false;
+    let mut esc = false;
+    for i in open..s.len() {
+        let c = s[i];
+        if instr {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                instr = false;
+            }
+            continue;
+        }
+        if c == b'"' {
+            instr = true;
+            continue;
+        }
+        if c == b'{' || c == b'[' {
+            depth += 1;
+        } else if c == b'}' || c == b']' {
+            depth -= 1;
+            if depth == 0 {
+                return Some(i);
+            }
+        }
+    }
+    None
+}
+
+/// 取一段字节里的所有 "..." 内容（等价 awk 的 while (match(seg, /"[^"]*"/))）。
+fn quoted_strings(seg: &[u8]) -> Vec<String> {
+    let mut out = Vec::new();
+    let mut i = 0usize;
+    while i < seg.len() {
+        if seg[i] == b'"' {
+            let start = i + 1;
+            let mut j = start;
+            while j < seg.len() && seg[j] != b'"' {
+                j += 1;
+            }
+            if j < seg.len() {
+                out.push(String::from_utf8_lossy(&seg[start..j]).into_owned());
+                i = j + 1;
+                continue;
+            }
+            break;
+        }
+        i += 1;
+    }
+    out
+}
+
+/// teesim_list.awk：profiles → default → {…} → "apps" → [ … ] 里的字符串。
+fn teesim_apps(buf: &[u8]) -> Option<Vec<String>> {
+    let pp = find_from(buf, 0, b"\"profiles\"")?;
+    let dp = find_from(buf, pp, b"\"default\"")?;
+    let ob = find_from(buf, dp + 9, b"{")?;
+    let cb = match_close(buf, ob)?;
+    let ap = find_from(buf, ob, b"\"apps\"")?;
+    if ap > cb {
+        return None;
+    }
+    let ab = find_from(buf, ap + 6, b"[")?;
+    if ab > cb {
+        return None;
+    }
+    let ae = match_close(buf, ab)?;
+    if ae > cb {
+        return None;
+    }
+    Some(quoted_strings(&buf[ab + 1..ae]))
+}
+
+/// omk_list.awk：行首（可缩进）`scoop = [` … `]` 里的字符串。
+fn omk_scoop(buf: &[u8]) -> Option<Vec<String>> {
+    let mut i = 0usize;
+    let mut found = None;
+    while i < buf.len() {
+        // 行首
+        let line_start = i;
+        let mut j = i;
+        while j < buf.len() && (buf[j] == b' ' || buf[j] == b'\t') {
+            j += 1;
+        }
+        if buf[j..].starts_with(b"scoop") {
+            let mut k = j + 5;
+            while k < buf.len() && (buf[k] == b' ' || buf[k] == b'\t') {
+                k += 1;
+            }
+            if k < buf.len() && buf[k] == b'=' {
+                k += 1;
+                while k < buf.len() && (buf[k] == b' ' || buf[k] == b'\t') {
+                    k += 1;
+                }
+                if k < buf.len() && buf[k] == b'[' {
+                    found = Some(k);
+                    break;
+                }
+            }
+        }
+        // 下一行
+        match buf[line_start..].iter().position(|b| *b == b'\n') {
+            Some(nl) => i = line_start + nl + 1,
+            None => break,
+        }
+    }
+    let ob = found?;
+    let cb = match_close(buf, ob)?;
+    Some(quoted_strings(&buf[ob + 1..cb]))
+}
+
+/// cmd_targets：当前后端的目标列表。
 pub fn targets() {
     let root = Root::from_env();
     let p = Paths::new(&root);
@@ -253,16 +379,21 @@ pub fn targets() {
         eprintln!("目标文件不存在：{}", b.target.display());
         std::process::exit(1);
     }
+    let data = std::fs::read(&b.target).unwrap_or_default();
     match b.id {
         BackendId::Tricky => {
-            let text = std::fs::read_to_string(&b.target).unwrap_or_default();
+            let text = String::from_utf8_lossy(&data);
             for t in tricky_tokens(&text) {
                 println!("{}", t);
             }
         }
-        other => {
-            eprintln!("targets：{} 后端尚未迁移", other.as_str());
-            std::process::exit(2);
-        }
+        BackendId::Teesim => match teesim_apps(&data) {
+            Some(v) => v.iter().for_each(|s| println!("{}", s)),
+            None => std::process::exit(1),
+        },
+        BackendId::Omk => match omk_scoop(&data) {
+            Some(v) => v.iter().for_each(|s| println!("{}", s)),
+            None => std::process::exit(1),
+        },
     }
 }
