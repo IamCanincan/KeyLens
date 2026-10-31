@@ -977,6 +977,23 @@ async function main() {
   chk('体检：点一次出 6 行 TSV，名单那行是 warn 档，且有汇总句',
     dbtn && doc.n >= 6 && doc.warn.indexOf('名单') >= 0 && doc.hasSummary, JSON.stringify(doc).slice(0, 220));
 
+  /* 备份列表：设置页点「刷新列表」，demo 里应出两行 .bak 且带对应文件。 */
+  const bbtn = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+    var b=bs.filter(function(x){return (x.textContent||'').indexOf('刷新列表')>=0;})[0];
+    if(!b) return null; b.scrollIntoView({ block: 'center' }); var r=b.getBoundingClientRect();
+    return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+  await sleep(400);
+  if (bbtn) {
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: bbtn.x, y: bbtn.y, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: bbtn.x, y: bbtn.y, button: 'left', clickCount: 1 });
+  }
+  await sleep(900);
+  const bks = await ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view md-list-item'));
+    var names=rows.map(function(x){return x.getAttribute('headline')||'';}).filter(function(n){return /.bak$/.test(n);});
+    return { n: names.length, names: names.join(','), confirm: (document.getElementById('view').textContent||'').indexOf('再点确认')>=0 }; })()`);
+  chk('备份列表：点刷新出两行 .bak（未点回滚时没有"再点确认"）',
+    !!bbtn && bks.n >= 2 && bks.names.indexOf('injector.toml.bak') >= 0 && !bks.confirm, JSON.stringify(bks).slice(0, 160));
+
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);
 }

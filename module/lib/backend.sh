@@ -666,3 +666,22 @@ run_sync() {
     fi
     return "$rc"
 }
+
+# ---------- 备份名 → 后端文件 ----------
+# 回滚是破坏性操作，所以只认这张表：名字是我们在写之前起的，路径由后端决定，
+# 不接受调用方给任意路径。不属于当前后端时返回 1（界面据此不显示那一行）。
+# 用法：backup_target_for <备份文件名>
+backup_target_for() {
+    local name="$1"
+
+    case "$name" in
+        config.json.bak)        [ "$KL_BACKEND" = teesim ] && printf '%s' "$TEESIM_CONFIG" ;;
+        overrides.json.bak)     [ "$KL_BACKEND" = teesim ] && printf '%s' "$TEESIM_DIR/overrides.json" ;;
+        injector.toml.bak)      [ "$KL_BACKEND" = omk ] && printf '%s' "$OMK_INJECTOR" ;;
+        config.toml.bak)        [ "$KL_BACKEND" = omk ] && printf '%s' "$OMK_DIR/config.toml" ;;
+        keybox.xml.bak)         backend_keybox_path && printf '%s' "$KEYBOX_PATH" ;;
+        security_patch.txt.bak) [ "$KL_BACKEND" = tricky ] && printf '%s' "$TSTORE_DIR/security_patch.txt" ;;
+        *) return 1 ;;
+    esac
+    return 0
+}

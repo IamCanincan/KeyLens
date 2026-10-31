@@ -6,7 +6,7 @@
  *  - Tricky 有 tee_status（为什么只能走 leaf hack）与按包 [包名] 补丁块；
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
-import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons, loadDoctor,
+import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons, loadDoctor, loadBackups,
   daemonLabel, daemonDown, propsMaskLabel } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
@@ -22,7 +22,7 @@ export const ICON = {
   sync: 'refresh', read: 'download', list: 'group',
   keybox: 'https', patch: 'label', tee: 'verified', restart: 'tune', save: 'save',
   addPkg: 'add', del: 'delete', moon: 'dark_mode', edit: 'edit', tune: 'tune',
-  ok: 'check', warn: 'warning', bad: 'error', none: 'help',
+  ok: 'check', warn: 'warning', bad: 'error', none: 'help', history: 'history',
 };
 
 export function h(tag, cls, text) {
@@ -675,6 +675,55 @@ function doctorCard() {
   c.appendChild(s);
   return c;
 }
+/* 备份与回滚：回滚是破坏性操作，所以做成两段式 —— 第一下变成"再点确认"，
+   4 秒内没再点就自动撤销（WebView 里的 confirm() 不可靠，不靠它）。 */
+function backupCard() {
+  const c = card();
+  const s = section('备份与回滚', ICON.history);
+  s.appendChild(h('p', 'hint', '模块覆盖后端文件前都会留一份 .bak。回滚前会把当前文件另存为 <名>.pre-restore（同样留在该后端目录里）。'));
+  const acts = h('div', 'acts');
+  acts.appendChild(button('刷新列表', { variant: 'tonal', icon: ICON.read, on: loadAndPaint }));
+  s.appendChild(acts);
+  const box = h('div');
+  s.appendChild(box);
+  let armed = '';
+  let timer = 0;
+  function paint() {
+    box.textContent = '';
+    if (S.backupsErr) { box.appendChild(h('p', 'read-err', '备份列表读失败 —— 命令层可能不是这一版。')); return; }
+    if (!S.backups.length) { box.appendChild(h('p', 'hint', '这个后端目录里还没有备份 —— 第一次写入时才会生成。')); return; }
+    const l = h('md-list');
+    S.backups.forEach(function (r) {
+      const name = r[0];
+      const it = item({ headline: name, trailing: armed === name ? '再点确认' : '回滚',
+        supporting: (r[3] || '') + ' · ' + timeLabel(r[2]) + ' · ' + bytesLabel(r[1]) });
+      it.setAttribute('interactive', '');
+      it.addEventListener('click', function () {
+        if (armed !== name) {
+          armed = name;
+          paint();
+          clearTimeout(timer);
+          timer = setTimeout(function () { armed = ''; paint(); }, 4000);
+          return;
+        }
+        armed = '';
+        clearTimeout(timer);
+        write('backup-restore', name, '已回滚：' + name);
+      });
+      l.appendChild(it);
+    });
+    box.appendChild(l);
+  }
+  function loadAndPaint() {
+    box.textContent = '';
+    box.appendChild(h('p', 'hint', '正在读取…'));
+    loadBackups().then(paint);
+  }
+  if (S.backups.length || S.backupsErr) paint();
+  else box.appendChild(h('p', 'hint', '点「刷新列表」看看有没有可回滚的备份。'));
+  c.appendChild(s);
+  return c;
+}
 export function renderSettings() {
   const box = h('div', 'stack');
   box.appendChild(renderTheme());
@@ -682,6 +731,7 @@ export function renderSettings() {
      推迟挂会让页面进场后再长高约 400px（实测 243 → 641），看起来同样是"拉高"。 */
   box.appendChild(selfCheck());
   box.appendChild(doctorCard());
+  box.appendChild(backupCard());
   return box;
 }
 

@@ -66,7 +66,7 @@ KL_COMMANDS="status env targets target-meta apps icons log clear-log props props
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides teesim-profile-new teesim-profile-del doctor"
+teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -1286,7 +1286,7 @@ EOF
 KL_WRITE_CMDS="props-apply props-on props-off props-boot-hash restore-app restore-apps \
 remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config \
 tricky-save-patch tricky-drop-patch keybox-save sync clear-log omk-restart \
-teesim-profile-new teesim-profile-del"
+teesim-profile-new teesim-profile-del backup-restore"
 
 for _kl_c in $KL_WRITE_CMDS; do
     if [ "$_kl_c" = "$CMD" ]; then
@@ -1295,6 +1295,23 @@ for _kl_c in $KL_WRITE_CMDS; do
     fi
 done
 unset _kl_c
+
+# ---------- 备份列表（只读） ----------
+# 输出：名称 <TAB> 字节 <TAB> mtime <TAB> 它对应的后端文件
+# 只列"属于当前后端"的那些（映射表说了算），别的后端的备份在这里没有意义。
+cmd_backups() {
+    local f name tgt sz mt
+
+    for f in "$KL_DIR"/*.bak; do
+        [ -f "$f" ] || continue
+        name="${f##*/}"
+        tgt=$(backup_target_for "$name") || continue
+        [ -n "$tgt" ] || continue
+        sz=$(wc -c < "$f" 2>/dev/null | tr -d ' ')
+        mt=$(stat -c %Y "$f" 2>/dev/null)
+        tsv "$name" "${sz:-0}" "${mt:-0}" "$tgt"
+    done
+}
 
 # ---------- 体检（只读） ----------
 # 说明：用户说"不生效"时，最费时间的是判断坏在哪一层。这里按依赖顺序把各层过一遍，
@@ -1437,6 +1454,7 @@ PAIRS
 
 case "$CMD" in
     doctor)      cmd_doctor ;;
+    backups)     cmd_backups ;;
     contract)    cmd_contract ;;
     excluded)    cmd_excluded ;;
     status)      cmd_status ;;
@@ -1477,6 +1495,7 @@ case "$CMD" in
     boot-hash)   cmd_boot_hash ;;
     props-boot-hash) cmd_set_boot_hash "$ARG" ;;
     restore-app) cmd_restore_app "$ARG" ;;
+    backup-restore) cmd_backup_restore "$ARG" ;;
     restore-apps) cmd_restore_apps "$ARG" ;;
     remove-apps) cmd_remove_apps "$ARG" ;;
     sync)        cmd_sync ;;

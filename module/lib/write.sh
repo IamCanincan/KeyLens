@@ -999,3 +999,48 @@ cmd_sync() {
     [ "$rc" = 2 ] && { echo "同步失败：未能生成或写入应用列表" >&2; return 1; }
     return 0
 }
+
+# ---------- 备份回滚 ----------
+# 三件必须做的事：① 只认映射表里的名字；② 回滚前把当前文件另存为
+# <名>.pre-restore（600），这一步本身可撤销；③ 落盘用**目标文件**的属主与权限
+# （OMK 的 injector.toml 属于 keystore:keystore，cp 成 root 会让 OMK 读不了）。
+# keybox 另过一遍结构校验：回滚一份坏 keybox 比不回滚更糟。
+# 用法：backup-restore <备份文件名>
+cmd_backup_restore() {
+    local name="$1" src tgt tmp pre own mode ac kbc msg ok_=0 rc=0
+
+    require_runnable || return 1
+    detect_backend "$MODDIR"
+    case "$name" in ''|*/*|*..*) echo "备份名不合法：$name" >&2; return 1 ;; esac
+    src="$KL_DIR/$name"
+    tgt=$(backup_target_for "$name") || { echo "当前后端没有这个备份：$name" >&2; return 1; }
+    [ -n "$tgt" ] || { echo "当前后端没有这个备份：$name" >&2; return 1; }
+    [ -s "$src" ] || { echo "备份不存在或为空：$src" >&2; return 1; }
+    if [ "$name" = "keybox.xml.bak" ]; then
+        ac="${AWK_CMD:-$(find_awk)}"
+        kbc="${KL_PATCH%/*}/keybox_check.awk"
+        if [ -n "$ac" ] && [ -f "$kbc" ]; then
+            msg=$("$ac" -v backend="$KL_BACKEND" -f "$kbc" "$src" 2>&1) && ok_=1
+            [ "$ok_" = 1 ] || { echo "这份 keybox 备份结构不合格：${msg#err	}" >&2; return 1; }
+        fi
+    fi
+
+    webui_lock || return 1
+    own=$(stat -c %u:%g "$tgt" 2>/dev/null)
+    mode=$(stat -c %a "$tgt" 2>/dev/null)
+    pre="$KL_DIR/$name.pre-restore"
+    tmp="$KL_DIR/.kl_restore.bak.$$"
+    [ -f "$tgt" ] && cp -p "$tgt" "$pre" 2>/dev/null && chmod 600 "$pre" 2>/dev/null
+    if cp -p "$src" "$tmp" 2>/dev/null && mv -f "$tmp" "$tgt" 2>/dev/null; then
+        [ -n "$own" ] && chown "$own" "$tgt" 2>/dev/null
+        [ -n "$mode" ] && chmod "$mode" "$tgt" 2>/dev/null
+    else
+        rm -f "$tmp" 2>/dev/null
+        rc=1
+    fi
+    release_lock "${KL_DIR}/.kl_lock"
+    if [ "$rc" != 0 ]; then echo "回滚失败：$tgt 没被改动" >&2; return 1; fi
+    log_info "♻️ WebUI 用备份还原了 ${tgt##*/}（来源 $name）"
+    kv restored 1
+    kv name "$name"
+}

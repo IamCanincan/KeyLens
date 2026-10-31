@@ -33,7 +33,7 @@ export const EXPECT_API = 4;
 /* 写命令：契约不符时全部拒绝。新增写入口必须同时加进这里。 */
 export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restore-app restore-apps \
 remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config tricky-save-patch \
-tricky-drop-patch keybox-save sync clear-log omk-restart teesim-profile-new teesim-profile-del';
+tricky-drop-patch keybox-save sync clear-log omk-restart teesim-profile-new teesim-profile-del backup-restore';
 
 /* 每条命令必须出现的键 —— 这张表是从线上那版抄的，键名以真机 `webui.sh status`
    的实际输出为准。自己凭想象写一份的后果：每条命令都会被判"形状不符"，
@@ -69,6 +69,7 @@ export const KV_REQUIRED = {
   'tee-status': 'present',
   'omk-restart': 'restarted trigger',
   doctor: 'checks bad warn',
+  'backup-restore': 'restored name',
 };
 
 export const BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
@@ -112,7 +113,7 @@ export const S = {
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
   icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
-  excluded: [], theme: 'auto', doctor: null, doctorErr: false,
+  excluded: [], theme: 'auto', doctor: null, doctorErr: false, backups: [], backupsErr: false,
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，
      存一份就把另一份正在粘的内容吃掉；keybox 页粘完整份再点 profile 芯片也一样没。
@@ -382,6 +383,13 @@ export function loadIcons(pkgs) {
     });
   }, function () {});
 }
+/* 备份列表：TSV（名称/字节/mtime/对应后端文件）。只列当前后端的那些。 */
+export function loadBackups() {
+  return call('backups').then(function (r) {
+    S.backupsErr = !r.ok;
+    S.backups = r.ok ? splitLines(r.text).map(function (l) { return l.split('	'); }) : [];
+  }, function () { S.backupsErr = true; S.backups = []; });
+}
 /* 体检：只读命令。行是 TSV（名称/状态/说明/下一步），汇总走 kv。 */
 export function loadDoctor() {
   return call('doctor').then(function (r) {
@@ -467,6 +475,13 @@ function demoResult(cmd, arg) {
   /* 三家各有一套路径与条目语法。台架默认 omk，切 ?backend=tricky 才会画到
      tee_status、按包补丁块和 ?/! 后缀那一套分支 —— 上一版只跑 omk，
      结果 Tricky 分支里的键名读错也没人看见。 */
+  if (cmd === 'backups') {
+    return { errno: 0, stdout: 'injector.toml.bak\t4228\t' + (Math.floor(Date.now() / 1000) - 3600) + '\t' + demoFiles().dir + '/' + demoFiles().target + '\n'
+      + 'config.toml.bak\t512\t' + (Math.floor(Date.now() / 1000) - 86400) + '\t' + demoFiles().dir + '/config.toml\n' };
+  }
+  if (cmd === 'backup-restore') {
+    return { errno: 0, stdout: 'restored=1\nname=' + String(arg || '') + '\n' };
+  }
   if (cmd === 'doctor') {
     return { errno: 0, stdout: 'checks=11\nbad=1\nwarn=1\nskip=0\n'
       + '权限\tok\t以 root 运行\t\n'
@@ -516,7 +531,7 @@ function demoResult(cmd, arg) {
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种

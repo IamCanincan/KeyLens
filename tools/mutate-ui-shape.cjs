@@ -136,6 +136,8 @@ const cases = [
   /* 这一把是"闸的盲区"的证据：旧版 ui-shape 只 grep `write('x'`，而 omk-save-config
      是经 form(spec, fields, cmd, …) 的第三个参数进来的 —— 把它从 WRITE_CMDS 里删掉，
      旧闸一声不响（契约不符时这条写命令就停不住）。现在扫调用点，必须点名响。 */
+  ['备份卡：两段式确认、只认映射表里的名字、回滚走 write 闸门', files.screens,
+    "armed === name ? '再点确认' : '回滚'", "armed === name ? '回滚' : '回滚'", 1],
   ['体检卡：只读命令、skip 不涂绿、非 ok 行带下一步', files.screens,
     "st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''",
     "st === 'bad' ? 'ok' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''", 1],
