@@ -916,6 +916,67 @@ pub fn tricky_patches() {
     }
 }
 
+const CONFLICT_MSG: &str =
+    "检测到多个密钥库后端同时启用（Tricky Store / TEE Simulator / OhMyKeymint），模块停止运行（请只保留一个）";
+
+/// 后端互斥：同时启用多于一家。
+fn backends_conflict(p: &Paths) -> bool {
+    [&p.teesim_module, &p.tricky_module, &p.omk_module]
+        .iter()
+        .filter(|m| backend::active(m))
+        .count()
+        > 1
+}
+
+/// log_info：向运行日志追加一条带时间戳的记录（无日志文件时创建）。
+fn log_line(p: &Paths, msg: &str) {
+    let ts = std::process::Command::new("date")
+        .arg("+%m-%d %H:%M:%S")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default();
+    let line = format!("{}{}\n", if ts.is_empty() { String::new() } else { format!("{} ", ts) }, msg);
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p.log) {
+        let _ = f.write_all(line.as_bytes());
+    }
+}
+
+/// cmd_omk_restart：触发 OMK 重载（restart.<范围>），输出 restarted / trigger。
+pub fn omk_restart(which: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Omk {
+        eprintln!("当前后端不是 OhMyKeymint");
+        std::process::exit(1);
+    }
+    if !matches!(which, "keymint" | "injector" | "all") {
+        eprintln!("只能触发 keymint / injector / all（收到：{}）", which);
+        std::process::exit(1);
+    }
+    if !p.omk_state_dir.is_dir() {
+        eprintln!("目录不存在：{}（OMK 没装？）", p.omk_state_dir.display());
+        std::process::exit(1);
+    }
+    let f = p.omk_state_dir.join(format!("restart.{}", which));
+    match std::fs::File::create(&f) {
+        Ok(_) => {}
+        Err(_) => {
+            eprintln!("写入失败：{}", f.display());
+            std::process::exit(1);
+        }
+    }
+    log_line(&p, &format!("🛠 WebUI 触发 OhMyKeymint 重载：{}", which));
+    println!("restarted={}", which);
+    println!("trigger={}", f.display());
+}
+
 /// cmd_clear_log：删日志缓冲与 .tmp，再写一条「已清空」记录，输出 cleared=1。
 pub fn clear_log() {
     let root = Root::from_env();

@@ -487,5 +487,43 @@ printf 'old line 1\nold line 2\n' > "$CLR/data/adb/keylens.log"
 chk 'clear-log：stdout' "$(sh "$T/cl.sh" "$CLR/data/adb/keylens.log")" "$(KEYLENS_ROOT="$CLR" "$B" clear-log)"
 chk 'clear-log：缓冲区只剩新记录' "$(grep -c '已清空运行日志缓冲' "$CLR/data/adb/keylens.log")" "1"
 
+echo "── omk-restart（写 restart.<范围>，含拒绝路径）──"
+mk_omk_harness() { # <root>
+  {
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+  } > "$T/omk.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/omk.sh"
+  sed -n '/^cmd_omk_restart() {/,/^}/p' module/lib/write.sh >> "$T/omk.sh"
+  echo 'cmd_omk_restart "$1"' >> "$T/omk.sh"
+}
+OKR="$T/okr"
+mkdir -p "$OKR/data/adb/modules/oh_my_keymint" "$OKR/data/adb/omk"
+mk_omk_harness "$OKR"
+chk 'omk-restart：成功路径（含触发文件）' "$(sh "$T/omk.sh" keymint 2>&1)" "$(KEYLENS_ROOT="$OKR" "$B" omk-restart keymint 2>&1)"
+chk 'omk-restart：触发文件已创建' "$([ -f "$OKR/data/adb/omk/restart.keymint" ] && echo yes)" "yes"
+chk 'omk-restart：非法范围' "$(sh "$T/omk.sh" nope 2>&1)" "$(KEYLENS_ROOT="$OKR" "$B" omk-restart nope 2>&1)"
+OKR2="$T/okr2"
+mkdir -p "$OKR2/data/adb/modules/tricky_store" "$OKR2/data/adb/tricky_store"
+mk_omk_harness "$OKR2"
+chk 'omk-restart：后端不是 OMK' "$(sh "$T/omk.sh" all 2>&1)" "$(KEYLENS_ROOT="$OKR2" "$B" omk-restart all 2>&1)"
+OKR3="$T/okr3"
+mkdir -p "$OKR3/data/adb/modules/oh_my_keymint" "$OKR3/data/adb/modules/tricky_store" "$OKR3/data/adb/tricky_store" "$OKR3/data/adb/omk"
+mk_omk_harness "$OKR3"
+chk 'omk-restart：后端冲突拒绝' "$(sh "$T/omk.sh" all 2>&1)" "$(KEYLENS_ROOT="$OKR3" "$B" omk-restart all 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
