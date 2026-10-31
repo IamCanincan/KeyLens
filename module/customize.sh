@@ -78,6 +78,16 @@ rm -f "$TSTORE_DIR/.last_month" "$TSTORE_DIR/.kl_fingerprint" "$TEESIM_DIR/.kl_f
 rm -f "$TSTORE_DIR/taa_sys.txt" 2>/dev/null
 rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 
+# 旧模块目录：直接接管——状态已由下面的 migrate_legacy_paths 搬到新名字（它读的是
+# /data/adb/ts_auto.* 与后端目录里的 .ts_*，与旧模块目录无关），所以这里把旧目录删掉。
+# 留着就是两套 service.sh 同跑：两份守护进程各监听、各写同一份后端配置。
+for _old in /data/adb/modules/ts-auto-add /data/adb/modules/ts_auto; do
+    if [ -d "$_old" ]; then
+        rm -rf "$_old" 2>/dev/null
+        ui_print "  🗑️ 已接管旧模块目录：${_old##*/}（状态随后迁移）"
+    fi
+done
+
 # ---------- [5/5] 初始同步 ----------
 ui_print " "
 ui_print "🔄 [5/5] 运行初始同步"

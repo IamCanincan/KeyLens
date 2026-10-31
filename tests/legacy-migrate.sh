@@ -177,6 +177,21 @@ fi
 cmp -s "$D/cust.bak" module/customize.sh && ok '原文件没被动过（变异只写在临时副本里）' \
     || bad '原文件被改了 —— 还原失败'
 
+# 安装时自动接管：旧模块目录必须在 customize.sh 里被移除（删的是旧模块的脚本，
+# 状态在 /data/adb/ts_auto.* 与后端目录里，由 migrate_legacy_paths 搬走）。
+# 留着旧目录 = 两套 service.sh 同跑（两份守护进程各监听、各写同一份后端配置）。
+grep -q '/data/adb/modules/ts-auto-add' module/customize.sh \
+    && ok '安装时移除旧模块目录（ts-auto-add）' \
+    || bad 'customize.sh 没有接管旧模块目录（ts-auto-add）'
+grep -q '/data/adb/modules/ts_auto' module/customize.sh \
+    && ok '安装时移除旧模块目录（ts_auto）' \
+    || bad 'customize.sh 没有接管旧模块目录（ts_auto）'
+# 旧版 OMK 状态目录（早期 /data/adb/ts_auto.omk）也必须被迁移扫到，否则只装过
+# 旧版的 OMK 机器基线/ever/pid 一个都搬不过来。
+grep -q '/data/adb/ts_auto.omk' module/lib/core.sh \
+    && ok '迁移目录表含旧版 OMK 状态目录' \
+    || bad '迁移目录表漏了 /data/adb/ts_auto.omk'
+
 rm -rf "$D"
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"
 exit $fail

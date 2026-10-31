@@ -79,7 +79,7 @@ KL_LEGACY_BOOT_HASH="/data/adb/ts_auto.boot_hash"
 # OMK 的 KL_DIR 是 /data/adb/omk（运行期文件寄在那儿），跟它的配置目录
 # /data/misc/keystore/omk 不是同一个 —— 漏了前者，OMK 机器上的基线/ever/pid
 # 一个都不会搬。这条由 tests/legacy-migrate.sh 从 OMK_STATE_DIR 反查。
-KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
+KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk /data/adb/ts_auto.omk"
 
 # ---------- 按 pid 收进程：必须先证明"这是我们的" ----------
 # pid 名单是上一次运行写下的；隔一段时间/重启后那些号可能已经属于别人。

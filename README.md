@@ -123,11 +123,12 @@ THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 
 ### 从旧版 TS-AUTO-ADD 升级（模块改名 KeyLens，id 也变了）
 
-模块 id 从旧名 `ts-auto-add` 改成 `keylens`，管理器是按 **id（也就是模块目录名）** 认模块的，所以：
+模块 id 从旧名 `ts-auto-add` 改成 `keylens`，管理器是按 **id（也就是模块目录名）** 认模块的。**直接刷 KeyLens 的 zip 即可，安装脚本自动接管**：
 
-- **先卸载旧模块，再刷 KeyLens 的 zip**。两个目录并存 = 两套 `service.sh`/`post-fs-data.sh` 同时跑：两份守护进程各自监听、各自写同一份后端配置，行为不可预期。
-- 卸载旧模块**不会**丢设置：属性伪装开关、启动哈希、基线名单这些不在模块目录里，改名后由 `migrate_legacy_paths` 一次性搬到新名字（`/data/adb/ts_auto.*` → `/data/adb/keylens.*`，后端目录里 `.ts_*` → `.kl_*`），迁移只在新名字不存在时动，反复调用是 no-op。
-- `update.json` 的更新通道按 id 走，**旧 id 的装机收不到 KeyLens 的自动更新** —— 这一版要靠手动刷入。GitHub 仓库名仍是 `TS-AUTO-ADD`（改名要在仓库设置里做，`zipUrl`/徽章 URL 等它改完再一起动）。
+- 安装时先跑 `migrate_legacy_paths`：属性伪装开关、启动哈希、基线名单、`ever` 名单、指纹、PID/锁一次性搬到新名字（`/data/adb/ts_auto.*` → `keylens.*`，后端目录里 `.ts_*` → `.kl_*`，含旧版 OMK 状态目录 `/data/adb/ts_auto.omk`）；只在新名字不存在时搬，反复调用是 no-op。
+- 随后**自动移除旧模块目录**（`ts-auto-add` / `ts_auto`）——否则两套 `service.sh`/`post-fs-data.sh` 同跑：两份守护进程各自监听、各自写同一份后端配置，行为不可预期。
+- 后端自己的数据（`target.txt` / `config.json` / `injector.toml` / `keybox.xml`）本来就不在模块目录里，改名不动它们。
+- `update.json` 的更新通道按 id 走，**旧 id 的装机收不到 KeyLens 的自动更新** —— 这一版刷一次手动包，之后就走新仓库（IamCanincan/KeyLens）的通道。
 
 ### 前置条件
 
@@ -432,6 +433,6 @@ A：可删除后端目录下的 `.kl_daemon_pids.list` 并重启，或直接卸�
 
 ---
 
-**版本**：v3.0.0
+**版本**：v3.0.1
 **更新日期**：2026-11-01
 **维护者**：IamCanincan
