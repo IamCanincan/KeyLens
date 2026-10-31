@@ -284,5 +284,50 @@ chmod +x "$T/bin/cmd"
 sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh > "$T/apps.sh"
 chk 'apps：去重/去[N]/排序' "$(PATH="$T/bin:$PATH" sh -c '. "$1"; cmd_apps' sh "$T/apps.sh")" "$(PATH="$T/bin:$PATH" "$B" apps)"
 
+echo "── excluded（已装 ∩ ever ∖ 当前目标）──"
+ex_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+  } > "$T/h5.sh"
+  sed -n '/^cmd_excluded() {/,/^}/p' module/webui.sh >> "$T/h5.sh"
+  cat >> "$T/h5.sh" <<'EOF'
+detect_backend "$MODDIR"
+cmd_excluded
+EOF
+}
+EX="$T/exroot"
+mkdir -p "$EX/data/adb/modules/tricky_store" "$EX/data/adb/tricky_store"
+printf 'com.a\ncom.b?\n' > "$EX/data/adb/tricky_store/target.txt"
+printf 'com.a\ncom.b\ncom.c\ncom.d\n' > "$EX/data/adb/tricky_store/.kl_ever"
+cat > "$T/bin/cmd" <<'EOF'
+#!/bin/sh
+printf 'package:com.a\npackage:com.b\npackage:com.c\npackage:com.d\npackage:com.e\n'
+EOF
+ex_harness "$EX"
+chk 'excluded：ever 内但不在目标里' "$(PATH="$T/bin:$PATH" sh "$T/h5.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$EX" "$B" excluded)"
+
+# 无 ever 文件：两边都必须空
+EX2="$T/exroot2"
+mkdir -p "$EX2/data/adb/modules/tricky_store" "$EX2/data/adb/tricky_store"
+printf 'com.a\n' > "$EX2/data/adb/tricky_store/target.txt"
+ex_harness "$EX2"
+chk 'excluded：无 ever 时为空' "$(PATH="$T/bin:$PATH" sh "$T/h5.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$EX2" "$B" excluded)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

@@ -402,6 +402,73 @@ pub fn apps() {
     }
 }
 
+/// 目标条目 → 基础包名（entry_base.awk 的等价）。
+fn entry_base(tok: &str, id: BackendId) -> String {
+    match id {
+        BackendId::Tricky => tok.trim_end_matches(['?', '!']).to_string(),
+        BackendId::Teesim => {
+            if tok.starts_with("uid:") {
+                String::new()
+            } else {
+                match tok.rfind('@') {
+                    Some(at) if tok[at + 1..].bytes().all(|c| c.is_ascii_digit()) => tok[..at].to_string(),
+                    _ => tok.to_string(),
+                }
+            }
+        }
+        BackendId::Omk => tok.to_string(),
+    }
+}
+
+/// cmd_excluded：已装 ∩ ever ∖ 当前目标（按基础包名）；无 KL_DIR / 无 ever 时为空。
+pub fn excluded() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
+        std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
+    };
+    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+        .filter(|o| !o.is_empty())
+        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .unwrap_or_default();
+    let inst: Vec<String> = String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|l| l.strip_prefix("package:").map(|s| s.trim_end_matches('\r').to_string()))
+        .filter(|s| !s.is_empty())
+        .collect();
+    if !b.dir.is_dir() {
+        return;
+    }
+    let tokens: Vec<String> = if b.target.is_file() {
+        let data = std::fs::read(&b.target).unwrap_or_default();
+        match b.id {
+            BackendId::Tricky => tricky_tokens(&String::from_utf8_lossy(&data)),
+            BackendId::Teesim => teesim_apps(&data).unwrap_or_default(),
+            BackendId::Omk => omk_scoop(&data).unwrap_or_default(),
+        }
+    } else {
+        Vec::new()
+    };
+    let curbase: std::collections::HashSet<String> = tokens
+        .iter()
+        .map(|t| entry_base(t, b.id))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let ever: std::collections::HashSet<String> = std::fs::read_to_string(b.dir.join(".kl_ever"))
+        .map(|t| t.lines().map(|l| l.trim_end_matches('\r').to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+    let mut res: Vec<String> = inst
+        .into_iter()
+        .filter(|p| ever.contains(p) && !curbase.contains(p))
+        .collect();
+    res.sort();
+    res.dedup();
+    for r in res {
+        println!("{}", r);
+    }
+}
+
 /// cmd_target_meta：tok<TAB>base<TAB>kind<TAB>detail（三家的语义在 cmd 里分叉）。
 pub fn target_meta() {
     let root = Root::from_env();
