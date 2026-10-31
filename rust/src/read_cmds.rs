@@ -943,6 +943,148 @@ fn log_line(p: &Paths, msg: &str) {
     }
 }
 
+/// is_pkg_token：包名语法（与 applist.sh 同义）。
+fn is_pkg_token(p: &str) -> bool {
+    !p.is_empty()
+        && !p.starts_with('.')
+        && !p.ends_with('.')
+        && !p.contains("..")
+        && p.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.')
+        && p.contains('.')
+}
+
+/// tricky_mode.awk 的等价：只改匹配行（保留缩进/行尾空白/注释），返回 (新内容, 状态)。
+fn tricky_mode_rewrite(text: &str, pkg: &str, mode: &str) -> (String, &'static str) {
+    let suffix = match mode {
+        "leaf" => "?",
+        "generate" => "!",
+        _ => "",
+    };
+    let mut matched = false;
+    let mut changed = false;
+    let mut out = String::new();
+    for raw in text.split('\n') {
+        let line = raw.strip_suffix('\r').unwrap_or(raw);
+        let h = line.find('#');
+        let body = match h {
+            Some(i) => &line[..i],
+            None => line,
+        };
+        if body.trim_matches(|c: char| c == ' ' || c == '\t').is_empty() {
+            out.push_str(line);
+            out.push('\n');
+            continue;
+        }
+        let indent_len = body.len() - body.trim_start_matches([' ', '\t']).len();
+        let indent = &body[..indent_len];
+        let rest = &body[indent_len..];
+        let tok_len = rest.trim_end_matches([' ', '\t']).len();
+        let mut tok = rest[..tok_len].to_string();
+        let tail = &rest[tok_len..];
+        let mut b = tok.clone();
+        if b.ends_with('?') || b.ends_with('!') {
+            b.pop();
+            b = b.trim_end_matches([' ', '\t']).to_string();
+        }
+        if b == pkg {
+            matched = true;
+            let newtok = format!("{}{}", pkg, suffix);
+            if newtok != tok {
+                changed = true;
+            }
+            tok = newtok;
+        }
+        out.push_str(indent);
+        out.push_str(&tok);
+        out.push_str(tail);
+        if let Some(i) = h {
+            out.push_str(&line[i..]);
+        }
+        out.push('\n');
+    }
+    // 与 awk 的 print 一致：最后一行有换行时 split 会多出空串，去掉它带来的多余行
+    if text.ends_with('\n') {
+        out.pop();
+    }
+    let status = if !matched {
+        "none"
+    } else if changed {
+        "ok"
+    } else {
+        "same"
+    };
+    (out, status)
+}
+
+/// cmd_set_mode：Tricky 条目模式改写（auto/leaf/generate），输出 changed。
+pub fn set_mode(pkg: &str, mode: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Tricky {
+        eprintln!("只有 Tricky Store 后端支持条目模式");
+        std::process::exit(1);
+    }
+    if !is_pkg_token(pkg) {
+        eprintln!("不是合法的包名：{}", pkg);
+        std::process::exit(1);
+    }
+    if !matches!(mode, "auto" | "leaf" | "generate") {
+        eprintln!("模式只能是 auto / leaf / generate");
+        std::process::exit(1);
+    }
+    if !b.target.is_file() {
+        eprintln!("写入失败：{}", b.target.display());
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = {
+        let mut v = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+            p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+        })];
+        if let Ok(extra) = std::env::var("KL_OUR_MARKS") {
+            v.extend(extra.split_whitespace().map(|s| s.to_string()));
+        }
+        v
+    };
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let text = std::fs::read_to_string(&b.target).unwrap_or_default();
+    let (new_text, status) = tricky_mode_rewrite(&text, pkg, mode);
+    let rc = match status {
+        "ok" => {
+            let tmp = b.dir.join(format!(".kl_mode.{}", std::process::id()));
+            let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+                && std::fs::rename(&tmp, &b.target).is_ok();
+            if !ok {
+                let _ = std::fs::remove_file(&tmp);
+                2
+            } else {
+                0
+            }
+        }
+        _ => 1,
+    };
+    crate::lock::release(&lockdir);
+    match rc {
+        0 => {
+            log_line(&p, &format!("🧩 WebUI 把 {} 的模式改为 {}", pkg, mode));
+            println!("changed=1");
+        }
+        1 => println!("changed=0"),
+        _ => {
+            eprintln!("写入失败：{}", b.target.display());
+            std::process::exit(1);
+        }
+    }
+}
+
 /// cmd_omk_restart：触发 OMK 重载（restart.<范围>），输出 restarted / trigger。
 pub fn omk_restart(which: &str) {
     let root = Root::from_env();

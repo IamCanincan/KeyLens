@@ -525,5 +525,51 @@ mkdir -p "$OKR3/data/adb/modules/oh_my_keymint" "$OKR3/data/adb/modules/tricky_s
 mk_omk_harness "$OKR3"
 chk 'omk-restart：后端冲突拒绝' "$(sh "$T/omk.sh" all 2>&1)" "$(KEYLENS_ROOT="$OKR3" "$B" omk-restart all 2>&1)"
 
+echo "── set-mode（Tricky 后缀改写 + 锁）──"
+mk_mode_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/md.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/md.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/md.sh"
+  sed -n '/^cmd_set_mode() {/,/^}/p' module/lib/write.sh >> "$T/md.sh"
+  echo 'detect_backend "$MODDIR"; cmd_set_mode "$1" "$2"' >> "$T/md.sh"
+}
+MD="$T/mdr"
+mk_md_fixture() { # <dir>
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf 'com.a\ncom.b?\n# 注释\n  com.c   \n' > "$1/data/adb/tricky_store/target.txt"
+}
+MDS="$MD-s"; MDR="$MD-r"
+mk_md_fixture "$MDS"; mk_md_fixture "$MDR"
+mk_mode_harness "$MDS"
+chk 'set-mode：改 auto→leaf（输出）' "$(sh "$T/md.sh" com.a leaf 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.a leaf 2>&1)"
+chk 'set-mode：两侧写回结果逐字节一致' "$(cat "$MDS/data/adb/tricky_store/target.txt")" "$(cat "$MDR/data/adb/tricky_store/target.txt")"
+chk 'set-mode：注释/缩进/行尾空白保留' "$(sed -n '3,4p' "$MDR/data/adb/tricky_store/target.txt")" "# 注释
+  com.c   "
+chk 'set-mode：同模式再改（changed=0）' "$(sh "$T/md.sh" com.a leaf 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.a leaf 2>&1)"
+chk 'set-mode：不存在的包（changed=0）' "$(sh "$T/md.sh" com.zzz auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.zzz auto 2>&1)"
+chk 'set-mode：非法包名' "$(sh "$T/md.sh" bad..pkg auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode bad..pkg auto 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
