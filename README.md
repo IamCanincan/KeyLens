@@ -338,6 +338,7 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 > Verified Boot 哈希保存在 `/data/adb/keylens.boot_hash`（权限 `600`，内容为 64/128 位十六进制），卸载时一并清理。
 >
 > `env` 的静态探针缓存写在 `/data/adb/keylens.env.cache`（权限 `600`，卸载时一并清理）：里面只有工具路径、机型/版本、状态栏高度与 SystemUI 的 FRRO 原文（base64），**没有任何密钥或标识**；键带 `module.prop` 与 `/system/build.prop` 的 mtime，所以刷模块或 OTA 后自然失效。
+> **卸载的边界**：`uninstall.sh` 按**前缀**收自家运行文件（各后端目录里的 `.kl_*` 与改名前的 `.ts_*`，加 `/data/adb/keylens.*`、`/data/adb/ts_auto.*`、`service.d/taa_resetprop.sh`、我们写给 OMK 的 `restart.*` 请求），目录清单取自 `lib/core.sh` 的 `KL_BACKEND_DIRS`。**明确不删**：后端的 `target.txt` / `config.json` / `injector.toml` / `keybox.xml`；`*.bak` 是我们覆盖前留下的回滚副本（`keybox.xml.bak` 可能是上一份花过钱的 keybox）；`rules.txt` 现在的模块既不读也不写，而这个名字对 Tricky Addon 那类分支是它自己的配置文件。旧版会删掉 `injector.toml.bak` 与两个 `rules.txt`，已收手。判据在 `tests/uninstall-scope.sh`：沙箱里真跑一遍改过路径的 `uninstall.sh`，该删的一个不剩、不该删的逐字节原样，并把"照旧版去删"种回第二份沙箱验这条断言不是空转。
 
 ---
 

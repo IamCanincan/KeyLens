@@ -32,19 +32,46 @@ pkill -f "inotifywait.*/data/adb/teesim/rules.txt" 2>/dev/null
 pkill -f "inotifyd.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 
-# ---------- 删除本模块运行文件与常驻列表 ----------
-rm -rf "$TS/.kl_lock" "$TS/.kl_debounce" "$TS/.kl_tmp" \
-       "$SIM/.kl_lock" "$SIM/.kl_debounce" "$SIM/.kl_tmp" \
-       "/data/adb/omk/.kl_lock" "/data/adb/omk/.kl_debounce" "/data/adb/omk/.kl_tmp" 2>/dev/null
-rm -f "/data/adb/omk/injector.toml.bak" 2>/dev/null
-rm -f "$TS/.kl_fingerprint" "$SIM/.kl_fingerprint" 2>/dev/null
-for f in .kl_installed_last .kl_rules_last .kl_written_last .kl_removed \
-         .kl_installed.new .kl_rules.new .kl_written.new .kl_removed.new \
-         .kl_ever .kl_ever.new .kl_fingerprint .kl_daemon_pids.list; do
-    rm -f "$TS/$f" "$SIM/$f" "/data/adb/omk/$f" 2>/dev/null
+# ---------- 删除本模块的运行文件 ----------
+# 说明：按**前缀 glob** 收，不再手抄文件名。以前那张清单是抄的，而写文件的地方
+#       散在 lib/ 与 webui.sh 里 —— 加一个新临时名不会有人想起回头补一行，
+#       实测漏掉的包括 `.kl_keybox.$$`（里面是解码后的 keybox 私钥材料）和全部
+#       `.kl_save.$$ / .kl_*.$$` 临时目录。前缀是本模块自己的（kl = KeyLens），
+#       后端与别的模块都不往这些目录里写 `.kl_*`。
+#       `.ts_*` 是改名前那版（ts-auto-add）的同一批文件：升级路径由
+#       migrate_legacy_paths 搬走，但"只装过旧版、没升级就卸"的机器上它还躺着。
+# 目录清单取自 lib/core.sh 的 KL_BACKEND_DIRS（单一真源）；取不到就用同一份字面值。
+MODDIR="${0%/*}"
+DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
+if [ -f "$MODDIR/lib/core.sh" ]; then
+    _d=$(sed -n 's/^KL_BACKEND_DIRS="\([^"]*\)".*/\1/p' "$MODDIR/lib/core.sh" 2>/dev/null)
+    [ -n "$_d" ] && DIRS="$_d"
+fi
+unset _d
+for dir in $DIRS; do
+    [ -d "$dir" ] || continue
+    rm -rf "$dir/.kl_"* "$dir/.ts_"* 2>/dev/null
+    # 旧版留下的、名字不带我们前缀的两个运行文件：v2.2.19.4 那代按"本月已打过补丁"
+    # 记的 .last_month，和更早上一代当"生效列表"用的 taa_sys.txt（前缀 taa_ 只有我们
+    # 用过）。customize.sh 装机时也在收它们，卸载同样收掉；除我们没人写这些路径。
+    rm -f "$dir/.last_month" "$dir/taa_sys.txt" 2>/dev/null
 done
-rm -f "$TS/.last_month" "$TS/security_patch.txt.bak" 2>/dev/null
-rm -f "$TS/rules.txt" "$SIM/rules.txt" "$TS/taa_sys.txt" 2>/dev/null
+# 我们写给 OhMyKeymint 的重启请求（`>` 出来的空文件，消费方读完自己删）：
+# 卸载后留着一个 pending 请求，下一次开机可能被当成"有人还要我重载"。
+rm -f "/data/adb/omk/restart."* 2>/dev/null
+
+# ---------- 明确不删的东西（归属不在本模块）----------
+# · target.txt / config.json / injector.toml / keybox.xml —— 后端的配置与密钥。
+#   卸载本模块不该改后端的状态，这些一直不碰。
+# · *.bak —— 我们覆盖后端文件之前留的回滚副本（keybox.xml.bak 可能是用户花钱买的
+#   上一份 keybox，injector.toml.bak 里可能带着 token）。旧版会顺手删掉
+#   injector.toml.bak 与 security_patch.txt.bak：那是把用户唯一的回滚件销毁，
+#   而它们本来就待在 0700 的目录里，留着比删掉安全。
+# · rules.txt —— 上一版本模块的"常驻列表"，用户可以手编；而同名文件对
+#   Tricky Addon 那类分支是**它自己的配置文件**。现在的模块既不读也不写 rules.txt，
+#   再按路径把它删掉，等于替别人的模块做决定。旧版在这里删过，收手。
+# · 反例：taa_sys.txt / .last_month 虽然不带 .kl_ 前缀，但那两个名字只有我们写过
+#   （已在上面的循环里收掉）；/data/adb/service.d/taa_resetprop.sh 同理。
 rm -f "/data/adb/service.d/taa_resetprop.sh" 2>/dev/null
 
 # ---------- 删除日志缓冲、伪装开关与 boot hash ----------
