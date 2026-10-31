@@ -1000,5 +1000,16 @@ chk 'profile-new：备份已生成' "$([ -f "$PNR/data/adb/teesim/config.json.ba
 chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new work 2>&1)"
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
+echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
+LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config restore-app restore-apps remove-apps sync doctor"
+for c in $LEFT; do
+  out=$($B "$c" 2>&1) ; rc=$?
+  if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
+    echo "  ok   $c 返回 2 且说明未迁移"
+  else
+    echo "  ✗    $c 期望返回 2 + 尚未迁移，实际 rc=$rc out=[$out]"; fail=1
+  fi
+done
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
