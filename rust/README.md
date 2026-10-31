@@ -1,11 +1,11 @@
-﻿# rust/ — 命令层 Rust 版（分阶段迁移中）
+# rust/ — 命令层 Rust 版（分阶段迁移中）
 
 ## 本地怎么跑
 
 Windows 上 cargo 默认走 MSVC，缺链接器时**编不出可执行文件**；用 WSL 的原生工具链：
 
 ```sh
-cd "/mnt/d/Github Repositories/TS-AUTO-ADD"
+cd /path/to/keylens   # 仓库根目录
 ~/.cargo/bin/cargo test  --manifest-path rust/Cargo.toml --release   # 单测
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release   # 产物
 sh rust/parity.sh                                                    # 与 shell 版逐字节对拍
