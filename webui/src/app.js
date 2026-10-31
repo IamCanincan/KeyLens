@@ -637,7 +637,11 @@ function reloadAll() {
   S.loaded = {};
   /* 数据要重取了，整页缓存全部作废（当前页会由 loadSub(force) 重建）。 */
   Object.keys(pageCache).forEach(function (k) { delete pageCache[k]; });
-  return ensure('base').then(function () { return checkContract(); }).then(function () {
+  /* 三条互不依赖的重取并行发（以前串行：真机上写后要 ~1.2s 才画得出新值）。
+     主题/安全区要等 env 到手，backend-info 必须先于二级页的画。 */
+  const baseP = ensure('base');
+  const contractP = checkContract();
+  return Promise.all([baseP, contractP]).then(function () {
     applyTheme();
     applyInsets();
     /* 名单增删也会改目标文件的条数（backend-info 报的 target_entries）；
