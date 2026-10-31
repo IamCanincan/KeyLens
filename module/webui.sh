@@ -29,6 +29,14 @@
 MODDIR="${0%/*}"
 PROP_FILE="$MODDIR/module.prop"
 
+# 权限：管理器 exec 出来的 shell 继承的 umask 可能是 000（实测生成过 666 的状态文件，
+#       见 lib/applist.sh 的注释），而这个命令层会把 **keybox 私钥**解码到临时文件
+#       （lib/write.sh:566 的 `> "$tmp"`）—— 默认 666 意味着从落盘到 chmod 之间那几百
+#       毫秒里，任何应用都能读到私钥。这里对齐 service.sh 的 umask 077。
+#       需要对外可读的那两处（图标 PNG、overrides.json）本来就各自显式 chmod 644，
+#       其余目标文件的属主/模式/上下文由 write_atomic_preserve 从原件恢复，不受影响。
+umask 077
+
 # PATH 覆盖三个框架自带的 busybox 与 resetprop 目录：
 # WebView 里 exec 出来的 shell 继承的是管理器的环境，不能假定 /system/bin 已在其中。
 export PATH="/system/bin:/system/xbin:/odm/bin:/vendor/bin:/product/bin:/data/adb/magisk:/data/adb/ksu/bin:/data/adb/ap/bin:$PATH"
@@ -1158,11 +1166,11 @@ cmd_icons() {
     cache="$dir/index.tsv"
     dbm=$(stat -c %Y "$db" 2>/dev/null)
     if [ -f "$cache" ] && [ -n "$dbm" ] && [ "$dbm" = "$(cat "$dir/.dbmtime" 2>/dev/null)" ]; then
-        hit=$(printf '%s\n' $want | awk -v c="$cache" '
+        hit=$(printf '%s\n' $want | ${AWK_CMD:-awk} -v c="$cache" '
             BEGIN { while ((getline l < c) > 0) { split(l, a, "\t"); m[a[1]] = l } }
             ($1 in m) { print m[$1] }')
         hitp=" $(printf '%s\n' "$hit" | cut -f1 | tr '\n' ' ') "
-        nop=" $(printf '%s\n' "$hit" | awk -F'\t' '$3 == "" { print $1 }' | tr '\n' ' ') "
+        nop=" $(printf '%s\n' "$hit" | ${AWK_CMD:-awk} -F'\t' '$3 == "" { print $1 }' | tr '\n' ' ') "
         ok=1
         for p in $want; do
             case "$hitp" in *" $p "*) ;; *) ok=0; break ;; esac
@@ -1211,7 +1219,7 @@ cmd_icons() {
     # 没有图标的也记一行（第三列为空），否则它们每次都会逼着重跑 app_process，
     # 白付一次 ART 启动。db 的 mtime 当失效判据：桌面缓存一更新，整份重来。
     if [ -n "$dbm" ]; then
-        printf '%s\n%s\n' "$rows" "$res2" | awk -F'\t' -v want="$want" '
+        printf '%s\n%s\n' "$rows" "$res2" | ${AWK_CMD:-awk} -F'\t' -v want="$want" '
             NF >= 2 && !seen[$1]++ { print; have[$1] = 1 }
             END { n = split(want, w, " "); for (i = 1; i <= n; i++)
                   if (w[i] != "" && !(w[i] in have)) print w[i] "\t\t" }

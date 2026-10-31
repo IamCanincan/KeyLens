@@ -162,7 +162,7 @@ add_target_apps() {
     # 不能再追加一条裸 pkg（Tricky 会变成同包两个模式，TEESim 会重复覆盖）。
     # 用 FILENAME 而不是 NR==FNR：cur 为空时，第二个文件的第一条记录会让
     # NR==FNR 仍为真，把新包名当成"已在名单"吞掉（实测：文件不存在时返回 1）。
-    awk -v backend="${KL_BACKEND:-tricky}" '
+    ${AWK_CMD:-awk} -v backend="${KL_BACKEND:-tricky}" '
         FILENAME == ARGV[1] {
             tok = $0; b = tok
             if (backend == "tricky") { if (b ~ /[?!]$/) b = substr(b, 1, length(b) - 1) }
@@ -413,7 +413,7 @@ write_atomic_preserve() {
         uid=$(stat -c %u "$target" 2>/dev/null)
         gid=$(stat -c %g "$target" 2>/dev/null)
         mode=$(stat -c %a "$target" 2>/dev/null)
-        ctx=$(ls -Zd "$target" 2>/dev/null | awk '{print $1}')
+        ctx=$(ls -Zd "$target" 2>/dev/null | ${AWK_CMD:-awk} '{print $1}')
         [ -n "$uid" ] && [ -n "$gid" ] && chown "$uid:$gid" "$new" 2>/dev/null
         [ -n "$mode" ] && chmod "$mode" "$new" 2>/dev/null
         if [ -n "$ctx" ] && command -v chcon >/dev/null 2>&1; then
@@ -469,7 +469,7 @@ omk_write_list() {
     uid=$(stat -c %u "$TARGET_FILE" 2>/dev/null)
     gid=$(stat -c %g "$TARGET_FILE" 2>/dev/null)
     mode=$(stat -c %a "$TARGET_FILE" 2>/dev/null)
-    ctx=$(ls -Zd "$TARGET_FILE" 2>/dev/null | awk '{print $1}')
+    ctx=$(ls -Zd "$TARGET_FILE" 2>/dev/null | ${AWK_CMD:-awk} '{print $1}')
 
     rm -f "$out" "$status" 2>/dev/null
     $AWK_CMD -v listfile="$list" -v statusfile="$status" -f "$KL_PATCH" "$TARGET_FILE" > "$out" 2>/dev/null

@@ -185,7 +185,7 @@ build_app_list() {
     # 配置解析不了时 cur 为空，这里会算出"删掉所有卸载过的"；但那样 teesim.awk
     # 也定位不到 apps 数组、写入直接返回 2，基线不会提交 —— 由写入器兜底，
     # 不在这里靠读取命令的退码猜。
-    awk -v adopt="$adopt" -v backend="${KL_BACKEND:-tricky}" '
+    ${AWK_CMD:-awk} -v adopt="$adopt" -v backend="${KL_BACKEND:-tricky}" '
         FILENAME == ARGV[1] { inst[$0] = 1; next }
         FILENAME == ARGV[2] {
             tok = $0; b = tok
@@ -263,7 +263,7 @@ excluded_apps() {
     entries_to_bases "$base/cur" | sort -u > "$base/curbase" 2>/dev/null
     sed '/^[[:space:]]*$/d' "$ST_EVER" > "$base/ever" 2>/dev/null || : > "$base/ever"
 
-    awk '
+    ${AWK_CMD:-awk} '
         FILENAME == ARGV[1] { cur[$0] = 1; next }
         FILENAME == ARGV[2] { ever[$0] = 1; next }
         {

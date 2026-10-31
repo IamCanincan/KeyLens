@@ -177,7 +177,7 @@ cmd_teesim_save() {
 
     # profile 是"改哪一份"，不是"改成什么" —— 先摘出来，别当未知字段拒掉。
     # 省略时仍是 default，所以旧界面发来的 payload 行为不变。
-    prof=$(awk -F"$TAB" '$1=="profile"{print $2; exit}' "$pairs")
+    prof=${AWK_CMD:-awk} -F"$TAB" '$1=="profile"{print $2; exit}' "$pairs")
     [ -n "$prof" ] || prof=default
     case "$prof" in
         *[!A-Za-z0-9._-]*|''|*/*) echo "profile 名字不合法：$prof" >&2; rm -rf "$dir"; return 1 ;;
@@ -424,7 +424,7 @@ cmd_tricky_save_patch() {
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
 
     # scope 是"改哪一段"：省略 = 全局；给包名 = 那个 [包名] 块（没有就新建）。
-    sc=$(awk -F"$TAB" '$1=="scope"{print $2; exit}' "$pairs")
+    sc=${AWK_CMD:-awk} -F"$TAB" '$1=="scope"{print $2; exit}' "$pairs")
     [ -n "$sc" ] || sc=global
     if [ "$sc" != "global" ]; then
         printf '%s' "$sc" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$' \
@@ -811,7 +811,7 @@ cmd_teesim_save_overrides() {
         ok)
             if cmp -s "$out" "$ov" 2>/dev/null; then
                 rm -f "$out" 2>/dev/null
-            elif commit_backend_file "$ov" "$out" "${KL_DIR}/overrides.json.bak"; then
+            elif commit_backend_file "$ov" "$out" "overrides.json.bak"; then
                 saved=1
                 # 上游的写入器就是 0644（overrides-io.js:34-39）：守护进程以 keystore
                 # 身份读这个文件，新建时留 0600 会直接读不到。私钥在 keybox.xml，不在这儿。

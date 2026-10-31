@@ -36,6 +36,34 @@ const REQUIRED = ['META-INF/com/google/android/update-binary', 'META-INF/com/goo
   'module.prop', 'customize.sh', 'service.sh', 'post-fs-data.sh', 'webui.sh', 'uninstall.sh', 'action.sh',
   'lib/common.sh', 'webroot/index.html'];
 
+/* 装机必需文件：除了这张手抄表，还要**从代码里推**出"运行时会 source 的库文件"。
+   2026-10-31 加：lib/write.sh（写命令的实现，按命令名懒加载）不在手抄表里，
+   而 --check 对着一个没有它的旧包照样报「装机必需文件齐」—— 一条比字符串的闸，
+   漏的恰好是"新加的那个文件"，这类清单永远会漏最新的那一项。 */
+function sourcedLibs() {
+  const out = new Set();
+  const entry = ['webui.sh', 'service.sh', 'post-fs-data.sh', 'customize.sh', 'action.sh', 'uninstall.sh'];
+  for (const f of entry) {
+    const p = path.join(repo, 'module', f);
+    if (!fs.existsSync(p)) continue;
+    const t = fs.readFileSync(p, 'utf8');
+    for (const m of t.matchAll(/\.\s+"?\$\{?(?:MODDIR|MODPATH)\}?\/lib\/([A-Za-z0-9_-]+)\.sh/g)) out.add('lib/' + m[1] + '.sh');
+    /* common.sh 里的加载清单：for _kl_part in core lock tools …; do . "$_kl_lib/$_kl_part.sh" */
+    for (const m of t.matchAll(/for\s+\w+\s+in\s+([^\n;]+);\s+do\s*\n?\s*\.\s+"?\$\w*\/\$_?\w*\.sh/g)) {
+      for (const one of m[1].trim().split(/\s+/)) if (one) out.add('lib/' + one + '.sh');
+    }
+  }
+  const common = path.join(repo, 'module', 'lib', 'common.sh');
+  if (fs.existsSync(common)) {
+    const t = fs.readFileSync(common, 'utf8');
+    for (const m of t.matchAll(/for\s+\w+\s+in\s+([^\n;]+);/g))
+      for (const one of m[1].trim().split(/\s+/)) if (one) out.add('lib/' + one + '.sh');
+  }
+  return [...out].sort();
+}
+const SOURCED = sourcedLibs();
+const MISSING_FROM_LIST = SOURCED.filter(s => !REQUIRED.includes(s));
+
 const execy = (rel) => /\.sh$|\.awk$|update-binary$|updater-script$/.test(rel) || rel.endsWith('/');
 function walk(dir, base, out) {
   for (const name of fs.readdirSync(dir).sort()) {
@@ -128,8 +156,11 @@ if (CHECK) {
   const bs = list.filter(e => e.name.includes('\\'));
   chk('没有反斜杠条目名（busybox unzip 会摊平目录树）', bs.length === 0, bs.slice(0, 3).map(e => e.name).join(' '));
   const names = new Set(list.map(e => e.name));
-  const miss = REQUIRED.filter(r => !names.has(r));
-  chk('装机必需文件齐', miss.length === 0, miss.join(' '));
+  const want = [...new Set([...REQUIRED, ...SOURCED])];
+  const miss = want.filter(r => !names.has(r));
+  chk('装机必需文件齐（手抄表 + 从代码推出的 source 清单）', miss.length === 0, miss.join(' '));
+  chk('代码里 source 的库文件都在必需表里（漏一项就会在这里现形）',
+    SOURCED.every(s => names.has(s)), '推出 ' + SOURCED.length + ' 项：' + SOURCED.join(' '));
   const noexec = list.filter(e => /\.sh$|\.awk$|update-binary$/.test(e.name) && !((e.mode & 0o111))).map(e => e.name);
   chk('脚本都带可执行位', noexec.length === 0, noexec.slice(0, 3).join(' '));
   chk('made-by 是 UNIX', list.every(e => e.madeby === 0x03), 'first=' + (list[0] || {}).madeby);
