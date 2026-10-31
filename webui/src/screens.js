@@ -1190,6 +1190,8 @@ function form(spec, fields, cmd, extra, note) {
   const acts = h('div', 'acts');
   const btn = button('保存', { variant: 'filled', icon: ICON.save });
   btn.addEventListener('click', function () {
+    /* 预览块还开着时再点保存是叠弹——确认或取消之前忽略后续点击 */
+    if (wrap.querySelector('.diffbox')) return;
     const payload = [];
     if (extra) extra.forEach(function (kv) { payload.push(kv[0] + '=' + b64(kv[1])); });
     ctrls.forEach(function (c) {
@@ -1715,9 +1717,14 @@ function b64ToText(s) {
   return new TextDecoder().decode(u);
 }
 
-/* 写操作：统一走契约闸门，成功后重读 */
+/* 写操作：统一走契约闸门，成功后重读。写进行中再点直接忽略——
+   模块锁虽然能串行化，但界面会叠 toast、还可能双写。 */
+let writeBusy = false;
 function write(cmd, arg, note) {
+  if (writeBusy) return Promise.resolve();
+  writeBusy = true;
   return call(cmd, arg).then(function (r) {
+    writeBusy = false;
     /* 命令层可以改口：写了 apply_note 就以它为准。OMK 的生效代价是算出来的
        （只动 [trust] 那四个补丁字段 = 整组热生效、不重启），
        界面这边写死一句"已保存"就会说错话。 */
@@ -1730,7 +1737,7 @@ function write(cmd, arg, note) {
       toast(failText(r) + (r.timeout ? '；正在重新读取当前状态' : ''), true);
       if (r.timeout) reload();
     }
-  }, function (e) { toast(String((e && e.message) || e), true); });
+  }, function (e) { writeBusy = false; toast(String((e && e.message) || e), true); });
 }
 let toastFn = function () {};
 export function onToast(fn) { toastFn = fn; }
