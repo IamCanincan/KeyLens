@@ -52,6 +52,7 @@ const LINE_OK_BY_FILE = {
   'tools/rename-keylens.cjs': [/.*/],
   'tests/legacy-migrate.sh': [/\.ts_|ts_auto|taa_|TAA_/],   // 迁移测试必须点名旧文件才能测
   'tests/uninstall-scope.sh': [/\.ts_|ts_auto|taa_|ts_installed|ts_rules/],   // 卸载覆盖面同理
+  'tests/kill-scope.sh': [/ts-auto-add|ts_auto/],   // 必须造一个"旧名进程"才能测收不收得掉
   'README.md': [/改名|旧名/],
   '.gitignore': [/.*/],
 };
