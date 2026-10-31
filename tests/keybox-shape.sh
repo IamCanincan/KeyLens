@@ -70,7 +70,7 @@ for b in tricky teesim omk; do expect_ok 'OMK 自带模板' "$F2" "$b"; done
 printf '  ok   （OMK 模板的 NumberOfKeyboxes=2 与实际 1 个 <Keybox> 不符，校验故意不看它）\n'
 
 printf '── 差异对照：同一份内容，两家结论必须不同 ──\n'
-# ① 只有 <Keybox> 根、没有 <AndroidAttestation>：TEESim 不看根元素名（attest.rs 用 roxmltree
+# ① 只有 <Keybox> 根、没有 <AndroidAttestation>：TEESim 不看根元素名（解析器
 #    直接找 <Key>），Tricky 在深度 1 就判死。共用判据必然在其中一家是错的。
 mutate "$D/rootbox.xml" "$F1" '</AndroidAttestation>' '</KeyboxRoot>' 1 || exit 1
 mutate "$D/rootbox2.xml" "$D/rootbox.xml" '<AndroidAttestation>' '<KeyboxRoot>' 1 || exit 1
