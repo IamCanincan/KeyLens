@@ -6,6 +6,7 @@
 
 mod b64;
 mod backend;
+mod payload;
 mod lock;
 mod read_cmds;
 
