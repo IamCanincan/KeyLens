@@ -237,6 +237,20 @@ Object.keys(draftUse).forEach(function (fn) {
 chk('同页重建前 capture、换页时作废、重建后还光标',
   app.includes('if (changed) clearEdits(); else captureEdits(prev);')
   && app.includes('restoreEditFocus(page)'), '');
+/* 读命令分派不会替命令探测后端：凡是要用 KL_DIR/TARGET_FILE 的读命令，
+   函数体里必须自己 detect_backend —— 漏了的表现是"命令成功、输出空行"，
+   demo 台架永远看不见（doctor 与 backups 都栽过）。 */
+const shFnBody = function (name) {
+  const i = sh.indexOf(name + '() {');
+  if (i < 0) return '';
+  const j = sh.indexOf('\n}', i);
+  return j < 0 ? '' : sh.slice(i, j);
+};
+chk('用到 KL_DIR 的读命令自己探测后端',
+  shFnBody('cmd_backups').indexOf('detect_backend') >= 0
+  && shFnBody('cmd_doctor').indexOf('detect_backend') >= 0,
+  'backups=' + (shFnBody('cmd_backups').indexOf('detect_backend') >= 0)
+  + ' doctor=' + (shFnBody('cmd_doctor').indexOf('detect_backend') >= 0));
 chk('备份卡：两段式确认、只认映射表里的名字、回滚走 write 闸门',
   screens.includes("section('备份与回滚'") && screens.includes("armed === name ? '再点确认' : '回滚'")
   && screens.includes("write('backup-restore', name") && screens.includes("setTimeout(function () { armed = ''; paint(); }, 4000)"), '');

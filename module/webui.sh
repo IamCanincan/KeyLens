@@ -1302,6 +1302,8 @@ unset _kl_c
 cmd_backups() {
     local f name tgt sz mt
 
+    detect_backend "$MODDIR"   # 读命令分派不会替它探测（与 backend-info / doctor 一致）
+
     for f in "$KL_DIR"/*.bak; do
         [ -f "$f" ] || continue
         name="${f##*/}"
