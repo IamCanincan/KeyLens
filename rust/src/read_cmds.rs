@@ -1,4 +1,21 @@
-//! 读命令：status / log / backups（与 shell 版逐字节一致）。
+//! 读命令与写命令实现。
+
+/// 与 shell 版一致：输出被下游关掉（EPIPE / Broken pipe）不算错误。
+/// Rust 默认忽略 SIGPIPE，println! 会 panic；统一走这个宏，写失败就放弃。
+macro_rules! println_ok {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stdout(), $($arg)*);
+    }};
+}
+
+/// stderr 版本（上游关掉 stderr 也一样不该崩）。
+macro_rules! eprintln_ok {
+    ($($arg:tt)*) => {{
+        use std::io::Write as _;
+        let _ = writeln!(std::io::stderr(), $($arg)*);
+    }};
+}
 
 use crate::backend::{self, Backend, BackendId, Paths, Root};
 use std::path::{Path, PathBuf};
@@ -84,7 +101,7 @@ pub fn backups() {
             .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
             .map(|d| d.as_secs())
             .unwrap_or(0);
-        println!("{}\t{}\t{}\t{}", name, md.len(), mt, tgt.display());
+        println_ok!("{}\t{}\t{}\t{}", name, md.len(), mt, tgt.display());
     }
 }
 
@@ -155,7 +172,7 @@ pub fn status() {
         BackendId::Omk => "OhMyKeymint",
         BackendId::Tricky => "Tricky Store",
     };
-    let kv = |k: &str, v: &str| println!("{}={}", k, v);
+    let kv = |k: &str, v: &str| println_ok!("{}={}", k, v);
     kv("state", state);
     kv("description", &desc);
     kv("mod_id", &mod_prop(&p.module_prop, "id"));
@@ -398,7 +415,7 @@ pub fn apps() {
     names.sort_unstable();
     names.dedup();
     for n in names {
-        println!("{}", n);
+        println_ok!("{}", n);
     }
 }
 
@@ -465,7 +482,7 @@ pub fn excluded() {
     res.sort();
     res.dedup();
     for r in res {
-        println!("{}", r);
+        println_ok!("{}", r);
     }
 }
 
@@ -496,9 +513,9 @@ pub fn boot_hash() {
     } else {
         "mismatch"
     };
-    println!("configured={}", raw);
-    println!("current={}", current);
-    println!("status={}", status);
+    println_ok!("configured={}", raw);
+    println_ok!("current={}", current);
+    println_ok!("status={}", status);
 }
 
 /// 期望值表（与 lib/props.sh 的 props_expect_pairs 单点对齐，由对拍守着）。
@@ -545,7 +562,7 @@ pub fn props() {
         } else {
             "diff"
         };
-        println!("{}\t{}\t{}\t{}", name, cur, expected, st);
+        println_ok!("{}\t{}\t{}\t{}", name, cur, expected, st);
     }
     for (name, needle, replacement) in PROPS_RULES {
         let cur = getprop(name);
@@ -556,7 +573,7 @@ pub fn props() {
         } else {
             "ok"
         };
-        println!("{}\t{}\t不含 {}（则改写为 {}）\t{}", name, cur, needle, replacement, st);
+        println_ok!("{}\t{}\t不含 {}（则改写为 {}）\t{}", name, cur, needle, replacement, st);
     }
 }
 
@@ -748,11 +765,11 @@ pub fn teesim_profiles() {
     let p = Paths::new(&root);
     let b = backend::detect(&p);
     if b.id != BackendId::Teesim {
-        eprintln!("当前后端不是 TEE Simulator");
+        eprintln_ok!("当前后端不是 TEE Simulator");
         std::process::exit(1);
     }
     if !p.teesim_config.is_file() {
-        eprintln!("配置不存在：{}", p.teesim_config.display());
+        eprintln_ok!("配置不存在：{}", p.teesim_config.display());
         std::process::exit(1);
     }
     let s = std::fs::read(&p.teesim_config).unwrap_or_default();
@@ -828,7 +845,7 @@ pub fn teesim_profiles() {
         let kb = obj_string(sub, "keybox");
         let mode = obj_string(sub, "mode");
         let apps = count_array(sub, "apps");
-        println!(
+        println_ok!(
             "{}\t{}\t{}\t{}\t{}",
             name,
             if kb.is_empty() { "-" } else { &kb },
@@ -858,7 +875,7 @@ pub fn teesim_overrides() {
     let p = Paths::new(&root);
     let b = backend::detect(&p);
     if b.id != BackendId::Teesim {
-        eprintln!("当前后端不是 TEE Simulator");
+        eprintln_ok!("当前后端不是 TEE Simulator");
         std::process::exit(1);
     }
     let ov = std::fs::read(p.teesim_dir.join("overrides.json")).unwrap_or_default();
@@ -889,7 +906,7 @@ pub fn teesim_overrides() {
         if (*f == "verifiedBootKey" || *f == "verifiedBootHash") && src != "synthesized" && src != "supplement" {
             ed = "0";
         }
-        println!("{}\t{}\t{}\t{}", f, if v.is_empty() { "-".to_string() } else { v }, ed, src);
+        println_ok!("{}\t{}\t{}\t{}", f, if v.is_empty() { "-".to_string() } else { v }, ed, src);
     }
 }
 
@@ -899,12 +916,12 @@ pub fn tricky_patches() {
     let p = Paths::new(&root);
     let b = backend::detect(&p);
     if b.id != BackendId::Tricky {
-        eprintln!("当前后端不是 Tricky Store");
+        eprintln_ok!("当前后端不是 Tricky Store");
         std::process::exit(1);
     }
     let f = p.tstore_dir.join("security_patch.txt");
     if !f.is_file() {
-        eprintln!("文件不存在：{}", f.display());
+        eprintln_ok!("文件不存在：{}", f.display());
         std::process::exit(1);
     }
     let rows = tricky_patches_rows(&std::fs::read_to_string(&f).unwrap_or_default());
@@ -912,7 +929,7 @@ pub fn tricky_patches() {
         std::process::exit(1);
     }
     for (s, a, b2, c) in rows {
-        println!("{}\t{}\t{}\t{}", s, a, b2, c);
+        println_ok!("{}\t{}\t{}\t{}", s, a, b2, c);
     }
 }
 
@@ -1030,25 +1047,25 @@ pub fn props_boot_hash(arg: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     if arg.is_empty() || arg == "-" {
         let _ = std::fs::remove_file(&p.boot_hash);
         if p.boot_hash.exists() {
-            eprintln!("清除失败：{}", p.boot_hash.display());
+            eprintln_ok!("清除失败：{}", p.boot_hash.display());
             std::process::exit(1);
         }
         log_line(&p, "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）");
         let cur = resetprop(&["ro.boot.vbmeta.digest"]);
-        println!("saved=0");
-        println!("applied=0");
-        println!("current={}", cur);
+        println_ok!("saved=0");
+        println_ok!("applied=0");
+        println_ok!("current={}", cur);
         return;
     }
     let v: String = arg.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
     if !boot_hash_valid(&v) {
-        eprintln!("哈希必须是 64 或 128 位十六进制");
+        eprintln_ok!("哈希必须是 64 或 128 位十六进制");
         std::process::exit(1);
     }
     let tmp = format!("{}.tmp.{}", p.boot_hash.display(), std::process::id());
@@ -1063,7 +1080,7 @@ pub fn props_boot_hash(arg: &str) {
     let ok = wrote && std::fs::rename(&tmp, &p.boot_hash).is_ok() && p.boot_hash.is_file();
     if !ok {
         let _ = std::fs::remove_file(&tmp);
-        eprintln!("写入失败：{}", p.boot_hash.display());
+        eprintln_ok!("写入失败：{}", p.boot_hash.display());
         std::process::exit(1);
     }
     // apply_boot_hash：写 digest（不同才写）、hash_alg 为空时按长度补，最后读回比对
@@ -1085,11 +1102,11 @@ pub fn props_boot_hash(arg: &str) {
         log_line(&p, &format!("🧩 WebUI 设置 Verified Boot 哈希（{} 位）并已应用", v.len()));
     } else {
         log_line(&p, "⚠️ WebUI 保存 Verified Boot 哈希，但写入后读回不一致");
-        println!("apply_note=已保存到配置，但立即应用失败（写入后读回不一致）；下次开机仍会再写一次");
+        println_ok!("apply_note=已保存到配置，但立即应用失败（写入后读回不一致）；下次开机仍会再写一次");
     }
-    println!("saved=1");
-    println!("applied={}", applied);
-    println!("current={}", now);
+    println_ok!("saved=1");
+    println_ok!("applied={}", applied);
+    println_ok!("current={}", now);
 }
 
 /// cmd_props_apply：按期望表写一次（缺/不符才写），复核后输出 applied / mismatch。
@@ -1097,15 +1114,15 @@ pub fn props_apply() {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     if std::process::Command::new("resetprop").arg("--version").output().is_err() {
-        eprintln!("未找到 resetprop 命令");
+        eprintln_ok!("未找到 resetprop 命令");
         std::process::exit(1);
     }
     if p.props_off.is_file() {
-        eprintln!("属性伪装已关闭，请先在界面上重新开启");
+        eprintln_ok!("属性伪装已关闭，请先在界面上重新开启");
         std::process::exit(1);
     }
     // apply_resetprop：缺或不同才写；特征值整体替换
@@ -1151,14 +1168,14 @@ pub fn props_apply() {
     let want = PROPS_PAIRS.len();
     let got = rows.len();
     if got < want {
-        eprintln!("写入后复核失败（重读退码 0，读到 {}/{} 行），不能报已生效", got, want);
-        println!("applied=0");
-        println!("mismatch=-1");
+        eprintln_ok!("写入后复核失败（重读退码 0，读到 {}/{} 行），不能报已生效", got, want);
+        println_ok!("applied=0");
+        println_ok!("mismatch=-1");
         std::process::exit(1);
     }
     let bad = rows.iter().filter(|(_, st)| st == "diff" || st == "missing").count();
-    println!("applied=1");
-    println!("mismatch={}", bad);
+    println_ok!("applied=1");
+    println_ok!("mismatch={}", bad);
 }
 
 /// apply_boot_hash 的非致命版本（失败只在调用方提示）。
@@ -1184,7 +1201,7 @@ pub fn props_switch(want: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if want != "on" && want != "off" {
-        eprintln!("参数只能是 on 或 off");
+        eprintln_ok!("参数只能是 on 或 off");
         std::process::exit(1);
     }
     let ok = if want == "off" {
@@ -1207,7 +1224,7 @@ pub fn props_switch(want: &str) {
         !p.props_off.exists()
     };
     if !ok {
-        eprintln!("开关文件写入失败：{}", p.props_off.display());
+        eprintln_ok!("开关文件写入失败：{}", p.props_off.display());
         std::process::exit(1);
     }
     log_line(
@@ -1218,7 +1235,7 @@ pub fn props_switch(want: &str) {
             "🛠 WebUI 开启属性伪装（下次开机起恢复写入）"
         },
     );
-    println!("props_masking={}", want);
+    println_ok!("props_masking={}", want);
 }
 
 /// tricky_patch_set.awk 的 drop 分支：删掉 `[scope]` 段（含段前注释与空行）。
@@ -1279,25 +1296,25 @@ pub fn tricky_drop_patch(scope: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Tricky {
-        eprintln!("当前后端不是 Tricky Store");
+        eprintln_ok!("当前后端不是 Tricky Store");
         std::process::exit(1);
     }
     if scope.is_empty() || scope == "global" {
-        eprintln!("只能删按包段（[包名]）；全局段是补丁表的主体，不能删");
+        eprintln_ok!("只能删按包段（[包名]）；全局段是补丁表的主体，不能删");
         std::process::exit(1);
     }
     if !valid_pkg(scope) {
-        eprintln!("scope 必须是合法包名：{}", scope);
+        eprintln_ok!("scope 必须是合法包名：{}", scope);
         std::process::exit(1);
     }
     let target = p.tstore_dir.join("security_patch.txt");
     if !target.is_file() {
-        eprintln!("补丁表不存在：{}", target.display());
+        eprintln_ok!("补丁表不存在：{}", target.display());
         std::process::exit(1);
     }
     let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
@@ -1305,7 +1322,7 @@ pub fn tricky_drop_patch(scope: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let old = std::fs::read_to_string(&target).unwrap_or_default();
@@ -1313,7 +1330,7 @@ pub fn tricky_drop_patch(scope: &str) {
     let rc = match status {
         "missing" => {
             crate::lock::release(&lockdir);
-            eprintln!("补丁表里没有 [{}] 这一段", scope);
+            eprintln_ok!("补丁表里没有 [{}] 这一段", scope);
             std::process::exit(1);
         }
         "ok" => {
@@ -1337,12 +1354,12 @@ pub fn tricky_drop_patch(scope: &str) {
     };
     crate::lock::release(&lockdir);
     if rc != 0 {
-        eprintln!("补丁表删除失败");
+        eprintln_ok!("补丁表删除失败");
         std::process::exit(1);
     }
     log_line(&p, &format!("🧩 WebUI 删除 Tricky 补丁段（scope={}）", scope));
-    println!("dropped=1");
-    println!("scope={}", scope);
+    println_ok!("dropped=1");
+    println_ok!("scope={}", scope);
 }
 
 /// valid_tricky_patch：与 webui.sh 同义（折小写后判定）。
@@ -1504,18 +1521,18 @@ pub fn tricky_save_patch(payload: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Tricky {
-        eprintln!("当前后端不是 Tricky Store");
+        eprintln_ok!("当前后端不是 Tricky Store");
         std::process::exit(1);
     }
     let mut fields = match crate::payload::parse(payload) {
         Ok(v) => v,
         Err(msg) => {
-            eprintln!("{}", msg);
+            eprintln_ok!("{}", msg);
             std::process::exit(1);
         }
     };
@@ -1527,18 +1544,18 @@ pub fn tricky_save_patch(payload: &str) {
         }
     }
     if scope != "global" && !valid_pkg(&scope) {
-        eprintln!("scope 必须是 global 或一个合法包名：{}", scope);
+        eprintln_ok!("scope 必须是 global 或一个合法包名：{}", scope);
         std::process::exit(1);
     }
     if fields.is_empty() {
-        eprintln!("没有可写字段");
+        eprintln_ok!("没有可写字段");
         std::process::exit(1);
     }
     for (k, v) in &fields {
         match k.as_str() {
             "patch_system" | "patch_vendor" | "patch_boot" | "patch_all" => {
                 if !valid_tricky_patch(v) {
-                    eprintln!(
+                    eprintln_ok!(
                         "补丁值不合法：{} = {}（接受 YYYY-MM-DD / YYYYMMDD / YYYYMM / no / device_default / prop / YYYY、MM、DD 占位）",
                         k, v
                     );
@@ -1546,7 +1563,7 @@ pub fn tricky_save_patch(payload: &str) {
                 }
             }
             other => {
-                eprintln!("未知字段：{}", other);
+                eprintln_ok!("未知字段：{}", other);
                 std::process::exit(1);
             }
         }
@@ -1555,7 +1572,7 @@ pub fn tricky_save_patch(payload: &str) {
     if !target.is_file() {
         let _ = std::fs::create_dir_all(&p.tstore_dir);
         if std::fs::File::create(&target).is_err() {
-            eprintln!("补丁表不存在且无法创建：{}", target.display());
+            eprintln_ok!("补丁表不存在且无法创建：{}", target.display());
             std::process::exit(1);
         }
     }
@@ -1564,7 +1581,7 @@ pub fn tricky_save_patch(payload: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let old = std::fs::read_to_string(&target).unwrap_or_default();
@@ -1584,7 +1601,7 @@ pub fn tricky_save_patch(payload: &str) {
                 if !ok {
                     let _ = std::fs::remove_file(&tmp);
                     crate::lock::release(&lockdir);
-                    eprintln!("写入失败：{}", target.display());
+                    eprintln_ok!("写入失败：{}", target.display());
                     std::process::exit(1);
                 }
                 saved = 1;
@@ -1593,7 +1610,7 @@ pub fn tricky_save_patch(payload: &str) {
         "same" => {}
         _ => {
             crate::lock::release(&lockdir);
-            eprintln!("补丁表写入失败");
+            eprintln_ok!("补丁表写入失败");
             std::process::exit(1);
         }
     }
@@ -1601,9 +1618,9 @@ pub fn tricky_save_patch(payload: &str) {
     if saved == 1 {
         log_line(&p, &format!("🧩 WebUI 更新 Tricky 补丁表（scope={}，{} 项）", scope, n));
     }
-    println!("saved={}", saved);
-    println!("fields={}", n);
-    println!("scope={}", scope);
+    println_ok!("saved={}", saved);
+    println_ok!("fields={}", n);
+    println_ok!("scope={}", scope);
 }
 
 /// cmd_set_mode：Tricky 条目模式改写（auto/leaf/generate），输出 changed。
@@ -1611,24 +1628,24 @@ pub fn set_mode(pkg: &str, mode: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Tricky {
-        eprintln!("只有 Tricky Store 后端支持条目模式");
+        eprintln_ok!("只有 Tricky Store 后端支持条目模式");
         std::process::exit(1);
     }
     if !is_pkg_token(pkg) {
-        eprintln!("不是合法的包名：{}", pkg);
+        eprintln_ok!("不是合法的包名：{}", pkg);
         std::process::exit(1);
     }
     if !matches!(mode, "auto" | "leaf" | "generate") {
-        eprintln!("模式只能是 auto / leaf / generate");
+        eprintln_ok!("模式只能是 auto / leaf / generate");
         std::process::exit(1);
     }
     if !b.target.is_file() {
-        eprintln!("写入失败：{}", b.target.display());
+        eprintln_ok!("写入失败：{}", b.target.display());
         std::process::exit(1);
     }
     let marks: Vec<String> = {
@@ -1642,7 +1659,7 @@ pub fn set_mode(pkg: &str, mode: &str) {
     };
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let text = std::fs::read_to_string(&b.target).unwrap_or_default();
@@ -1665,11 +1682,11 @@ pub fn set_mode(pkg: &str, mode: &str) {
     match rc {
         0 => {
             log_line(&p, &format!("🧩 WebUI 把 {} 的模式改为 {}", pkg, mode));
-            println!("changed=1");
+            println_ok!("changed=1");
         }
-        1 => println!("changed=0"),
+        1 => println_ok!("changed=0"),
         _ => {
-            eprintln!("写入失败：{}", b.target.display());
+            eprintln_ok!("写入失败：{}", b.target.display());
             std::process::exit(1);
         }
     }
@@ -1680,33 +1697,33 @@ pub fn omk_restart(which: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Omk {
-        eprintln!("当前后端不是 OhMyKeymint");
+        eprintln_ok!("当前后端不是 OhMyKeymint");
         std::process::exit(1);
     }
     if !matches!(which, "keymint" | "injector" | "all") {
-        eprintln!("只能触发 keymint / injector / all（收到：{}）", which);
+        eprintln_ok!("只能触发 keymint / injector / all（收到：{}）", which);
         std::process::exit(1);
     }
     if !p.omk_state_dir.is_dir() {
-        eprintln!("目录不存在：{}（OMK 没装？）", p.omk_state_dir.display());
+        eprintln_ok!("目录不存在：{}（OMK 没装？）", p.omk_state_dir.display());
         std::process::exit(1);
     }
     let f = p.omk_state_dir.join(format!("restart.{}", which));
     match std::fs::File::create(&f) {
         Ok(_) => {}
         Err(_) => {
-            eprintln!("写入失败：{}", f.display());
+            eprintln_ok!("写入失败：{}", f.display());
             std::process::exit(1);
         }
     }
     log_line(&p, &format!("🛠 WebUI 触发 OhMyKeymint 重载：{}", which));
-    println!("restarted={}", which);
-    println!("trigger={}", f.display());
+    println_ok!("restarted={}", which);
+    println_ok!("trigger={}", f.display());
 }
 
 /// cmd_clear_log：删日志缓冲与 .tmp，再写一条「已清空」记录，输出 cleared=1。
@@ -1726,7 +1743,7 @@ pub fn clear_log() {
     if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p.log) {
         let _ = f.write_all(line.as_bytes());
     }
-    println!("cleared=1");
+    println_ok!("cleared=1");
 }
 
 /// cmd_tee_status：读 Tricky 自己写的 tee_status（present/file + 四个已知键）。
@@ -1735,11 +1752,11 @@ pub fn tee_status() {
     let p = Paths::new(&root);
     let f = p.tstore_dir.join("tee_status");
     if !f.is_file() {
-        println!("present=0");
+        println_ok!("present=0");
         return;
     }
-    println!("present=1");
-    println!("file={}", f.display());
+    println_ok!("present=1");
+    println_ok!("file={}", f.display());
     let text = std::fs::read_to_string(&f).unwrap_or_default();
     for line in text.split('\n') {
         let line = line.trim_end_matches('\r');
@@ -1755,7 +1772,7 @@ pub fn tee_status() {
             "teeBroken" => "tee_broken",
             _ => continue,
         };
-        println!("{}={}", key, rest);
+        println_ok!("{}={}", key, rest);
     }
 }
 
@@ -1765,7 +1782,7 @@ pub fn target_meta() {
     let p = Paths::new(&root);
     let b = backend::detect(&p);
     if !b.target.is_file() {
-        eprintln!("目标文件不存在：{}", b.target.display());
+        eprintln_ok!("目标文件不存在：{}", b.target.display());
         std::process::exit(1);
     }
     let data = std::fs::read(&b.target).unwrap_or_default();
@@ -1801,7 +1818,7 @@ pub fn target_meta() {
             }
             BackendId::Omk => (tok.clone(), "plain", String::new()),
         };
-        println!("{}\t{}\t{}\t{}", tok, base, kind, detail);
+        println_ok!("{}\t{}\t{}\t{}", tok, base, kind, detail);
     }
 }
 pub fn targets() {
@@ -1809,7 +1826,7 @@ pub fn targets() {
     let p = Paths::new(&root);
     let b = backend::detect(&p);
     if !b.target.is_file() {
-        eprintln!("目标文件不存在：{}", b.target.display());
+        eprintln_ok!("目标文件不存在：{}", b.target.display());
         std::process::exit(1);
     }
     let data = std::fs::read(&b.target).unwrap_or_default();
@@ -1817,15 +1834,15 @@ pub fn targets() {
         BackendId::Tricky => {
             let text = String::from_utf8_lossy(&data);
             for t in tricky_tokens(&text) {
-                println!("{}", t);
+                println_ok!("{}", t);
             }
         }
         BackendId::Teesim => match teesim_apps(&data) {
-            Some(v) => v.iter().for_each(|s| println!("{}", s)),
+            Some(v) => v.iter().for_each(|s| println_ok!("{}", s)),
             None => std::process::exit(1),
         },
         BackendId::Omk => match omk_scoop(&data) {
-            Some(v) => v.iter().for_each(|s| println!("{}", s)),
+            Some(v) => v.iter().for_each(|s| println_ok!("{}", s)),
             None => std::process::exit(1),
         },
     }
@@ -1864,17 +1881,17 @@ pub fn teesim_save_overrides(payload: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Teesim {
-        eprintln!("当前后端不是 TEE Simulator");
+        eprintln_ok!("当前后端不是 TEE Simulator");
         std::process::exit(1);
     }
     let fields = match crate::payload::parse(payload) {
         Ok(v) => v,
-        Err(msg) => { eprintln!("{}", msg); std::process::exit(1); }
+        Err(msg) => { eprintln_ok!("{}", msg); std::process::exit(1); }
     };
     let ov = p.teesim_dir.join("overrides.json");
     let ha = p.teesim_dir.join("harvested.json");
@@ -1882,19 +1899,19 @@ pub fn teesim_save_overrides(payload: &str) {
         let bad = match k.as_str() {
             "attestationSecurityLevel" | "keymasterSecurityLevel" => {
                 if !crate::ov_valid::valid_ov_level(v) {
-                    eprintln!("{} 只能是 0(Software) / 1(TrustedEnvironment) / 2(StrongBox)，留空表示删掉这一项；收到的是「{}」", k, v);
+                    eprintln_ok!("{} 只能是 0(Software) / 1(TrustedEnvironment) / 2(StrongBox)，留空表示删掉这一项；收到的是「{}」", k, v);
                     true
                 } else { false }
             }
             "attestationVersion" | "keymasterVersion" => {
                 if !crate::ov_valid::valid_ov_version(v) {
-                    eprintln!("{} 只能是 1–100000 的整数，留空表示删掉这一项；收到的是「{}」", k, v);
+                    eprintln_ok!("{} 只能是 1–100000 的整数，留空表示删掉这一项；收到的是「{}」", k, v);
                     true
                 } else { false }
             }
             "verifiedBootKey" | "verifiedBootHash" => {
                 if !crate::ov_valid::valid_ov_hex(v) {
-                    eprintln!("{} 要 64 位十六进制（可带 0x 前缀）、不许全零，留空表示删掉这一项；收到的是「{}」", k, v);
+                    eprintln_ok!("{} 要 64 位十六进制（可带 0x 前缀）、不许全零，留空表示删掉这一项；收到的是「{}」", k, v);
                     true
                 } else if !v.is_empty() && ha.is_file() {
                     let ed = teesim_overrides_rows(&p).into_iter()
@@ -1902,13 +1919,13 @@ pub fn teesim_save_overrides(payload: &str) {
                         .map(|(_, _, ed, _)| ed)
                         .unwrap_or_default();
                     if !ed.is_empty() && ed != "1" {
-                        eprintln!("{} 现在不可改：harvested.json 判它的来源不是合成兜底值（上游规则，不是本模块的限制）", k);
+                        eprintln_ok!("{} 现在不可改：harvested.json 判它的来源不是合成兜底值（上游规则，不是本模块的限制）", k);
                         true
                     } else { false }
                 } else { false }
             }
             _ => {
-                eprintln!("overrides.json 里这个字段被上游锁死为 REQUIRED，写进去守护进程会直接丢弃：{}", k);
+                eprintln_ok!("overrides.json 里这个字段被上游锁死为 REQUIRED，写进去守护进程会直接丢弃：{}", k);
                 true
             }
         };
@@ -1916,7 +1933,7 @@ pub fn teesim_save_overrides(payload: &str) {
     }
     let n = fields.len();
     if n == 0 {
-        eprintln!("没有字段要保存");
+        eprintln_ok!("没有字段要保存");
         std::process::exit(1);
     }
     let src = if ov.is_file() {
@@ -1929,7 +1946,7 @@ pub fn teesim_save_overrides(payload: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let (new_text, status) = crate::json_flat::set(&src, &fields);
@@ -1945,7 +1962,7 @@ pub fn teesim_save_overrides(payload: &str) {
                 if !ok {
                     let _ = std::fs::remove_file(&tmp);
                     crate::lock::release(&lockdir);
-                    eprintln!("写入失败：{}", ov.display());
+                    eprintln_ok!("写入失败：{}", ov.display());
                     std::process::exit(1);
                 }
                 #[cfg(unix)]
@@ -1959,7 +1976,7 @@ pub fn teesim_save_overrides(payload: &str) {
         "same" => {}
         _ => {
             crate::lock::release(&lockdir);
-            eprintln!("overrides.json 定位失败（不是可写的扁平对象？）：{}", ov.display());
+            eprintln_ok!("overrides.json 定位失败（不是可写的扁平对象？）：{}", ov.display());
             std::process::exit(1);
         }
     }
@@ -1967,9 +1984,9 @@ pub fn teesim_save_overrides(payload: &str) {
     if saved == 1 {
         log_line(&p, &format!("🧩 WebUI 更新 TEESim overrides.json（{} 项，热生效无需重启）", n));
     }
-    println!("saved={}", saved);
-    println!("fields={}", n);
-    println!("apply_note={}", if saved == 1 { "已写入，TEESim 监听该文件自行热生效，不需要重启" } else { "内容与现有一致，未写入" });
+    println_ok!("saved={}", saved);
+    println_ok!("fields={}", n);
+    println_ok!("apply_note={}", if saved == 1 { "已写入，TEESim 监听该文件自行热生效，不需要重启" } else { "内容与现有一致，未写入" });
 }
 
 /// 当前后端的 keybox 路径（teesim 以 config 里的 default.keybox 为准）。
@@ -2015,30 +2032,30 @@ pub fn keybox_save(payload: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if payload.is_empty() {
-        eprintln!("keybox 内容为空");
+        eprintln_ok!("keybox 内容为空");
         std::process::exit(1);
     }
     if payload.len() > 180000 {
-        eprintln!("keybox 过大（上限约 128KB）");
+        eprintln_ok!("keybox 过大（上限约 128KB）");
         std::process::exit(1);
     }
     let data = match crate::b64::decode(payload) {
         Some(v) => v,
-        None => { eprintln!("keybox 解码失败"); std::process::exit(1); }
+        None => { eprintln_ok!("keybox 解码失败"); std::process::exit(1); }
     };
     let bytes = data.len();
     if !(64..=131072).contains(&bytes) {
-        eprintln!("keybox 大小不合法");
+        eprintln_ok!("keybox 大小不合法");
         std::process::exit(1);
     }
     let bname = match b.id { BackendId::Teesim => "TEE Simulator", BackendId::Omk => "OhMyKeymint", BackendId::Tricky => "Tricky Store" };
     if let Err(msg) = crate::keybox::check(&data, b.id.as_str()) {
-        eprintln!("keybox 结构不合格（{}）：{}", bname, msg);
+        eprintln_ok!("keybox 结构不合格（{}）：{}", bname, msg);
         std::process::exit(1);
     }
     let target = keybox_path_for(&p, b.id);
@@ -2047,7 +2064,7 @@ pub fn keybox_save(payload: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let bak = b.dir.join("keybox.xml.bak");
@@ -2065,17 +2082,17 @@ pub fn keybox_save(payload: &str) {
     }
     crate::lock::release(&lockdir);
     if !ok {
-        eprintln!("写入失败：{}", target.display());
+        eprintln_ok!("写入失败：{}", target.display());
         std::process::exit(1);
     }
     log_line(&p, &format!("🔑 WebUI 替换 keybox：{}（{} 字节）", target.display(), bytes));
     let sha = std::process::Command::new("sha256sum").arg(&target).output().ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string())
         .unwrap_or_default();
-    println!("saved=1");
-    println!("keybox_file={}", target.display());
-    println!("keybox_bytes={}", bytes);
-    println!("keybox_sha={}", sha);
+    println_ok!("saved=1");
+    println_ok!("keybox_file={}", target.display());
+    println_ok!("keybox_bytes={}", bytes);
+    println_ok!("keybox_sha={}", sha);
 }
 
 /// cmd_backup_restore：把 KL_DIR/<name> 还原回它对应的后端文件（保留属主与权限）。
@@ -2083,28 +2100,28 @@ pub fn backup_restore(name: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if name.is_empty() || name.contains('/') || name.contains("..") {
-        eprintln!("备份名不合法：{}", name);
+        eprintln_ok!("备份名不合法：{}", name);
         std::process::exit(1);
     }
     let src = b.dir.join(name);
     let Some(tgt) = backup_target(&b, &p, name) else {
-        eprintln!("当前后端没有这个备份：{}", name);
+        eprintln_ok!("当前后端没有这个备份：{}", name);
         std::process::exit(1);
     };
-    let Ok(md) = std::fs::metadata(&src) else { eprintln!("备份不存在或为空：{}", src.display()); std::process::exit(1) };
+    let Ok(md) = std::fs::metadata(&src) else { eprintln_ok!("备份不存在或为空：{}", src.display()); std::process::exit(1) };
     if md.len() == 0 {
-        eprintln!("备份不存在或为空：{}", src.display());
+        eprintln_ok!("备份不存在或为空：{}", src.display());
         std::process::exit(1);
     }
     if name == "keybox.xml.bak" {
         let data = std::fs::read(&src).unwrap_or_default();
         if let Err(msg) = crate::keybox::check(&data, b.id.as_str()) {
-            eprintln!("这份 keybox 备份结构不合格：{}", msg);
+            eprintln_ok!("这份 keybox 备份结构不合格：{}", msg);
             std::process::exit(1);
         }
     }
@@ -2113,7 +2130,7 @@ pub fn backup_restore(name: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     // 记下目标文件原有的属主/权限，写完还原
@@ -2153,13 +2170,13 @@ pub fn backup_restore(name: &str) {
     }
     crate::lock::release(&lockdir);
     if !moved {
-        eprintln!("回滚失败：{} 没被改动", tgt.display());
+        eprintln_ok!("回滚失败：{} 没被改动", tgt.display());
         std::process::exit(1);
     }
     let base = tgt.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
     log_line(&p, &format!("♻️ WebUI 用备份还原了 {}（来源 {}）", base, name));
-    println!("restored=1");
-    println!("name={}", name);
+    println_ok!("restored=1");
+    println_ok!("name={}", name);
 }
 
 /// 从对象里删掉一个成员（含逗号与行内残留空白），返回新文本。
@@ -2194,24 +2211,24 @@ pub fn teesim_profile_del(name: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Teesim {
-        eprintln!("当前后端不是 TEE Simulator");
+        eprintln_ok!("当前后端不是 TEE Simulator");
         std::process::exit(1);
     }
     if !p.teesim_config.is_file() {
-        eprintln!("配置不存在：{}", p.teesim_config.display());
+        eprintln_ok!("配置不存在：{}", p.teesim_config.display());
         std::process::exit(1);
     }
     if name.is_empty() || name == "default" {
-        eprintln!("default 是兜底 profile，不能删");
+        eprintln_ok!("default 是兜底 profile，不能删");
         std::process::exit(1);
     }
     if name.is_empty() || !name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
-        eprintln!("名字只能用字母、数字、. _ -：{}", name);
+        eprintln_ok!("名字只能用字母、数字、. _ -：{}", name);
         std::process::exit(1);
     }
     let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
@@ -2219,7 +2236,7 @@ pub fn teesim_profile_del(name: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let old = std::fs::read(&p.teesim_config).unwrap_or_default();
@@ -2235,12 +2252,12 @@ pub fn teesim_profile_del(name: &str) {
     })();
     let Some((ob, oc)) = found else {
         crate::lock::release(&lockdir);
-        eprintln!("删除 profile 失败");
+        eprintln_ok!("删除 profile 失败");
         std::process::exit(1);
     };
     let Some(hit) = member_span(&old, ob, oc, name) else {
         crate::lock::release(&lockdir);
-        eprintln!("没有这个 profile：{}", name);
+        eprintln_ok!("没有这个 profile：{}", name);
         std::process::exit(1);
     };
     let new_bytes = delete_member(&old, ob, oc, &hit);
@@ -2252,7 +2269,7 @@ pub fn teesim_profile_del(name: &str) {
     if !ok {
         let _ = std::fs::remove_file(&tmp);
         crate::lock::release(&lockdir);
-        eprintln!("写入失败：{}", p.teesim_config.display());
+        eprintln_ok!("写入失败：{}", p.teesim_config.display());
         std::process::exit(1);
     }
     if let Some(m) = mode {
@@ -2260,8 +2277,8 @@ pub fn teesim_profile_del(name: &str) {
     }
     crate::lock::release(&lockdir);
     log_line(&p, &format!("🧰 WebUI 删除 TEESim profile（{}）", name));
-    println!("removed=1");
-    println!("profile={}", name);
+    println_ok!("removed=1");
+    println_ok!("profile={}", name);
 }
 
 /// 在对象里找深度 1 的成员（值可能是嵌套对象/数组，用配对跳过）。
@@ -2323,24 +2340,24 @@ pub fn teesim_profile_new(name: &str) {
     let root = Root::from_env();
     let p = Paths::new(&root);
     if backends_conflict(&p) {
-        eprintln!("{}", CONFLICT_MSG);
+        eprintln_ok!("{}", CONFLICT_MSG);
         std::process::exit(1);
     }
     let b = backend::detect(&p);
     if b.id != BackendId::Teesim {
-        eprintln!("当前后端不是 TEE Simulator");
+        eprintln_ok!("当前后端不是 TEE Simulator");
         std::process::exit(1);
     }
     if !p.teesim_config.is_file() {
-        eprintln!("配置不存在：{}", p.teesim_config.display());
+        eprintln_ok!("配置不存在：{}", p.teesim_config.display());
         std::process::exit(1);
     }
     if name.is_empty() || name == "default" {
-        eprintln!("名字不能为空，也不能叫 default");
+        eprintln_ok!("名字不能为空，也不能叫 default");
         std::process::exit(1);
     }
     if !name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
-        eprintln!("名字只能用字母、数字、. _ -：{}", name);
+        eprintln_ok!("名字只能用字母、数字、. _ -：{}", name);
         std::process::exit(1);
     }
     let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
@@ -2348,7 +2365,7 @@ pub fn teesim_profile_new(name: &str) {
     })];
     let lockdir = b.dir.join(".kl_lock");
     if !crate::lock::acquire(&lockdir, 6, &marks) {
-        eprintln!("守护进程正在写入，请几秒后再试");
+        eprintln_ok!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
     let old = std::fs::read(&p.teesim_config).unwrap_or_default();
@@ -2364,17 +2381,17 @@ pub fn teesim_profile_new(name: &str) {
     })();
     let Some((ob, oc)) = found else {
         crate::lock::release(&lockdir);
-        eprintln!("新建 profile 失败（配置里找不到 profiles.default？）");
+        eprintln_ok!("新建 profile 失败（配置里找不到 profiles.default？）");
         std::process::exit(1);
     };
     if member_span(&old, ob, oc, name).is_some() {
         crate::lock::release(&lockdir);
-        eprintln!("profile 已存在：{}", name);
+        eprintln_ok!("profile 已存在：{}", name);
         std::process::exit(1);
     }
     let Some(d) = member_span(&old, ob, oc, "default") else {
         crate::lock::release(&lockdir);
-        eprintln!("新建 profile 失败（配置里找不到 profiles.default？）");
+        eprintln_ok!("新建 profile 失败（配置里找不到 profiles.default？）");
         std::process::exit(1);
     };
     let dobj = &old[d.ks..=d.ke];
@@ -2414,12 +2431,12 @@ pub fn teesim_profile_new(name: &str) {
     if !ok {
         let _ = std::fs::remove_file(&tmp);
         crate::lock::release(&lockdir);
-        eprintln!("写入失败：{}", p.teesim_config.display());
+        eprintln_ok!("写入失败：{}", p.teesim_config.display());
         std::process::exit(1);
     }
     if let Some(m) = mode { let _ = std::fs::set_permissions(&p.teesim_config, m); }
     crate::lock::release(&lockdir);
     log_line(&p, &format!("🧰 WebUI 新建 TEESim profile（{}，复制自 default）", name));
-    println!("created=1");
-    println!("profile={}", name);
+    println_ok!("created=1");
+    println_ok!("profile={}", name);
 }
