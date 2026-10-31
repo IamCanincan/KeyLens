@@ -1345,6 +1345,267 @@ pub fn tricky_drop_patch(scope: &str) {
     println!("scope={}", scope);
 }
 
+/// valid_tricky_patch：与 webui.sh 同义（折小写后判定）。
+pub fn valid_tricky_patch(v: &str) -> bool {
+    let s = v.to_ascii_lowercase();
+    if matches!(s.as_str(), "no" | "device_default" | "prop") {
+        return true;
+    }
+    if matches!(s.as_str(), "yyyy" | "mm" | "dd") {
+        return false;
+    }
+    let digits = |x: &str| !x.is_empty() && x.bytes().all(|b| b.is_ascii_digit());
+    if (s.len() == 6 || s.len() == 8) && digits(&s) {
+        return true;
+    }
+    let p: Vec<&str> = s.split('-').collect();
+    let year_ok = |y: &str| y == "yyyy" || (y.len() == 4 && digits(y));
+    let month_ok = |m: &str| m == "mm" || (m.len() == 2 && digits(m) && matches!(m.parse::<u32>(), Ok(1..=12)));
+    let day_ok = |d: &str| {
+        d == "dd" || (d.len() == 2 && digits(d) && d.as_bytes()[0].is_ascii_digit() && d.as_bytes()[0] <= b'3')
+    };
+    match p.len() {
+        2 => year_ok(p[0]) && month_ok(p[1]),
+        3 => year_ok(p[0]) && month_ok(p[1]) && day_ok(p[2]),
+        _ => false,
+    }
+}
+
+/// tricky_patch_set.awk 的写入分支：改已有键、缺键插到段末、裸值转 `all =`、新段建在文件尾。
+fn tricky_patch_set_rewrite(text: &str, scope: &str, pairs: &[(String, String)]) -> (String, &'static str) {
+    let mut lines: Vec<String> = {
+        let mut v: Vec<String> = text.split('\n').map(|s| s.trim_end_matches('\r').to_string()).collect();
+        if text.ends_with('\n') {
+            v.pop();
+        }
+        v
+    };
+    let nl = lines.len();
+    let is_blank = |s: &str| s.chars().all(|c| c == ' ' || c == '\t');
+    let mut secl: Vec<usize> = Vec::new();
+    let mut secn: Vec<String> = Vec::new();
+    for (i, line) in lines.iter().enumerate() {
+        let t = line.trim_matches([' ', '\t']);
+        if t.starts_with('[') && t.ends_with(']') && t.len() >= 3 {
+            let name = &t[1..t.len() - 1];
+            if !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || b == b'_' || b == b'.' || b == b'-') {
+                secl.push(i + 1);
+                secn.push(name.to_string());
+            }
+        }
+    }
+    let want = if scope.is_empty() { "global" } else { scope };
+    let (lo, hi, newblk): (usize, usize, Option<String>) = if want == "global" {
+        (1, if secl.is_empty() { nl + 1 } else { secl[0] }, None)
+    } else if let Some(idx) = secn.iter().position(|s| s == want) {
+        (secl[idx] + 1, if idx + 1 < secl.len() { secl[idx + 1] } else { nl + 1 }, None)
+    } else {
+        (nl + 1, nl + 1, Some(want.to_string()))
+    };
+    // 段内：键行与裸值行
+    let mut keyline: std::collections::HashMap<String, usize> = std::collections::HashMap::new();
+    let mut bare: Option<usize> = None;
+    let mut i = lo;
+    while i < hi {
+        let line = &lines[i - 1];
+        let body = match line.find('#') { Some(h) => &line[..h], None => line.as_str() };
+        let b = body.trim_matches([' ', '\t']).to_string();
+        if !b.is_empty() && !b.starts_with('[') {
+            match b.find('=') {
+                Some(e) => {
+                    let k = b[..e].trim_matches([' ', '\t']).to_string();
+                    if matches!(k.as_str(), "system" | "vendor" | "boot" | "all") {
+                        keyline.insert(k, i);
+                    }
+                }
+                None => bare = Some(i),
+            }
+        }
+        i += 1;
+    }
+    // 裸值 + 要混写键：先转成 `all = 旧值`，保住其它分量的语义
+    if let (Some(bi), true) = (bare, !pairs.is_empty()) {
+        let line = lines[bi - 1].clone();
+        let (body, tail) = match line.find('#') {
+            Some(h) => (line[..h].to_string(), line[h..].to_string()),
+            None => (line.clone(), String::new()),
+        };
+        let old = body.trim_matches([' ', '\t']);
+        lines[bi - 1] = format!("all = {}{}", old, if tail.is_empty() { String::new() } else { format!(" {}", tail) });
+        keyline.insert("all".to_string(), bi);
+    }
+    let mut changed = false;
+    let mut miss: Vec<&(String, String)> = Vec::new();
+    for pair in pairs {
+        let k = match pair.0.as_str() {
+            "patch_system" => "system",
+            "patch_vendor" => "vendor",
+            "patch_boot" => "boot",
+            "patch_all" => "all",
+            _ => continue,
+        };
+        if let Some(&li) = keyline.get(k) {
+            let line = lines[li - 1].clone();
+            let (body, tail) = match line.find('#') {
+                Some(h) => (line[..h].to_string(), line[h..].to_string()),
+                None => (line.clone(), String::new()),
+            };
+            let ind: String = body.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+            let want_line = format!("{} = {}", k, pair.1);
+            if body.trim_matches([' ', '\t']) != want_line {
+                lines[li - 1] = format!(
+                    "{}{}{}",
+                    ind,
+                    want_line,
+                    if tail.is_empty() { String::new() } else { format!(" {}", tail) }
+                );
+                changed = true;
+            }
+        } else {
+            miss.push(pair);
+        }
+    }
+    let mut ins = String::new();
+    for pair in &miss {
+        let k = match pair.0.as_str() {
+            "patch_system" => "system",
+            "patch_vendor" => "vendor",
+            "patch_boot" => "boot",
+            "patch_all" => "all",
+            _ => continue,
+        };
+        ins.push_str(&format!("{} = {}\n", k, pair.1));
+        changed = true;
+    }
+    if let Some(nb) = &newblk {
+        if !ins.is_empty() {
+            ins = format!("[{}]\n{}", nb, ins);
+        }
+    }
+    if ins.is_empty() && !changed && nl > 0 {
+        return (text.to_string(), "same");
+    }
+    let mut out = String::new();
+    for (idx, line) in lines.iter().enumerate() {
+        if idx + 1 == hi && !ins.is_empty() {
+            out.push_str(&ins);
+        }
+        out.push_str(line);
+        out.push('\n');
+    }
+    if hi == nl + 1 && !ins.is_empty() {
+        out.push_str(&ins);
+    }
+    (out, "ok")
+}
+
+/// cmd_tricky_save_patch：改 security_patch.txt 的全局段或 [scope] 段。
+pub fn tricky_save_patch(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Tricky {
+        eprintln!("当前后端不是 Tricky Store");
+        std::process::exit(1);
+    }
+    let mut fields = match crate::payload::parse(payload) {
+        Ok(v) => v,
+        Err(msg) => {
+            eprintln!("{}", msg);
+            std::process::exit(1);
+        }
+    };
+    let mut scope = "global".to_string();
+    if let Some(pos) = fields.iter().position(|(k, _)| k == "scope") {
+        let (_, v) = fields.remove(pos);
+        if !v.is_empty() {
+            scope = v;
+        }
+    }
+    if scope != "global" && !valid_pkg(&scope) {
+        eprintln!("scope 必须是 global 或一个合法包名：{}", scope);
+        std::process::exit(1);
+    }
+    if fields.is_empty() {
+        eprintln!("没有可写字段");
+        std::process::exit(1);
+    }
+    for (k, v) in &fields {
+        match k.as_str() {
+            "patch_system" | "patch_vendor" | "patch_boot" | "patch_all" => {
+                if !valid_tricky_patch(v) {
+                    eprintln!(
+                        "补丁值不合法：{} = {}（接受 YYYY-MM-DD / YYYYMMDD / YYYYMM / no / device_default / prop / YYYY、MM、DD 占位）",
+                        k, v
+                    );
+                    std::process::exit(1);
+                }
+            }
+            other => {
+                eprintln!("未知字段：{}", other);
+                std::process::exit(1);
+            }
+        }
+    }
+    let target = p.tstore_dir.join("security_patch.txt");
+    if !target.is_file() {
+        let _ = std::fs::create_dir_all(&p.tstore_dir);
+        if std::fs::File::create(&target).is_err() {
+            eprintln!("补丁表不存在且无法创建：{}", target.display());
+            std::process::exit(1);
+        }
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read_to_string(&target).unwrap_or_default();
+    let (new_text, status) = tricky_patch_set_rewrite(&old, &scope, &fields);
+    let n = fields.len();
+    let mut saved = 0;
+    match status {
+        "ok" => {
+            if new_text == old {
+                // 内容没变：不写、不备份（与 shell 的 cmp -s 分支一致）
+            } else {
+                let bak = b.dir.join("security_patch.txt.bak");
+                let _ = std::fs::copy(&target, &bak);
+                let tmp = b.dir.join(format!(".kl_save.{}", std::process::id()));
+                let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+                    && std::fs::rename(&tmp, &target).is_ok();
+                if !ok {
+                    let _ = std::fs::remove_file(&tmp);
+                    crate::lock::release(&lockdir);
+                    eprintln!("写入失败：{}", target.display());
+                    std::process::exit(1);
+                }
+                saved = 1;
+            }
+        }
+        "same" => {}
+        _ => {
+            crate::lock::release(&lockdir);
+            eprintln!("补丁表写入失败");
+            std::process::exit(1);
+        }
+    }
+    crate::lock::release(&lockdir);
+    if saved == 1 {
+        log_line(&p, &format!("🧩 WebUI 更新 Tricky 补丁表（scope={}，{} 项）", scope, n));
+    }
+    println!("saved={}", saved);
+    println!("fields={}", n);
+    println!("scope={}", scope);
+}
+
 /// cmd_set_mode：Tricky 条目模式改写（auto/leaf/generate），输出 changed。
 pub fn set_mode(pkg: &str, mode: &str) {
     let root = Root::from_env();

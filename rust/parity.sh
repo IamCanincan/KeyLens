@@ -715,5 +715,55 @@ chk 'drop-patch：备份已生成' "$([ -f "$DPR/data/adb/tricky_store/security_
 chk 'drop-patch：段不存在' "$(sh "$T/dp.sh" com.nothere 2>&1)" "$(KEYLENS_ROOT="$DPR" "$B" tricky-drop-patch com.nothere 2>&1)"
 chk 'drop-patch：拒绝全局段' "$(sh "$T/dp.sh" global 2>&1)" "$(KEYLENS_ROOT="$DPR" "$B" tricky-drop-patch global 2>&1)"
 
+echo "── tricky-save-patch（payload 写入）──"
+mk_save_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
+    echo 'commit_backend_file() { cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/sv.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/sv.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/sv.sh"
+  sed -n '/^valid_tricky_patch() {/,/^}/p' module/webui.sh >> "$T/sv.sh"
+  sed -n '/^parse_payload() {/,/^}/p' module/webui.sh >> "$T/sv.sh"
+  sed -n '/^cmd_tricky_save_patch() {/,/^}/p' module/lib/write.sh >> "$T/sv.sh"
+  echo 'detect_backend "$MODDIR"; cmd_tricky_save_patch "$1"' >> "$T/sv.sh"
+}
+SP="$T/sv-root"
+mk_sp_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf '2026-10-05\nsystem=2026-10-01\n\n[com.example.a]\nsystem=2026-09-01\n' > "$1/data/adb/tricky_store/security_patch.txt"
+}
+SPS="$SP-s"; SPR="$SP-r"
+mk_sp_fixture "$SPS"; mk_sp_fixture "$SPR"
+mk_save_harness "$SPS"
+# payload: patch_system -> 2026-10-07, patch_boot -> no
+PL=$(printf 'patch_system=%s\npatch_boot=%s' "$(printf '2026-10-07' | base64)" "$(printf 'no' | base64)" | base64 | tr -d '\n')
+chk 'save-patch：写入输出' "$(sh "$T/sv.sh" "$PL" 2>&1)" "$(KEYLENS_ROOT="$SPR" "$B" tricky-save-patch "$PL" 2>&1)"
+chk 'save-patch：两侧结果逐字节一致' "$(cat "$SPS/data/adb/tricky_store/security_patch.txt")" "$(cat "$SPR/data/adb/tricky_store/security_patch.txt")"
+chk 'save-patch：备份已生成' "$([ -f "$SPR/data/adb/tricky_store/security_patch.txt.bak" ] && echo yes)" "yes"
+BAD=$(printf 'patch_system=%s' "$(printf '2026-13-01' | base64)" | base64 | tr -d '\n')
+chk 'save-patch：非法补丁值' "$(sh "$T/sv.sh" "$BAD" 2>&1)" "$(KEYLENS_ROOT="$SPR" "$B" tricky-save-patch "$BAD" 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
