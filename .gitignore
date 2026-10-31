@@ -35,3 +35,6 @@ webui/dist/
 
 # 杩愯鏃剁敱 webui.sh icons 鍐欒繘 webroot/icons/锛堜笉鏄簮鐮侊紱璁惧涓婃墠鏈夛級
 module/webroot/icons/
+
+# Rust 构建产物（产物不入库，构建在 CI）
+rust/target/
