@@ -44,6 +44,7 @@ pub struct Paths {
     pub teesim_module: PathBuf,
     pub omk_module: PathBuf,
     pub log: PathBuf,
+    pub module_prop: PathBuf,
     pub props_off: PathBuf,
     pub boot_hash: PathBuf,
 }
@@ -61,6 +62,7 @@ impl Paths {
             teesim_module: root.join("/data/adb/modules/teesim"),
             omk_module: root.join("/data/adb/modules/oh_my_keymint"),
             log: root.join("/data/adb/keylens.log"),
+            module_prop: root.join("/data/adb/modules/keylens/module.prop"),
             props_off: root.join("/data/adb/keylens.props_off"),
             boot_hash: root.join("/data/adb/keylens.boot_hash"),
         }

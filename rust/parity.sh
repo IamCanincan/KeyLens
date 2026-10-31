@@ -98,5 +98,60 @@ mkdir -p "$R3/data/adb/modules/teesim" "$R3/data/adb/teesim"
 mk_harness "$R3"
 chk 'teesim 无备份：空输出' "$(sh "$T/harness.sh")" "$(KEYLENS_ROOT="$R3" "$B" backups)"
 
+echo "── status（探测 + 文件/进程/日志计数）──"
+mk_status_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/props.sh'
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "KL_LOG='$1/data/adb/keylens.log'"
+    echo "KL_PROPS_OFF='$1/data/adb/keylens.props_off'"
+    echo "MODDIR='$PWD/module'"
+    echo "PROP_FILE='$1/data/adb/modules/keylens/module.prop'"
+    echo 'MODULE_PROP_CACHE=""'
+  } > "$T/h2.sh"
+  sed -n '/^mod_prop() {/,/^}/p' module/webui.sh >> "$T/h2.sh"
+  sed -n '/^backend_state() {/,/^}/p' module/webui.sh >> "$T/h2.sh"
+  sed -n '/^cmd_status() {/,/^}/p' module/webui.sh >> "$T/h2.sh"
+  sed -n '/^backend_keybox_path() {/,/^}/p' module/webui.sh >> "$T/h2.sh"
+  cat >> "$T/h2.sh" <<'EOF'
+kv() { printf '%s=%s\n' "$1" "$2"; }
+detect_backend "$MODDIR"
+cmd_status
+EOF
+}
+S="$T/sroot"
+mkdir -p "$S/data/adb/modules/oh_my_keymint" "$S/data/adb/modules/keylens" \
+         "$S/data/misc/keystore/omk" "$S/data/adb/omk"
+printf 'id=keylens\nversion=v3.0.1\ndescription=✅ [OhMyKeymint | 应用: 3]\n' > "$S/data/adb/modules/keylens/module.prop"
+printf 'scoop = ["a"]\n' > "$S/data/misc/keystore/omk/injector.toml"
+printf 'a\nb\n' > "$S/data/adb/keylens.log"
+sleep 300 & SPID=$!
+trap 'kill $SPID 2>/dev/null; rm -rf "$T"' EXIT
+printf '%s\n' "$SPID" > "$S/data/adb/omk/.kl_daemon_pids.list"
+mk_status_harness "$S"
+chk 'status：omk 正常态' "$(sh "$T/h2.sh")" "$(KEYLENS_ROOT="$S" "$B" status)"
+
+# 冲突 + 关闭属性伪装 + 目标文件缺失
+S2="$T/sroot2"
+mkdir -p "$S2/data/adb/modules/teesim" "$S2/data/adb/modules/tricky_store" \
+         "$S2/data/adb/modules/oh_my_keymint" "$S2/data/adb/modules/keylens" "$S2/data/adb/omk"
+printf 'id=keylens\nversion=v3.0.1\ndescription=⛔ 同时启用了多个后端\n' > "$S2/data/adb/modules/keylens/module.prop"
+: > "$S2/data/adb/keylens.props_off"
+mk_status_harness "$S2"
+chk 'status：冲突/stopped/关闭伪装/目标缺失' "$(sh "$T/h2.sh")" "$(KEYLENS_ROOT="$S2" "$B" status)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
