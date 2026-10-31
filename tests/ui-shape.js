@@ -441,6 +441,14 @@ chk('目标名单用轻量行一次画全（不建 md-list-item、不分批）',
   && /\.app-row-sub\{[^}]*font-family:var\(--kl-mono\)/.test(css)
   && /app-row-act-ic/.test(screens) && /app-row-mode/.test(screens)
   && !/listToken/.test(screens) && !/CHUNK/.test(screens));
+/* 搜索输入绝不能整页重画：输入框会被换掉，打第二个字就丢焦点；
+   查询词也要在重画/再进入后留在框里。 */
+chk('名单搜索只重画行，不整页重建（保焦点/保查询）',
+  /tf\.value = S\.search \|\| ''/.test(screens)
+  && /clearTimeout\(searchTimer\)/.test(screens)
+  && /if \(tf\.isConnected\) paintRows\(\);/.test(screens)
+  && /function paintRows\(\)/.test(screens)
+  && !/S\.search = String\(tf\.value \|\| ''\); redraw\(\);/.test(screens));
 chk('行面的底色与圆角用 !important 压过组件行内样式',
   /\.item\{background:var\(--md-sys-color-surface-container\)!important;border-radius:inherit!important\}/.test(screens));
 chk('行内文字、图标、行尾都在行中轴（钉到 50%）',

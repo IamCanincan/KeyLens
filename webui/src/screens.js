@@ -708,24 +708,29 @@ function listSection() {
     seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; redraw(); }));
   });
   s.appendChild(seg);
-  const src = listSource();
-  const q = (S.search || '').toLowerCase();
-  const shown = q ? src.filter(function (t) {
-    return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
-      || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
-  }) : src;
   const tf = h('md-text-field');
   tf.setAttribute('variant', 'filled');
   tf.setAttribute('single-line', '');
   tf.setAttribute('label', '搜索包名或应用名');
-  tf.addEventListener('input', function () { S.search = String(tf.value || ''); redraw(); });
+  /* 保留上一次的搜索词：整页重画/重新进入后输入框和过滤结果要一致。 */
+  tf.value = S.search || '';
+  /* 只在输入框下面换行，不重画整页 —— 重画会把输入框连同焦点一起换掉，
+     打第二个字就丢焦点；90ms 防抖只用来合并连续按键。 */
+  let searchTimer = 0;
+  tf.addEventListener('input', function () {
+    S.search = String(tf.value || '');
+    clearTimeout(searchTimer);
+    searchTimer = setTimeout(function () { if (tf.isConnected) paintRows(); }, 90);
+  });
   s.appendChild(tf);
   /* 名单行不用 md-list-item：129 行时，轻量 div 行构建+布局 43ms，
      md-list-item 要 881ms（4 倍 CPU 限速同机实测）—— 后者就是"点进二级页
      卡一下"的根因。轻量行一次画全，页面高度第一帧就是最终值，也不再分批撑高。 */
   const l = h('div', 'app-list');
+  const empty = h('p', 'empty');
+  empty.hidden = true;
+  const countHint = h('p', 'hint');
   const LIMIT = 200;
-  const page = shown.slice(0, LIMIT);
   function letterBlock(text) {
     return h('span', 'app-ic-fallback', (String(text || '?').trim().charAt(0) || '?').toUpperCase());
   }
@@ -786,14 +791,33 @@ function listSection() {
     }
     return r;
   }
-  page.forEach(function (t) { l.appendChild(rowOf(t)); });
+  /* 搜索/切档只重画行：输入框、芯片和页面容器都留在原地。 */
+  function paintRows() {
+    const src = listSource();
+    const q = (S.search || '').toLowerCase();
+    const shown = q ? src.filter(function (t) {
+      return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
+        || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
+    }) : src;
+    const page = shown.slice(0, LIMIT);
+    l.textContent = '';
+    page.forEach(function (t) { l.appendChild(rowOf(t)); });
+    if (!shown.length) {
+      empty.textContent = S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。';
+      empty.hidden = false;
+    } else {
+      empty.hidden = true;
+    }
+    const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
+    countHint.textContent = '共 ' + shown.length + ' 条' + overLimit;
+    loadIconsFor(page);
+  }
   s.appendChild(l);
   /* 空态也放列表 **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
-  if (!shown.length) s.appendChild(h('p', 'empty', S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。'));
-  const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
-  s.appendChild(h('p', 'hint', '共 ' + shown.length + ' 条' + overLimit));
+  s.appendChild(empty);
+  s.appendChild(countHint);
   c.appendChild(s);
-  loadIconsFor(page);
+  paintRows();
   return c;
 }
 

@@ -515,6 +515,40 @@ async function main() {
         return s ? getComputedStyle(s).fontFamily : ''; })()`);
       chk('包名等技术值走等宽字', /mono/i.test(mono), mono || '没找到等宽 supporting 行');
     }
+    /* 搜索：真实敲两个字，输入框不能被换掉/丢焦点；清空后复原。 */
+    {
+      await ev(`(function(){ var tf=document.querySelector('#view md-text-field'); if(!tf) return 0;
+        tf.__klMark=1; tf.focus(); var inp=tf.shadowRoot&&tf.shadowRoot.querySelector('input'); if(inp) inp.focus(); return 1; })()`);
+      await send('Input.insertText', { text: 'mi' });
+      await sleep(280);
+      const se = await ev(`(function(){ var tf=document.querySelector('#view md-text-field');
+        var rows=[].slice.call(document.querySelectorAll('#view .app-row')).map(function(r){return r.getAttribute('headline');});
+        return { same: !!(tf && tf.__klMark), val: tf?tf.value:'', active: document.activeElement?document.activeElement.tagName:'', rows: rows }; })()`);
+      chk('搜索输入不丢焦点/不被换掉，结果按行过滤',
+        se.same && se.val === 'mi' && se.active === 'MD-TEXT-FIELD' && se.rows.length === 1 && se.rows[0] === 'Mihon',
+        JSON.stringify(se));
+      for (let i = 0; i < 2; i++) {
+        await send('Input.dispatchKeyEvent', { type: 'keyDown', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+        await send('Input.dispatchKeyEvent', { type: 'keyUp', key: 'Backspace', code: 'Backspace', windowsVirtualKeyCode: 8, nativeVirtualKeyCode: 8 });
+      }
+      await sleep(280);
+      const sb = await ev(`(function(){ var tf=document.querySelector('#view md-text-field');
+        return { val: tf?tf.value:'', rows: document.querySelectorAll('#view .app-row').length }; })()`);
+      chk('清空搜索后名单复原', sb.val === '' && sb.rows >= 2, JSON.stringify(sb));
+    }
+    /* 芯片切视图：行数变，选中态跟着走；再切回名单供后面的对照。 */
+    {
+      const tapChip = kw => tap(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(${JSON.stringify(kw)})===0;})[0]; })()`);
+      chk('点「已装」芯片能切视图', await tapChip('已装') === 1);
+      await sleep(400);
+      const cv = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        function sel(k){ return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(k)===0;}).map(function(c){return c.hasAttribute('selected');})[0]; }
+        return { rows: document.querySelectorAll('#view .app-row').length, apps: sel('已装'), targets: sel('名单') }; })()`);
+      chk('芯片选中态跟着走，行数切到已装', cv.rows === 4 && cv.apps === true && cv.targets === false, JSON.stringify(cv));
+      await tapChip('名单');
+      await sleep(400);
+    }
     const captureRows = () => ev(`(function(){ var out=[];
       [].slice.call(document.querySelectorAll('#view .app-row[data-base]')).slice(0, 5).forEach(function(it){
         out.push([it.getAttribute('headline')||'', it.getAttribute('supporting-text')||'']); });
