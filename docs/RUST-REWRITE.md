@@ -54,3 +54,24 @@
 - 对拍：70 项（rust/parity.sh，CI 内跑）+ 单测 16 项。
 - 已迁移 24/40：只读 15 条 + 写侧 9 条（set-mode / props-on/off / props-apply / props-boot-hash / omk-restart / clear-log / tricky-drop-patch / tricky-save-patch）。
 - ⏳ 余项：只读 env / backend-info / icons / doctor；写 props-apply / restore-app(s) / remove-apps / 四条 *-save / keybox-save / backup-restore / sync；KL_PREVIEW 预览。
+
+## json_flat_set.awk 的规格（下一步实现用）
+
+输入：`pairsfile`（每行 `键<TAB>值`）、`overrides.json` 文本；输出：改后的 JSON 到 stdout，状态写 `statusfile`（`ok`/`same`/`missing`）。
+
+1. 定位顶层对象：第一个 `{` 与配对的 `}`（配对时跳过字符串内的括号与转义）。
+2. 顶层扫描（深度 1 才算键）：读到 `"` 取键名，跳过空白要求 `:`，再跳过空白取**值区间**：
+   - 值以 `"` 开头 → 值区间到闭合引号（含）；
+   - 否则到 `,`/`}`/换行，并回退掉尾部的空格/制表/`\r`。
+3. 对每个键（**按 pairs 顺序，逐个处理**，每处理一个就重新定位）：值非空 → 原区间替换为 `"转义后的值"`；值空 → **整条成员删除**（含键名、冒号、逗号与该行残留空白）：
+   - 优先吃掉后面的逗号；若是最后一个成员则改吃前面那个逗号；
+   - 若前后都是换行，把这一行连同换行一起删，否则只删内容保留换行。
+4. 处理完已有的键后，把**不存在且值非空**的键整批插到顶层 `}` 之前：
+   - 每项 `    "键": "值"`，项间 `,\n`；
+   - 原对象是 `{}` → `{` + 换行 + 条目 + 换行 + `}`（不加逗号）；
+   - 原对象以 `,` 结尾 → 直接接条目（不再补逗号）；
+   - 否则补 `,` + 换行 + 条目 + 换行。
+5. 值一律渲染成**带引号的 JSON 字符串**（数字/布尔也写成字符串）——上游守护进程按 `Map<String,String>` 读，写裸数字会造成形状不一致。
+6. 转义只处理 `\` `"` `\t` `\r` `\n`；其余字符原样。
+7. 一个键都没改 → `same`（不落盘）；顶层对象找不到/括号不配对 → `missing`。
+8. 调用方（cmd_teesim_save_overrides）：空值=删键；`overrides.json` 不存在时以 `{}\n` 为底本；写入用 `overrides.json.bak` 备份、落盘后 `chmod 644`（守护进程以 keystore 身份读）。
