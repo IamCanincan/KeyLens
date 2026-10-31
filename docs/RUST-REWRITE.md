@@ -98,3 +98,10 @@
 | json_flat_set.awk | 162 | teesim-save-overrides | 已实现 |
 | teesim_set.awk | 178 | teesim-save | 大件 |
 | omk_set.awk | 196 | omk-save-* | 最大件 |
+
+## 体积实测（29/40 命令时）
+
+- x86_64 release（opt-level=z + LTO + strip）：**502,400 字节（约 490 KB）**；
+- 现有 shell 命令层（webui.sh + lib/*.sh + backends/*.awk）合计 **268,059 字节（约 262 KB）**；
+- 刷机包现状约 397 KB，接入后预计 **约 0.9 MB**——对 KernelSU 模块仍属正常量级（「体积可控」达成，aarch64 静态会略有差异）；
+- 未接入的 11 条命令实现后按当前密度估算增量 < 100 KB。
