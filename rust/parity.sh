@@ -621,5 +621,46 @@ chk 'props-boot-hash：非法哈希' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "
 chk 'props-boot-hash：清除' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" - 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash - 2>&1)"
 chk 'props-boot-hash：清除后文件消失' "$([ -e "$BH/data/adb/keylens.boot_hash" ] && echo exists || echo gone)" "gone"
 
+echo "── props-apply（写一次 + 复核）──"
+PA="$T/pa-root"
+mkdir -p "$PA/data/adb" "$T/rpdb2"
+cat > "$T/pa.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/backend.sh
+. module/lib/props.sh
+kv() { printf "%s=%s\n" "$1" "$2"; }
+log_info() { :; }
+log_warn() { :; }
+tsv() { local IFS="$(printf '\t')"; printf '%s\n' "$*"; }
+TAB=$(printf '\t')
+prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+props_readback() { props; }
+KL_PROPS_OFF="$1"
+KL_BOOT_HASH="$2"
+EOF
+sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pa.sh"
+sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pa.sh"
+sed -n '/^cmd_props_apply() {/,/^}/p' module/lib/write.sh >> "$T/pa.sh"
+echo 'props_readback() { cmd_props; }' >> "$T/pa.sh"
+echo 'cmd_props_apply' >> "$T/pa.sh"
+# 期望表里故意留两项错的、一项缺的
+cat > "$T/bin/resetprop" <<'EOF'
+#!/bin/sh
+db="${RP_DB:?}"
+if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
+if [ "$1" = "--version" ]; then echo fake; exit 0; fi
+[ -f "$db/$1" ] && cat "$db/$1"
+EOF
+chmod +x "$T/bin/resetprop"
+mkdir -p "$T/rpdb2"
+printf '0' > "$T/rpdb2/ro.debuggable"
+printf 'user' > "$T/rpdb2/ro.build.type"
+printf 'engineering-x' > "$T/rpdb2/ro.bootloader"
+chk 'props-apply：写一次后复核（输出）' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
+chk 'props-apply：写入后的值' "$(cat "$T/rpdb2/ro.debuggable")/$(cat "$T/rpdb2/ro.bootloader")" "0/release"
+mkdir -p "$PA/data/adb"; : > "$PA/data/adb/keylens.props_off"
+chk 'props-apply：开关关闭时拒绝' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
+rm -f "$PA/data/adb/keylens.props_off"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

@@ -1092,6 +1092,93 @@ pub fn props_boot_hash(arg: &str) {
     println!("current={}", now);
 }
 
+/// cmd_props_apply：按期望表写一次（缺/不符才写），复核后输出 applied / mismatch。
+pub fn props_apply() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    if std::process::Command::new("resetprop").arg("--version").output().is_err() {
+        eprintln!("未找到 resetprop 命令");
+        std::process::exit(1);
+    }
+    if p.props_off.is_file() {
+        eprintln!("属性伪装已关闭，请先在界面上重新开启");
+        std::process::exit(1);
+    }
+    // apply_resetprop：缺或不同才写；特征值整体替换
+    for (name, expected) in PROPS_PAIRS {
+        let cur = resetprop(&[name]);
+        if cur.is_empty() || cur != *expected {
+            let _ = resetprop(&["-n", name, expected]);
+        }
+    }
+    for (name, needle, replacement) in PROPS_RULES {
+        let cur = resetprop(&[name]);
+        if !cur.is_empty() && cur.contains(needle) {
+            let _ = resetprop(&["-n", name, replacement]);
+        }
+    }
+    apply_boot_hash_quiet(&p);
+    log_line(&p, "🛠 WebUI 触发一次属性伪装（运行期写入；已被应用读取的静态字段不会刷新）");
+
+    // 复核：重新读一遍（Rust 侧没有进程内属性快照，直接读即最新）
+    let mut rows: Vec<(String, String)> = Vec::new();
+    for (name, expected) in PROPS_PAIRS {
+        let cur = resetprop(&[name]);
+        let st = if cur.is_empty() {
+            "missing"
+        } else if &cur == expected {
+            "ok"
+        } else {
+            "diff"
+        };
+        rows.push((name.to_string(), st.to_string()));
+    }
+    for (name, needle, _replacement) in PROPS_RULES {
+        let cur = resetprop(&[name]);
+        let st = if cur.is_empty() {
+            "missing"
+        } else if cur.contains(needle) {
+            "diff"
+        } else {
+            "ok"
+        };
+        rows.push((name.to_string(), st.to_string()));
+    }
+    let want = PROPS_PAIRS.len();
+    let got = rows.len();
+    if got < want {
+        eprintln!("写入后复核失败（重读退码 0，读到 {}/{} 行），不能报已生效", got, want);
+        println!("applied=0");
+        println!("mismatch=-1");
+        std::process::exit(1);
+    }
+    let bad = rows.iter().filter(|(_, st)| st == "diff" || st == "missing").count();
+    println!("applied=1");
+    println!("mismatch={}", bad);
+}
+
+/// apply_boot_hash 的非致命版本（失败只在调用方提示）。
+fn apply_boot_hash_quiet(p: &Paths) {
+    let Ok(text) = std::fs::read_to_string(&p.boot_hash) else { return };
+    let h: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    if h.is_empty() || !boot_hash_valid(&h) {
+        return;
+    }
+    let cur = resetprop(&["ro.boot.vbmeta.digest"]);
+    if cur != h {
+        let _ = resetprop(&["-n", "ro.boot.vbmeta.digest", &h]);
+    }
+    let alg = resetprop(&["ro.boot.vbmeta.hash_alg"]);
+    if alg.is_empty() {
+        let want = if h.len() == 128 { "sha512" } else { "sha256" };
+        let _ = resetprop(&["-n", "ro.boot.vbmeta.hash_alg", want]);
+    }
+}
+
 /// cmd_props_switch：props-on / props-off（开关文件即关闭标记）。
 pub fn props_switch(want: &str) {
     let root = Root::from_env();
