@@ -473,5 +473,19 @@ sed -n '/^cmd_teesim_profiles() {/,/^}/p' module/webui.sh >> "$T/tsp.sh"
 echo 'detect_backend "$MODDIR"; cmd_teesim_profiles' >> "$T/tsp.sh"
 chk 'teesim-profiles：default 在前 + 其余顺序' "$(sh "$T/tsp.sh" "$TSP/data/adb/teesim")" "$(KEYLENS_ROOT="$TSP" "$B" teesim-profiles)"
 
+echo "── clear-log（删缓冲 + 写一条记录）──"
+cat > "$T/cl.sh" <<'EOF'
+. module/lib/core.sh
+kv() { printf '%s=%s\n' "$1" "$2"; }
+KL_LOG="$1"
+EOF
+sed -n '/^cmd_clear_log() {/,/^}/p' module/lib/write.sh >> "$T/cl.sh"
+echo 'cmd_clear_log' >> "$T/cl.sh"
+CLR="$T/clroot"
+mkdir -p "$CLR/data/adb"
+printf 'old line 1\nold line 2\n' > "$CLR/data/adb/keylens.log"
+chk 'clear-log：stdout' "$(sh "$T/cl.sh" "$CLR/data/adb/keylens.log")" "$(KEYLENS_ROOT="$CLR" "$B" clear-log)"
+chk 'clear-log：缓冲区只剩新记录' "$(grep -c '已清空运行日志缓冲' "$CLR/data/adb/keylens.log")" "1"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

@@ -916,6 +916,26 @@ pub fn tricky_patches() {
     }
 }
 
+/// cmd_clear_log：删日志缓冲与 .tmp，再写一条「已清空」记录，输出 cleared=1。
+pub fn clear_log() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let _ = std::fs::remove_file(&p.log);
+    let _ = std::fs::remove_file(format!("{}.tmp", p.log.display()));
+    let ts = std::process::Command::new("date")
+        .arg("+%m-%d %H:%M:%S")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default();
+    let line = format!("{} 🧹 WebUI 已清空运行日志缓冲\n", if ts.is_empty() { String::new() } else { format!("{} ", ts) });
+    use std::io::Write;
+    if let Ok(mut f) = std::fs::OpenOptions::new().create(true).append(true).open(&p.log) {
+        let _ = f.write_all(line.as_bytes());
+    }
+    println!("cleared=1");
+}
+
 /// cmd_tee_status：读 Tricky 自己写的 tee_status（present/file + 四个已知键）。
 pub fn tee_status() {
     let root = Root::from_env();

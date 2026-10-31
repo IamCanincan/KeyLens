@@ -80,6 +80,7 @@ fn main() {
         "boot-hash" => read_cmds::boot_hash(),
         "tee-status" => read_cmds::tee_status(),
         "props" => read_cmds::props(),
+        "clear-log" => read_cmds::clear_log(),
         "tricky-patches" => read_cmds::tricky_patches(),
         "teesim-overrides" => read_cmds::teesim_overrides(),
         "teesim-profiles" => read_cmds::teesim_profiles(),
