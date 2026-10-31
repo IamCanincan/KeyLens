@@ -812,8 +812,12 @@ cmd_env() {
     local frro_path_v="" frro_mtime_v="" frro_b64_v=""
     local ino uimode hex seed wc sbh dens frro mtime enc tmp
 
-    # cache_key：模块更新（module.prop mtime）或系统 OTA（build.prop mtime）时失效
-    ckey="v1|$MODDIR|$(stat -c %Y "$PROP_FILE" 2>/dev/null)|$(stat -c %Y /system/build.prop 2>/dev/null)"
+    # cache_key：模块更新（module.prop 的 version）或系统 OTA（build.prop mtime）时失效。
+    # 这里以前用 module.prop 的 **mtime** —— 但每次同步都会 set_module_desc 重写这一行
+    # 描述（backend.sh:616），mtime 跟着变，缓存于是每同步一次就作废一次，等于白设。
+    # version 只在刷机时变，正是"工具/机型可能变了"的那个信号。
+    mod_prop version
+    ckey="v1|$MODDIR|${MOD_PROP_VALUE:-none}|$(stat -c %Y /system/build.prop 2>/dev/null)"
 
     if [ -f "$cache" ]; then
         while IFS="$TAB" read -r k v; do
@@ -959,27 +963,29 @@ cmd_env() {
     # 首次 / 失效 / 换主题时才落盘；以后每次打开只读缓存 + 现取深浅
     if [ "$cache_dirty" = 1 ] && [ -d "${cache%/*}" ] && [ -w "${cache%/*}" ]; then
         tmp="${cache}.tmp.$$"
-        {
-            printf 'v1\t%s\n' "$ckey"
-            printf 'resetprop\t%s\n' "$resetprop_v"
-            printf 'awk\t%s\n' "$awk_v"
-            printf 'base64\t%s\n' "$base64_v"
-            printf 'base64_cmd\t%s\n' "$base64_cmd_v"
-            printf 'ino_mode\t%s\n' "$ino_mode_v"
-            printf 'ino_cmd\t%s\n' "$ino_cmd_v"
-            printf 'root_user\t%s\n' "$root_v"
-            printf 'webui_sh\t%s\n' "$sh_v"
-            printf 'device\t%s\n' "$dev_v"
-            printf 'brand\t%s\n' "$brand_v"
-            printf 'android\t%s\n' "$android_v"
-            printf 'sdk\t%s\n' "$sdk_v"
-            printf 'build_type\t%s\n' "$build_v"
-            printf 'vbstate\t%s\n' "$vb_v"
-            printf 'statusbar_dp\t%s\n' "$sb_dp_v"
-            printf 'frro_path\t%s\n' "$frro_path_v"
-            printf 'frro_mtime\t%s\n' "$frro_mtime_v"
-            printf 'frro_b64\t%s\n' "$frro_b64_v"
-        } > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$cache" 2>/dev/null
+        # 整块攒成一个字符串、一次交出去：以前是 19 个 printf，而这个 shell 里
+        # printf 是外部命令（/system/bin/printf）—— 落一次盘白付 19 次 fork。
+        cb="v1${TAB}${ckey}"
+        cb="${cb}${NL}resetprop${TAB}${resetprop_v}"
+        cb="${cb}${NL}awk${TAB}${awk_v}"
+        cb="${cb}${NL}base64${TAB}${base64_v}"
+        cb="${cb}${NL}base64_cmd${TAB}${base64_cmd_v}"
+        cb="${cb}${NL}ino_mode${TAB}${ino_mode_v}"
+        cb="${cb}${NL}ino_cmd${TAB}${ino_cmd_v}"
+        cb="${cb}${NL}root_user${TAB}${root_v}"
+        cb="${cb}${NL}webui_sh${TAB}${sh_v}"
+        cb="${cb}${NL}device${TAB}${dev_v}"
+        cb="${cb}${NL}brand${TAB}${brand_v}"
+        cb="${cb}${NL}android${TAB}${android_v}"
+        cb="${cb}${NL}sdk${TAB}${sdk_v}"
+        cb="${cb}${NL}build_type${TAB}${build_v}"
+        cb="${cb}${NL}vbstate${TAB}${vb_v}"
+        cb="${cb}${NL}statusbar_dp${TAB}${sb_dp_v}"
+        cb="${cb}${NL}frro_path${TAB}${frro_path_v}"
+        cb="${cb}${NL}frro_mtime${TAB}${frro_mtime_v}"
+        cb="${cb}${NL}frro_b64${TAB}${frro_b64_v}"
+        if print -r -- "$cb" > "$tmp" 2>/dev/null; then :; else printf '%s\n' "$cb" > "$tmp" 2>/dev/null; fi
+        chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$cache" 2>/dev/null
         rm -f "$tmp" 2>/dev/null
     fi
     return 0
