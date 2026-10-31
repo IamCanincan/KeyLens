@@ -79,6 +79,7 @@ fn main() {
         "excluded" => read_cmds::excluded(),
         "boot-hash" => read_cmds::boot_hash(),
         "tee-status" => read_cmds::tee_status(),
+        "props" => read_cmds::props(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
         // 尚未迁移的命令：明确返回 2，别假装成功。

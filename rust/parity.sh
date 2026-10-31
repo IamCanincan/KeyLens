@@ -362,5 +362,38 @@ chk 'tee-status：四行含无尾换行' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky
 rm -f "$TS3/data/adb/tricky_store/tee_status"
 chk 'tee-status：文件缺失 present=0' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TS3" "$B" tee-status)"
 
+echo "── props（15 固定 + 2 特征替换）──"
+cat > "$T/bin/getprop" <<'EOF'
+#!/bin/sh
+case "$1" in
+  ro.boot.vbmeta.device_state) echo locked ;;
+  ro.boot.verifiedbootstate) echo green ;;
+  ro.boot.flash.locked) echo 1 ;;
+  ro.boot.veritymode) echo enforcing ;;
+  ro.boot.warranty_bit) echo 0 ;;
+  ro.warranty_bit) echo 0 ;;
+  ro.debuggable) echo 1 ;;
+  ro.force.debuggable) echo 0 ;;
+  ro.secure) : ;;
+  ro.adb.secure) echo 1 ;;
+  ro.build.type) echo user ;;
+  ro.build.tags) echo release-keys ;;
+  ro.vendor.boot.warranty_bit) echo 0 ;;
+  ro.vendor.warranty_bit) echo 0 ;;
+  vendor.boot.warranty_bit) echo 0 ;;
+  ro.bootloader) echo engineering ;;
+  ro.build.description) echo test-keys ;;
+esac
+EOF
+chmod +x "$T/bin/getprop"
+cat > "$T/pr.sh" <<'EOF'
+. module/lib/props.sh
+tsv() { local IFS="$(printf '\t')"; printf '%s\n' "$*"; }
+prop_now() { PROP_NOW=$(getprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+EOF
+sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pr.sh"
+echo 'cmd_props' >> "$T/pr.sh"
+chk 'props：missing/diff/ok 与规则行' "$(PATH="$T/bin:$PATH" sh "$T/pr.sh")" "$(PATH="$T/bin:$PATH" "$B" props)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

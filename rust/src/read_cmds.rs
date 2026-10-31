@@ -501,6 +501,65 @@ pub fn boot_hash() {
     println!("status={}", status);
 }
 
+/// 期望值表（与 lib/props.sh 的 props_expect_pairs 单点对齐，由对拍守着）。
+const PROPS_PAIRS: &[(&str, &str)] = &[
+    ("ro.boot.vbmeta.device_state", "locked"),
+    ("ro.boot.verifiedbootstate", "green"),
+    ("ro.boot.flash.locked", "1"),
+    ("ro.boot.veritymode", "enforcing"),
+    ("ro.boot.warranty_bit", "0"),
+    ("ro.warranty_bit", "0"),
+    ("ro.debuggable", "0"),
+    ("ro.force.debuggable", "0"),
+    ("ro.secure", "1"),
+    ("ro.adb.secure", "1"),
+    ("ro.build.type", "user"),
+    ("ro.build.tags", "release-keys"),
+    ("ro.vendor.boot.warranty_bit", "0"),
+    ("ro.vendor.warranty_bit", "0"),
+    ("vendor.boot.warranty_bit", "0"),
+];
+
+const PROPS_RULES: &[(&str, &str, &str)] = &[
+    ("ro.bootloader", "engineering", "release"),
+    ("ro.build.description", "test-keys", "release-keys"),
+];
+
+fn getprop(name: &str) -> String {
+    std::process::Command::new("getprop")
+        .arg(name)
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default()
+}
+
+/// cmd_props：name<TAB>当前<TAB>期望<TAB>状态（先固定表，再特征替换表）。
+pub fn props() {
+    for (name, expected) in PROPS_PAIRS {
+        let cur = getprop(name);
+        let st = if cur.is_empty() {
+            "missing"
+        } else if &cur == expected {
+            "ok"
+        } else {
+            "diff"
+        };
+        println!("{}\t{}\t{}\t{}", name, cur, expected, st);
+    }
+    for (name, needle, replacement) in PROPS_RULES {
+        let cur = getprop(name);
+        let st = if cur.is_empty() {
+            "missing"
+        } else if cur.contains(needle) {
+            "diff"
+        } else {
+            "ok"
+        };
+        println!("{}\t{}\t不含 {}（则改写为 {}）\t{}", name, cur, needle, replacement, st);
+    }
+}
+
 /// cmd_tee_status：读 Tricky 自己写的 tee_status（present/file + 四个已知键）。
 pub fn tee_status() {
     let root = Root::from_env();
