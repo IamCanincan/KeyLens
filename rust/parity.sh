@@ -1038,7 +1038,7 @@ fi
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 93 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 93），疑似用例被删"; fail=1
+if [ "$oks" -lt 94 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 94），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
