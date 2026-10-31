@@ -77,7 +77,7 @@ jobs:
                    tools/md3e-build/icon-gate.mjs tools/md3e-build/check-artifact.mjs \
                    tools/json-flat-set-check.cjs tools/name-residue-check.mjs \
                    tools/klpatch-init-check.cjs tools/module-scope-check.mjs \
-                   tools/mutate-scope.cjs; do
+                   tools/doc-consistency.mjs tools/mutate-scope.cjs; do
             printf '\n══ %s\n' "$g"
             if node "$g"; then
               printf 'OK   %s\n' "$g"
