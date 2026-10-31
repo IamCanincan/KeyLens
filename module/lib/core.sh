@@ -32,6 +32,10 @@ KL_PROPS_OFF="/data/adb/keylens.props_off"
 # Verified Boot 哈希（文件不存在 = 不应用 ro.boot.vbmeta.digest）
 KL_BOOT_HASH="/data/adb/keylens.boot_hash"
 
+# env 的静态探针缓存（工具/设备/状态栏/FRRO）；模块更新或 OTA 后按 key 失效。
+# 可被同名环境变量覆盖，测试台架用临时目录时不碰真机状态。
+KL_ENV_CACHE="${KL_ENV_CACHE:-/data/adb/keylens.env.cache}"
+
 # 改名前的旧路径（只用于迁移与卸载清理，运行期不再读它们）
 KL_LEGACY_LOG="/data/adb/ts_auto.log"
 KL_LEGACY_PROPS_OFF="/data/adb/ts_auto.props_off"

@@ -20,18 +20,65 @@ import { fileURLToPath } from 'node:url';
 const repo = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const FILES = ['webui/src/bridge.js', 'webui/src/screens.js', 'webui/src/app.js'];
 
-/* 注释与字符串先摘掉：注释里的"draw()"会被当成调用点，说明文字里的名字会被当成引用 */
+/* 注释与字符串先摘掉：注释里的"draw()"会被当成调用点，说明文字里的名字会被当成引用。
+   以前是四条链式 replace，它有两个已知的坑，都会把整段代码吃成"字符串/注释"或
+   反把字符串当代码留下，而这条闸于是既误报又漏报：
+     1) `'http://www.w3.org/2000/svg'` 里的 `//` 被当行注释（早先修过，用 [^:] 挡）；
+     2) 正则字面量里的引号 —— `String(arg).replace(/'/g, …)` 那个 `'` 会让后面所有
+        字符串配对整体错一位。bridge.js 里它就在 demoFiles() 之前，于是
+        `'target.txt'` 以裸文本留下，闸报"bridge.js 用了别的模块的 target"。
+   改成一遍扫：注释 / 三种字符串（认反斜杠转义）/ 正则字面量（按前一个有效字符
+   判定是除号还是正则）各自成块摘掉。 */
+const REGEX_OK = "(,=:[!&|?{};+-*%~^<>\n";
+const REGEX_WORD = /^(return|typeof|instanceof|in|of|new|delete|void|do|else|case|yield|await)$/;
 function strip(src) {
-  return src
-    .replace(/\/\*[\s\S]*?\*\//g, ' ')
-    .replace(/^[ \t]*\*.*$/gm, ' ')
-    /* `//` 只在不是协议冒号后面时当注释：`'http://www.w3.org/2000/svg'` 这种
-       字符串里的 `//` 以前会把整行后半截吃掉，字符串引号失配后整段代码被
-       吞掉，`draw` 这类自由变量检查就静默失明。 */
-    .replace(/(^|[^:])\/\/[^\n]*/g, '$1 ')
-    .replace(/'(?:[^'\\]|\\.)*'/g, "''")
-    .replace(/"(?:[^"\\]|\\.)*"/g, '""')
-    .replace(/`(?:[^`\\]|\\.)*`/g, '``');
+  let out = '', i = 0, prevSig = '\n', lastWord = '';
+  const put = (s) => { out += s; };
+  while (i < src.length) {
+    const c = src[i], n = src[i + 1];
+    if (c === '/' && n === '*') {                      /* 块注释 */
+      const e = src.indexOf('*/', i + 2);
+      i = e < 0 ? src.length : e + 2; put(' '); continue;
+    }
+    if (c === '/' && n === '/') {                      /* 行注释（到行尾，保留换行） */
+      const e = src.indexOf('\n', i);
+      i = e < 0 ? src.length : e; put(' '); continue;
+    }
+    if (c === "'" || c === '"' || c === '`') {         /* 字符串/模板：吃到闭合引号 */
+      let k = i + 1;
+      while (k < src.length) { if (src[k] === '\\') { k += 2; continue; } if (src[k] === c) { k++; break; } k++; }
+      i = k; put(c + c); continue;
+    }
+    if (c === '/' && (REGEX_OK.indexOf(prevSig) >= 0 || REGEX_WORD.test(lastWord))) {
+      /* 正则字面量：/[…]/ 里字符类中的 / 不结束，转义的 \/ 也不结束 */
+      let k = i + 1, cls = false;
+      while (k < src.length) {
+        const d = src[k];
+        if (d === '\\') { k += 2; continue; }
+        if (d === '[') { cls = true; k++; continue; }
+        if (d === ']') { cls = false; k++; continue; }
+        if (d === '/' && !cls) { k++; break; }
+        if (d === '\n') { k = src.length; break; }     /* 没闭合：当除号，别把整行吞了 */
+        k++;
+      }
+      if (d_is_div_hint(src, k)) { prevSig = '/'; put('/'); i = i + 1; continue; }
+      while (k < src.length && /[a-z]/i.test(src[k])) k++;   /* 标志位 g/i/m */
+      i = k; put(' '); continue;
+    }
+    put(c);
+    if (!/\s/.test(c)) {
+      prevSig = c;
+      if (/[A-Za-z0-9_$]/.test(c)) lastWord = (lastWord + c).slice(-24);
+      else lastWord = '';
+    } else if (c === '\n') { prevSig = '\n'; lastWord = ''; }
+    i++;
+  }
+  return out;
+}
+/* 正则没找到闭合斜杠时（说明那个 / 其实是除号）退回按除号处理。
+   k 已经撞到行尾或结尾就是这个信号。 */
+function d_is_div_hint(src, k) {
+  return k >= src.length || src[k - 1] === '\n';
 }
 
 function declaredNames(code) {

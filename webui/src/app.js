@@ -17,7 +17,7 @@ import '@materialwebunofficial/md3e-web/components/md-select.js';
 import '@materialwebunofficial/md3e-web/components/md-snackbar.js';
 
 import {
-  S, DEMO, findBridge, attachBridge, checkContract, ensure, loadBase, loadLog,
+  S, DEMO, findBridge, attachBridge, checkContract, ensure, loadLog,
 } from './bridge.js';
 import { applyAccent } from './theme.js';
 import {
@@ -366,6 +366,8 @@ function subReady(sub) {
 }
 function pendingText() {
   if (S.tab === 'log') return '正在读取日志…';
+  if (S.tab === 'home') return '正在读取设备状态…';
+  if (S.tab === 'func' && !S.sub) return '正在读取后端信息…';
   return {
     targets: '正在加载应用名与图标…',
     props: '正在读取属性对照…',
@@ -373,9 +375,11 @@ function pendingText() {
     keybox: '正在读取 keybox…',
   }[S.sub] || '正在读取…';
 }
-/* 骨架页按目的地换形状：名单=筛选/搜索/行，日志=控制条/日志台，其余=分组行 */
+/* 骨架页按目的地换形状：主页=英雄卡/矩阵，名单=筛选/搜索/行，日志=控制条/日志台，其余=分组行 */
 function pendingKind() {
+  if (S.tab === 'home') return 'home';
   if (S.tab === 'log') return 'console';
+  if (S.tab === 'func' && !S.sub) return 'rows';
   return S.sub === 'targets' ? 'list' : 'rows';
 }
 
@@ -434,8 +438,10 @@ function show(name) {
      而顶栏标题、取数、#hash 说的是另一格 —— 四格各说各话。 */
   S.tab = p;
   S.sub = '';
-  /* 日志首进没有行可画时也给载入态；已有旧行（刷新/切回）则先显示旧行。 */
-  setPagePending(p === 'log' && !S.loaded.log && !S.log.length);
+  /* 主页/功能菜单要 base+backend；日志要日志行；设置用本地数据。没有就先挂骨架。 */
+  if (p === 'log') setPagePending(!S.loaded.log && !S.log.length);
+  else if (p === 'home' || p === 'func') setPagePending(!(S.loaded.base && S.loaded.backend));
+  else setPagePending(false);
   headline();
   syncBackBtn();
   setNavSelected(PAGES.findIndex(function (x) { return x.id === p; }));
@@ -542,6 +548,11 @@ function draw() {
     body = function () {
       return pagePending ? renderPending(pendingText(), pendingKind()) : renderFuncSub(sub);
     };
+  } else if (S.tab === 'func' && pagePending) {
+    body = function () { return renderPending(pendingText(), 'rows'); };
+  }
+  if (S.tab === 'home' && pagePending) {
+    body = function () { return renderPending(pendingText(), 'home'); };
   }
   if (S.tab === 'log' && pagePending) {
     body = function () { return renderPending('正在读取日志…', 'console'); };
@@ -620,7 +631,7 @@ function reloadAll() {
   S.loaded = {};
   /* 数据要重取了，整页缓存全部作废（当前页会由 loadSub(force) 重建）。 */
   Object.keys(pageCache).forEach(function (k) { delete pageCache[k]; });
-  return loadBase().then(function () { return checkContract(); }).then(function () {
+  return ensure('base').then(function () { return checkContract(); }).then(function () {
     applyTheme();
     applyInsets();
     /* 名单增删也会改目标文件的条数（backend-info 报的 target_entries）；
@@ -663,27 +674,28 @@ function boot() {
   const m = /^([a-z]+)(?:\/([a-z]+))?$/.exec(rawStart) || [];
   const start = PAGES.some(function (p) { return p.id === m[1]; }) ? m[1] : 'home';
   const startSub = start === 'func' && m[2] && FUNC_PAGES[m[2]] ? m[2] : '';
-  /* 首屏只走一条路：契约 → 基础状态 → 后端信息 → show()。show() 自己会按目标页取数，
-     这里再 load 一次就是同一批命令问两遍（本机每条 fork 20~90ms）。
-     backend-info 也要在首画前取：主页的版本胶囊、菜单的条数/keybox 状态都读它，
-     否则落地页会先露出 "—"/“未设置”再被替换。取不到也照常画（load 会再试一次）。 */
-  Promise.resolve(checkContract()).then(loadBase).then(function () {
-    /* 800ms 只是兜底：backend-info 卡住时（桥接的 30s 超时）不能让整页一直停在
-       启动页上。正常几十毫秒就回来，超时则先画、由 load('home') 后再补。 */
-    return Promise.race([
-      ensure('backend').then(function () {}, function () {}),
-      new Promise(function (res) { setTimeout(res, 800); }),
-    ]);
-  }).then(function () {
-    applyTheme();   /* env.sys_dark 这时才到 —— boot 里第一次涂色时它还是 undefined */
-    applyInsets();  /* 状态栏高度也是 env 带回来的 */
+  /* 数据并行取：契约、基础状态（status/env）、后端信息互不依赖。契约一到就先画壳
+     （约 180ms）；status/env/backend 没回来时主页/功能页是骨架，页面的 load() 会 join
+     这三条已经起好的 ensure，不再另起一份。 */
+  const contractP = Promise.resolve(checkContract());
+  const statusP = ensure('status');
+  const envP = ensure('env');
+  const envSafe = envP.then(function () {}, function () {});
+  ensure('backend').then(function () {}, function () {});   /* 预热；超时也不拖住首屏 */
+  const drawShell = function () {
     show(start);
     if (startSub) openSub(startSub);
-    revealBoot(splash, bootAt);
-  }, function () {
-    show('home');
+    /* env 到了再上主题/状态栏；启动页等它到齐（最多 1.2s）再淡出，避免先露错主题。 */
+    envP.then(function () { applyTheme(); applyInsets(); }, function () {});
+    Promise.race([envSafe, new Promise(function (res) { setTimeout(res, 1200); })])
+      .then(function () { applyTheme(); applyInsets(); revealBoot(splash, bootAt); });
+  };
+  contractP.then(drawShell, function () {
+    drawShell();
+    onToast('契约读取失败，界面按未校验处理', true);
+  });
+  Promise.all([statusP, envP]).then(null, function () {
     onToast('基础状态读取失败，界面显示的是空值', true);
-    revealBoot(splash, bootAt);
   });
 }
 /* 目标页已经画好；补足最短停留时间，再等两帧让它真正上屏，然后启动页淡出。 */

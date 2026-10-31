@@ -253,11 +253,11 @@ export function checkContract() {
 }
 
 /* ── 数据装载 ─────────────────────────────────────────────────────── */
-export function loadBase() {
-  return Promise.all([
-    call('status').then(function (r) { if (r.ok) S.status = parseKV(r.text); }),
-    call('env').then(function (r) { if (r.ok) S.env = parseKV(r.text); }),
-  ]);
+export function loadStatus() {
+  return call('status').then(function (r) { if (r.ok) S.status = parseKV(r.text); });
+}
+export function loadEnv() {
+  return call('env').then(function (r) { if (r.ok) S.env = parseKV(r.text); });
 }
 export function loadLists() {
   var errs = [];
@@ -366,7 +366,13 @@ export function ensure(what) {
   if (S.loaded[what]) return Promise.resolve(false);
   if (inflight[what]) return inflight[what];
   var fn = {
-    base: loadBase, lists: loadLists, log: loadLog, backend: loadBackend,
+    /* base 不再自己 fork 两条命令，而是 join status/env 的 ensure ——
+       启动时先单独拉 status/env，主页的 ensure('base') 必须等同一批，
+       不能另起一份。 */
+    base: function () { return Promise.all([ensure('status'), ensure('env')]); },
+    status: loadStatus,
+    env: loadEnv,
+    lists: loadLists, log: loadLog, backend: loadBackend,
     props: function () { return Promise.all([loadProps(), call('boot-hash').then(function (r) {
       S.boot = r.ok ? parseKV(r.text) : null;
     }, function () { S.boot = null; })]); },

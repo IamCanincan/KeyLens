@@ -1617,39 +1617,82 @@ cmd_status() {
 #       安装模块/换工具/换设备时才变，所以与 status 分开 —— 界面每次打开只问一次，
 #       省下 status 里约 400ms。
 cmd_env() {
-    local ino uimode hex seed wc
+    local cache="$KL_ENV_CACHE" cache_ok=0 cache_dirty=0
+    local ckey ckey_cached v k
+    local resetprop_v awk_v base64_v base64_cmd_v ino_mode_v ino_cmd_v root_v sh_v
+    local dev_v brand_v android_v sdk_v build_v vb_v sb_dp_v
+    local frro_path_v="" frro_mtime_v="" frro_b64_v=""
+    local ino uimode hex seed wc sbh dens frro mtime enc tmp
 
-    kv resetprop "$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)"
-    kv awk "$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)"
-    kv base64 "$(find_base64 >/dev/null 2>&1 && echo 1 || echo 0)"
-    ino=$(find_inotify_cmd)
-    if [ -z "$ino" ]; then
-        kv inotify_mode none
-        kv inotify_cmd ""
-    else
-        kv inotify_mode "${ino%%:*}"
-        kv inotify_cmd "${ino#*:}"
+    # cache_key：模块更新（module.prop mtime）或系统 OTA（build.prop mtime）时失效
+    ckey="v1|$MODDIR|$(stat -c %Y "$PROP_FILE" 2>/dev/null)|$(stat -c %Y /system/build.prop 2>/dev/null)"
+
+    if [ -f "$cache" ]; then
+        while IFS="$TAB" read -r k v; do
+            case "$k" in
+                v1) ckey_cached="$v" ;;
+                resetprop) resetprop_v="$v" ;;
+                awk) awk_v="$v" ;;
+                base64) base64_v="$v" ;;
+                base64_cmd) base64_cmd_v="$v" ;;
+                ino_mode) ino_mode_v="$v" ;;
+                ino_cmd) ino_cmd_v="$v" ;;
+                root_user) root_v="$v" ;;
+                webui_sh) sh_v="$v" ;;
+                device) dev_v="$v" ;;
+                brand) brand_v="$v" ;;
+                android) android_v="$v" ;;
+                sdk) sdk_v="$v" ;;
+                build_type) build_v="$v" ;;
+                vbstate) vb_v="$v" ;;
+                statusbar_dp) sb_dp_v="$v" ;;
+                frro_path) frro_path_v="$v" ;;
+                frro_mtime) frro_mtime_v="$v" ;;
+                frro_b64) frro_b64_v="$v" ;;
+            esac
+        done < "$cache"
+        [ -n "$ckey_cached" ] && [ "$ckey_cached" = "$ckey" ] && cache_ok=1
     fi
-    kv root_user "$(id -u)"
-    kv webui_sh "$MODDIR/webui.sh"
 
-    # 设备信息（标题栏与属性页展示）
-    prop_now ro.product.model;             kv device "$PROP_NOW"
-    prop_now ro.product.brand;             kv brand "$PROP_NOW"
-    prop_now ro.build.version.release;     kv android "$PROP_NOW"
-    prop_now ro.build.version.sdk;         kv sdk "$PROP_NOW"
-    prop_now ro.build.type;                kv build_type "$PROP_NOW"
-    prop_now ro.boot.verifiedbootstate;    kv vbstate "$PROP_NOW"
+    if [ "$cache_ok" = 0 ]; then
+        resetprop_v=$(command -v resetprop >/dev/null 2>&1 && echo 1 || echo 0)
+        awk_v=$(find_awk >/dev/null 2>&1 && echo 1 || echo 0)
+        base64_cmd_v=$(find_base64 2>/dev/null)
+        [ -n "$base64_cmd_v" ] && base64_v=1 || base64_v=0
+        ino=$(find_inotify_cmd)
+        if [ -n "$ino" ]; then
+            ino_mode_v="${ino%%:*}"
+            ino_cmd_v="${ino#*:}"
+        else
+            ino_mode_v=none
+            ino_cmd_v=""
+        fi
+        root_v=$(id -u)
+        sh_v="$MODDIR/webui.sh"
+        prop_now ro.product.model;             dev_v="$PROP_NOW"
+        prop_now ro.product.brand;             brand_v="$PROP_NOW"
+        prop_now ro.build.version.release;     android_v="$PROP_NOW"
+        prop_now ro.build.version.sdk;         sdk_v="$PROP_NOW"
+        prop_now ro.build.type;                build_v="$PROP_NOW"
+        prop_now ro.boot.verifiedbootstate;    vb_v="$PROP_NOW"
+        sb_dp_v=""
+        sbh=$(dumpsys window displays 2>/dev/null | sed -n 's/.*type=statusBars frame=\[[0-9]*,[0-9]*\]\[[0-9]*,\([0-9]*\)\].*/\1/p' | head -n 1)
+        dens=$(wm density 2>/dev/null | sed -n 's/^Physical density: *\([0-9][0-9]*\).*/\1/p')
+        [ -n "$dens" ] || dens=$(getprop ro.sf.lcd_density)
+        case "$sbh" in ''|*[!0-9]*) sbh=0 ;; esac
+        case "$dens" in ''|*[!0-9]*) dens=0 ;; esac
+        if [ "$sbh" -gt 0 ] && [ "$dens" -gt 0 ]; then
+            sb_dp_v=$(( (sbh * 160 + dens - 1) / dens ))
+        fi
+        cache_dirty=1
+    fi
 
-    # ---------- 系统取色 ----------
-    # 深浅：以系统算出来的结果为准。管理器的 WebView 有时被钉在浅色，
-    #       只看 CSS 的 prefers-color-scheme 会跟系统不一致。
+    # 深浅模式会随系统开关变化，每次都现取（约 50ms）
     uimode=$(dumpsys uimode 2>/dev/null | grep -m2 -o -e 'mComputedNightMode=[a-z]*' -e 'mCurUiMode=0x[0-9a-f]*')
     case "$uimode" in
         *mComputedNightMode=true*)  kv sys_dark 1; kv sys_dark_src mComputedNightMode ;;
         *mComputedNightMode=false*) kv sys_dark 0; kv sys_dark_src mComputedNightMode ;;
         *)
-            # 没有该字段时退回 uiMode 的 0x20 位（UI_MODE_NIGHT_YES）
             hex="${uimode#*mCurUiMode=0x}"
             hex="${hex%%[!0-9a-fA-F]*}"
             if [ -n "$hex" ]; then
@@ -1662,48 +1705,43 @@ cmd_env() {
             ;;
     esac
 
-    # 状态栏真实高度（dp）：管理器注入的 insets 在本机可能报 0 —— 它算的是
-    # "安全绘制区"，edge-to-edge 下不等于系统栏高度。界面拿它兜底，否则 22px
-    # 的标题行正好钻到状态栏底下（"头被砍一半"）。WebView 的 CSS px 就是 dp，
-    # 所以这里直接从 px 换算，不让界面猜 devicePixelRatio。取不到就整条不报。
-    sbh=$(dumpsys window displays 2>/dev/null | sed -n 's/.*type=statusBars frame=\[[0-9]*,[0-9]*\]\[[0-9]*,\([0-9]*\)\].*/\1/p' | head -n 1)
-    dens=$(wm density 2>/dev/null | sed -n 's/^Physical density: *\([0-9][0-9]*\).*/\1/p')
-    [ -n "$dens" ] || dens=$(getprop ro.sf.lcd_density)
-    case "$sbh" in ''|*[!0-9]*) sbh=0 ;; esac
-    case "$dens" in ''|*[!0-9]*) dens=0 ;; esac
-    if [ "$sbh" -gt 0 ] && [ "$dens" -gt 0 ]; then
-        kv sys_statusbar_dp $(( (sbh * 160 + dens - 1) / dens ))
-    fi
-
-    # 强调色第一优先：SystemUI 运行时生成的 Material You overlay。
-    # 那是系统"正在拿来画东西的那套色"，用户手选颜色时它也会被重新生成，
-    # 所以比任何 setting 都权威 —— 本机 theme_custom_color 是 null、壁纸是渐变
-    # (isColorExtracted=false)，前两个来源都是空的，可实际上 accent1 阶梯明明白白
-    # 存在 /data/resource-cache 里（实测本机是青蓝 H≈215，不是 AOSP 默认的那支灰蓝）。
-    # 文件格式是 FRRO（定长条目 + varint），shell 里没有能读它的东西；
-    # 这里只做「取最新一份 + base64」，解析在界面里做（JS 十几行，且能带自检）。
-    b64cmd=$(find_base64 2>/dev/null)
-    # 先要 -accent-（里面是完整的 system_accent1 阶梯，界面可以拿"明度必须单调"自检）；
-    # 没有才退到 -dynamic-（那是派生出来的语义色，同一支色相但阶梯不全）。
-    # 实测本机两个都在，而 -dynamic- 更新一些 —— 按 mtime 取会挑到没有阶梯的那份。
+    # 强调色：SystemUI 的 FRRO 是权威来源；文件/mtime 不变就复用缓存里的 base64
     frro=$(ls -t /data/resource-cache/com.android.systemui-accent-*.frro 2>/dev/null | head -n 1)
     [ -n "$frro" ] || frro=$(ls -t /data/resource-cache/com.android.systemui-dynamic-*.frro 2>/dev/null | head -n 1)
-    if [ -n "$b64cmd" ] && [ -n "$frro" ] && [ -r "$frro" ]; then
-        enc=$($b64cmd < "$frro" 2>/dev/null | tr -d '\r\n')
+    mtime=""
+    [ -n "$frro" ] && mtime=$(stat -c %Y "$frro" 2>/dev/null)
+    if [ -n "$frro" ] && [ "$frro" = "$frro_path_v" ] && [ "$mtime" = "$frro_mtime_v" ] && [ -n "$frro_b64_v" ]; then
+        enc="$frro_b64_v"
+    else
+        enc=""
+        if [ -n "$frro" ] && [ -r "$frro" ]; then
+            [ -n "$base64_cmd_v" ] || base64_cmd_v=$(find_base64 2>/dev/null)
+            if [ -n "$base64_cmd_v" ]; then
+                enc=$($base64_cmd_v < "$frro" 2>/dev/null | tr -d '\r\n')
+            fi
+        fi
         if [ -n "$enc" ]; then
-            kv sys_frro "$enc"
-            kv sys_frro_src "$frro"
+            frro_path_v="$frro"; frro_mtime_v="$mtime"; frro_b64_v="$enc"; cache_dirty=1
+        elif [ -z "$frro" ] && [ -n "$frro_path_v" ]; then
+            frro_path_v=""; frro_mtime_v=""; frro_b64_v=""; cache_dirty=1
         fi
     fi
 
-    # 次选：用户手选的颜色；再退到壁纸提取色
+    if [ -n "$frro_b64_v" ]; then
+        kv sys_frro "$frro_b64_v"
+        kv sys_frro_src "$frro_path_v"
+    fi
+    # seed 这条永远读（settings 取一个键很便宜）：FRRO 在的时候它是"我们的解析器
+    # 认不出这张 overlay"的唯一退路 —— 以前有 FRRO 就把 sys_seed_raw 写成空，等于
+    # 把退路一起省掉了。慢的是 dumpsys wallpaper，只在没有 FRRO 时才跑。
     seed=$(settings get secure theme_custom_color 2>/dev/null)
-    case "$seed" in
-        ''|null|null*) seed="" ;;
-    esac
+    case "$seed" in ''|null|null*) seed="" ;; esac
     if [ -n "$seed" ]; then
         kv sys_seed_raw "$seed"
         kv sys_seed_src theme_custom_color
+    elif [ -n "$frro_b64_v" ]; then
+        kv sys_seed_raw ""
+        kv sys_seed_src none
     else
         wc=$(dumpsys wallpaper 2>/dev/null | grep -m1 -o 'colorValue0=[0-9-]*' | cut -d= -f2)
         if [ -n "$wc" ]; then
@@ -1713,6 +1751,48 @@ cmd_env() {
             kv sys_seed_raw ""
             kv sys_seed_src none
         fi
+    fi
+
+    kv resetprop "$resetprop_v"
+    kv awk "$awk_v"
+    kv base64 "$base64_v"
+    kv inotify_mode "$ino_mode_v"
+    kv inotify_cmd "$ino_cmd_v"
+    kv root_user "$root_v"
+    kv webui_sh "$sh_v"
+    kv device "$dev_v"
+    kv brand "$brand_v"
+    kv android "$android_v"
+    kv sdk "$sdk_v"
+    kv build_type "$build_v"
+    kv vbstate "$vb_v"
+    [ -n "$sb_dp_v" ] && kv sys_statusbar_dp "$sb_dp_v"
+
+    # 首次 / 失效 / 换主题时才落盘；以后每次打开只读缓存 + 现取深浅
+    if [ "$cache_dirty" = 1 ] && [ -d "${cache%/*}" ] && [ -w "${cache%/*}" ]; then
+        tmp="${cache}.tmp.$$"
+        {
+            printf 'v1\t%s\n' "$ckey"
+            printf 'resetprop\t%s\n' "$resetprop_v"
+            printf 'awk\t%s\n' "$awk_v"
+            printf 'base64\t%s\n' "$base64_v"
+            printf 'base64_cmd\t%s\n' "$base64_cmd_v"
+            printf 'ino_mode\t%s\n' "$ino_mode_v"
+            printf 'ino_cmd\t%s\n' "$ino_cmd_v"
+            printf 'root_user\t%s\n' "$root_v"
+            printf 'webui_sh\t%s\n' "$sh_v"
+            printf 'device\t%s\n' "$dev_v"
+            printf 'brand\t%s\n' "$brand_v"
+            printf 'android\t%s\n' "$android_v"
+            printf 'sdk\t%s\n' "$sdk_v"
+            printf 'build_type\t%s\n' "$build_v"
+            printf 'vbstate\t%s\n' "$vb_v"
+            printf 'statusbar_dp\t%s\n' "$sb_dp_v"
+            printf 'frro_path\t%s\n' "$frro_path_v"
+            printf 'frro_mtime\t%s\n' "$frro_mtime_v"
+            printf 'frro_b64\t%s\n' "$frro_b64_v"
+        } > "$tmp" 2>/dev/null && chmod 600 "$tmp" 2>/dev/null && mv -f "$tmp" "$cache" 2>/dev/null
+        rm -f "$tmp" 2>/dev/null
     fi
     return 0
 }

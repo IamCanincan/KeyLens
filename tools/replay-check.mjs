@@ -226,7 +226,11 @@ async function main() {
       items: document.querySelectorAll('#view md-list-item').length,
       rows: document.querySelectorAll('#view .app-row').length,
       cards: document.querySelectorAll('#view md-card').length,
-      text: txt, self: self, calls: (window.__replayLog||[]).length };
+      text: txt, self: self, calls: (window.__replayLog||[]).length,
+      quiet: (window.__replayLog||[]).filter(function (s) { return s.indexOf('exec ') !== 0; }).length,
+      quietLines: (window.__replayLog||[]).filter(function (s) { return s.indexOf('exec ') !== 0; }),
+      cmds: (window.__replayLog||[]).filter(function(s){return s.indexOf('exec ')===0;})
+        .map(function(s){ return s.replace(/^exec .*webui\.sh /,'').split(' ')[0]; }) };
   })()`;
   const ev = async e => { const r = await ws.send('Runtime.evaluate', { expression: e, returnByValue: true, awaitPromise: true }); return r.result.value; };
 
@@ -269,7 +273,12 @@ async function main() {
   const p = await ev(PROBE);
   chk('打开落在主页', (await headline()) === '主页', '顶栏=' + (await headline()));
   chk('视口钉在 417', p.vw === 417, 'vw=' + p.vw);
-  chk('真的把命令发出去了', p.calls >= 6, 'exec 调用 ' + p.calls + ' 次');
+  /* 这条判据数的是"哪些命令真被应答过"，不是 exec 的次数：
+     次数对不上形状错的调用（每次 exec 会多塞一行报错）反而更高。 */
+  const gotCmds = Array.from(new Set(p.cmds || []));
+  chk('首屏四类读命令真发出去并回了话',
+    ['contract', 'status', 'env', 'backend-info'].every(function (c) { return gotCmds.indexOf(c) >= 0; }),
+    gotCmds.join(' / ') + '（exec ' + p.calls + ' 次）');
   chk('主页画出状态条与三家矩阵', p.cards >= 2 && p.items >= 3, 'cards=' + p.cards + ' items=' + p.items);
   {
     const beVer = ((store['backend-info'].stdout || '').match(/^module_version=(.*)$/m) || [])[1] || '';
@@ -568,6 +577,13 @@ async function main() {
   chk('日志页 300 行切回不卡（<400ms）', logM.ms < 400,
     `${logM.ms}ms（同步 ${logM.syncMs}ms）/ ${logM.nodes} 节点 / ${logLines} 行`
     + (picked300 ? '' : '  · 没找到 300 行按钮，量的是当前档'));
+  /* 整趟驱动下来，界面有没有问过台架答不了的命令？
+     shim 对答不上的命令只记一行"静默不回调"就返回 undefined —— 真机上那条
+     promise 永远不落地，界面会停在加载页。exec 计数抓不到它（反而多算一行），
+     所以按行型单独要它为零。 */
+  const q0 = await ev(PROBE);
+  chk('界面问过的命令台架都答得上（无静默不回调）', q0.quiet === 0,
+    q0.quiet ? q0.quietLines.slice(0, 3).join(' ⏐ ') : 'exec ' + q0.calls + ' 次全应答');
   const shot = await ws.send('Page.captureScreenshot', { format: 'png' });
   fs.writeFileSync(path.join(OUT, 'replay.png'), Buffer.from(shot.data, 'base64'));
   console.log('\n截图：' + path.join(OUT, 'replay.png'));

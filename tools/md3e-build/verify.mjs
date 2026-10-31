@@ -824,6 +824,27 @@ async function main() {
   chk('数据就绪后启动页淡出并露出主页',
     !bs2.splash && bs2.page && bs2.cards >= 2, JSON.stringify(bs2));
 
+  /* 壳先出、数据后台填：把 status 延后（?slow=status），启动页淡出后主页那块位置是
+     骨架屏而不是空屏；状态到齐才换成真主页。以前是"数据全齐才让壳出来"，
+     命令层慢 1 秒就是空屏 1 秒。 */
+  await send('Page.navigate', { url: URL0 + '&slow=status' });
+  await sleep(220);
+  const hs = await ev(`(function(){ return { hero: !!document.querySelector('#view .sk-hero'),
+    stats: document.querySelectorAll('#view .sk-stat').length,
+    rows: document.querySelectorAll('#view .sk-row').length,
+    cards: document.querySelectorAll('#view md-card').length,
+    empty: !document.querySelector('#view > .page') }; })()`);
+  chk('契约一到就画壳：状态未到时主页位置已是骨架（不是空屏）',
+    hs.hero && !hs.empty && hs.stats === 3 && hs.rows >= 3 && hs.cards === 0, JSON.stringify(hs));
+  {
+    const sH = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-home-skeleton.png'), Buffer.from(sH.data, 'base64'));
+  }
+  await sleep(1200);
+  const hs2 = await ev(`(function(){ return { hero: !!document.querySelector('#view .sk-hero'),
+    cards: document.querySelectorAll('#view md-card').length }; })()`);
+  chk('状态到齐后骨架换成真主页', !hs2.hero && hs2.cards >= 2, JSON.stringify(hs2));
+
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

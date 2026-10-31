@@ -51,6 +51,9 @@ rm -f "/data/adb/service.d/taa_resetprop.sh" 2>/dev/null
 # 新旧两组路径都删：改名前装的、升级后卸载的，不能把旧文件留在 /data/adb 里。
 rm -f "/data/adb/keylens.log" "/data/adb/keylens.log.tmp" "/data/local/tmp/keylens.log" 2>/dev/null
 rm -f "/data/adb/keylens.props_off" "/data/adb/keylens.boot_hash" 2>/dev/null
+# env 的静态探针缓存（键里只有工具路径/机型/状态栏高度与 FRRO 原文，没有密钥），
+# 连同落盘时的 .tmp.<pid> 一起清掉 —— 卸载后 /data/adb 里不该留模块的文件。
+rm -f "/data/adb/keylens.env.cache" /data/adb/keylens.env.cache.tmp.* 2>/dev/null
 rm -f "/data/adb/ts_auto.log" "/data/adb/ts_auto.log.tmp" "/data/local/tmp/ts_auto.log" 2>/dev/null
 rm -f "/data/adb/ts_auto.props_off" "/data/adb/ts_auto.boot_hash" 2>/dev/null
 

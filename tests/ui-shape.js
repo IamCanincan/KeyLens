@@ -278,7 +278,7 @@ chk('其余二级页首进也等数据再画（不先画"读不到/全部一致"
   && /if \(sub === 'keybox'\) return !!S\.loaded\.backend;/.test(app)
   && /return pagePending \? renderPending\(pendingText\(\), pendingKind\(\)\) : renderFuncSub\(sub\)/.test(app));
 chk('加载态覆盖日志，文案说清在等什么',
-  /setPagePending\(p === 'log' && !S\.loaded\.log && !S\.log\.length\)/.test(app)
+  /if \(p === 'log'\) setPagePending\(!S\.loaded\.log && !S\.log\.length\)/.test(app)
   && /if \(S\.tab === 'log' && pagePending\)/.test(app)
   && /targets: '正在加载应用名与图标…'/.test(app)
   && /props: '正在读取属性对照…'/.test(app)
@@ -290,9 +290,22 @@ chk('Tricky 名单与 tee_status 一起取（自动→首进就判定）',
   /teestatus: loadTeeStatus/.test(bridge)
   && /if \(S\.backendInfo\.backend === 'tricky'\) need\.push\('teestatus'\)/.test(app)
   && /S\.backendInfo\.backend === 'tricky' && !S\.loaded\.teestatus/.test(screens));
-/* 落地首帧还要 backend-info：主页版本胶囊、菜单条数、keybox 状态都读它。 */
-chk('boot 首画前取 backend-info（版本/条数/keybox 不空一拍）',
-  /then\(loadBase\)\.then\(function \(\) \{[\s\S]*?ensure\('backend'\)[\s\S]*?show\(start\)/.test(app));
+/* 启动并行取数：契约一到先画壳，status/env/backend 在后台 join；主页/菜单没数据
+   时是骨架，不会空着或先画假值。 */
+chk('启动并行取基础状态/后端信息，契约一到先画壳',
+  /const statusP = ensure\('status'\)/.test(app)
+  && /const envP = ensure\('env'\)/.test(app)
+  && /ensure\('backend'\)\.then\(function \(\) \{\}, function \(\) \{\}\);/.test(app)
+  && /contractP\.then\(drawShell/.test(app)
+  && /show\(start\)/.test(app)
+  && /envSafe/.test(app));
+chk('主页/功能菜单数据没到先画骨架',
+  /if \(S\.tab === 'home' && pagePending\)/.test(app)
+  && /renderPending\(pendingText\(\), 'home'\)/.test(app)
+  && /else if \(S\.tab === 'func' && pagePending\)/.test(app)
+  && /p === 'home' \|\| p === 'func'/.test(app)
+  && /\.sk-hero\{/.test(css)
+  && /'home'\) return '正在读取设备状态…'/.test(app));
 /* 写完名单/属性/配置后必须重取当前二级页，否则屏上停在旧值。 */
 chk('写后 reloadAll 重取当前二级页',
   /return S\.sub \? loadSub\(S\.sub, true\) : load\(S\.tab\)/.test(app));

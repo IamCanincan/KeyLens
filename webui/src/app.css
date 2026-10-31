@@ -268,6 +268,15 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
 .sk-chips{display:flex;gap:8px}
 .sk-chip{height:32px;border-radius:999px;flex:none;background:var(--md-sys-color-surface-container-high)}
 .sk-search{height:56px;border-radius:12px;background:var(--md-sys-color-surface-container-highest)}
+/* 主页骨架：英雄卡 + 三家矩阵，形状和真主页对齐 */
+.sk-hero{background:var(--md-sys-color-surface-container-high);border-radius:22px;padding:18px;
+  display:flex;flex-direction:column;gap:18px}
+.sk-hero-top{display:flex;align-items:center;gap:12px}
+.sk-hero-logo{width:56px;height:56px;border-radius:16px;flex:none;
+  background:var(--md-sys-color-surface-container-highest)}
+.sk-hero-stats{display:flex;gap:26px}
+.sk-stat{flex:1;display:flex;flex-direction:column;gap:8px;min-width:0}
+.sk-stat .sk-line{height:10px}
 .sk-rows{display:flex;flex-direction:column;gap:2px}
 .sk-row{height:72px;display:flex;align-items:center;gap:16px;padding:0 16px;border-radius:6px;
   background:var(--md-sys-color-surface-container)}

@@ -372,7 +372,27 @@ function skConsole() {
 export function renderPending(text, kind) {
   const box = h('div', 'stack');
   const w = h('div', 'load-card');
-  if (kind === 'list') {
+  if (kind === 'home') {
+    /* 与主页同构：英雄卡（标识 + 品牌行 + 三格统计）+ 三家矩阵 */
+    const hero = h('div', 'sk-hero');
+    const top = h('div', 'sk-hero-top');
+    top.appendChild(h('span', 'sk-hero-logo'));
+    const lines = h('div', 'sk-lines');
+    lines.appendChild(skLine('40%'));
+    lines.appendChild(skLine('62%'));
+    top.appendChild(lines);
+    hero.appendChild(top);
+    const stats = h('div', 'sk-hero-stats');
+    [['版本', '42%'], ['生效名单', '48%'], ['属性伪装', '38%']].forEach(function (s) {
+      const d = h('div', 'sk-stat');
+      d.appendChild(skLine(s[1]));
+      d.appendChild(skLine('34%'));
+      stats.appendChild(d);
+    });
+    hero.appendChild(stats);
+    w.appendChild(hero);
+    w.appendChild(skRows(3));
+  } else if (kind === 'list') {
     /* 与名单页同构：两行说明 → 筛选芯片 → 搜索框 → 分组行 */
     const hints = h('div', 'sk-hints');
     hints.appendChild(skLine('72%'));
