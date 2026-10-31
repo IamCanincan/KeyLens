@@ -257,7 +257,7 @@ fn find_from(s: &[u8], from: usize, needle: &[u8]) -> Option<usize> {
 
 /// 与 open 处的 `{`/`[` 配对的闭合下标；跳过字符串与转义（等价 awk 的 matchclose）。
 fn match_close(s: &[u8], open: usize) -> Option<usize> {
-    let mut depth = 0i32;
+    let mut _depth = 0i32;
     let mut instr = false;
     let mut esc = false;
     for i in open..s.len() {
@@ -569,7 +569,7 @@ fn tricky_patches_rows(text: &str) -> Vec<(String, String, String, String)> {
     let mut v_vnd: HashMap<String, String> = HashMap::new();
     let mut v_btm: HashMap<String, String> = HashMap::new();
     let mut cur = "global".to_string();
-    let mut flush = |cur: &String, order: &mut Vec<String>, a: &HashMap<String, String>, b: &HashMap<String, String>, c: &HashMap<String, String>| {
+    let flush = |cur: &String, order: &mut Vec<String>, a: &HashMap<String, String>, b: &HashMap<String, String>, c: &HashMap<String, String>| {
         if cur.is_empty() {
             return;
         }
@@ -1231,7 +1231,7 @@ fn tricky_drop_rewrite(text: &str, scope: &str) -> (String, &'static str) {
         v
     };
     let n = lines.len();
-    let is_blank = |s: &str| s.chars().all(|c| c == ' ' || c == '\t');
+    let _is_blank = |s: &str| s.chars().all(|c| c == ' ' || c == '\t');
     let is_comment = |s: &str| s.trim_start_matches([' ', '\t']).starts_with('#');
     let mut secl: Vec<usize> = Vec::new();
     let mut secn: Vec<String> = Vec::new();
