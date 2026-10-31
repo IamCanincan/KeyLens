@@ -65,7 +65,7 @@ END {
     hasRootClose = (match(buf, "</AndroidAttestation" SP "*>") > 0)
 
     if (backend == "tricky") {
-        if (!hasRootOpen || !hasRootClose) fail("Tricky 要求根元素是成对的 <AndroidAttestation>（KeyBoxUtils.kt:67 在深度 1 就判死），这份没有")
+        if (!hasRootOpen || !hasRootClose) fail("Tricky 要求根元素是成对的 <AndroidAttestation>，这份没有")
         if (nkey == 0) fail("没有 <Key algorithm=\"…\"> 块，Tricky 解析不到任何密钥")
         if (nkeybox == 0) fail("没有 <Keybox> 元素，Tricky 的 depth-2 判据过不了")
         if (npriv == 0) fail("没有 <PrivateKey>")
@@ -75,10 +75,10 @@ END {
         if (!hasRootOpen && nkeybox == 0) fail("既没有 <AndroidAttestation> 也没有 <Keybox>，不像 keybox（TEESim 自家 WebUI 的判据）")
         if (nkey == 0) fail("没有 <Key algorithm=\"…\"> 块")
         if (npriv == 0) fail("没有 <PrivateKey>")
-        if (ncert < 2) fail("TEESim 运行时至少要 2 张 <Certificate>（attest.rs:124），这份只有 " ncert " 张")
-        if (buf !~ /algorithm[ \t]*=[ \t]*"(rsa|ecdsa)"/) fail("TEESim 只认小写的 algorithm=\"rsa\"/\"ecdsa\"（attest.rs:68-72），这份里没有")
+        if (ncert < 2) fail("TEESim 运行时至少要 2 张 <Certificate>，这份只有 " ncert " 张")
+        if (buf !~ /algorithm[ \t]*=[ \t]*"(rsa|ecdsa)"/) fail("TEESim 只认小写的 algorithm=\"rsa\"/\"ecdsa\"，这份里没有")
     } else {
-        if (nkeyOmk == 0) fail("OMK 用正则 <Key\\s+algorithm=\"X\">…</Key> 整块取密钥（keybox.rs:35），要求 algorithm 属性后面紧跟 >；这份一个都没匹配上")
+        if (nkeyOmk == 0) fail("OMK 用正则 <Key\\s+algorithm=\"X\">…</Key> 整块取密钥，要求 algorithm 属性后面紧跟 >；这份一个都没匹配上")
         if (buf !~ /algorithm[ \t]*=[ \t]*"(ec|ecdsa)"/) fail("OMK 必须有 EC 密钥（algorithm=\"ec\" 或 \"ecdsa\"，keybox.rs:103），只有 RSA 它直接放弃")
         if (npriv == 0) fail("没有 <PrivateKey>")
         if (nPEM == 0) fail("OMK 走 PEM 解码私钥与证书，这份里没有 -----BEGIN …----- 块")
@@ -94,7 +94,7 @@ END {
             i = bodyStart + RSTART + RLENGTH - 1
             seen++
             body = substr(tail, 1, RSTART - 1)
-            if (!match(body, "<NumberOfCertificates" SP "*>")) fail("第 " seen " 个 <Key> 块里没有 <NumberOfCertificates>（keybox.rs:294 当必需项，缺了直接 bail）")
+            if (!match(body, "<NumberOfCertificates" SP "*>")) fail("第 " seen " 个 <Key> 块里没有 <NumberOfCertificates>")
             after = substr(body, RSTART + RLENGTH)
             if (!match(after, SP "*[0-9]+")) fail("第 " seen " 个 <Key> 块的 <NumberOfCertificates> 后面没有数字")
             expected = substr(after, RSTART, RLENGTH) + 0
