@@ -4,6 +4,7 @@
 //! `api=4` 与 `commands=<空格分隔>`。未迁移的命令返回 2（不假装成功），
 //! 便于对拍时区分「还没做」与「做错了」。
 
+mod b64;
 mod backend;
 mod lock;
 mod read_cmds;
