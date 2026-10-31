@@ -105,3 +105,19 @@
 - 现有 shell 命令层（webui.sh + lib/*.sh + backends/*.awk）合计 **268,059 字节（约 262 KB）**；
 - 刷机包现状约 397 KB，接入后预计 **约 0.9 MB**——对 KernelSU 模块仍属正常量级（「体积可控」达成，aarch64 静态会略有差异）；
 - 未接入的 11 条命令实现后按当前密度估算增量 < 100 KB。
+
+## 剩余 11 条的入口位置（下一窗口直接从这里读，省一轮定位）
+
+| 命令 | 实现位置 | 依赖 |
+|---|---|---|
+| restore-app | lib/write.sh:53 | add_target_apps + 三家 writer |
+| restore-apps | lib/write.sh:83 | 同上 |
+| remove-apps | lib/write.sh:136 | 同上 + 「至少保留一条」 |
+| teesim-save | lib/write.sh:198 | teesim_set.awk(178) + 字段白名单 |
+| omk-save-injector | lib/write.sh:277 | omk_set.awk(196) + intercept 开关 |
+| omk-save-config | lib/write.sh:347 | 同上 + [crypto] 不可清空 |
+| sync | lib/write.sh:1016 | run_sync / 快照差分 |
+| backend-info | webui.sh:587 | teesim_info.awk(157) / omk_info.awk(136) / tricky_info.awk(43) |
+| env | webui.sh:809 | 工具探测 + 缓存 + FRRO |
+| icons | webui.sh:1098 | sqlite3 + app_process(icondump.dex) + 缓存 |
+| doctor | webui.sh:1334 | 11 项聚合检查 |
