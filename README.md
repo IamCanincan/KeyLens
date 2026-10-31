@@ -426,20 +426,6 @@ A：可删除后端目录下的 `.kl_daemon_pids.list` 并重启，或直接卸�
 
 ---
 
-## 🙏 致谢与借鉴
-
-这个模块站在一堆优秀项目的肩膀上，逐一谢过（排名不分先后）：
-
-- **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)**（James Clef）—— 后端之一：keymint/keystore 注入与 keybox 体系。本模块对 OMK 的全部适配（读写、diff 预览、结构校验）都是对照它的实现与 `docs/CONFIGURATION.md` 逐条写的。
-- **[TEESimulator](https://github.com/JingMatrix/TEESimulator)**（JingMatrix）—— 后端之一：进程内参考 KeyMint TA。TEESim 后端的解析、写回与 tee_status 适配对照它的行为完成。
-- **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)**（beakthoven）—— 后端之一：开源 keystore 方案。Tricky 后端的行尾语法与补丁段适配对照它的实现。
-- **[KernelSU](https://github.com/tiann/KernelSU)** —— 模块的运行平台：WebUI 容器、exec 桥与模块体系。
-- **[@material/web](https://github.com/material-components/material-web)**（Apache-2.0）—— 界面的 Expressive 组件与设计令牌：字号、圆角、动效曲线取自它自带的 `md-sys-typescale` / `md-sys-shape` 与 MotionScheme 弹簧参数（ζ0.8/k380 位置、ζ1.0/k1600 颜色）。
-- **Android 系统设置** —— 视觉语言的一比一参照（分组行距、圆角档、大标题滚动）。
-- **NoMount** —— 视觉层语言与 `system-ui` 字体路线的参照。
-- **AOSP KeyMint（kmr）** —— OMK TA 的基座；本模块对 keymint 语义的理解建立在其上。
-- **DuckToolbox** —— 性能对照的标尺之一（exec 开销的参照系）。
-
 ## 📝 许可证
 
 本模块遵循 **GPL-3.0** 开源协议，欢迎贡献代码与反馈问题。
