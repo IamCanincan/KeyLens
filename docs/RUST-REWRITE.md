@@ -136,3 +136,21 @@ git merge recovered                     # 或 cherry-pick
 `
 
 网络恢复后先 git push origin main，再删掉这份 bundle。
+
+## 迁移过程中踩过的坑（写下来，别再踩第二遍）
+
+1. **PowerShell 会毁掉源码**：`Set-Content` 带 BOM（编译报 `unexpected closing delimiter` / `unknown start of token: \u{feff}`）、
+   `-replace | Set-Content` 在中文串上乱码（报 `unterminated double quote string`）、`node -e …$($arg)…` 会被
+   PowerShell 先做变量插值（宏定义被吃成空规则）。**结论：只用编辑工具或 Node 写文件；写含 `$` 的代码绝不走 PowerShell 字符串。**
+2. **别为消警告盲改同名绑定**：编译器说的未使用可能指另一个函数里的同名变量；盲改会把在用的名字改掉，
+   直接编不过（`is_blank` / `depth` 各踩一次）。改警告要按行号逐个确认。
+3. **`println!` 在管道被关时会 panic**：Rust 默认忽略 SIGPIPE，`keylens contract | head -1` 会 `Aborted`。
+   全部输出已改走 `println_ok!` / `eprintln_ok!`（`writeln!` + 忽略错误），并有回归用例守着。
+4. **`json_flat` 的 `span_of` 只能用于扁平对象**：拿它扫 `profiles`（值是嵌套对象）时，值对象的 `}` 会让深度算错，
+   后续键永远找不到。嵌套场景要用 `member_span`（遇到 `{`/`[` 用配对跳过）。
+5. **对拍夹具不能两边共用一份文件**：写命令会先改掉它，后跑的一侧就看不到原始状态（`set-mode` 踩过）。
+   要么每侧各建一份，要么只比输出不比结果。
+6. **删/改 JSON 成员时的逗号**：整条删除要连键名、冒号、逗号与行内空白一起吃掉；中间的成员吃后面逗号，
+   最后一个成员改吃前面逗号；前后都是换行时连行删。否则留下 `a: ,` 这种守护进程读不了的东西。
+7. **文档也会触发代码闸门**：`rust/README` 里写了本机绝对路径（旧仓库名），直接让残留闸变红、连带
+   `legacy-migrate.sh` 的变异测试失败。文档里的路径一律用占位符。
