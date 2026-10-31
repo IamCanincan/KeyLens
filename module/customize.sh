@@ -81,6 +81,12 @@ rm -f /data/adb/service.d/taa_resetprop.sh 2>/dev/null
 # ---------- [5/5] 初始同步 ----------
 ui_print " "
 ui_print "🔄 [5/5] 运行初始同步"
+# 迁移必须排在首次同步之前：改名前那套 .ts_* 状态（已装基线、历次纳入并集）如果还
+# 没搬过来，run_sync 会走"首次安装"分支自己建一份新基线，旧的那份此后永远搬不动
+# （migrate 见新名已存在就跳过）—— 结果是你手动排除过的应用被重新加进名单。
+# service.sh / post-fs-data.sh 里都有这一步，但刷机当次不重启就打开界面、或按
+# 模块的"操作"按钮，走的是这两条路，碰不到它们。
+migrate_legacy_paths
 run_sync "$MODPATH/module.prop" "${KL_DIR}/.kl_tmp"
 rc=$?
 ui_print "  📦 应用总数：$KL_COUNT"

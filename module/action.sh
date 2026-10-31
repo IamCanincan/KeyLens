@@ -45,6 +45,9 @@ echo ""
 acquire_lock "$LOCK_DIR" || { echo " ❌ 获取锁超时" >&2; exit 1; }
 
 echo "🔄 [1/1] 正在同步应用列表..."
+# 与 customize.sh 同一个理由：手动入口也可能是刷机后第一次碰这套状态，迁移必须
+# 先于任何一次 run_sync（幂等，跑过就是几次 stat）。
+migrate_legacy_paths
 # 手动入口：允许把"读到空已装列表"当成真的清空处理；后台守护进程不这样处理。
 KL_EMPTY_OK=1
 run_sync "$PROP_FILE" "$TMP"

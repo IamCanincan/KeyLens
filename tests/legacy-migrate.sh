@@ -141,6 +141,42 @@ else
     printf '  ·    本机没有 node，跳过残留闸门这一段\n'
 fi
 
+# ── 顺序判据：任何一次 run_sync 之前必须先 migrate_legacy_paths ──────────
+# 为什么钉这个：迁移没跑就先同步，run_sync 会走"首次安装"分支自己建一份新基线，
+# 而 migrate 见新名已存在就跳过 —— 旧的那份 .ts_installed_last 从此永远搬不动，
+# 你手动排除过的应用会被重新加进名单。service.sh / post-fs-data.sh 一直是对的，
+# 漏的是刷机当次（customize.sh）与按"操作"按钮（action.sh）这两条入口。
+# 只认代码行：注释里也会出现 run_sync / migrate_legacy_paths（下面的说明就是），
+# 拿 grep | head -1 会把散文当成调用点 —— 第一版就是这样报出"migrate=89 run_sync=85"
+# 的假红，而 85 那行其实是我写的注释。
+for f in module/customize.sh module/action.sh module/service.sh module/post-fs-data.sh; do
+    if grep -qE '^[^#]*run_sync ' "$f"; then
+        s=$(grep -nE '^[^#]*run_sync ' "$f" | head -1 | cut -d: -f1)
+        m=$(grep -nE '^[^#]*migrate_legacy_paths$' "$f" | head -1 | cut -d: -f1)
+        # 这个套子只有 ok/bad 两个助手（没有 chk）—— 用错助手时 shell 只会报
+        # "command not found" 而不会让 fail 变 1，四条断言会一条都不生效还全绿。
+        if [ -n "$m" ] && [ "$m" -lt "$s" ]; then
+            ok "$f：migrate（第 $m 行）先于 run_sync（第 $s 行）"
+        else
+            bad "$f：迁移没排在同步之前（migrate=${m:-无} run_sync=$s）"
+        fi
+    fi
+done
+# 变异：把 customize.sh 的迁移挪到同步之后，顺序判据必须跟上
+cp module/customize.sh "$D/cust.bak"
+awk '{ if ($0 == "migrate_legacy_paths") { del=1; next } print; if (del && /^run_sync /) { print "migrate_legacy_paths"; del=0 } }' \
+    "$D/cust.bak" > "$D/cust.mut"
+if cmp -s "$D/cust.bak" "$D/cust.mut"; then
+    bad '变异没落地（customize.sh 一字未改，这条不算证据）'
+else
+    m=$(grep -nE '^[^#]*migrate_legacy_paths$' "$D/cust.mut" | head -1 | cut -d: -f1)
+    s=$(grep -nE '^[^#]*run_sync ' "$D/cust.mut" | head -1 | cut -d: -f1)
+    [ -n "$m" ] && [ "$m" -gt "$s" ] && ok '变异「迁移挪到同步之后」被顺序判据抓到' \
+        || bad '变异后判据没跟上（m=$m s=$s）'
+fi
+cmp -s "$D/cust.bak" module/customize.sh && ok '原文件没被动过（变异只写在临时副本里）' \
+    || bad '原文件被改了 —— 还原失败'
+
 rm -rf "$D"
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"
 exit $fail
