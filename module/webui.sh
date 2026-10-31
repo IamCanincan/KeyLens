@@ -67,7 +67,25 @@ NL='
 '
 
 # 用法：kv <键> <值>
-kv() { printf '%s=%s\n' "$1" "$2"; }
+# 说明：Android 的 mksh **没有 printf 内置命令**（`type printf` → /system/bin/printf → toybox），
+#       所以以前每写一行 kv 就 fork+exec 一次进程：真机实测一行约 21ms，status 21 行、
+#       env 30 行、backend-info 23 行 —— 每条命令白付 400~600ms，这是"打开比别家慢一拍"的大头
+#       （对照：同机 DuckToolbox 的 status 约 200ms）。
+#       mksh 的 `print -r --` 是内置的、且不展开反斜杠转义，字节形状与 printf '%s=%s\n' 一致；
+#       没有 print 的 shell（换 busybox/dash 时）退回 printf 那条老路。
+if print -r -- '' >/dev/null 2>&1; then
+    kv() { print -r -- "$1=$2"; }
+else
+    kv() { printf '%s=%s\n' "$1" "$2"; }
+fi
+
+# 用法：tsv <列…> —— 一行 TSV。账同 kv：这个 shell 里 printf 是外部命令，
+#       真机实测一行约 13~21ms，而 props 一页有三十多行。
+if print -r -- '' >/dev/null 2>&1; then
+    tsv() { local IFS="$TAB"; print -r -- "$*"; }
+else
+    tsv() { local IFS="$TAB"; printf '%s\n' "$*"; }
+fi
 
 # ---------- module.prop ----------
 # 说明：整份读入后按锚点取值；逐字段 grep 会把同一个文件读三遍。
@@ -171,9 +189,14 @@ valid_bool() { [ "${1:-}" = "true" ] || [ "${1:-}" = "false" ]; }
 #       可 backends_conflict() 是把 OMK 一起数的 —— 于是"两家冲突"的横幅能亮，
 #       却说不清是哪两家。没有任何界面读过那两个旧键（机上那版只在假数据里写它们），
 #       所以直接换成 *_state。
+# 用法：backend_state <模块目录>；结果放在 $BACKEND_STATE_VALUE
+#       —— 取值走全局而不是 $(backend_state …)：命令替换要起子壳，真机实测一次约 40ms，
+#          而 status 三家各一次（与上面 kv 那笔 fork 是同一类账）。mod_prop 早就是这个写法。
+BACKEND_STATE_VALUE=""
 backend_state() {
-    [ -d "$1" ] || { printf 'absent'; return 0; }
-    if [ -f "$1/disable" ]; then printf 'disabled'; else printf 'active'; fi
+    BACKEND_STATE_VALUE=absent
+    [ -d "$1" ] || return 0
+    if [ -f "$1/disable" ]; then BACKEND_STATE_VALUE=disabled; else BACKEND_STATE_VALUE=active; fi
 }
 
 valid_log_level() {
@@ -1548,9 +1571,9 @@ cmd_status() {
     esac
 
     # 三态与 OMK 那一位：conflict 是三家里数出来的，状态表也必须是三家
-    teesim_st=$(backend_state "$TEESIM_MODULE")
-    tricky_st=$(backend_state "$TRICKY_MODULE")
-    omk_st=$(backend_state "$OMK_MODULE")
+    backend_state "$TEESIM_MODULE"; teesim_st="$BACKEND_STATE_VALUE"
+    backend_state "$TRICKY_MODULE"; tricky_st="$BACKEND_STATE_VALUE"
+    backend_state "$OMK_MODULE";    omk_st="$BACKEND_STATE_VALUE"
 
     target_exists=0; target_writable=0
     if [ -f "$TARGET_FILE" ]; then
@@ -1843,7 +1866,7 @@ cmd_props() {
         elif [ "$cur" = "$expected" ]; then st=ok
         else st=diff
         fi
-        printf '%s\t%s\t%s\t%s\n' "$name" "$cur" "$expected" "$st"
+        tsv "$name" "$cur" "$expected" "$st"
     done <<PAIRS
 $(props_expect_pairs)
 PAIRS
@@ -1856,7 +1879,7 @@ PAIRS
             *"$needle"*) st=diff ;;
             *)           st=ok ;;
         esac
-        printf '%s\t%s\t%s\t%s\n' "$name" "$cur" "不含 $needle（则改写为 $replacement）" "$st"
+        tsv "$name" "$cur" "不含 $needle（则改写为 $replacement）" "$st"
     done <<RULES
 $(props_expect_rules)
 RULES
