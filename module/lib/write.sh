@@ -914,8 +914,15 @@ cmd_set_boot_hash() {
 # 说明：立刻按期望表写一次属性。
 #       注意：ro.build.type 等字段已被 Zygote 读进 Java 静态字段的，运行期改写不会
 #       回头刷新 —— 界面上要如实提示，彻底生效仍需重启。
+# 复核用的那一次重读：单独一个函数，测试可以换成"退码非 0"或"只读到两行"的假读数。
+# 为什么必须重新起进程读：本进程已经缓存过 module.prop 与属性快照，写完再读同一份
+# 进程里的值等于拿旧快照自证。
+props_readback() {
+    sh "$MODDIR/webui.sh" props 2>/dev/null
+}
+
 cmd_props_apply() {
-    local out bad tab
+    local out bad tab rc want got
 
     require_runnable || return 1
     command -v resetprop >/dev/null 2>&1 || { echo "未找到 resetprop 命令" >&2; return 1; }
@@ -930,7 +937,19 @@ cmd_props_apply() {
     log_info "🛠 WebUI 触发一次属性伪装（运行期写入；已被应用读取的静态字段不会刷新）"
 
     # 重新起一次进程读，确保拿到的是写入后的值（本进程的属性快照已经过期）
-    out=$(sh "$MODDIR/webui.sh" props)
+    out=$(props_readback); rc=$?
+    # 复核必须"真读到一整屏"才算数。以前不管读没读到都往下走：子进程失败或输出被截
+    # 成空时，下面那个 grep -c 会规规矩矩给出 0，于是界面收到 applied 1 + mismatch 0，
+    # 把"复核根本没跑成"报成"写入并复核通过、0 项不符"。行数按期望表自己算，
+    # 不写死数字（属性表加一行就会让这个判据变松）。
+    want=$(props_expect_pairs | grep -c .)
+    got=$(printf '%s\n' "$out" | grep -c .)
+    if [ "$rc" != 0 ] || [ "${got:-0}" -lt "$want" ]; then
+        echo "写入后复核失败（重读退码 $rc，读到 $got/$want 行），不能报已生效" >&2
+        kv applied 0
+        kv mismatch -1
+        return 1
+    fi
     # 状态是每行最后一个 TAB 字段。这里用 grep 而不是 sed：\t 转义在 toybox 与
     # busybox 的 sed 里行为不一致，改用 printf 现造制表符来匹配。
     # grep 必须带 -a：属性值含中文与 emoji 时，被当作二进制文件会让 -c 恒为 0。
