@@ -10,7 +10,7 @@ import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failT
   daemonLabel, daemonDown, propsMaskLabel } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
-/* Opticon 同模板的 KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
+/* 自家模板的 KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
 import logoUrl from './logo.png';
 
 /* 图标名一律取自库自带的子集（见 tools/md3e-build/vendor/icons.txt）。
@@ -50,7 +50,7 @@ export function item(o) {
   if (o.tone) it.setAttribute('data-tone', o.tone);
   if (o.mono) it.setAttribute('data-mono', '');
   if (o.interactive) it.setAttribute('interactive', '');
-  /* 行标题 16px/500：照 NoMount 的行（比系统设置的 19px 安静一档）。
+  /* 行标题 16px/500：照移动端的行（比系统设置的 19px 安静一档）。
      组件的 headline 字号写死在 shadow 里，四个 typescale 变量都撬不动
      （var-probe 逐个试过），只能注入构造样式表 —— item() 是所有行的唯一出口。 */
   try { it.shadowRoot.adoptedStyleSheets = it.shadowRoot.adoptedStyleSheets.concat([rowSkin()]); } catch (e) {}
@@ -96,7 +96,7 @@ export function list(items) {
    配色不用 tonal 容器色 —— 那套在深色下又暗又灰，跟参考图对不上；参考图是
    **亮圆底 + 深色图形，深浅两态同一套**（Android 设置正是这么干的），所以这里
    放固定色值。interactive 的主色（按钮/选中态）仍走动态配色。 */
-/* 行首图标：单色小方块（NoMount 的语言）。以前每个入口一种粉彩色，
+/* 行首图标：单色小方块（移动端的语言）。以前每个入口一种粉彩色，
    五个入口并排时颜色比内容还抢眼；彩色只留给状态与操作。 */
 export function avatar(iconName) {
   const s = h('span', 'ic-avatar', iconName);
@@ -785,7 +785,7 @@ function statusStrip() {
   const [tone, label] = toneOfState(st.state);
   const c = card('hero');
   const top = h('div', 'hero-top');
-  /* 品牌标识直接沿用 Opticon 的图标模板：淡粉底 + 墨色 KL，只换字符。 */
+  /* 品牌标识直接沿用 自家的图标模板：淡粉底 + 墨色 KL，只换字符。 */
   const badge = h('img', 'kl-logo');
   badge.src = logoUrl;
   badge.alt = 'KL';

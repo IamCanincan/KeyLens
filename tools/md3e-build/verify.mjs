@@ -177,7 +177,7 @@ async function main() {
       return { text: b ? (b.textContent||'').trim() : '',
         alt: img ? (img.getAttribute('alt')||'') : '',
         src: img ? (img.getAttribute('src')||'') : '' }; })()`);
-    chk('主页有 Opticon 模板的 KL 标识与品牌眉题',
+    chk('主页有 自家 模板的 KL 标识与品牌眉题',
       brand.text === 'KEYLENS' && brand.alt === 'KL' && brand.src.indexOf('data:image/png') === 0,
       brand.text + ' / alt=' + brand.alt + ' / src=' + brand.src.slice(0, 22));
     const barTitles = await ev(`(function(){ var b=document.getElementById('bar');
@@ -225,7 +225,7 @@ async function main() {
     const rowSize = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
       var h=it&&it.shadowRoot&&it.shadowRoot.querySelector('.headline');
       return h ? getComputedStyle(h).fontSize : ''; })()`);
-    chk('行标题 16px（NoMount 式的密度）', rowSize === '16px', rowSize || '没读到');
+    chk('行标题 16px（移动端式的密度）', rowSize === '16px', rowSize || '没读到');
     const rowCenter = await ev(`(function(){ var it=document.querySelector('#view md-list-item');
       if (!it||!it.shadowRoot) return null; var r=it.shadowRoot.querySelector('.item'), c=it.shadowRoot.querySelector('.content');
       if (!r||!c) return null; var a=r.getBoundingClientRect(), b=c.getBoundingClientRect();

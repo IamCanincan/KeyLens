@@ -342,7 +342,7 @@ async function main() {
       rowCenter ? '行中心 ' + rowCenter.row + ' / 文字中心 ' + rowCenter.text : '没读到');
   }
   chk('二级页顶栏是二级名', (await headline()) === '目标名单', '顶栏=' + (await headline()));
-  /* NoMount 的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。
+  /* 移动端的阅读节奏：页首大标题在内容里；滚过 8px 顶栏才出现小标题。
      底栏是悬浮药丸：长页向下滑时下沉缩小消失，向上滑/回顶再回来。 */
   {
     const barState = () => ev(`(function(){ var b=document.getElementById('bar');
