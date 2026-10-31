@@ -670,6 +670,188 @@ fn sub_obj(root: &[u8], field: &str) -> Vec<u8> {
     root[o..=e].to_vec()
 }
 
+/// obj_string(obj, key)：键后配对 `:`，再取下一个字符串值。
+fn obj_string(obj: &[u8], key: &str) -> String {
+    let needle = format!("\"{}\"", key);
+    let Some(p) = find_from(obj, 0, needle.as_bytes()) else { return String::new() };
+    let Some(cpos) = find_from(obj, p + needle.len(), b":") else { return String::new() };
+    let mut i = cpos + 1;
+    while i < obj.len() {
+        let c = obj[i];
+        if c == b'"' {
+            let start = i + 1;
+            let mut j = start;
+            let mut esc = false;
+            while j < obj.len() {
+                if esc {
+                    esc = false;
+                } else if obj[j] == b'\\' {
+                    esc = true;
+                } else if obj[j] == b'"' {
+                    return String::from_utf8_lossy(&obj[start..j]).into_owned();
+                }
+                j += 1;
+            }
+            return String::new();
+        }
+        if c == b'{' || c == b'[' || c == b'}' {
+            return String::new();
+        }
+        i += 1;
+    }
+    String::new()
+}
+
+/// count_array(obj, key)：`key: [ … ]` 顶层字符串条目数；顶层遇对象/数组即停。
+fn count_array(obj: &[u8], key: &str) -> usize {
+    let needle = format!("\"{}\"", key);
+    let Some(p) = find_from(obj, 0, needle.as_bytes()) else { return 0 };
+    let Some(cpos) = find_from(obj, p + needle.len(), b":") else { return 0 };
+    let mut i = cpos + 1;
+    while i < obj.len() && matches!(obj[i], b' ' | b'\t' | b'\r' | b'\n') {
+        i += 1;
+    }
+    if i >= obj.len() || obj[i] != b'[' {
+        return 0;
+    }
+    let Some(cl) = match_close(obj, i) else { return 0 };
+    let body = &obj[i + 1..cl];
+    let mut n = 0usize;
+    let mut instr = false;
+    let mut esc = false;
+    for &c in body {
+        if instr {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                instr = false;
+                n += 1;
+            }
+            continue;
+        }
+        if c == b'"' {
+            instr = true;
+            continue;
+        }
+        if c == b'{' || c == b'[' {
+            return n;
+        }
+    }
+    n
+}
+
+/// cmd_teesim_profiles：profiles 的（名字 / keybox / mode / apps 数 / 是否默认）。
+pub fn teesim_profiles() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    if !p.teesim_config.is_file() {
+        eprintln!("配置不存在：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    let s = std::fs::read(&p.teesim_config).unwrap_or_default();
+    let Some(pp) = find_from(&s, 0, b"\"profiles\"") else { std::process::exit(1) };
+    let Some(colon) = find_from(&s, pp + 10, b":") else { std::process::exit(1) };
+    let mut i = colon + 1;
+    while i < s.len() && matches!(s[i], b' ' | b'\t' | b'\r' | b'\n') {
+        i += 1;
+    }
+    if i >= s.len() || s[i] != b'{' {
+        std::process::exit(1);
+    }
+    let Some(pend) = match_close(&s, i) else { std::process::exit(1) };
+    let obj = &s[i..=pend];
+    // profiles 对象的一层：深 1 处 `"名字" : { … }`
+    let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
+    let mut j = 1usize;
+    let mut depth = 0i32;
+    let mut instr = false;
+    let mut esc = false;
+    while j < obj.len() {
+        let c = obj[j];
+        if instr {
+            if esc {
+                esc = false;
+            } else if c == b'\\' {
+                esc = true;
+            } else if c == b'"' {
+                instr = false;
+            }
+            j += 1;
+            continue;
+        }
+        if c == b'"' {
+            // 读键（含转义），随后要求 `:` 与 `{`
+            let start = j + 1;
+            let mut k = start;
+            while k < obj.len() && obj[k] != b'"' {
+                k += 1;
+            }
+            let name = String::from_utf8_lossy(&obj[start..k]).into_owned();
+            let mut m = k + 1;
+            while m < obj.len() && matches!(obj[m], b' ' | b'\t' | b'\r' | b'\n') {
+                m += 1;
+            }
+            if m < obj.len() && obj[m] == b':' {
+                m += 1;
+                while m < obj.len() && matches!(obj[m], b' ' | b'\t' | b'\r' | b'\n') {
+                    m += 1;
+                }
+                if m < obj.len() && obj[m] == b'{' {
+                    if let Some(e) = match_close(obj, m) {
+                        entries.push((name, obj[m..=e].to_vec()));
+                        j = e + 1;
+                        continue;
+                    }
+                }
+            }
+            j = k + 1;
+            continue;
+        }
+        if c == b'{' || c == b'[' {
+            depth += 1;
+        } else if c == b'}' || c == b']' {
+            depth -= 1;
+        }
+        j += 1;
+    }
+    if entries.is_empty() {
+        std::process::exit(1);
+    }
+    let emit = |name: &str, sub: &[u8]| {
+        let kb = obj_string(sub, "keybox");
+        let mode = obj_string(sub, "mode");
+        let apps = count_array(sub, "apps");
+        println!(
+            "{}\t{}\t{}\t{}\t{}",
+            name,
+            if kb.is_empty() { "-" } else { &kb },
+            if mode.is_empty() { "patch" } else { &mode },
+            apps,
+            if name == "default" { 1 } else { 0 }
+        );
+    };
+    let mut def_done = false;
+    for (name, sub) in &entries {
+        if name == "default" {
+            emit(name, sub);
+            def_done = true;
+        }
+    }
+    let _ = def_done;
+    for (name, sub) in &entries {
+        if name != "default" {
+            emit(name, sub);
+        }
+    }
+}
+
 /// cmd_teesim_overrides：overrides.json + harvested.json → 字段/值/可编辑/来源。
 pub fn teesim_overrides() {
     let root = Root::from_env();

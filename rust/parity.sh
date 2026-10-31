@@ -452,5 +452,26 @@ sed -n '/^cmd_teesim_overrides() {/,/^}/p' module/webui.sh >> "$T/to.sh"
 echo 'cmd_teesim_overrides' >> "$T/to.sh"
 chk 'teesim-overrides：字段/可编辑/来源' "$(sh "$T/to.sh" "$TO/data/adb/teesim")" "$(KEYLENS_ROOT="$TO" "$B" teesim-overrides)"
 
+echo "── teesim-profiles（多 profile 列表）──"
+TSP="$T/tsp"
+mkdir -p "$TSP/data/adb/modules/teesim" "$TSP/data/adb/teesim"
+cat > "$TSP/data/adb/teesim/config.json" <<'EOF'
+{"version":1,"profiles":{"work":{"keybox":"kb.xml","mode":"leaf","apps":["com.a","com.b"]},"default":{"apps":["com.x@10"]},"strong":{"mode":"generate","apps":[]}}}
+EOF
+cat > "$T/tsp.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/tools.sh
+. module/lib/backend.sh
+MODDIR="$PWD/module"
+KL_PATCH="$PWD/module/backends/teesim.awk"
+TEESIM_DIR="$1"
+TEESIM_CONFIG="$1/config.json"
+TEESIM_MODULE="$1/../modules/teesim"
+TRICKY_MODULE="$1/../modules/none-tricky"
+EOF
+sed -n '/^cmd_teesim_profiles() {/,/^}/p' module/webui.sh >> "$T/tsp.sh"
+echo 'detect_backend "$MODDIR"; cmd_teesim_profiles' >> "$T/tsp.sh"
+chk 'teesim-profiles：default 在前 + 其余顺序' "$(sh "$T/tsp.sh" "$TSP/data/adb/teesim")" "$(KEYLENS_ROOT="$TSP" "$B" teesim-profiles)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
