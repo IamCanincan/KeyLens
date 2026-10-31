@@ -116,7 +116,7 @@
 | teesim-save | lib/write.sh:198 | teesim_set.awk(178) + 字段白名单 |
 | omk-save-injector | lib/write.sh:277 | omk_set.awk(196) + intercept 开关 |
 | omk-save-config | lib/write.sh:347 | 同上 + [crypto] 不可清空 |
-| sync | lib/write.sh:1016 | run_sync / 快照差分 |
+| sync | lib/write.sh:1016（薄壳 10 行） | 真正工作在 backend.sh:645 的 run_sync：快照差分 + 三家写入 + KL_EMPTY_OK，**不是小件** |
 | backend-info | webui.sh:587 | teesim_info.awk(157) / omk_info.awk(136) / tricky_info.awk(43) |
 | env | webui.sh:809 | 工具探测 + 缓存 + FRRO |
 | icons | webui.sh:1098 | sqlite3 + app_process(icondump.dex) + 缓存 |
