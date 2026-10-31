@@ -165,3 +165,22 @@ git merge recovered                     # 或 cherry-pick
 7. 其余（日志/锁/属性/哈希等）继续读 1394 之后即可。
 
 输出：	sv 类别 状态 说明 建议，末尾 kv checks N / kv bad N / kv warn N。
+
+#### doctor 完整检查序列（已读全，实现时按序）
+
+| # | 类别 | 判据 | 状态 |
+|---|---|---|---|
+| 1 | 权限 | /proc/self/status 的 Uid 为 0（读不到退回 id -u） | ok / bad |
+| 2 | 后端 | 探测成功 → ackend_name · 配置 <目标文件> | ok / bad |
+| 3 | 守护进程 | .kl_daemon_pids.list 中 cmdline 认得出本模块的个数 | ok(>0) / bad |
+| 4 | 目标文件 | 存在且可写 | ok / warn(不可写) / bad(不存在) |
+| 5 | 名单 | current_target_apps 行数 vs cmd package list packages -3 行数（只比数量） | warn(少) / ok / skip(读不到) |
+| 6 | keybox | 路径存在 + 按后端结构校验 | ok / bad(不存在或不合格) / skip(缺 awk) |
+| 7 | 属性伪装 | 开关文件存在 → 关闭 ok；否则逐项比 15 条期望值 | ok / warn(有差异) |
+| 8 | 启动哈希 | 未配置 skip / 格式错 bad / 相等 ok / 不等 warn | skip/ok/warn/bad |
+| 9 | 监听工具 | ind_inotify_cmd 的 mode | ok / bad |
+| 10 | 并发锁 | .kl_lock 是否存在、持有者是否活着 | ok(空闲) / warn(占用或残留) |
+| 11 | 日志 | 文件存在 → 字节数 | ok / skip |
+| — | 无后端时 | 3–11 逐条 skip 没有后端，跳过 | skip |
+
+输出：每行 类别<TAB>状态<TAB>说明<TAB>建议，末尾 kv checks 总数 / bad / warn / skip（skip 不计入 checks）。
