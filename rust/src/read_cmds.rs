@@ -2386,10 +2386,6 @@ pub fn teesim_profile_new(name: &str) {
     while i < d.kbs && matches!(old[i], b' ' | b'\t') { memberind.push(old[i] as char); i += 1; }
     // 收尾花括号的缩进
     let mut closeind = String::new();
-    let mut k = oc;
-    while k > ob + 1 && matches!(old[k - 1], b' ' | b'\t') { k -= 1; closeind.insert(0, old[k] as char); }
-    let _ = closeind;
-    let mut closeind = String::new();
     let mut j = oc;
     while j > ob + 1 && matches!(old[j - 1], b' ' | b'\t') { j -= 1; closeind.insert(0, old[j] as char); }
     let mut before = old[ob..oc].to_vec();
