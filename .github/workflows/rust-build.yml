@@ -45,6 +45,9 @@ jobs:
           test "$EXPECTED" = "$ACTUAL" || { echo "契约不一致"; echo "expected: $EXPECTED"; echo "actual:   $ACTUAL"; exit 1; }
           echo "契约一致（$(printf '%s' "$ACTUAL" | wc -w) 条命令）"
 
+      - name: Behaviour parity（逐命令与 shell 版逐字节对拍）
+        run: sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:

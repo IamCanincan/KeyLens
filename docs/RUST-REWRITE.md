@@ -49,4 +49,5 @@
 
 - ✅ 阶段 0：分发表（40 条与 KL_COMMANDS 逐字同序）+ contract + rust/parity.sh。
 - ✅ 阶段 1（部分）：help（逐字节）、log（clamp/tail/logcat 兜底，9 例）、backups（.bak 映射/tsv/mtime，3 例）、后端探测（backend.rs，4 个单测）。对拍合计 15 项全绿；后端探测带 KEYLENS_ROOT 测试缝。
-- ⏳ 阶段 1 余项：status / env / backend-info / targets / apps / excluded / boot-hash / props / tee-status / teesim-* / tricky-patches / doctor。
+- ✅ 阶段 1 已完成：contract / help / log / backups / status / targets（三家）/ target-meta / apps / excluded / boot-hash / tee-status / props / tricky-patches / teesim-overrides / teesim-profiles（对拍 36 项 + 4 单测，CI 已接入）。
+- ⏳ 余项：backend-info / env / icons / doctor / clear-log（只读侧）；阶段 2 起为写命令与锁。
