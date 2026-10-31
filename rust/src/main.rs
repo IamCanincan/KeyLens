@@ -15,6 +15,13 @@ mod read_cmds;
 
 use std::process::exit;
 
+/// 往 stdout 写一段文本，写不进去（管道被关、EPIPE 等）就静静放弃。
+/// 与 shell 版行为一致：`cmd | head -1` 不该让命令崩掉。
+fn emit(s: &str) {
+    use std::io::Write;
+    let _ = std::io::stdout().write_all(s.as_bytes());
+}
+
 const KL_API: &str = "4";
 
 /// 与 `module/webui.sh` 的 `KL_COMMANDS` 逐字同序（对拍要求）。
@@ -74,8 +81,11 @@ fn main() {
 
     match cmd {
         "contract" => {
-            println!("api={}", KL_API);
-            println!("commands={}", COMMANDS.join(" "));
+            // 用 write_all 而不是 println!：Rust 默认忽略 SIGPIPE，管道被下游关掉时
+            // println! 会 panic（`keylens contract | head -1` 就能复现）。这类失败
+            // 不需要处理，但绝不能变成崩溃 + 栈回溯。
+            emit(&format!("api={}\n", KL_API));
+            emit(&format!("commands={}\n", COMMANDS.join(" ")));
         }
         "log" => read_cmds::log(arg),
         "status" => read_cmds::status(),
