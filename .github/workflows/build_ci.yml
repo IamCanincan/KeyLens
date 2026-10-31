@@ -8,6 +8,10 @@ on:
       - 'webui/**'  # 界面源码：改了源码却没重新构建，产物自检要能响
       - 'tools/**'  # 构建、部署与闸门脚本
       - 'tests/**'  # 自检套本身
+      - 'README.md' # 残留闸与升级说明扫描 README/CHANGELOG/update.json
+      - 'CHANGELOG.md'
+      - 'update.json'
+      - '.github/**' # 工作流自身
   pull_request:
     branches: [ "main" ]
     paths:
@@ -15,6 +19,10 @@ on:
       - 'webui/**'
       - 'tools/**'
       - 'tests/**'
+      - 'README.md'
+      - 'CHANGELOG.md'
+      - 'update.json'
+      - '.github/**'
   workflow_dispatch: # 触发条件：允许手动触发工作流
 
 concurrency:
