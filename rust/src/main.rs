@@ -7,6 +7,7 @@
 mod b64;
 mod backend;
 mod json_flat;
+mod keybox;
 mod payload;
 mod lock;
 mod ov_valid;
