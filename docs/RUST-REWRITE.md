@@ -154,3 +154,14 @@ git merge recovered                     # 或 cherry-pick
    最后一个成员改吃前面逗号；前后都是换行时连行删。否则留下 `a: ,` 这种守护进程读不了的东西。
 7. **文档也会触发代码闸门**：`rust/README` 里写了本机绝对路径（旧仓库名），直接让残留闸变红、连带
    `legacy-migrate.sh` 的变异测试失败。文档里的路径一律用占位符。
+### doctor 的检查项（已读，实现时照此逐条）
+
+1. 权限：kl_is_root → ok/bad（bad 建议「在管理器里给 root」）；
+2. 后端：探测到 → ok（ackend_name · 配置 <目标文件>），否则 bad；
+3. 守护进程：.kl_daemon_pids.list 里 kl_pid_is_ours 的数量 → ok/bad（0 个时提示重启或重刷）；
+4. 目标文件：存在且可写 ok / 不可写 warn / 不存在 bad；
+5. 名单 vs 已装：只比数量（current_target_apps 行数 vs cmd package list packages -3 行数），名单少于已装给 warn；读不到已装 → skip；
+6. keybox：ackend_keybox_path 的文件存在性 + keybox_check（按后端）→ ok/bad；
+7. 其余（日志/锁/属性/哈希等）继续读 1394 之后即可。
+
+输出：	sv 类别 状态 说明 建议，末尾 kv checks N / kv bad N / kv warn N。
