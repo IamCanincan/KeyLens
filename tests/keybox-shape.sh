@@ -3,7 +3,7 @@
 # tests/keybox-shape.sh - keybox 的结构校验必须**按后端分叉**
 #
 # 起因：命令层以前对三家共用一句判据 —— `grep -q '<AndroidAttestation'`。
-# 对照上游源码逐家核过之后（KeyBoxUtils.kt:67 / attest.rs:63-124 / keybox.rs:35-42,286-314），
+# 对照上游源码逐家核过之后，
 # 那句对 Tricky 是对的，对 TEESim **严于**上游（它不看根元素名，会被误拒），
 # 对 OMK **宽于**上游（它要求每个 <Key> 块自带 <NumberOfCertificates>N</NumberOfCertificates>
 # 且本块证书数与之相等；不符时 OMK 不只是不生效 —— 会把自带模板**覆盖回这个文件**）。
@@ -82,7 +82,7 @@ mutate "$D/over.xml" "$F2" '<NumberOfCertificates>2</NumberOfCertificates>' '<Nu
 expect_ok  '证书数声明 3 实际 2' "$D/over.xml" tricky
 expect_ok  '证书数声明 3 实际 2' "$D/over.xml" teesim
 expect_err '证书数声明 3 实际 2' "$D/over.xml" omk '声明 3 张证书'
-# ③ 算法名大写：TEESim 只比小写 rsa/ecdsa（attest.rs:68-72），OMK 的 match 表里没有 EC
+# ③ 算法名大写：TEESim 只比小写 rsa/ecdsa，OMK 的 match 表里没有 EC
 #    （输出文件不能和输入同名：awk 正在读的时候 shell 已经把那份截空了）
 mutate "$D/upper.xml" "$F1" 'algorithm="ecdsa"' 'algorithm="ECDSA"' 1 || exit 1
 mutate "$D/upper2.xml" "$D/upper.xml" 'algorithm="rsa"' 'algorithm="RSA"' 1 || exit 1
@@ -92,7 +92,7 @@ expect_err '算法名大写' "$D/upper2.xml" omk 'EC 密钥'
 mutate "$D/few.xml" "$F2" '<Certificate format="pem">' 'X' 4 || exit 1
 expect_err '证书数 0' "$D/few.xml" teesim '至少'
 expect_err '证书数 0' "$D/few.xml" omk '声明 2 张证书，实际数到 0'
-# ⑤ 缺 <NumberOfCertificates>：OMK 当必需项（keybox.rs:294），另两家可选
+# ⑤ 缺 <NumberOfCertificates>：OMK 当必需项，另两家可选
 mutate "$D/nocount.xml" "$F2" '<NumberOfCertificates>[0-9]*</NumberOfCertificates>' '' 2 || exit 1
 expect_err '没有 NumberOfCertificates' "$D/nocount.xml" omk '没有 <NumberOfCertificates>'
 expect_ok  '没有 NumberOfCertificates' "$D/nocount.xml" tricky
