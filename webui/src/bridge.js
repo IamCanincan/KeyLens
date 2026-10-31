@@ -112,6 +112,11 @@ export const S = {
   profile: 'default', scope: 'global', newPkg: '', overrides: [],
   icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], theme: 'auto',
+  /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
+     reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，
+     存一份就把另一份正在粘的内容吃掉；keybox 页粘完整份再点 profile 芯片也一样没。
+     只在"同一页重建"时存活，换页与保存成功都会清（见 screens.js 的 captureEdits）。 */
+  edits: {},
   loaded: {}, seq: 0,
 };
 
@@ -155,9 +160,32 @@ export function timeLabel(epoch) {
     + ' ' + p(d.getHours()) + ':' + p(d.getMinutes());
 }
 export function failText(r) {
-  if (r && r.timeout) return '命令超时，结果未知；已重新读取当前状态';
+  /* 这里不许承诺"已经重读了"：failText 也被读取失败的提示复用，而那条路上
+     没有人重读。承诺由 write() 在真的重读时自己补上（见 screens.js）。 */
+  if (r && r.timeout) return '命令超时（30 秒未返回），结果未知';
   var t = String((r && r.text) || '').trim().split('\n').filter(Boolean).slice(-2).join(' ');
   return t || ('命令失败（退出码 ' + ((r && r.code) || '?') + '）');
+}
+
+/* daemon_alive 是三态，不是两态：读不到 ≠ 没在跑。
+   以前两处都写 `st.daemon_alive + ' 个进程'`，开机那次 status 读失败时
+   功能菜单直接打出「undefined 个进程」，而红态判据 `=== '0'` 又不成立，
+   于是同一屏上"undefined 个进程"还配着绿色 ok。 */
+export function daemonLabel(st) {
+  var v = st && st.daemon_alive;
+  if (v == null || v === '') return '运行状态读不到';
+  return v === '0' ? '守护进程未运行' : v + ' 个进程';
+}
+export function daemonDown(st) {
+  var v = st && st.daemon_alive;
+  return v == null || v === '' || v === '0';
+}
+/* 同理的另一个三态：伪装开关。读不到时报"读不到"，不许默认成"已关闭" ——
+   那一行是用户决定要不要动属性的前提。 */
+export function propsMaskLabel(st) {
+  var v = st && st.props_masking;
+  if (v == null || v === '') return '开机写入状态读不到';
+  return v === 'on' ? '开机写入已开启' : '开机写入已关闭';
 }
 
 /* 桥接的调用形状按管理器分叉，这里踩过一次大的：

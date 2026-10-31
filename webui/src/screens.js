@@ -6,7 +6,8 @@
  *  - Tricky 有 tee_status（为什么只能走 leaf hack）与按包 [包名] 补丁块；
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
-import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons } from './bridge.js';
+import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons,
+  daemonLabel, daemonDown, propsMaskLabel } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
 /* Opticon 同模板的 KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
@@ -464,14 +465,18 @@ function propsCards() {
   const s1 = section('系统属性 · ' + (S.propsErr ? '读不到' : diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);
   if (S.propsErr) s1.appendChild(h('p', 'read-err', '属性对照读不到：这一屏没有比对结果，"一致 / 不符"都无从判断。'));
   s1.appendChild(list([
-    item({ headline: '开机重置属性', trailing: S.status.props_masking === 'on' ? '已开启' : '已关闭',
-      tone: S.status.props_masking === 'on' ? 'ok' : 'warn',
-      supporting: '关闭后下次开机不再写入' }),
+    item({ headline: '开机重置属性', trailing: maskKnown(S.status) ? (maskOn(S.status) ? '已开启' : '已关闭') : '读不到',
+      tone: maskOn(S.status) ? 'ok' : maskKnown(S.status) ? 'warn' : 'bad',
+      supporting: maskKnown(S.status) ? '关闭后下次开机不再写入' : 'status 那一次没读到，这里不猜方向；下面「立即应用一次」不依赖它' }),
   ]));
-  /* 动作按钮别塞进 md-list：组件会把行里的控件居中，看着像另一行数据 */
+  /* 动作按钮别塞进 md-list：组件会把行里的控件居中，看着像另一行数据。
+     读不到时不给那颗"切换"键 —— 它得先知道现在是开还是关才知道发哪条命令，
+     拿"当成关"去补一个默认值，用户点下去可能是**开启**了他没打算动的写入。 */
   const acts1 = h('div', 'acts');
-  acts1.appendChild(button(S.status.props_masking === 'on' ? '关闭开机写入' : '开启开机写入',
-    { variant: 'tonal', on: function () { write(S.status.props_masking === 'on' ? 'props-off' : 'props-on', '', '已切换'); } }));
+  if (maskKnown(S.status)) {
+    acts1.appendChild(button(maskOn(S.status) ? '关闭开机写入' : '开启开机写入',
+      { variant: 'tonal', on: function () { write(maskOn(S.status) ? 'props-off' : 'props-on', '', '已切换'); } }));
+  }
   acts1.appendChild(button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }));
   s1.appendChild(acts1);
   const l = h('md-list');
@@ -564,13 +569,12 @@ export function renderFunc() {
     ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
     ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
     ['sync', 'refresh', '自动同步',
-      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],
+      daemonLabel(st) + ' · 上次写入 ' + timeLabel(st.target_mtime)],
     ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
     /* 对照表进过属性页才有数据；没读过时不能把未知报成 0 项。
        用行数而不是 loaded：写入后 reloadAll 会清 loaded，但已读到的对照表仍然有效。 */
-    ['props', 'verified', '属性伪装', st.props_masking === 'on'
-      ? '开机写入已开启' + (S.props.length ? ' · ' + S.props.length + ' 项对照' : '')
-      : '开机写入已关闭'],
+    ['props', 'verified', '属性伪装', propsMaskLabel(st)
+      + (st.props_masking === 'on' && S.props.length ? ' · ' + S.props.length + ' 项对照' : '')],
   ];
   /* 页标题已经在顶栏（28px），菜单不再套一层同名分组标题 —— 那会变成
      "功能 / 功能" 两行，信息重复而层级反而更浅。 */
@@ -692,7 +696,7 @@ function statusStrip() {
   const stats = h('div', 'hero-stats');
   [['版本', st.mod_version || '—'],
    ['生效名单', (bi_entries() || '—') + ' 条'],
-   ['属性伪装', st.props_masking === 'on' ? '开' : '关']].forEach(function (s) {
+   ['属性伪装', maskKnown(st) ? (maskOn(st) ? '开' : '关') : '?']].forEach(function (s) {
     const d = h('div', 'hero-stat');
     d.appendChild(h('span', 'hero-k', s[0]));
     d.appendChild(h('b', 'hero-v', s[1]));
@@ -930,9 +934,11 @@ function autoSyncCard() {
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;
   /* 四行压成两行：这四项都是一句话的事，行数就是切页成本（实测约 1.2ms/节点）。 */
   const rows = list([
-    item({ headline: '运行', trailing: (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · ' + ino,
-      tone: st.daemon_alive === '0' || env.inotify_mode === 'none' ? 'bad' : 'ok',
-      supporting: '目标文件 ' + (st.target_exists === '1' ? '存在' : '不存在') + (st.target_writable === '1' ? ' · 可写' : ' · 不可写')
+    item({ headline: '运行', trailing: daemonLabel(st) + ' · ' + ino,
+      tone: daemonDown(st) || env.inotify_mode === 'none' ? 'bad' : 'ok',
+      supporting: '目标文件 ' + (st.target_exists == null || st.target_exists === '' ? '读不到'
+        : st.target_exists === '1' ? '存在' : '不存在')
+        + (st.target_exists === '1' ? (st.target_writable === '1' ? ' · 可写' : ' · 不可写') : '')
         + ' · 上次写入 ' + timeLabel(st.target_mtime) }),
     item({ headline: '日志', trailing: bytesLabel(st.log_bytes),
       supporting: (st.log_lines || '?') + ' 行 · ' + (st.log_file || '') }),
@@ -1037,6 +1043,7 @@ function form(spec, fields, cmd, extra, note) {
     const key = f[0], from = f[1], label = f[2], type = f[3], sub = f[4], opts = f[5];
     if (sub) wrap.appendChild(h('div', 'form-sub', sub));
     const cur = biValue(spec, from);
+    const ek = cmd + '|' + key;          // 草稿按"哪条命令的哪个字段"存，见文件末尾
     if (type === 'switch') {
       const row = h('div', 'row');
       row.appendChild(h('span', 'row-t', label));
@@ -1044,24 +1051,32 @@ function form(spec, fields, cmd, extra, note) {
       sw.checked = String(cur) === 'true';
       row.appendChild(sw);
       wrap.appendChild(row);
-      ctrls.push({ key: key, get: function () { return sw.checked ? 'true' : 'false'; }, init: sw.checked ? 'true' : 'false' });
+      fieldKey(sw, ek);
+      ctrls.push({ key: key, get: function () { return sw.checked ? 'true' : 'false'; },
+        /* init 取**服务端值**而不是回填后的显示值：草稿一旦变成基准，保存时就被
+           判成"没有改动"，用户改的东西反而不进 payload。 */
+        init: String(cur) === 'true' ? 'true' : 'false' });
     } else if (type === 'select' || type === 'seg') {
       const row = h('div', 'row');
       row.appendChild(h('span', 'row-t', label));
       const sel = h('md-select');
       (opts || []).forEach(function (o) { const op = h('md-option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
       sel.value = cur == null || cur === '' ? (opts && opts[0] ? opts[0][0] : '') : String(cur);
+      const baseSel = String(sel.value || '');
       row.appendChild(sel);
       wrap.appendChild(row);
-      ctrls.push({ key: key, get: function () { return String(sel.value || ''); }, init: String(sel.value || '') });
+      fieldKey(sel, ek);
+      ctrls.push({ key: key, get: function () { return String(sel.value || ''); }, init: baseSel });
     } else {
       const tf = h('md-text-field');
   tf.setAttribute('variant', 'filled');
   tf.setAttribute('single-line', '');
       tf.setAttribute('label', label);
       tf.value = cur == null ? '' : String(cur);
+      const baseTxt = String(tf.value || '');
       wrap.appendChild(tf);
-      ctrls.push({ key: key, get: function () { return String(tf.value || ''); }, init: String(tf.value || '') });
+      fieldKey(tf, ek);
+      ctrls.push({ key: key, get: function () { return String(tf.value || ''); }, init: baseTxt });
     }
   });
   const acts = h('div', 'acts');
@@ -1153,6 +1168,7 @@ function teesimProfiles() {
     tf.setAttribute('variant', 'filled');
     tf.setAttribute('single-line', '');
     tf.setAttribute('label', '新 profile 的名字（字母数字 . _ -，不能叫 default）');
+    fieldKey(tf, 'teesim-profile-new|name');
     w.appendChild(tf);
     const a = h('div', 'acts');
     a.appendChild(button('新建（复制 default）', { variant: 'filled', icon: ICON.addPkg, on: function () {
@@ -1415,6 +1431,7 @@ function keyboxCard() {
   ta.setAttribute('label', '粘贴新的 keybox.xml 全文');
   ta.setAttribute('supporting-text', '覆盖前会自动备份为 keybox.xml.bak');
   ta.setAttribute('class', 'kb-field');
+  fieldKey(ta, 'keybox-save|xml');
   s.appendChild(ta);
   const acts = h('div', 'acts');
   acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
@@ -1514,8 +1531,14 @@ function write(cmd, arg, note) {
        （只动 [trust] 那四个补丁字段 = 整组热生效、不重启），
        界面这边写死一句"已保存"就会说错话。 */
     var kv = r.ok ? parseKV(r.text || '') : null;
-    if (r.ok) { toast((kv && kv.apply_note) || note || '已完成'); reload(); }
-    else toast(failText(r), true);
+    if (r.ok) { toast((kv && kv.apply_note) || note || '已完成'); dropEdits(cmd); reload(); }
+    else {
+      /* 超时 ≠ 没写成：命令可能在守护进程那边跑完了，只是回调没回来。
+         以前 failText 自己写着"已重新读取当前状态"，而这一句谁都没重读 ——
+         屏幕上留的还是旧值。现在文案与动作对齐：这里真的重读一次。 */
+      toast(failText(r) + (r.timeout ? '；正在重新读取当前状态' : ''), true);
+      if (r.timeout) reload();
+    }
   }, function (e) { toast(String((e && e.message) || e), true); });
 }
 let toastFn = function () {};
@@ -1532,3 +1555,48 @@ function reload() { return reloadFn(); }
 let drawFn = function () {};
 export function onDraw(fn) { drawFn = fn; }
 function redraw() { drawFn(); }
+
+/* props_masking 是三态：'on' / 'off' / 根本没读到（status 那次失败）。
+   两态写法 `=== 'on' ? 开 : 关` 会把"读不到"画成"关"，而那颗切换键于是
+   默认要"开" —— 用户点下去动的是他没打算动的东西。 */
+function maskOn(st) { return !!(st && st.props_masking === 'on'); }
+function maskKnown(st) { return !!(st && st.props_masking != null && st.props_masking !== ''); }
+
+/* ── 草稿：正在输入但还没保存的值，跨"同一页重建"存活 ─────────────────
+   写入后的 reloadAll、切视图芯片、换 profile 都会整页重建，以前把它一并抹掉：
+   OMK 那一页有 config.toml 与 injector.toml 两份表单，存一份就把另一份正在粘的
+   内容吃掉；keybox 页粘完整份 XML 再点一下 profile 芯片也一样没。
+   做法：重建前把当前页上带 data-ek 的控件按 key 收进 S.edits（app.js 的 draw()
+   调 captureEdits），重建时同名 key 回填（fieldKey），保存成功只清那一条命令的
+   key（dropEdits），换页则整个作废（clearEdits）—— 草稿只在本页内活着，
+   不会哪天回到这页突然冒出一周前输入的半截东西。 */
+let editFocus = '';
+export function fieldKey(el, key) {
+  el.setAttribute('data-ek', key);
+  const p = S.edits[key];
+  if (p == null) return el;
+  if (el.localName === 'md-switch') el.checked = (p === 'true'); else el.value = p;
+  return el;
+}
+export function captureEdits(root) {
+  if (!root || !root.querySelectorAll) return;
+  const act = document.activeElement;
+  root.querySelectorAll('[data-ek]').forEach(function (el) {
+    const k = el.getAttribute('data-ek');
+    S.edits[k] = el.localName === 'md-switch' ? String(!!el.checked) : String(el.value == null ? '' : el.value);
+    if (el === act) editFocus = k;
+  });
+}
+export function clearEdits() { S.edits = {}; editFocus = ''; }
+export function dropEdits(cmd) {
+  const pre = cmd + '|';
+  Object.keys(S.edits).forEach(function (k) { if (k.indexOf(pre) === 0) delete S.edits[k]; });
+}
+/* 重建后把光标还给原来那一格（用户正在打字时被一次写入打断，不该掉回页首）。 */
+export function restoreEditFocus(root) {
+  const k = editFocus;
+  if (!k || !root || !root.querySelector) { editFocus = ''; return; }
+  const el = root.querySelector('[data-ek="' + k + '"]');
+  editFocus = '';
+  if (el && el.focus) { try { el.focus(); } catch (e) { } }
+}

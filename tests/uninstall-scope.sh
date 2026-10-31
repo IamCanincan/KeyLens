@@ -75,7 +75,7 @@ build_sandbox() {
     for f in $OURS $KEEP; do
         mkdir -p "$R/$(dirname "$f")" 2>/dev/null
         case "$f" in
-            */.kl_lock|*/.kl_debounce|*/.kl_tmp) mkdir -p "$R/$f" ;;
+            *.kl_lock|*.kl_debounce|*.kl_tmp) mkdir -p "$R/$f" ;;
             *) printf '%s\n' "内容 $f" > "$R/$f" ;;
         esac
     done

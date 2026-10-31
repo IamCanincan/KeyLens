@@ -24,6 +24,7 @@ import {
   ICON, h, renderHome, renderFunc, renderFuncSub, renderLog, renderSettings, FUNC_PAGES,
   renderPending, targetsPending, prefetchListIcons, swapIcons, bootSplash,
   onToast, onReload, onAuto, onApplyTheme, onDraw, onOpenSub,
+  captureEdits, clearEdits, restoreEditFocus,
 } from './screens.js';
 
 /* 四格，2026-10-30 定：主页 / 功能 / 日志 / 设置。
@@ -530,6 +531,9 @@ function draw() {
   /* 骨架页换成真内容：旧骨架还在页面上，先克隆它做淡出遮罩，再重建。 */
   const fromPending = reuse && prev.classList.contains('pending-page');
   if (fromPending && !pagePending) fadeOldPage(prev);
+  /* 同页重建（写入后的 reloadAll、切视图/换 profile 触发的重画）先把正在输入的
+     表单收进草稿，稍后由 fieldKey 回填；换页则草稿整体作废。 */
+  if (changed) clearEdits(); else captureEdits(prev);
   const page = reuse ? prev : h('div', 'page');
   if (reuse) page.textContent = '';
   else { view.textContent = ''; view.appendChild(page); }
@@ -572,6 +576,8 @@ function draw() {
     page.classList.add('page-in');
     lastPageKey = key;
   }
+  /* 重建完再把光标还给原来那一格（等两帧：MD 组件要先升级并渲染完才吃 focus）。 */
+  if (!changed) afterPaint(function () { restoreEditFocus(page); });
   lastTabIndex = toIdx;
   lastSub = S.sub;
 }

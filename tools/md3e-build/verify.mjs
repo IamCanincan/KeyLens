@@ -876,6 +876,82 @@ async function main() {
   chk('props 读失败时属性页报"读不到"，不谎报"全部一致"',
     pfail.saysUnread && pfail.titleUnread && !pfail.liesOk, JSON.stringify(pfail));
 
+  /* status 读失败的那一次：功能菜单不许打「undefined 个进程」，也不许把未知
+     写成"开机写入已关闭"。daemon_alive 是三态，读不到 ≠ 没在跑。 */
+  await send('Page.navigate', { url: URL0 + '&fail=status' });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('自动同步');
+  await sleep(900);
+  /* 行的文字是 md-list-item 的 **属性**（headline/trailing-text），渲染在 shadow 里 ——
+     `view.textContent` 看不见它们。这一屏的判据必须把属性一起捞进来，
+     否则"行没了"和"行是空的"读起来一模一样（上一版就是这么误判过一次）。 */
+  const ALLTEXT = `(function(){ var v=document.getElementById('view');
+    var t = v.textContent || '';
+    [].slice.call(v.querySelectorAll('md-list-item')).forEach(function(x){
+      t += '|' + (x.getAttribute('headline')||'') + (x.getAttribute('supporting-text')||'') + (x.getAttribute('trailing-text')||''); });
+    return t.replace(/\\s+/g, ' '); })()`;
+  const sfail = await ev(`(function(){ var v=document.getElementById('view');
+    var t = v.textContent || '';
+    [].slice.call(v.querySelectorAll('md-list-item')).forEach(function(x){
+      t += '|' + (x.getAttribute('headline')||'') + (x.getAttribute('supporting-text')||'') + (x.getAttribute('trailing-text')||''); });
+    return { undef: /undefined|NaN/.test(t), unread: t.indexOf('运行状态读不到') >= 0,
+      claimsOff: t.indexOf('开机写入已关闭') >= 0, claimsOn: t.indexOf('开机写入已开启') >= 0,
+      peek: t.replace(/\\s+/g, ' ').slice(-200) }; })()`);
+  chk('status 读失败：自动同步页报"运行状态读不到"，屏上没有 undefined，也不猜开关方向',
+    !sfail.undef && sfail.unread && !sfail.claimsOff && !sfail.claimsOn, JSON.stringify(sfail));
+  /* 正对照：同一份判据在 status 正常时必须看得见「N 个进程」。
+     没有这一条，上面那个 unread=false 既可能是"没显示读不到"也可能是"探针看不见属性"。 */
+  await send('Page.navigate', { url: URL0 });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('自动同步');
+  await sleep(900);
+  const sok = await ev(ALLTEXT);
+  chk('正对照：status 正常时同一行看得见「N 个进程」（上面那条判据不是瞎的）',
+    /\d+ 个进程/.test(sok), String(sok).slice(-120));
+
+  /* 整页重建不该吃掉正在输入的表单：改一个带 data-ek 的输入 → 点同一页的
+     profile 芯片（那是 redraw，不取数）→ 新建的同一个 key 要回填草稿。
+     OMK 那一页有 config.toml 与 injector.toml 两份表单，以前存一份另一份就没了。 */
+  await send('Page.navigate', { url: URL0 + '&backend=teesim' });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('后端配置');
+  await sleep(1400);
+  const dr1 = await ev(`(function(){ /* 取文本框：mode 那一格是 md-select，给它塞中文会被自己抹平 */
+    var el = document.querySelector('#view md-text-field[data-ek]');
+    if (!el) return { found: 0 };
+    el.value = '草稿得留着';
+    if (el.focus) { try { el.focus(); } catch (e) { } }
+    var cs = [].slice.call(document.querySelectorAll('#view md-chip, #view md-button'));
+    return { found: 1, key: el.getAttribute('data-ek'), n: cs.length }; })()`);
+  chk('配置页的输入框都登记了草稿 key（data-ek）', !!dr1.found, JSON.stringify(dr1).slice(0, 160));
+  let dr2 = { kept: '没找到可点的芯片' };
+  if (dr1.found) {
+    const pos = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip, #view md-button'));
+      var b=cs.filter(function(x){var t=((x.getAttribute('label')||'') + (x.textContent||''));return /default/.test(t);})[0];
+      if (!b) return null; var r=b.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width / 2), y: Math.round(r.top + r.height / 2) }; })()`);
+    if (pos) {
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    }
+    await sleep(1000);
+    const sel = '#view [data-ek="' + dr1.key + '"]';
+    dr2 = await ev('(function(){ var el=document.querySelector(' + JSON.stringify(sel) + ');'
+      + ' var a=document.activeElement;'
+      + ' return { kept: el ? String(el.value) : "元素没了", focus: a && a.getAttribute ? a.getAttribute("data-ek") : null }; })()');
+    chk('同页重画后草稿回填，正在输入的内容没被吃掉',
+      dr2.kept === '草稿得留着', JSON.stringify(dr2) + ' key=' + dr1.key);
+  }
+
   console.log('\n截图：' + SHOT_DIR);
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

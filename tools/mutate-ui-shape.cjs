@@ -12,7 +12,8 @@ const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
 const R = path.resolve(__dirname, '..') + '/';
-const files = { screens: R + 'webui/src/screens.js', app: R + 'webui/src/app.js', css: R + 'webui/src/app.css' };
+const files = { screens: R + 'webui/src/screens.js', app: R + 'webui/src/app.js',
+  css: R + 'webui/src/app.css', bridge: R + 'webui/src/bridge.js' };
 const orig = {};
 for (const k in files) orig[k] = fs.readFileSync(files[k], 'utf8');
 
@@ -101,8 +102,8 @@ const cases = [
     "    loadLog().then(function () { if (S.tab === 'log') draw(); },\n      function () { if (S.tab === 'log') draw(); });",
     "    ensure('log').then(draw);", 1],
   ['功能菜单不把未读取的属性对照报成 0 项', files.screens,
-    "      ? '开机写入已开启' + (S.props.length ? ' · ' + S.props.length + ' 项对照' : '')",
-    "      ? '开机写入已开启 · ' + S.props.length + ' 项对照'", 1],
+    "      + (st.props_masking === 'on' && S.props.length ? ' · ' + S.props.length + ' 项对照' : '')],",
+    "      + (st.props_masking === 'on' ? ' · ' + S.props.length + ' 项对照' : '')],", 1],
   ['长页入场不缩放/不上下位移（切页动画只横向）', files.css,
     '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),0,0)}to{opacity:1;transform:none}}',
     '@keyframes page-in{from{opacity:0;transform:translate3d(var(--page-dx,16px),10px,0) scale(.992)}to{opacity:1;transform:none}}', 1],
@@ -118,6 +119,25 @@ const cases = [
   ['属性对照读不到时报"读不到"，不报"全部一致"', files.screens,
     "  const s1 = section('系统属性 · ' + (S.propsErr ? '读不到' : diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);",
     "  const s1 = section('系统属性 · ' + (diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);", 1],
+  /* ── 2026-10-31「假数 / 假承诺 / 整页重建 / 闸的盲区」四条新判据各自的刀 ── */
+  ['daemon_alive 只在 bridge 的三态 helper 里出现', files.screens,
+    "      daemonLabel(st) + ' · 上次写入 ' + timeLabel(st.target_mtime)],",
+    "      (st.daemon_alive === '0' ? '守护进程未运行' : st.daemon_alive + ' 个进程') + ' · 上次写入 ' + timeLabel(st.target_mtime)],", 1],
+  ['failText 不再承诺它管不到的事', files.bridge,
+    "  if (r && r.timeout) return '命令超时（30 秒未返回），结果未知';",
+    "  if (r && r.timeout) return '命令超时，结果未知；已重新读取当前状态';", 1],
+  ['超时的确重读（write 的失败分支里真调 reload）', files.screens,
+    '      if (r.timeout) reload();\n', '\n', 1],
+  ['同页重建前 capture、换页时作废、重建后还光标', files.app,
+    '  if (changed) clearEdits(); else captureEdits(prev);\n', '\n', 1],
+  ['变更判定拿服务端值当基准，不是回填后的显示值', files.screens,
+    "        init: String(cur) === 'true' ? 'true' : 'false' });",
+    "        init: sw.checked ? 'true' : 'false' });", 1],
+  /* 这一把是"闸的盲区"的证据：旧版 ui-shape 只 grep `write('x'`，而 omk-save-config
+     是经 form(spec, fields, cmd, …) 的第三个参数进来的 —— 把它从 WRITE_CMDS 里删掉，
+     旧闸一声不响（契约不符时这条写命令就停不住）。现在扫调用点，必须点名响。 */
+  ['每个写命令都在 WRITE_CMDS 里（否则契约不符时停不住）', files.bridge,
+    'omk-save-injector omk-save-config tricky-save-patch \\', 'omk-save-injector tricky-save-patch \\', 1],
 ];
 
 /* ui-shape 的失败行前缀是"两个空格 + ✗ + 四个空格"，直接判 `l[0] === '✗'`

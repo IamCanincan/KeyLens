@@ -235,6 +235,9 @@ sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 
 - **新版（`webui/src/`）的验收线是"逐后端各跑一遍"**：`verify.mjs` 用 `?backend=tricky|teesim|omk` 切假数据，每家的块要画出**只有真读到那个键才会出现的值**才算过；`?fail=targets` 那一趟专门钉"读不到"与"是空的"是两种画面。理由是一次真事故：界面按上游文件的小驼峰键名（`teeBroken`）去读命令层下划线风格的输出（`tee_broken`），而假数据是照着这段错代码写的，两边互相自证，逐页驱动一路全绿。
 - **键名不再靠眼看**：`node tools/kv-shape-check.mjs` 把 `webui.sh` 的 `kv <键>` 与 `backends/*.awk` 的 `print "键="` 汇成"命令层实际会输出"的集合，再拿界面读取、`KV_REQUIRED`、假数据三边去对；它自己由 `node tools/mutate-kv-shape.cjs` 变异验过三处都会响。
 
+- **三态读数不许被画成确定值**：`daemon_alive`（读不到 / 0 / N）、`props_masking`（on / off / 读不到）、`target_exists` 都是三态。`status` 那次读失败时，功能菜单以前打的是「undefined 个进程」而颜色仍是绿；现在统一走 `daemonLabel()` / `daemonDown()` / `propsMaskLabel()` / `maskKnown()`，读不到就明说读不到，主页那颗"切换开机写入"键在未知时干脆不给（它得先知道方向才知道发 `props-on` 还是 `props-off`）。`verify.mjs` 用 `?fail=status` 钉这一屏，并带一条正对照（正常时必须看得见「1 个进程」）。
+- **正在输入的表单跨"同页重建"活着**：写入后的 `reloadAll()` 与芯片切档的 `redraw()` 都整页重建，控件用 `data-ek`（命令 + 字段）登记草稿，重建前 `captureEdits`、换页 `clearEdits`、保存成功只清那一条命令的 `dropEdits(cmd)`；`form()` 的变更基准取服务端值而不是回填后的显示值，否则草稿会变成基准、保存被判"没有改动"。
+- **写命令的闸门覆盖是扫出来的，不是数 `write('x'` 数出来的**：`form(spec, fields, cmd, …)` 把变量转手给 `write()`，五条 payload 写命令与属性开关那条三元式都在盲区里。`tests/ui-shape.js` 现在剥注释、按括号深度切调用点实参、再顺着辅助函数的调用点取命令名字面量，19 条全部有闸（唯一豁免 `restore-app` 连理由一起钉住）；`mutate-ui-shape` 里"把 `omk-save-config` 从 `WRITE_CMDS` 删掉"那把刀就是这条盲区的证据。
 - **`adb push` 默认把文件落成 0666**，而这个 `index.html` 由管理器以 root 加载、里面的命令以 root 执行 —— 世界可写等于任何应用都能改写一个 root 界面。所以"模式不是 644/444 就退非 0"是部署脚本的硬闸门，不靠人记得 `chmod`。脚本还会拒绝"工作区有未提交改动"（否则设备上跑的版本对不上仓库，回头说不清），并要求 `adb shell` 是 root。
 - **量布局别用 `--headless --screenshot --window-size=417`**：那样起出来的布局视口是 **491**，截图仍旧 834 宽，看着像 417 —— 溢出检查会静默地在一台不存在的手机上通过。台架用 CDP `Emulation.setDeviceMetricsOverride` 钉死，并且第一步就断言"量到的宽度确实等于要的宽度"。
 - 台架与闸门都用变异验过：往 `.console` 塞 `min-width:900px`、让 `applyPage` 不再藏面板、把 `chmod` 改成 666、推完再往设备文件尾部追加一个字节 —— 每一种都让对应的检查退非 0 并点名。

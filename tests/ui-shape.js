@@ -48,7 +48,8 @@ chk('EXPECT_API 读得到', !!EXPECT_API, 'api=' + EXPECT_API);
 chk('EXPECT_API 与命令层一致',
   EXPECT_API === (sh.match(/^KL_API=(\d+)/m) || [])[1],
   '界面 ' + EXPECT_API + ' / 命令层 ' + (sh.match(/^KL_API=(\d+)/m) || [])[1]);
-const writeCmds = ((bridge.match(/export const WRITE_CMDS = '((?:[^']|\n)+)'/) || [])[1] || '').split(/\s+/).filter(Boolean);
+const writeCmds = ((bridge.match(/export const WRITE_CMDS = '((?:[^']|\n)+)'/) || [])[1] || '')
+  .replace(/\\\n/g, ' ').replace(/\\/g, ' ').split(/\s+/).filter(Boolean);
 chk('WRITE_CMDS 读得到', writeCmds.length > 5, writeCmds.length + ' 条');
 
 /* ──  表单字段名 ↔ 命令层校验分支（本套的核心） ─────────────────── */
@@ -109,16 +110,138 @@ chk('TEESim 命令层没有界面却填不出的多余键', dup.length === 0, du
 /* ──  写命令都在清单里，且都进了 WRITE_CMDS ─────────────────────── */
 console.log('── 写命令接线 ──');
 const cmds = ((sh.match(/^KL_COMMANDS="([\s\S]*?)"$/m) || [])[1] || '').replace(/\\\n/g, ' ').split(/\s+/).filter(Boolean);
-const used = [...screens.matchAll(/write\('([a-z-]+)'/g)].map(m => m[1]);
+/* "界面会写哪些命令"不能只 grep `write('x'`：form(spec, fields, cmd, …) 交给 write()
+   的是**变量**，19 条写命令里有一大半只从 form 的第三个参数进来；开关那一颗甚至用
+   三元式在两条命令之间选。上一版这条因此对它们全盲 —— 把 'omk-save-config' 从
+   WRITE_CMDS 里删掉，旧闸一声不响。
+   做法：① 注释先剥掉（源码注释里就有 `write('…')` 这种形状）；② 每个 `write(` 调用点
+   按引号/括号深度切出第一个实参，取里面所有命令名字面量（覆盖 `'x'` 与 `a ? 'y' : 'z'`）；
+   ③ 找出"把变量交给 write()"的辅助函数（form 这一类），扫它们所有调用点的对应实参；
+   ④ 落在辅助函数体内的那个转手点本身（write(cmd, …)）不算调用点。 */
+const srcAll = (screens + '\n' + app + '\n' + theme)
+  .replace(/\/\*[\s\S]*?\*\//g, ' ').replace(/^\s*\/\/.*$/gm, ' ');
+function jsFnRange(src, name) {
+  const start = src.search(new RegExp('^function ' + name + '\\(', 'm'));
+  if (start < 0) return null;
+  const end = src.indexOf('\n}', start);
+  return end < 0 ? null : [start, end + 2];
+}
+function splitCallArgs(src, from) {          // from 指向左括号之后；返回顶层逗号切出的实参
+  const args = []; let cur = '', depth = 0, q = '';
+  for (let i = from; i < src.length; i++) {
+    const c = src[i];
+    if (q) { if (c === '\\') { cur += c + (src[++i] || ''); continue; } if (c === q) q = ''; cur += c; continue; }
+    if (c === "'" || c === '"' || c === '`') { q = c; cur += c; continue; }
+    if ('([{'.includes(c)) depth++;
+    else if (c === ')') { if (depth === 0) { args.push(cur); return { args: args, end: i }; } depth--; }
+    else if (']}['.includes(c)) depth--;
+    if (c === ',' && depth === 0) { args.push(cur); cur = ''; continue; }
+    cur += c;
+  }
+  return { args: args, end: src.length };
+}
+/* 取实参里的命令名字面量。开关那一颗写的是
+   `write(S.status.props_masking === 'on' ? 'props-off' : 'props-on', …)` ——
+   条件里也带字符串（'on'），所以只认第一个 `?` 之后的那些，否则会把 'on' 当命令名。 */
+const lits = s => {
+  const t = String(s);
+  const q = t.indexOf('?');
+  return [...(q >= 0 ? t.slice(q) : t).matchAll(/'([a-z-]+)'/g)].map(m => m[1]);
+};
+/* 辅助函数：形参里某一个在函数体内被直接交给 write() 的第一个参数 */
+const helpers = [];
+for (const m of srcAll.matchAll(/^function ([A-Za-z0-9_]+)\(([^\n]*)\) \{/gm)) {
+  if (m[1] === 'write') continue;
+  const rg = jsFnRange(srcAll, m[1]);
+  if (!rg) continue;
+  const wm = srcAll.slice(rg[0], rg[1]).match(/\bwrite\(\s*([A-Za-z_$][\w$]*)\s*,/);
+  if (!wm) continue;
+  const idx = m[2].split(',').map(s => s.trim()).indexOf(wm[1]);
+  if (idx >= 0) helpers.push({ name: m[1], argIndex: idx, range: rg });
+}
+const inHelperBody = i => helpers.some(h => i >= h.range[0] && i < h.range[1]);
+const directWrite = []; const unresolved = [];
+for (let m, re = /\bwrite\(/g; (m = re.exec(srcAll));) {
+  if (/function\s*$/.test(srcAll.slice(Math.max(0, m.index - 10), m.index))) continue;
+  const cut = splitCallArgs(srcAll, re.lastIndex); re.lastIndex = cut.end + 1;
+  if (inHelperBody(m.index)) continue;                    // 转手点本身，不是调用点
+  const got = lits(cut.args[0]);
+  if (got.length) directWrite.push(...got);
+  else unresolved.push('write#1=[' + String(cut.args[0]).trim().slice(0, 26) + ']');
+}
+const viaHelper = [];
+helpers.forEach(function (w) {
+  const re = new RegExp('\\b' + w.name + '\\(', 'g');
+  let m;
+  while ((m = re.exec(srcAll))) {
+    if (/function\s*$/.test(srcAll.slice(Math.max(0, m.index - 10), m.index))) continue;
+    const cut = splitCallArgs(srcAll, re.lastIndex);
+    const arg = cut.args[w.argIndex] || ''; re.lastIndex = cut.end + 1;
+    const got = lits(arg);
+    if (got.length) viaHelper.push(...got);
+    else unresolved.push(w.name + '#' + (w.argIndex + 1) + '=[' + String(arg).trim().slice(0, 26) + ']');
+  }
+});
+chk('找到把命令名转手给 write() 的辅助函数', helpers.length >= 1,
+  helpers.map(w => w.name + '#' + (w.argIndex + 1)).join(' ') + '，从调用点取到 ' + viaHelper.length + ' 条');
+chk('每个调用点都取得到字面量命令名（取不到就等于没闸）',
+  unresolved.length === 0 && viaHelper.length >= 5, unresolved.join(' ') || viaHelper.length + ' 处');
+const used = directWrite.concat(viaHelper);
 const unknown = [...new Set(used)].filter(c => !cmds.includes(c));
 chk('界面调用的写命令都在命令层清单里', unknown.length === 0, unknown.join(' '));
 const notGated = [...new Set(used)].filter(c => !writeCmds.includes(c));
 chk('每个写命令都在 WRITE_CMDS 里（否则契约不符时停不住）', notGated.length === 0, notGated.join(' '));
+/* 反向：WRITE_CMDS 里不许躺着界面根本不会调的命令 —— 那要么是死条目，
+   要么是该出现的按钮没接上（两种都得看得见）。豁免必须写清是哪种：
+   restore-app 是单条版命令，界面增删一律走批量版（restore-apps / remove-apps），
+   它仍由命令层实现、由 tests/restore-app.sh 覆盖 —— 这里是"界面不直调"，不是死代码。 */
+const EXEMPT_UNUSED = ['restore-app'];
+const neverCalled = writeCmds.filter(c => !used.includes(c) && !EXEMPT_UNUSED.includes(c));
+chk('WRITE_CMDS 没有界面用不到的条目', neverCalled.length === 0, neverCalled.join(' '));
+console.log('       已豁免（命令层有、界面不直调）：'
+  + writeCmds.filter(c => !used.includes(c) && EXEMPT_UNUSED.includes(c)).join(' '));
 /* 读命令不许出现在 write() 里：它会被契约闸门误拦 */
 const reads = ['status', 'env', 'targets', 'apps', 'log', 'props', 'contract', 'icons', 'target-meta',
   'backend-info', 'teesim-profiles', 'tee-status', 'tricky-patches', 'excluded', 'boot-hash'];
 const misRead = [...new Set(used)].filter(c => reads.includes(c));
 chk('没有把读命令当写命令调', misRead.length === 0, misRead.join(' '));
+console.log('       界面可达的写命令：直接 ' + new Set(directWrite).size + ' 条 + 经 form 转手 '
+  + new Set(viaHelper).size + ' 条 = 去重 ' + new Set(used).size + ' 条');
+
+/* ── ⑤ 假数与假承诺：三态、超时、草稿 ───────────────────────────── */
+console.log('── 假数与假承诺 ──');
+/* daemon_alive / props_masking / target_exists 都是三态：读不到 ≠ 0 ≠ 关。
+   status 那一次读失败时，功能菜单以前打的是「undefined 个进程」，而红态判据
+   `=== '0'` 不成立，于是同一屏上"undefined"还配着绿色 ok。 */
+const rawDaemon = (screens.match(/daemon_alive/g) || []).length;
+chk('daemon_alive 只在 bridge 的三态 helper 里出现', rawDaemon === 0,
+  '界面里还有 ' + rawDaemon + ' 处直接拼 daemon_alive');
+chk('两处运行状态都走 daemonLabel（菜单与自动同步页）',
+  (screens.match(/daemonLabel\(st\)/g) || []).length >= 2
+  && (screens.match(/daemonDown\(st\)/g) || []).length >= 1,
+  'daemonLabel ' + (screens.match(/daemonLabel\(st\)/g) || []).length
+  + ' 处 · daemonDown ' + (screens.match(/daemonDown\(st\)/g) || []).length + ' 处');
+chk('属性开关读不到时不猜方向（不许用裸两态判据，切换键随未知收起）',
+  !/props_masking === 'on' \?/.test(screens) && screens.includes('maskKnown(')
+  && screens.includes('if (maskKnown(S.status))') && screens.includes('propsMaskLabel(st)'), '');
+/* 超时 ≠ 没写成：以前 failText 自己写"已重新读取当前状态"，而失败分支没人重读。 */
+chk('failText 不再承诺它管不到的事', !bridge.includes('已重新读取当前状态'), '');
+chk('超时的确重读（write 的失败分支里真调 reload）',
+  screens.includes('if (r.timeout) reload();'), '');
+/* 草稿：整页重建不该吃掉正在输入的内容（OMK 两份 toml 表单 / keybox 粘完整份再点芯片）。 */
+const draftUse = { captureEdits: app, clearEdits: app, restoreEditFocus: app, dropEdits: screens, fieldKey: screens };
+Object.keys(draftUse).forEach(function (fn) {
+  chk('草稿机制的 ' + fn + ' 定义了、也在被调',
+    screens.includes('function ' + fn) && draftUse[fn].includes(fn + '('), '');
+});
+chk('同页重建前 capture、换页时作废、重建后还光标',
+  app.includes('if (changed) clearEdits(); else captureEdits(prev);')
+  && app.includes('restoreEditFocus(page)'), '');
+chk('保存成功只清那一条命令的草稿', screens.includes('dropEdits(cmd)'), '');
+/* 表单基准必须是服务端值：草稿一旦被当基准，用户改的东西会被判成"没有改动"。 */
+chk('变更判定拿服务端值当基准，不是回填后的显示值',
+  screens.includes("init: String(cur) === 'true' ? 'true' : 'false'")
+  && !screens.includes("init: sw.checked ? 'true' : 'false'"), '');
 
 /* ── ④ KV_REQUIRED 不许给 TSV 命令编键 ───────────────────────────── */
 console.log('── 形状校验 ──');
