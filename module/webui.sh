@@ -78,7 +78,7 @@ NL='
 # 说明：Android 的 mksh **没有 printf 内置命令**（`type printf` → /system/bin/printf → toybox），
 #       所以以前每写一行 kv 就 fork+exec 一次进程：真机实测一行约 21ms，status 21 行、
 #       env 30 行、backend-info 23 行 —— 每条命令白付 400~600ms，这是"打开比别家慢一拍"的大头
-#       （对照：同机 同类工具的 status 约 200ms）。
+#       。
 #       mksh 的 `print -r --` 是内置的、且不展开反斜杠转义，字节形状与 printf '%s=%s\n' 一致；
 #       没有 print 的 shell（换 busybox/dash 时）退回 printf 那条老路。
 if print -r -- '' >/dev/null 2>&1; then

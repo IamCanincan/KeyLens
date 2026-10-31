@@ -45,7 +45,7 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
    注入值与 dumpsys 兜底，**不含 env()**：env 由组件内部的 .bar 自己吃，
    两边都算就是双倍。 */
 /* 顶栏固定覆盖在内容之上：大标题在内容里，随页滚走；滚动后顶栏才露出
-   小标题与返回箭头（移动端的阅读节奏）。状态栏让位仍在包壳上。 */
+   小标题与返回箭头。状态栏让位仍在包壳上。 */
 #barwrap{position:fixed;inset:0 0 auto;z-index:20;padding-top:var(--inset-top);
   background:var(--md-sys-color-surface);
   box-shadow:0 1px 0 transparent;transition:box-shadow .2s ease}
@@ -116,7 +116,7 @@ md-card.card{--md-card-container-color:transparent;--md-card-padding:0}
 md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high);
   --md-card-padding:18px;border-radius:22px;color:var(--md-sys-color-on-surface)}
 .sec{display:block}
-/* 分组标题 = 移动端式的短标签：14px/500/主色，不带图标。
+/* 分组标题：14px/500/主色，不带图标。
    图标留给行首，一个区块标题不再占一个彩色圆点。 */
 .sec-h{display:flex;align-items:center;gap:8px;margin:0 4px 8px}
 /* 分组标题的光圈点：外环 + 中心点，和主页的镜头标识同源 */
@@ -158,7 +158,7 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 /* 主页英雄卡：状态芯片 + 大字后端名 + 三个小统计。
    以前是四段小字用 · 连成一行（.strip-*），信息都在但要凑近读。 */
 .hero .hero-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
-/* 品牌标识：自家模板（淡粉底 + 墨色 KL），只换字符；图片构建时内联 */
+/* 品牌标识（淡粉底 + 墨色 KL），只换字符；图片构建时内联 */
 .kl-logo{box-sizing:border-box;width:56px;height:56px;border-radius:16px;flex:none;display:block;
   object-fit:cover;background:#FCE4EC;
   border:1px solid color-mix(in srgb, #031019 14%, transparent)}
@@ -308,7 +308,7 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
 .swap-veil{position:fixed;z-index:15;pointer-events:none;overflow:hidden;
   background:var(--md-sys-color-surface);opacity:1;transition:opacity .2s ease}
 .swap-veil.out{opacity:0}
-/* 行首图标：移动端式的单色轮廓图标，无底色块。
+/* 行首图标：单色轮廓图标，无底色块。
    彩色只留给状态与操作按钮；应用列表里的真实图标是内容，不在此列。 */
 .ic-avatar{width:40px;height:40px;border-radius:12px;display:flex;align-items:center;justify-content:center;
   flex:none;font-family:var(--md-icon-font-family);font-size:24px;line-height:1;

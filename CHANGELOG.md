@@ -9,14 +9,14 @@
 * **写入前 diff 预览**：界面的后端配置保存先走 `preview-<写命令>`（命令层同一条实现，但 `commit_backend_file` 在 `KL_PREVIEW=1` 时不落盘、不建 .bak，把「现文件 → 新文件」的行级差异用一次 awk 的 LCS 攒进 `$KL_PREVIEW_DIFF` 交给界面），差异块（+ 主色 / − 错误色）摆在表单下方，确认才真写；没有差异就直接走原路。预览时日志与 OMK 重启请求都被闸住（还没真写，不能留假条目）。白名单钉死在九条写命令上，`preview-*` 不进 KL_COMMANDS 声明（分派表里没有它们的 arm，声明必须=实现）。旧命令层没有 preview-* 时界面自动退回直写，不卡升级顺序。闸 `tests/write-preview.sh`（预览不落盘 / 不走原子写 / 不建 .bak / 差异内容 / 关预览照常写 / 白名单与信封 / 声明卫生）。
 
 * **视觉语言重做一版**（用户指出"还是不够优雅美观"）。保留四格信息架构，换掉上一版从 Android 设置抄来的重样式：
-  * 页标题 28px 移到**内容层**（随页滚走）；顶栏不再常驻大标题，滚动过 8px 才浮现 22px 小标题与底边线；二级页的返回箭头常驻。主页英雄卡改用 `secondary-container` 底色，和 同类工具 的状态卡一样是页面主色块。
+  * 页标题 28px 移到**内容层**（随页滚走）；顶栏不再常驻大标题，滚动过 8px 才浮现 22px 小标题与底边线；二级页的返回箭头常驻。主页英雄卡改用 `secondary-container` 底色。
   * 行标题从 19px 收到 **16px/500**、supporting 14px；行高由组件自己的 72px 保持。
   * 行首不再是一人一个粉彩圆底，改成 **40px 单色轮廓图标**（无底色块）；应用列表的真实图标改为 12px 圆角。
   * 分组标签改成 **14px/500 主色、无图标**；删掉「功能 / 功能」「目标名单 / 目标名单」「自动同步 / 自动同步」这类同名重复层级。
   * 底栏改成半透明模糊面；**只给当前项显示文字**，活动图标留在组件的 secondary-container 胶囊里。
   * 页面过渡改成 280ms 弹性曲线；主页矩阵的说明从长句压成 `target.txt + keybox.xml` 这种短摘要。
   * **组件层发现**：`md-navigation-bar.alwaysShowLabel` 在这一版是兼容存根（getter 恒 true），所以"只显示当前项"只能在 shadow 里做；顶栏标题第一次把 `.titles` 的宽度也覆盖成 `max-content`，组件量到 8px 宽、标题直接消失 —— 改成只放大字号、让组件自己量宽度。两条都写进 `tests/ui-shape.js` / `verify.mjs` 的断言（28px 内容标题、非活动标签 hidden、行标题 16px、滚动后顶栏标题可见、回到页首再隐藏）。真机回放也在 129 条名单页上验过滚动前后的两态。
-  * **KeyLens 自己的识别**（"界面要有自己的风格"，随后按"颜色不好看，logo 就用 KL"修正）：品牌标识沿用 **自家的图标模板** —— 淡粉底 `#FCE4EC` + 墨色 `#031019` 的 **KL**（用 Google Sans Flex 渲染后构建内联，只有字符从 Oi 换成 KL）；英雄卡上方保留 `KEYLENS` 品牌眉题。
+  * **KeyLens 自己的识别**（"界面要有自己的风格"，随后按"颜色不好看，logo 就用 KL"修正）：品牌标识：淡粉底 `#FCE4EC` + 墨色 `#031019` 的 **KL**（用 Google Sans Flex 渲染后构建内联，只有字符从 Oi 换成 KL）；英雄卡上方保留 `KEYLENS` 品牌眉题。
   * **颜色收回**：英雄卡从 secondary-container 蓝灰块改回中性 `surface-container-high`；正常态用动态主色/`primary-container`，注意用固定琥珀，问题用 `error`；去掉青绿信号色（它和动态主色、按钮打架），页面上不再出现第三四种主色。动态取色仍保留。
   * 分组标题的镜头光圈点、页脚镜头点保留；包名、摘要、keybox 指纹等技术值仍走等宽字（`--kl-mono`）。
   * **行内文字垂直居中**（"板块的字有点靠上"）：组件把正文块按 `top:14px` 定死，单行行只剩上半截字；注入 `.content{top:50%;translateY(-50%)}`，和行首图标、行尾操作同轴。verify/replay 直接量"行中心 vs 文字中心"，实测 0px（阈值 ≤2px）。
@@ -91,13 +91,12 @@
   * 台架自身的两条变异由 `tools/md3e-build/mutate-verify.mjs` 代跑（改源码 → 重新构建 → 跑 verify → 逐字节还原 → 再构建再跑一遍确认回绿），不用手动备份。
   * `check-artifact.mjs` 顺手改两处：默认查**候选**产物 `webui/dist/index.html`（新版还没换掉 `webroot/` 里的旧界面，之前它一直拿旧产物报"3 项不通过"），字节门槛用 `statSync().size` 而不是 `html.length` —— 后者是 UTF-16 码元数，904 KB 的文件量出 347"KB"，看着像被截断。
 
-* **命令层每写一行输出就 fork 一次进程**（"但是还是没它那么丝滑"追下去找到的大头）。Android 的 `/system/bin/sh` 是 mksh R59，**它没有 printf 内置命令** —— `type printf` 的答案是 `/system/bin/printf`（toybox）。所以 `kv() { printf '%s=%s\n' "$1" "$2"; }` 表面上一行代码，实际每行一次 fork+exec：真机现量**一行 13~21ms**，而 `status` 有 21 行、`env` 30 行、`backend-info` 23 行、`props` 每行还要再来一次 `getprop`（一行约 18ms）。同机对照 同类工具的 `status` ~200ms —— 差距不在打包方式，在这一处。
-  * 改法：`kv` 与新增的 `tsv` 走内置的 `print -r --`（`-r` 不展开反斜杠转义、`--` 结束选项，所以值里有 `\n`、`-n`、`%s`、emoji 都不变形），没有 `print` 的 shell（换 busybox/dash 时）由一次运行时探测退回 printf 老路；`backend_state` 从"echo 出去被 `$( )` 捕获"改成把结果放全局 `BACKEND_STATE_VALUE`（一次子壳约 40ms，status 三家各一次）。
+* **命令层每写一行输出就 fork 一次进程**。Android 的 `/system/bin/sh` 是 mksh R59，**它没有 printf 内置命令** —— `type printf` 的答案是 `/system/bin/printf`（toybox）。所以 `kv() { printf '%s=%s\n' "$1" "$2"; }` 表面上一行代码，实际每行一次 fork+exec：真机现量**一行 13~21ms**，而 `status` 有 21 行、`env` 30 行、`backend-info` 23 行、`props` 每行还要再来一次 `getprop`，没有 `print` 的 shell（换 busybox/dash 时）由一次运行时探测退回 printf 老路；`backend_state` 从"echo 出去被 `$( )` 捕获"改成把结果放全局 `BACKEND_STATE_VALUE`（一次子壳约 40ms，status 三家各一次）。
   * **同一会话交替配对实测**（各取最快）：`status` 547 → **180ms**、`env`（缓存命中）733 → **301ms**、`backend-info` 992 → **606ms**、`props` 672 → **372ms**、`contract` 166 → **127ms**。合起来就是界面开屏那一趟四条命令并行（后台 `&` + `wait` 现量）从约 **1100ms**（等最慢那条）降到 **272~369ms**（三趟）。字节形状验过：`contract` / `env` / `backend-info` / `boot-hash` / `tee-status` / `props` 六条命令的输出与旧写法逐行相同（`backend-info` 61 行、`props` 17 行一字不差；`status` 那处差异是临时副本的 `module.prop` 描述还没被守护进程改写过，与本次改动无关）。
   * 新闸 `tests/kv-writer.sh`：从真源抽出 kv 定义块判"主路径是 print -r + 留了 printf 兜底 + 有 else"，两条变异（改回每行 printf / 摘掉兜底）都要求点名响且**先自证变异真的落地**；另钉 `backend_state` 走全局、`cmd_props` 不再逐行 printf。写这条闸自己踩到两个坑也记着：① `grep -n '^if print -r'` 现在有 kv/tsv 两处命中，不 `head -1` 就会把 sed 的范围写成乱码；② "命中 0 处"这类判据要先数一处必然非 0 的参照（`backend_state "$TEESIM_MODULE"` 恰好 1 处），否则判据瞎了看不出来。
   * ~~还剩的最大一块：`props` 每行一次 `getprop`~~ —— **这条已经用测量关掉了，别再试第五种**：2026-10-31 把第四种读法量了，`getprop 全量 | grep -E "^\[(k1|k2|…)\]: "` 一次成小表 = 270~297ms，与「17 次逐个 getprop」的 298ms 没有差别 —— dump 本身 115ms 是便宜，但过滤 1583 行的代价把省下的 fork 又吃回去了。四种读法（逐个 / 全量+`grep -F -f` / 全量+参数展开 / 全量+`grep -E` 一次）里没有一种赢，结论连同新数字写回 `prop_now` 的注释，免得有人再试第五种。
 
-* **首屏改成"先画壳"，命令层把每次都要重跑的读量缓存起来**（"为什么 同类工具速度很快，本机上装着" → "全量优化"）。同一台机、同一个 KernelSU 上对照：同类工具的 `tricky-store status` ~200ms、`system info` ~160ms，KeyLens 的 `env` 每次 ~1050ms、`backend-info` ~1020ms、`status` ~800ms —— 差距一大半在**每次开界面都重跑一遍系统读量**，不在打包方式。
+* **首屏改成"先画壳"，命令层把每次都要重跑的读量缓存起来**。
   * **界面**：boot 原先是"契约 + 基础状态 + 后端信息三条全 join 才让壳出来"，命令层慢 1 秒就是空屏 1 秒。现在契约一到就 `show()` 画壳（主页/功能菜单没数据时是那三格统计 + 分组行的骨架 `.sk-hero`），`status` / `env` / `backend-info` 在后台 join，启动页只在 `env` 到位（或 1200ms 兜底）后淡出。`loadBase()` 拆成 `loadStatus()` / `loadEnv()`（`ensure('base')` 仍是两者并行），桥接层第一次把"哪条命令回来了"分开记。verify 用 `?slow=status` 量两段：220ms 处 `#view` 已是骨架（3 格统计 + 3 行 + **0 张卡**），再等到启动页真的开始淡出（实测 opacity 0.12）时**再断一次"屏上看得见骨架"** —— DOM 里有骨架不等于看得见，第一版就是只查了 DOM、截出来的图还是整屏品牌页；到齐后换成真主页。这两条断言自带反面对照：串行版在 220ms 那个点连 `#view > .page` 都还没有。截图 `new-home-skeleton.png`。真机数据回放冷启动 **239ms**。
   * **量不出来就撤掉：`find_awk` 懒加载试过又回滚了**。上一版记录里的「status 800→563ms、backend-info 1020→750ms」是**两次不同会话的单次采样**，不是配对测量。这次把新旧两份命令层放在同一台机、同一次会话里交替各跑：`status` 旧 782 / 新 798ms，`backend-info` 旧 995 / 新 1002ms —— 没有差别。原因是 `find_awk` 本身只有约 9ms（一次调用 38ms，其中空 fork 基线就占 29ms），而 `backend-info` 迟早要用 awk，懒加载只是把同一笔钱从 `use_backend` 挪到消费点。改动（`use_backend` 里三处赋值改空 + 三处 `[ -n "$AWK_CMD" ] ||` 守卫）**全部撤回**，`lib/backend.sh` 回到与 HEAD 逐字节相同。留着的是量得动的那一条：`env` 缓存。
   * **命令层 `cmd_env` 加磁盘缓存**：`/data/adb/keylens.env.cache`（`600`，TAB 分隔，键 = `v1|MODDIR|module.prop mtime|/system/build.prop mtime`），命中就复用 15 个静态字段 + 3 格 FRRO（resetprop / awk / base64 命令行、ino 模式、品牌与安卓版本、状态栏高度…），`sys_dark` 每次仍现量 `dumpsys uimode`；FRRO 取色只在**路径或 mtime 变了**才重新 base64 编码；慢的那条 `dumpsys wallpaper` 只在没有 FRRO 时才跑，而便宜的 `settings get secure theme_custom_color` 永远照读 —— 它是"我们的解析器认不出这张 overlay"时的唯一退路（第一版为了省时间把 seed 整条跳过，等于把退路一起省掉，改回来了；配对量过这笔钱是 ~38ms：留退路 712ms / 不留 674ms）。缓存只在内容变了且目录可写时才写（tmp + `mv -f`）—— 主机上跑台架不会留下任何文件，卸载脚本把它和 `.tmp.<pid>` 一起删。**配对实测（同一会话交替 5 次）**：`env` 线上旧版平均 **1102ms** → 缓存命中平均 **741ms**，冷缓存 1511ms；输出与线上旧版**同键同值**（把两份 `env` 拉回主机逐行比：除 `webui_sh` 因跑的是临时副本路径而不同之外，19 个键一字不差）。
@@ -363,7 +362,7 @@
   * `tests/ui-shape.js` 的导航断言按新结构重写（tab = 一级页、二级页都挂在存在的父级、功能页恰好两个菜单行、返回钮只给二级页、`goBack` 回父级），共 **54 条**；变异验证过的两条：把菜单行目标改掉、把 `barTabOf` 去掉都会红。
 
 * **底栏回来了：六格悬浮药丸，替代「概览 → 四个二级页」的下钻**。下钻那一版把五个页藏在概览的一张入口列表后面，概览只剩「门」而没有内容；现在六个目的地并列在底栏上，每一页都能直接到。
-  * **形态照 自家的浮动底栏**：`surface-high` 药丸 + 1px `card-line` 描边 + 8px 投影，离底 20 + 安全区；**非选中只留图标，选中那格展开成「图标 + 名字」的胶囊**（`max-width` + opacity 过渡，340ms 过冲曲线），按压缩到 0.92。六个图标 + 一个展开的名字在 417 CSS px 下放得下：实测药丸 350 ≤ 401，三后端 × 六页横向溢出都是 0。
+  * **底栏形态**：`surface-high` 药丸 + 1px `card-line` 描边 + 8px 投影，离底 20 + 安全区；**非选中只留图标，选中那格展开成「图标 + 名字」的胶囊**（`max-width` + opacity 过渡，340ms 过冲曲线），按压缩到 0.92。六个图标 + 一个展开的名字在 417 CSS px 下放得下：实测药丸 350 ≤ 401，三后端 × 六页横向溢出都是 0。
   * **顶栏撤掉返回箭头与下钻语义**：六页平级，没有上一级；`applyPage` 只管页名、英雄卡显隐、底栏选中态（`is-active` + `aria-current`）和二级页的 sticky 标题。概览的滚动位置仍在切走前记下、切回时还原。
   * **切页只改 `#/` hash，并且走 `replaceState`**：不往历史里堆条目，`webView.canGoBack()` 保持原样 —— 系统返回（手势/返回键）一次就退回管理器，而不是逐页后退。`popstate` 只接真正的前进/后退与深链（`#/props`）。面板入场方向跟底栏的左右排布一致（往右切从右滑入），仍是 24px / 200ms 的 WAAPI 位移，不碰高度、不盖遮罩。
   * **浮层让位重新量过**：`.wrap` 的 `padding-bottom` 改成 104px + 安全区（药丸离底 20 + 高 58 + 气口），提示条抬到 `bottom: 88px + 安全区`（实测与药丸上沿留 10px）；多选时底栏整条 `display:none` 让给批量条（两者占同一条底边，叠在一起没法点）。
@@ -390,7 +389,7 @@
   * `tests/target-tokens.sh`（接进 CI，**55 条断言**）：三个后端的解析、增删、模式改写、快照差分、ever/excluded、三个 `backend-info` 解析器与 `is_target_entry`；`tests/config-write.sh`（**39 条断言**）：三个 writer 的替换/插入/嵌套/多行数组/新段/带注释段头/幂等。`ui-shape` 48 条；`contract-pair`（api=4）全绿。
   * 桌面 417 宽（CDP `Emulation.setDeviceMetricsOverride`）实测：三后端 × 六页横向溢出均为 0；Tricky 模式按钮与对话框、TEESim 用户/UID 标签、批量选择把 token 原样带进确认框；三后端表单可编辑并保存（演示状态回读）、keybox 粘贴对话框可用；演示数据新增 `?backend=tricky|teesim|omk`。设备上用一份临时模块副本跑通五条写命令：TEESim 模式/身份、Tricky 全局补丁与 keybox、OMK injector/config，含备份、重载请求、非法值拒绝与重复保存不落盘。
 
-* **字体改为 `system-ui`（学习机上其它 WebUI）**：参考 `同类模块的 `--nm-font-family: system-ui` —— 本机 WebView 156 下 system-ui 就按系统字体（Google Sans Flex）渲染。删掉整套字体探测/复制/hash 文件/`@font-face`/`fetch` 镜像：`env` 不再输出 `sys_font*`，不再往 `webroot/fonts` 或 `webroot/icons` 写 4MB 字体文件；关于页只写「跟随系统（system-ui）」。Material Web 的 `--md-ref-typeface-plain` 仍映射到 `var(--font)`。`tests/ui-font.js` 改为 **9 条断言**，专门防止再引入 `@font-face`/字体文件管线；8 个 shell 测试与 `ui-shape` 19 条全绿。
+* **字体改为 `system-ui`（学习机上其它 WebUI）**：本机 WebView 156 下 system-ui 就按系统字体（Google Sans Flex）渲染。删掉整套字体探测/复制/hash 文件/`@font-face`/`fetch` 镜像：`env` 不再输出 `sys_font*`，不再往 `webroot/fonts` 或 `webroot/icons` 写 4MB 字体文件；关于页只写「跟随系统（system-ui）」。Material Web 的 `--md-ref-typeface-plain` 仍映射到 `var(--font)`。`tests/ui-font.js` 改为 **9 条断言**，专门防止再引入 `@font-face`/字体文件管线；8 个 shell 测试与 `ui-shape` 19 条全绿。
 
 * **全量重构 WebUI：接入 `@material/web` 2.5.0（labs/gb Expressive）**：界面控件不再自己仿 Material，直接用组件；仍是单文件、不联网。
   * 组件：`md-gb-button` / `md-gb-icon-button` / `md-gb-list` / `md-gb-list-item` / `md-gb-switch`、`md-outlined-segmented-button-set`、`md-outlined-text-field`、`md-dialog`。原生按钮、分段、开关、输入框、确认框、首页入口和应用列表全部换掉；卡片、分组、日志台、提示条保留模块自己的布局。
@@ -534,7 +533,7 @@
 * **左右切页卡：不再用 JS 写 transform，改成原生横向滚动 + scroll-snap**。前两轮我在这条路上试了「撤掉 will-change」「再加回 will-change」「translate3d」「touchmove 合并到 rAF」—— 都没救回来，因为**逐帧在主线程写 transform 这件事本身**在手机 WebView 上就慢。现在把 `.pager` 直接做成横向滚动容器（`overflow-x:auto` + `scroll-snap-type:x mandatory`，面板 `scroll-snap-align:start`），跟手、惯性、吸附全交给浏览器自己的合成路径，主线程一帧都不用干活；整块触摸处理代码（约 60 行）随之删掉，只留一个 `scroll` 监听把底栏和状态跟过去。
   * 结构上顺带简化：中间那层 `#track` 去掉了（它存在的唯一理由是给 JS 位移当载体）。实测 `scrollWidth` 2904 = 5×568 + 4×16；切页后 `scrollLeft` 1168 / 2336 正好对上；直接改 `scrollLeft` 模拟用户滑到第 5 页，底栏与 `S.tab` 都跟到了 `props`。
 * **页面滑动与底栏动效有时差**：两处叠加 —— ① 底栏要等滚动停 90ms 才更新；② 更新后那一格的变色（220ms）与展开（340ms）还在路上，于是「页面已经到了、底栏还在半路」。现在滚动监听**跨过中点就立刻切状态**（实测滚动后 30ms 内底栏已跟上），底栏仍等停下再取数、再同步容器高度（中途改高度会让纵向位置抖）；并且用户自己滚的时候给底栏加 `is-tracking`、把过渡关掉 —— 点底栏切换不走这条路，动画照旧。
-* **「还是不如同类工具」：把 Compose 自带的三样东西补上**。对着它的源码比了一遍，差距不在布局，在**它每一块可点的 Surface 都自带的东西**我这边一样没有：
+* **补上 Compose 自带的三样东西**：差距不在布局，在**它每一块可点的 Surface 都自带的东西**我这边一样没有：
   * **按压反馈**：Compose 的 `Surface` 自带 ripple，网页这边点下去一直是"死"的。现在给 `.btn` / `.tab` / `.seg button` / `.icon-add` 加状态层（`::after` + `currentColor`）：按下**瞬间**出现、松开淡出，颜色自动跟着所在容器走；开关的 `::after` 是滑块本身，排除。
   * **弹簧动效**：Compose 走 `MotionScheme` 的弹簧，CSS 贝塞尔永远差一口气（起步与收尾没有过冲）。用 `linear()` 写了一条真正的阻尼振荡曲线（26 个采样点，峰值 1.06），Chrome 113+ 才支持 —— 不支持时整条声明作废、退回默认 ease，只是没那么弹，不会坏（已确认计算值里确实拿到 `linear(...)`）。
   * **形状档位对齐它的 `Shapes`**：8 / 12 / 16 / 20 / 28（原来是 8 / 10 / 14 / 18 / 20 / 24）。
@@ -572,7 +571,7 @@
   * 417 实测：功能页卡片 top 297 / bottom 621（上 245、到药丸上沿 201）；boot 页 329…602；日志 174…744；属性页内容 976 > 900，`safe` 让它仍旧从 60 开始；主页不动。横向溢出全 0。
   * `tests/ui-shape.js` 加 2 条（居中类只在非主页出现、`.grp` 圆角 = 11），共 **60 条**。
 
-* **切页动效换成 Material 3 Expressive 的 `MotionScheme` 弹簧**：原来写死的 200ms `cubic-bezier(.2,0,0,1)` 比它快一档。现在时长与曲线取 `--d3` / `--e-spring`，弹簧参数不是凭手感编的 —— 从 自家 依赖的 `material3 1.5.0-alpha28` 字节码里读出 `MotionScheme.expressive`：spatial = `spring(ζ0.8, k380)`、effects = `spring(ζ1.0, k1600)`。`--e-spring` 换成前者前 340ms 的 `linear()` 采样（峰值 1.007 = 1.5% 过冲），切页的 WAAPI 直接吃这个令牌；老 WebView 用 `CSS.supports` 探一下，不认 `linear()` 就退回贝塞尔，不会因为曲线解析失败把切页弄坏。桌面 417 实测：`duration 340`、easing 是 `linear()`、药丸 top 26 帧恒 822、裁切类覆盖 22 帧后摘除。
+* **切页动效换成 `MotionScheme` 弹簧**：原来写死的 200ms `cubic-bezier(.2,0,0,1)` 比它快一档。现在时长与曲线取 `--d3` / `--e-spring`，弹簧参数不是凭手感编的 —— 从 自家 依赖的 `material3 1.5.0-alpha28` 字节码里读出 `MotionScheme.expressive`：spatial = `spring(ζ0.8, k380)`、effects = `spring(ζ1.0, k1600)`。`--e-spring` 换成前者前 340ms 的 `linear()` 采样（峰值 1.007 = 1.5% 过冲），切页的 WAAPI 直接吃这个令牌；老 WebView 用 `CSS.supports` 探一下，不认 `linear()` 就退回贝塞尔，不会因为曲线解析失败把切页弄坏。桌面 417 实测：`duration 340`、easing 是 `linear()`、药丸 top 26 帧恒 822、裁切类覆盖 22 帧后摘除。
 
 * **移除「常驻列表」：名单只有目标文件本身**。起因是上一版的结论 —— 增量同步已经接管了"新装自动进、卸载自动出、你手工改的不动"，常驻那一层只剩两件事，而两件都可以用目标文件本身表达。现在：
   * **名单 = 目标文件**（`config.json` 的 `profiles.default.apps` / `target.txt`）。界面上的「常驻列表」页、应用页的「+」加号、「常驻 N 条」、`webui.sh` 的 `rules` / `save-rules` 两条命令全部删掉；`rules.txt` 这个文件不再创建、不再读取、不再监听。
@@ -858,7 +857,7 @@
 
 * **首次打开时五个页面竖着全堆在一起**：删掉横向轨道之后页面改成了竖排，而初始状态没有任何地方调用 `applyPage` —— 管理器打开 `index.html`（URL 里没有 `?tab=`）时，概览下面依次跟着常驻 / 应用 / 日志 / 属性，整页 **1953px**。之前量不出来，是因为我的探针每次都带 `?tab=`，而旧版的横向轨道又恰好把后四页推到视口外，把这条路径盖住了。两处修：四块面板在标记里就带 `hidden`（JS 没跑之前也不会闪出来），boot 里再走一次 `applyPage('over')` 把标题 / 英雄卡 / 返回箭头定死。修后 `scrollHeight` **1052**、可见面板 **1** 个。
 
-* **去掉横滑切页，底栏回到 自家的形态**。「底栏抽搐」的根因不是某一条 CSS，而是横滑这个前提本身：只要页面是横排轨道，选中项一展开文字（296 ↔ 322）就会在滑动过程中反复变宽变窄，居中的药丸两边一起弹；把它压成定宽图标又「不像 自家」。现在横滑整套删掉 —— `.pager` 横向滚动容器、`#nav-ind` 指示胶囊、`scroll` 监听、`syncTrackHeight` 与 `ResizeObserver`、约 60 行触摸处理 —— 面板竖排、用 `hidden` 切换，切页瞬时完成：不滚、不动容器高度、没有相邻页首次绘制那一帧。
+* **去掉横滑切页，底栏形态重做**。「底栏抽搐」的根因不是某一条 CSS，而是横滑这个前提本身：只要页面是横排轨道，选中项一展开文字（296 ↔ 322）就会在滑动过程中反复变宽变窄，居中的药丸两边一起弹；把它压成定宽图标又。现在横滑整套删掉 —— `.pager` 横向滚动容器、`#nav-ind` 指示胶囊、`scroll` 监听、`syncTrackHeight` 与 `ResizeObserver`、约 60 行触摸处理 —— 面板竖排、用 `hidden` 切换，切页瞬时完成：不滚、不动容器高度、没有相邻页首次绘制那一帧。
   * 底栏按 同类实现的 `NavItem` 逐项对齐：28px 圆角、`surfaceContainerHigh` + 1dp 描边 + 8dp 投影、内边距 6/8、格距 4、选中格内边距 12/10、图标 22、文字左距 8、labelLarge（14/500/.1）。实测宽度 300（概览 / 应用 / 日志 / 属性）/ 328（常驻列表），五页底边距屏都是 20px；切页逐帧采样 70 帧 / 8 次切换，「同时 0 个或 2 个面板可见」「遮罩出现」的帧都是 **0**，`scrollY` 全程 0 且不抖。
   * 顶栏大标题已经在说当前页，面板里那三个重复的 `<h2>`（常驻应用列表 / 应用列表 / 运行日志）一并删掉 —— 否则切到某页时同一个词出现两遍，还白占一行高度。五页各自滚到底，最后一张卡片与药丸顶边分别留 171 / 232 / 37 / 429 / 18px。
   * 复扫：5 页 × 626 溢出 **0 项**（对照 `flex:0 0 900px` 能报 2 项）；可见文本节点（每页 27~51 个，排除 WCAG 例外的禁用态按钮）对比度浅色最差 **5.37**、深色 **5.73**，0 项不达标；选中格文字对胶囊 **10.11 / 6.87**，未选中图标对药丸 **5.86 / 6.56**。

@@ -6,7 +6,7 @@
 # /system/bin/printf → **这个 shell 没有 printf 内置命令**，所以以前
 #   kv() { printf '%s=%s\n' "$1" "$2"; }
 # 每写一行就 fork+exec 一次：一行约 21ms，status 21 行、env 30 行、
-# backend-info 23 行 —— 每条命令白付 400~600ms（同机 同类工具的 status 约 200ms，
+# backend-info 23 行 —— 每条命令白付 400~600ms（
 # "打开慢一拍"的大头就在这）。换成内置的 `print -r --`：21 行合计 <15ms，
 # 实测 status 810→240ms、env(缓存命中) 733→301ms、backend-info 992→606ms，
 # 且六条读命令的输出与旧写法逐行相同（backend-info 61 行一字不差）。
