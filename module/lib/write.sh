@@ -177,7 +177,7 @@ cmd_teesim_save() {
 
     # profile 是"改哪一份"，不是"改成什么" —— 先摘出来，别当未知字段拒掉。
     # 省略时仍是 default，所以旧界面发来的 payload 行为不变。
-    prof=${AWK_CMD:-awk} -F"$TAB" '$1=="profile"{print $2; exit}' "$pairs")
+    prof=$(${AWK_CMD:-awk} -F"$TAB" '$1=="profile"{print $2; exit}' "$pairs")
     [ -n "$prof" ] || prof=default
     case "$prof" in
         *[!A-Za-z0-9._-]*|''|*/*) echo "profile 名字不合法：$prof" >&2; rm -rf "$dir"; return 1 ;;
@@ -424,7 +424,7 @@ cmd_tricky_save_patch() {
     parse_payload "$payload" "$pairs" || { rm -rf "$dir"; return 1; }
 
     # scope 是"改哪一段"：省略 = 全局；给包名 = 那个 [包名] 块（没有就新建）。
-    sc=${AWK_CMD:-awk} -F"$TAB" '$1=="scope"{print $2; exit}' "$pairs")
+    sc=$(${AWK_CMD:-awk} -F"$TAB" '$1=="scope"{print $2; exit}' "$pairs")
     [ -n "$sc" ] || sc=global
     if [ "$sc" != "global" ]; then
         printf '%s' "$sc" | grep -Eq '^[A-Za-z_][A-Za-z0-9_]*(\.[A-Za-z_][A-Za-z0-9_]*)+$' \

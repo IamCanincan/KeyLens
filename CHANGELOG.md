@@ -135,6 +135,10 @@
 
 #### 修复
 
+* **修掉设备上整个写路径：`${AWK_CMD:-awk}` 那次批量替换吃掉了两行行首的 `$(`**（全量复查里 `sh -n` 抓出来的）。上一轮把裸 `awk` 换成 `${AWK_CMD:-awk}` 时，`prof=$(awk …)` 与 `sc=$(awk …)` 两行变成了 `prof=${AWK_CMD:-awk} …)` —— 替换把 `$(` 一起吞了。后果不是"这两个函数坏了"而是 **`lib/write.sh` 从解析阶段就失败**，而它是 19 个写命令的懒加载实现：界面上每一个写入都只得到「无法加载 lib/write.sh」，而 `status`/`env`/`contract` 这些读路径照常工作，所以打开界面完全看不出事。真机证据：`webui.sh contract` 退 0，`webui.sh restore-app 'not a pkg'` → `write.sh[180]: syntax error: unexpected ')'` + 退码 1。
+  * **为什么满绿的自检没抓到**：命令层的套子几乎都是"按 `^cmd_x() {` 抽一个函数出来 eval"，坏行不在被抽那一段里就永远不响；`tests/write-hygiene.sh` 数的是 `AWK_CMD:-awk` 出现几处（≥4），而那两处坏行恰好把它喂饱了。CI 里本来有 `sh -n module/lib/*.sh`，但它只在 push 时跑，本地攒了两百多个提交没推 —— 这道闸从未在本地执行过。
+  * **补的闸**：`tests/sh-syntax.sh` 把 `sh -n` 挪进 `tests/*.sh`（本地一条 `for t in tests/*.sh` 就带着它）。清单由 glob 推出 17 个机上文件并要求 ≥12、`lib/write.sh` 与 `webui.sh` 必须在列，防的是"清单自己数瞎"；变异对照原样种回当年那处损坏（真源命中 1 处 / 副本 1 处 / 两文件确有差异三条同时成立才算落地），副本必须退非 0。端到端也真验过一次：往工作区注入故障 → 闸点名 `module/lib/write.sh` 退 1 → 还原并逐字节比对相同。
+
 * **逐个核对 WebUI 写入口的接线，抓出 `props-boot-hash` 的参数形状错了**（"检查一下是否真的接入"）。界面把 digest 先 `b64()` 再发，而命令层 `cmd_set_boot_hash` 收的是明文十六进制或 `-`：真机上点「保存并应用」只会得到"哈希必须是 64 或 128 位十六进制"；留空取消恰好因为空串等于"不带参数"而能用。改成直发明文；命令层在读回不一致时补 `apply_note`，界面不再把"已保存"说成"已应用"。其余写入口逐条对过（名单增/删、`set-mode`、Tricky 补丁保存/删段、TEESim profile 增删、overrides、OMK 两份 toml、keybox、属性开关/立即应用、同步、清日志、OMK 重载），命令名、参数编码与 payload 键名均一致。
   * **加静态闸**：`tests/contract-pair.sh` 现在从 `screens.js` 抽出所有 `write('命令', …)`，要求命令在 `KL_COMMANDS` / `WRITE_CMDS` 里，并把"允许直发 base64"的命令钉成清单（`keybox-save`、`omk-save-injector` 与五条 payload 写命令）。先跑未修版 → 点名 `props-boot-hash` 退 1；修后全绿。demo 台架不过桥、真机又没人逐颗按钮点，这类"按钮在、参数形状错"以前谁也拦不住。
   * 全量自测：23 套 shell、9 道静态闸、`build.mjs --check` 全过；产物随之重建。
