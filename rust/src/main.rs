@@ -84,6 +84,8 @@ fn main() {
         "clear-log" => read_cmds::clear_log(),
         "omk-restart" => read_cmds::omk_restart(arg),
         "set-mode" => read_cmds::set_mode(arg, args.get(3).map(|s| s.as_str()).unwrap_or("")),
+        "props-on" => read_cmds::props_switch("on"),
+        "props-off" => read_cmds::props_switch("off"),
         "tricky-patches" => read_cmds::tricky_patches(),
         "teesim-overrides" => read_cmds::teesim_overrides(),
         "teesim-profiles" => read_cmds::teesim_profiles(),

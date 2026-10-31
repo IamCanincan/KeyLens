@@ -1016,6 +1016,48 @@ fn tricky_mode_rewrite(text: &str, pkg: &str, mode: &str) -> (String, &'static s
     (out, status)
 }
 
+/// cmd_props_switch：props-on / props-off（开关文件即关闭标记）。
+pub fn props_switch(want: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if want != "on" && want != "off" {
+        eprintln!("参数只能是 on 或 off");
+        std::process::exit(1);
+    }
+    let ok = if want == "off" {
+        let created = std::fs::OpenOptions::new()
+            .create(true)
+            .write(true)
+            .truncate(true)
+            .open(&p.props_off)
+            .is_ok();
+        if created {
+            #[cfg(unix)]
+            {
+                use std::os::unix::fs::PermissionsExt;
+                let _ = std::fs::set_permissions(&p.props_off, std::fs::Permissions::from_mode(0o600));
+            }
+        }
+        created && p.props_off.is_file()
+    } else {
+        let _ = std::fs::remove_file(&p.props_off);
+        !p.props_off.exists()
+    };
+    if !ok {
+        eprintln!("开关文件写入失败：{}", p.props_off.display());
+        std::process::exit(1);
+    }
+    log_line(
+        &p,
+        if want == "off" {
+            "🛠 WebUI 关闭属性伪装（下次开机起不再写入期望值）"
+        } else {
+            "🛠 WebUI 开启属性伪装（下次开机起恢复写入）"
+        },
+    );
+    println!("props_masking={}", want);
+}
+
 /// cmd_set_mode：Tricky 条目模式改写（auto/leaf/generate），输出 changed。
 pub fn set_mode(pkg: &str, mode: &str) {
     let root = Root::from_env();

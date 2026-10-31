@@ -571,5 +571,25 @@ chk 'set-mode：同模式再改（changed=0）' "$(sh "$T/md.sh" com.a leaf 2>&1
 chk 'set-mode：不存在的包（changed=0）' "$(sh "$T/md.sh" com.zzz auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.zzz auto 2>&1)"
 chk 'set-mode：非法包名' "$(sh "$T/md.sh" bad..pkg auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode bad..pkg auto 2>&1)"
 
+echo "── props-on / props-off（开关文件）──"
+mk_props_harness() { # <root>
+  {
+    echo '. module/lib/core.sh'
+    echo '. module/lib/props.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "KL_PROPS_OFF='$1/data/adb/keylens.props_off'"
+  } > "$T/po.sh"
+  sed -n '/^cmd_props_switch() {/,/^}/p' module/lib/write.sh >> "$T/po.sh"
+  echo 'cmd_props_switch "$1"' >> "$T/po.sh"
+}
+PO="$T/po-root/data/adb"
+mkdir -p "$PO"
+mk_props_harness "$T/po-root"
+chk 'props-off：输出一致' "$(sh "$T/po.sh" off 2>&1)" "$(KEYLENS_ROOT="$T/po-root" "$B" props-off 2>&1)"
+chk 'props-off：开关文件存在且 600' "$(stat -c '%a' "$PO/keylens.props_off" 2>/dev/null)" "600"
+chk 'props-on：输出一致' "$(sh "$T/po.sh" on 2>&1)" "$(KEYLENS_ROOT="$T/po-root" "$B" props-on 2>&1)"
+chk 'props-on：开关文件已删除' "$([ -e "$PO/keylens.props_off" ] && echo exists || echo gone)" "gone"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
