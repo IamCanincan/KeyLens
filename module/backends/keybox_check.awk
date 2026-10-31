@@ -1,16 +1,16 @@
 #=============================================================================
 # backends/keybox_check.awk - 按后端验 keybox 的**结构**
 #
-# 为什么不能三家共用一份判据（2026-10-30 对照上游源码逐家核过）：
-#   · Tricky  KeyBoxUtils.kt:67     根元素必须叫 AndroidAttestation（深度 1 就判死），
-#                                   命名空间关掉；随后要 <Keybox> / <Key algorithm=> /
-#                                   <PrivateKey> / <CertificateChain> / <Certificate>。
-#   · TEESim  attest.rs:63-124      roxmltree **不看根元素名**，只找
-#                                   <Key algorithm="rsa"|"ecdsa">（小写），要 <PrivateKey>
-#                                   和 **≥2** 个 <Certificate>；读不到就跳过该 profile，
-#                                   这些包退回真硬件。它自家 WebUI 只轻验
-#                                   "有 <AndroidAttestation 或 <Keybox"（keybox-io.js:47）。
-#   · OMK     keybox.rs:35-42,286-314  不是 XML 而是四条正则：
+# 为什么不能三家共用一份判据（逐家核过各家解析器的实际行为）：
+#   · Tricky   根元素必须叫 AndroidAttestation（深度 1 就判死），
+#              命名空间关掉；随后要 <Keybox> / <Key algorithm=> /
+#              <PrivateKey> / <CertificateChain> / <Certificate>。
+#   · TEESim   解析器不看根元素名，只找
+#              <Key algorithm="rsa"|"ecdsa">（小写），要 <PrivateKey>
+#              和 **≥2** 个 <Certificate>；读不到就跳过该 profile，
+#              这些包退回真硬件。它自家 WebUI 只轻验
+#              "有 <AndroidAttestation 或 <Keybox"。
+#   · OMK      不是 XML 而是四条正则：
 #                                   <Key\s+algorithm="X">\s*(.*?)\s*</Key> 成对、
 #                                   X∈{ec,ecdsa,rsa} 且**必须有 EC**、每个 Key 块里要有
 #                                   <NumberOfCertificates>N</NumberOfCertificates>，
