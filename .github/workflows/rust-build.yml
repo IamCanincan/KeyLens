@@ -32,6 +32,9 @@ jobs:
           mkdir -p .cargo
           printf '[target.aarch64-linux-android]\nlinker = "%s/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"\n' "$NDK" > .cargo/config.toml
 
+      - name: Unit tests（b64 / payload / json_flat / keybox / ov_valid / lock / backend）
+        run: cargo test --manifest-path rust/Cargo.toml --release
+
       - name: Build (aarch64 Android, static)
         run: cargo build --manifest-path rust/Cargo.toml --release --target aarch64-linux-android
 
