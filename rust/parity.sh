@@ -765,5 +765,59 @@ chk 'save-patch：备份已生成' "$([ -f "$SPR/data/adb/tricky_store/security_
 BAD=$(printf 'patch_system=%s' "$(printf '2026-13-01' | base64)" | base64 | tr -d '\n')
 chk 'save-patch：非法补丁值' "$(sh "$T/sv.sh" "$BAD" 2>&1)" "$(KEYLENS_ROOT="$SPR" "$B" tricky-save-patch "$BAD" 2>&1)"
 
+echo "── teesim-save-overrides（payload + 可编辑性 + 备份）──"
+mk_ov_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
+    echo 'commit_backend_file() { cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/ovs.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^valid_ov_level() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^valid_ov_version() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^valid_ov_hex() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^parse_payload() {/,/^}/p' module/webui.sh >> "$T/ovs.sh"
+  sed -n '/^cmd_teesim_save_overrides() {/,/^}/p' module/lib/write.sh >> "$T/ovs.sh"
+  echo 'detect_backend "$MODDIR"; cmd_teesim_save_overrides "$1"' >> "$T/ovs.sh"
+}
+OVS="$T/ovs-root"
+mk_ov_fixture() {
+  mkdir -p "$1/data/adb/modules/teesim" "$1/data/adb/teesim"
+  printf '{\n    "attestationSecurityLevel": "1",\n    "attestationVersion": "300"\n}\n' > "$1/data/adb/teesim/overrides.json"
+}
+OVSS="$OVS-s"; OVSR="$OVS-r"
+mk_ov_fixture "$OVSS"; mk_ov_fixture "$OVSR"
+mk_ov_harness "$OVSS"
+HX=$(printf '%064d' 0 | tr '0' 'a')
+PLOV=$(printf 'attestationSecurityLevel=%s' "$(printf 2 | base64)" | base64 | tr -d '\n')
+chk 'save-overrides：输出' "$(sh "$T/ovs.sh" "$PLOV" 2>&1)" "$(KEYLENS_ROOT="$OVSR" "$B" teesim-save-overrides "$PLOV" 2>&1)"
+chk 'save-overrides：两侧文件逐字节一致' "$(cat "$OVSS/data/adb/teesim/overrides.json")" "$(cat "$OVSR/data/adb/teesim/overrides.json")"
+chk 'save-overrides：备份已生成' "$([ -f "$OVSR/data/adb/teesim/overrides.json.bak" ] && echo yes)" "yes"
+printf '{"overrides":{"verifiedBootHash":{"editable":false,"source":"harvested"}}}\n' > "$OVSR/data/adb/teesim/harvested.json"
+printf '{"overrides":{"verifiedBootHash":{"editable":false,"source":"harvested"}}}\n' > "$OVSS/data/adb/teesim/harvested.json"
+BADOV=$(printf 'verifiedBootHash=%s' "$(printf '%s' "$HX" | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'save-overrides：不可编辑字段拒绝' "$(sh "$T/ovs.sh" "$BADOV" 2>&1)" "$(KEYLENS_ROOT="$OVSR" "$B" teesim-save-overrides "$BADOV" 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

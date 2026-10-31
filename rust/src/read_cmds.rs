@@ -1830,3 +1830,144 @@ pub fn targets() {
         },
     }
 }
+
+/// overrides 的六行汇总（可编辑性/来源），供展示与写入前的可编辑性判定共用。
+pub fn teesim_overrides_rows(p: &Paths) -> Vec<(String, String, String, String)> {
+    let ov = std::fs::read(p.teesim_dir.join("overrides.json")).unwrap_or_default();
+    let ha = std::fs::read(p.teesim_dir.join("harvested.json")).unwrap_or_default();
+    if ov.is_empty() && ha.is_empty() {
+        return Vec::new();
+    }
+    let hobj = sub_obj(&ha, "overrides");
+    let mut rows = Vec::new();
+    for f in TEESIM_FIELDS {
+        let v = flat(&ov, f);
+        let sobj = sub_obj(&hobj, f);
+        let mut ed = "1".to_string();
+        let mut src = "unset".to_string();
+        if !sobj.is_empty() {
+            let s2 = flat(&sobj, "source");
+            if !s2.is_empty() { src = s2; }
+            let e2 = flat(&sobj, "editable");
+            if e2 == "false" { ed = "0".to_string(); } else if e2 == "true" { ed = "1".to_string(); } else if src == "required" { ed = "1".to_string(); }
+        }
+        if (*f == "verifiedBootKey" || *f == "verifiedBootHash") && src != "synthesized" && src != "supplement" {
+            ed = "0".to_string();
+        }
+        rows.push((f.to_string(), if v.is_empty() { "-".to_string() } else { v }, ed, src));
+    }
+    rows
+}
+
+/// cmd_teesim_save_overrides：写 overrides.json 的六个字段（空值=删键）。
+pub fn teesim_save_overrides(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    let fields = match crate::payload::parse(payload) {
+        Ok(v) => v,
+        Err(msg) => { eprintln!("{}", msg); std::process::exit(1); }
+    };
+    let ov = p.teesim_dir.join("overrides.json");
+    let ha = p.teesim_dir.join("harvested.json");
+    for (k, v) in &fields {
+        let bad = match k.as_str() {
+            "attestationSecurityLevel" | "keymasterSecurityLevel" => {
+                if !crate::ov_valid::valid_ov_level(v) {
+                    eprintln!("{} 只能是 0(Software) / 1(TrustedEnvironment) / 2(StrongBox)，留空表示删掉这一项；收到的是「{}」", k, v);
+                    true
+                } else { false }
+            }
+            "attestationVersion" | "keymasterVersion" => {
+                if !crate::ov_valid::valid_ov_version(v) {
+                    eprintln!("{} 只能是 1–100000 的整数，留空表示删掉这一项；收到的是「{}」", k, v);
+                    true
+                } else { false }
+            }
+            "verifiedBootKey" | "verifiedBootHash" => {
+                if !crate::ov_valid::valid_ov_hex(v) {
+                    eprintln!("{} 要 64 位十六进制（可带 0x 前缀）、不许全零，留空表示删掉这一项；收到的是「{}」", k, v);
+                    true
+                } else if !v.is_empty() && ha.is_file() {
+                    let ed = teesim_overrides_rows(&p).into_iter()
+                        .find(|(name, _, _, _)| name == k)
+                        .map(|(_, _, ed, _)| ed)
+                        .unwrap_or_default();
+                    if !ed.is_empty() && ed != "1" {
+                        eprintln!("{} 现在不可改：harvested.json 判它的来源不是合成兜底值（上游规则，不是本模块的限制）", k);
+                        true
+                    } else { false }
+                } else { false }
+            }
+            _ => {
+                eprintln!("overrides.json 里这个字段被上游锁死为 REQUIRED，写进去守护进程会直接丢弃：{}", k);
+                true
+            }
+        };
+        if bad { std::process::exit(1); }
+    }
+    let n = fields.len();
+    if n == 0 {
+        eprintln!("没有字段要保存");
+        std::process::exit(1);
+    }
+    let src = if ov.is_file() {
+        std::fs::read_to_string(&ov).unwrap_or_default()
+    } else {
+        "{}\n".to_string()
+    };
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let (new_text, status) = crate::json_flat::set(&src, &fields);
+    let mut saved = 0;
+    match status {
+        "ok" => {
+            if new_text != src {
+                let bak = b.dir.join("overrides.json.bak");
+                let _ = std::fs::copy(&ov, &bak);
+                let tmp = b.dir.join(format!(".overrides.json.keylens.{}", std::process::id()));
+                let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+                    && std::fs::rename(&tmp, &ov).is_ok();
+                if !ok {
+                    let _ = std::fs::remove_file(&tmp);
+                    crate::lock::release(&lockdir);
+                    eprintln!("写入失败：{}", ov.display());
+                    std::process::exit(1);
+                }
+                #[cfg(unix)]
+                {
+                    use std::os::unix::fs::PermissionsExt;
+                    let _ = std::fs::set_permissions(&ov, std::fs::Permissions::from_mode(0o644));
+                }
+                saved = 1;
+            }
+        }
+        "same" => {}
+        _ => {
+            crate::lock::release(&lockdir);
+            eprintln!("overrides.json 定位失败（不是可写的扁平对象？）：{}", ov.display());
+            std::process::exit(1);
+        }
+    }
+    crate::lock::release(&lockdir);
+    if saved == 1 {
+        log_line(&p, &format!("🧩 WebUI 更新 TEESim overrides.json（{} 项，热生效无需重启）", n));
+    }
+    println!("saved={}", saved);
+    println!("fields={}", n);
+    println!("apply_note={}", if saved == 1 { "已写入，TEESim 监听该文件自行热生效，不需要重启" } else { "内容与现有一致，未写入" });
+}

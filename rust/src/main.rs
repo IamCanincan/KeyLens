@@ -96,6 +96,7 @@ fn main() {
         "tricky-save-patch" => read_cmds::tricky_save_patch(arg),
         "tricky-patches" => read_cmds::tricky_patches(),
         "teesim-overrides" => read_cmds::teesim_overrides(),
+        "teesim-save-overrides" => read_cmds::teesim_save_overrides(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
