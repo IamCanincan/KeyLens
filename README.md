@@ -1,8 +1,8 @@
 # KeyLens (v2.2.19.5-yuzu)
 
-[![Build CI Module](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml/badge.svg)](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml)
-[![Latest Release](https://img.shields.io/github/v/release/IamCanincan/TS-AUTO-ADD?label=release&color=blue)](https://github.com/IamCanincan/TS-AUTO-ADD/releases/latest)
-[![License](https://img.shields.io/github/license/IamCanincan/TS-AUTO-ADD?color=green)](LICENSE)
+[![Build CI Module](https://github.com/IamCanincan/KeyLens/actions/workflows/build_ci.yml/badge.svg)](https://github.com/IamCanincan/KeyLens/actions/workflows/build_ci.yml)
+[![Latest Release](https://img.shields.io/github/v/release/IamCanincan/KeyLens?label=release&color=blue)](https://github.com/IamCanincan/KeyLens/releases/latest)
+[![License](https://img.shields.io/github/license/IamCanincan/KeyLens?color=green)](LICENSE)
 
 KeyLens 是一个面向 **[Tricky Store](https://github.com/5ec1cff/TrickyStore)** / **[Tricky Store OSS](https://github.com/beakthoven/TrickyStoreOSS)** / **TEE Simulator** / **[OhMyKeymint](https://github.com/qwq233/OhMyKeymint)** 的 Magisk 辅助模块：主体是这四家的**统一控制面板**（名单、补丁级别、keybox、系统属性伪装都在界面里读写），附加功能是通过后台守护进程自动维护应用包名列表。
 
@@ -118,8 +118,8 @@ THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 ## 📥 安装与部署
 
 ### 下载
-- **发行版（推荐）**：到 [Releases](https://github.com/IamCanincan/TS-AUTO-ADD/releases) 下载 `TS-AUTO-ADD-<版本>.zip`（文件名与 `update.json` 中的 `zipUrl` 一致，管理器内更新也走这一份）。
-- **CI 构建**：每次推送到 `main` 会自动构建，版本号附带时间戳后缀（`-ci`）。到 [Actions](https://github.com/IamCanincan/TS-AUTO-ADD/actions/workflows/build_ci.yml) 打开最近一次运行，在页面底部 Artifacts 下载 —— 仅供测试，不要当作正式版本。
+- **发行版（推荐）**：到 [Releases](https://github.com/IamCanincan/KeyLens/releases) 下载 `TS-AUTO-ADD-<版本>.zip`（文件名与 `update.json` 中的 `zipUrl` 一致，管理器内更新也走这一份）。
+- **CI 构建**：每次推送到 `main` 会自动构建，版本号附带时间戳后缀（`-ci`）。到 [Actions](https://github.com/IamCanincan/KeyLens/actions/workflows/build_ci.yml) 打开最近一次运行，在页面底部 Artifacts 下载 —— 仅供测试，不要当作正式版本。
 
 ### 从旧版 TS-AUTO-ADD 升级（模块改名 KeyLens，id 也变了）
 

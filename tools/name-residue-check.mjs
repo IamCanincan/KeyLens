@@ -11,7 +11,7 @@
  *     /data/adb/ts_auto.*）——按旧名才找得到；
  *   · 迁移函数的源路径与它读的旧 glob；
  *   · 更新说明与仓库 URL（CHANGELOG / RELEASE_NOTES / update.json / README 的
- *     github.com/IamCanincan/TS-AUTO-ADD —— 仓库改名由人做，不是我）。
+ *     仓库 URL 的改名是一次性的手工动作）。
  *
  * 跑法：node tools/name-residue-check.mjs   （有非白名单残留就退 1）
  */
