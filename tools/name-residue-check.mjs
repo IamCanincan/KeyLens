@@ -46,14 +46,14 @@ const LINE_OK_ANY = [
 const LINE_OK_BY_FILE = {
   'module/lib/core.sh': [/KL_LEGACY_/, /ts_auto/, /\.ts_\*/],       // 迁移源路径与它的 glob
   'module/uninstall.sh': [/ts_auto/],                                // 升级后卸载要清旧文件
-  'module/customize.sh': [/taa_sys|taa_resetprop/],                   // 老版本遗留文件名
+  'module/customize.sh': [/taa_sys|taa_resetprop|ts-auto-add|ts_auto/], // 接管旧模块目录：就是用来删旧目录的
   'tools/deploy-webui.sh': [/ts-auto-add/, /ts_auto/],
   'tools/replay-check.mjs': [/ts-auto-add/, /ts_auto/],
   'tools/rename-keylens.cjs': [/.*/],
-  'tests/legacy-migrate.sh': [/\.ts_|ts_auto|taa_|TAA_/],   // 迁移测试必须点名旧文件才能测
+  'tests/legacy-migrate.sh': [/\.ts_|ts_auto|taa_|TAA_|ts-auto-add/],   // 迁移测试必须点名旧文件才能测
   'tests/uninstall-scope.sh': [/\.ts_|ts_auto|taa_|ts_installed|ts_rules/],   // 卸载覆盖面同理
   'tests/kill-scope.sh': [/ts-auto-add|ts_auto/],   // 必须造一个"旧名进程"才能测收不收得掉
-  'README.md': [/改名|旧名/],
+  'README.md': [/改名|旧名|旧模块|从旧版/],
   '.gitignore': [/.*/],
 };
 

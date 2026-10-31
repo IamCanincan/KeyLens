@@ -138,7 +138,9 @@ if command -v node >/dev/null 2>&1; then
     [ "$(cmp -s "$D/props.bak" module/lib/props.sh; printf $?)" = 0 ] && ok '正对照跑完逐字节还原' || bad '还原失败'
     node tools/name-residue-check.mjs >/dev/null 2>&1 || bad '还原后闸门仍红'
 else
-    printf '  ·    本机没有 node，跳过残留闸门这一段\n'
+    # 显式提示而不是静默跳过：本地某个壳里没有 node 时这一段会被整块跳过 ——
+    # 曾经因此在本地"全绿"、CI 才红（CI 的 runner 有 node）。
+    printf '  ..  node 不在 PATH，跳过残留闸门（CI 会跑）\n'
 fi
 
 # ── 顺序判据：任何一次 run_sync 之前必须先 migrate_legacy_paths ──────────
