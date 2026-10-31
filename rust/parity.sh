@@ -1028,6 +1028,14 @@ else
   echo "  ✗   清单漂移"; echo "       声明: $DECL"; echo "       实际: $ACTUAL"; fail=1
 fi
 
+echo "── 输出健壮性（EPIPE 不 panic）──"
+$B contract 2>"$T/epipe.err" | head -1 >/dev/null
+if grep -q panicked "$T/epipe.err"; then
+  echo "  ✗   管道被下游关掉时 panic 了：$(head -1 "$T/epipe.err")"; fail=1
+else
+  echo "  ok   contract | head -1 不 panic"; oks=$((oks + 1))
+fi
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
 if [ "$oks" -lt 93 ]; then
