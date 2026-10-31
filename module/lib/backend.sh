@@ -594,19 +594,26 @@ sync_omk_injector() {
 # 返回：0=成功 1=失败
 set_module_desc() {
     local prop_file="$1" desc="$2"
-    local tmp_file
+    local tmp_file mode_file
 
     [ -f "$prop_file" ] || return 1
 
     tmp_file="${prop_file}.tmp.$$"
-    if sed "s/^description=.*/description=$desc/" "$prop_file" > "$tmp_file" 2>/dev/null; then
-        cat "$tmp_file" > "$prop_file"
+    sed "s/^description=.*/description=$desc/" "$prop_file" > "$tmp_file" 2>/dev/null || {
         rm -f "$tmp_file" 2>/dev/null
-        return 0
-    fi
-
-    rm -f "$tmp_file" 2>/dev/null
-    return 1
+        return 1
+    }
+    # 落盘必须是"改名"：旧写法 sed 到 tmp 之后又 `cat > 原文件` —— 那一步照样先截断
+    # 再写，掉电/被杀就留下半截或空的 module.prop，管理器里显示成模块坏了。
+    # 权限在改名**之后**补：改名会带上 tmp 的（umask 077 下是 600），而原 mode 是
+    # 安装脚本定的；先 mv 保证"要么旧版要么新版"，再 chmod 补回原权限。
+    mode_file=$(stat -c %a "$prop_file" 2>/dev/null)
+    mv -f "$tmp_file" "$prop_file" 2>/dev/null || {
+        rm -f "$tmp_file" 2>/dev/null
+        return 1
+    }
+    [ -n "$mode_file" ] && chmod "$mode_file" "$prop_file" 2>/dev/null
+    return 0
 }
 
 # 说明：把运行状态写回 description：后端 / 应用总数 / 更新时间
