@@ -253,13 +253,25 @@ function modeButton(tok, meta, tee) {
 }
 
 let askedIcons = {};
+/* 取过一轮仍然没有图标的包：同一屏里不再重问（每次都是 root 命令），
+   但**重新进入名单页会清空并重试一次** —— 以前 askedIcons 一置位就永远不撤，
+   一次失败就让那个包在这一整轮里一直是首字块，只能重开界面。 */
+let iconFailed = {};
+function iconsSettled(list) {
+  list.forEach(function (b) {
+    if (S.icons[b]) delete iconFailed[b];
+    else { iconFailed[b] = 1; delete askedIcons[b]; }
+  });
+}
 function loadIconsFor(shown) {
   const need = [];
-  shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b]) { need.push(b); askedIcons[b] = 1; } });
+  shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b] && !iconFailed[b]) { need.push(b); askedIcons[b] = 1; } });
   if (!need.length) return;
   /* 图标异步到货后**原位替换**首字块，不整页重画：重画会打断滚动，
      名单一大时还会把已经建好的行全拆掉重建。 */
-  loadIcons(need.slice(0, 120)).then(swapIcons, function () {});
+  const batch = need.slice(0, 120);
+  loadIcons(batch).then(function () { swapIcons(); iconsSettled(batch); },
+    function () { iconsSettled(batch); });
 }
 /* 首进名单的预取：先拿 lists 的包名，再一次性取图标/显示名，最后才画列表。
    这样第一帧就是应用名 + 图标，不会先露出包名再原位替换。
@@ -297,10 +309,17 @@ export function targetsPending() {
      否则首进显示"未探测"、逛过一次后端配置再回来才正确。 */
   if (S.backendInfo.backend === 'tricky' && !S.loaded.teestatus) return true;
   const bases = listBases().slice(0, PREFETCH_ICONS);
-  for (let i = 0; i < bases.length; i++) if (!askedIcons[bases[i]]) return true;
+  for (let i = 0; i < bases.length; i++) {
+    /* 取过但失败的（iconFailed）不再算"还要等" —— 否则图标命令一失败，
+       这一页就永远停在骨架屏上，而它本来可以带着首字块先画出来。 */
+    if (!askedIcons[bases[i]] && !iconFailed[bases[i]]) return true;
+  }
   return false;
 }
 export function prefetchListIcons() {
+  /* 每次"进入/重读"都清一次失败表：这是重试的唯一入口（同一屏内不重问，
+     见 loadIconsFor），否则一次网络/权限抖动就永久少几个图标。 */
+  iconFailed = {};
   const need = [];
   listBases().slice(0, PREFETCH_ICONS).forEach(function (b) {
     if (askedIcons[b]) return;
@@ -310,7 +329,8 @@ export function prefetchListIcons() {
   if (!need.length) return Promise.resolve(false);
   /* true = 这次真的发起了图标读取（调用方据此决定要不要重画）；
      命令失败也返回 true —— 数据没变也要把首字块状态画定。 */
-  return loadIcons(need).then(function () { return true; }, function () { return true; });
+  return loadIcons(need).then(function () { iconsSettled(need); return true; },
+    function () { iconsSettled(need); return true; });
 }
 /* 打开 WebUI 的启动页：品牌标识先出来，壳和数据在下面就位后整层淡出。
    不用裸 spinner —— 空页面突然换成主页就是用户说的"很生硬"。 */
@@ -1241,7 +1261,9 @@ function trickyBlocks() {
     seg.appendChild(button(o.label, { variant: o.scope === S.scope ? 'filled' : 'text',
       on: function () { S.scope = o.scope; redraw(); } }));
   });
-  seg.appendChild(button('新按包段', { variant: 'tonal', icon: ICON.addPkg, on: function () { S.scope = S.newPkg || 'com.example'; redraw(); } }));
+  /* 「新按包段」以前直接落到 'com.example'：S.newPkg 全工程没有输入口，
+     点下去等于替用户编了一个包名，保存后文件里就真多出那一段。现在给它一个
+     真的输入框（草稿机制会保住正在打的字），校验过才切过去。 */
   /* 按包段可删：先把选择挪回全局，再发删除 —— 删掉的正好是当前选中的段时，
      表单不该还指着一个已经不存在的作用域。全局段不给删（命令层也会拒）。 */
   if (S.scope !== 'global') {
@@ -1251,6 +1273,20 @@ function trickyBlocks() {
     } }));
   }
   ps.appendChild(seg);
+  const nsRow = h('div', 'row');
+  const nsTf = h('md-text-field');
+  nsTf.setAttribute('variant', 'filled');
+  nsTf.setAttribute('single-line', '');
+  nsTf.setAttribute('label', '新按包段：包名');
+  fieldKey(nsTf, 'tricky-save-patch|newscope');
+  nsRow.appendChild(nsTf);
+  nsRow.appendChild(button('新建这一段', { variant: 'tonal', icon: ICON.addPkg, on: function () {
+    const v = String(nsTf.value || '').trim();
+    if (!/^[A-Za-z0-9._]+$/.test(v)) { toast('包名只能用字母、数字、. 和 _', true); return; }
+    S.scope = v;
+    redraw();
+  } }));
+  ps.appendChild(nsRow);
   const cur = S.trickyPatches.filter(function (b) { return b.scope === S.scope; })[0];
   ps.appendChild(h('p', 'hint', cur ? '本段当前：system ' + cur.system + ' · vendor ' + cur.vendor + ' · boot ' + cur.boot
     : (S.scope === 'global' ? '全局段还没有值。' : '还没有 [' + S.scope + '] 这个段 —— 保存会新建它。')));

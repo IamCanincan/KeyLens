@@ -237,6 +237,19 @@ Object.keys(draftUse).forEach(function (fn) {
 chk('同页重建前 capture、换页时作废、重建后还光标',
   app.includes('if (changed) clearEdits(); else captureEdits(prev);')
   && app.includes('restoreEditFocus(page)'), '');
+/* 时间戳三态：读不到 ≠ 0。以前 status 读失败时「上次写入」印的是"从未"。 */
+chk('timeLabel 分得开"读不到"与"从未"',
+  /if \(epoch == null \|\| epoch === ''\) return '读不到';/.test(bridge)
+  && bridge.includes("if (!e) return '从未';"), '');
+/* 「新按包段」必须是用户输入的包名，不许自己编一个默认值。 */
+chk('新按包段走输入框 + 包名校验，不再落到 com.example',
+  !srcAll.includes('com.example') && screens.includes("tricky-save-patch|newscope")
+  && screens.includes('/^[A-Za-z0-9._]+$/'), '');
+chk('S 里没有只读不写的 newPkg', !bridge.includes('newPkg'), '');
+/* 图标取失败要能重试：同一屏内不重问，但重新进入会再试一次。 */
+chk('图标失败有重试入口（失败表在重新进入时清空）',
+  screens.includes('iconFailed = {};') && screens.includes('iconsSettled(')
+  && screens.includes('!iconFailed[bases[i]]'), '');
 chk('保存成功只清那一条命令的草稿', screens.includes('dropEdits(cmd)'), '');
 /* 表单基准必须是服务端值：草稿一旦被当基准，用户改的东西会被判成"没有改动"。 */
 chk('变更判定拿服务端值当基准，不是回填后的显示值',

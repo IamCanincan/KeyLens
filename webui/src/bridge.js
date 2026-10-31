@@ -109,7 +109,7 @@ export const S = {
   targets: [], apps: [], targetMeta: {}, listErr: '',
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
-  profile: 'default', scope: 'global', newPkg: '', overrides: [],
+  profile: 'default', scope: 'global', overrides: [],
   icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], theme: 'auto',
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
@@ -152,6 +152,9 @@ export function bytesLabel(n) {
   return (n / 1048576).toFixed(1) + ' MB';
 }
 export function timeLabel(epoch) {
+  /* 三种情况要分开：读不到（status 那次失败，键根本不在）/ 命令层报 0（确实没写过）/
+     一个时间戳。以前前两种都印「从未」—— 读不到却说得像"从来没写过"。 */
+  if (epoch == null || epoch === '') return '读不到';
   var e = Number(epoch) || 0;
   if (!e) return '从未';
   var d = new Date(e * 1000);
