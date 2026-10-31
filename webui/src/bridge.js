@@ -110,7 +110,7 @@ export const S = {
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
-  icons: {}, log: [], logErr: false, logFilter: 'all', tail: 60, props: [], propsErr: false, boot: null,
+  icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], theme: 'auto',
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，

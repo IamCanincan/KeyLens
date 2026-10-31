@@ -1487,13 +1487,20 @@ function keyboxCard() {
    60 行日志（每行三个节点）重造一遍，还会把滚动位置与焦点一起丢掉。 */
 function paintLogRows(console_) {
   console_.textContent = '';
+  /* 级别档 + 关键字两层过滤；关键字对"显示出来的文本"匹配（日志行里的 emoji
+     在渲染时会被剥掉，按原文匹配会让用户搜他看得见的字却搜不到）。 */
+  const q = String(S.logQuery || '').trim().toLowerCase();
   const shown = S.log.filter(function (l) {
-    if (S.logFilter === 'all') return true;
-    const k = logLevel(l);
-    return S.logFilter === 'bad' ? k === 'bad' : (k === 'bad' || k === 'warn');
+    if (S.logFilter !== 'all') {
+      const k = logLevel(l);
+      if (S.logFilter === 'bad' ? k !== 'bad' : (k !== 'bad' && k !== 'warn')) return false;
+    }
+    if (!q) return true;
+    return stripEmoji(l).toLowerCase().indexOf(q) >= 0;
   });
   if (!S.log.length) console_.appendChild(h('p', 'empty', S.logErr ? '日志读取失败。' : '还没有日志 —— 模块只在开机与文件变化时写。'));
-  else if (!shown.length) console_.appendChild(h('p', 'empty', '这一档没有行（' + S.log.length + ' 行里没有符合的）。'));
+  else if (!shown.length) console_.appendChild(h('p', 'empty',
+    q ? '没有匹配「' + S.logQuery.trim() + '」的行（' + S.log.length + ' 行里）。' : '这一档没有行（' + S.log.length + ' 行里没有符合的）。'));
   else shown.forEach(function (l) { console_.appendChild(logRow(l)); });
 }
 export function renderLog() {
@@ -1529,6 +1536,18 @@ export function renderLog() {
     lvRow.appendChild(lvChips[lvChips.length - 1].el);
   });
   s.appendChild(lvRow);
+  /* 关键字过滤：只重画日志台（与级别芯片同一个理由），查询词存在 S 里，
+     整页重建/重新进入后不丢。 */
+  const qTf = h('md-text-field');
+  qTf.setAttribute('variant', 'filled');
+  qTf.setAttribute('single-line', '');
+  qTf.setAttribute('label', '在日志里搜（包名、错误词、命令名）');
+  qTf.value = S.logQuery || '';
+  qTf.addEventListener('input', function () {
+    S.logQuery = String(qTf.value || '');
+    paintLogRows(console_);
+  });
+  s.appendChild(qTf);
   bar.appendChild(button('刷新', { variant: 'tonal', icon: ICON.read,
     on: function () { S.loaded.log = false; reload(); } }));
   bar.appendChild(button('清空缓冲', { variant: 'text',
