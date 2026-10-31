@@ -274,5 +274,15 @@ chk 'meta teesim：user/uid/plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$TS2" "$B
 mk_meta_harness "$OS"
 chk 'meta omk：plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$OS" "$B" target-meta)"
 
+echo "── apps（cmd/pm 输出 → 去前缀/去[N]/排序去重）──"
+mkdir -p "$T/bin"
+cat > "$T/bin/cmd" <<'EOF'
+#!/bin/sh
+printf 'package:com.b\npackage:com.a\npackage:com.a\npackage:com.c[10]\npackage:com.d[2]\n'
+EOF
+chmod +x "$T/bin/cmd"
+sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh > "$T/apps.sh"
+chk 'apps：去重/去[N]/排序' "$(PATH="$T/bin:$PATH" sh -c '. "$1"; cmd_apps' sh "$T/apps.sh")" "$(PATH="$T/bin:$PATH" "$B" apps)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

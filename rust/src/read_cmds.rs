@@ -370,6 +370,38 @@ fn omk_scoop(buf: &[u8]) -> Option<Vec<String>> {
     Some(quoted_strings(&buf[ob + 1..cb]))
 }
 
+/// cmd_apps：已装第三方应用（`cmd package …`，失败退回 `pm list`），去前缀、
+/// 去 `[N]` 尾缀、排序去重。
+pub fn apps() {
+    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
+        std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
+    };
+    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+        .filter(|o| !o.is_empty())
+        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .unwrap_or_default();
+    let text = String::from_utf8_lossy(&out);
+    let mut names: Vec<&str> = Vec::new();
+    for line in text.lines() {
+        let Some(rest) = line.strip_prefix("package:") else { continue };
+        // 去掉结尾的 [数字]（多用户/多 profile 的编号）
+        let mut name = rest;
+        if let Some(open) = name.rfind('[') {
+            if name.ends_with(']') && name[open + 1..name.len() - 1].bytes().all(|c| c.is_ascii_digit()) {
+                name = &name[..open];
+            }
+        }
+        if !name.is_empty() {
+            names.push(name);
+        }
+    }
+    names.sort_unstable();
+    names.dedup();
+    for n in names {
+        println!("{}", n);
+    }
+}
+
 /// cmd_target_meta：tok<TAB>base<TAB>kind<TAB>detail（三家的语义在 cmd 里分叉）。
 pub fn target_meta() {
     let root = Root::from_env();

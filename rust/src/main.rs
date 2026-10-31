@@ -75,6 +75,7 @@ fn main() {
         "status" => read_cmds::status(),
         "targets" => read_cmds::targets(),
         "target-meta" => read_cmds::target_meta(),
+        "apps" => read_cmds::apps(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
         // 尚未迁移的命令：明确返回 2，别假装成功。
