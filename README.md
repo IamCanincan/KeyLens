@@ -118,7 +118,7 @@ THIRD_PARTY_NOTICES.md       # 内联 bundle 的第三方许可
 ## 📥 安装与部署
 
 ### 下载
-- **发行版（推荐）**：到 [Releases](https://github.com/IamCanincan/KeyLens/releases) 下载 `TS-AUTO-ADD-<版本>.zip`（文件名与 `update.json` 中的 `zipUrl` 一致，管理器内更新也走这一份）。
+- **发行版（推荐）**：到 [Releases](https://github.com/IamCanincan/KeyLens/releases) 下载 `KeyLens-<版本>.zip`（文件名与 `update.json` 中的 `zipUrl` 一致，管理器内更新也走这一份）。
 - **CI 构建**：每次推送到 `main` 会自动构建，版本号附带时间戳后缀（`-ci`）。到 [Actions](https://github.com/IamCanincan/KeyLens/actions/workflows/build_ci.yml) 打开最近一次运行，在页面底部 Artifacts 下载 —— 仅供测试，不要当作正式版本。
 
 ### 从旧版 TS-AUTO-ADD 升级（模块改名 KeyLens，id 也变了）
