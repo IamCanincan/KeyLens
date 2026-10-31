@@ -5,21 +5,38 @@
 # 说明：只删除本模块自身的文件；target.txt / config.json 属于后端，保持不动。
 #=============================================================================
 
-TS="/data/adb/tricky_store"
-SIM="/data/adb/teesim"
+# ---------- 目录清单与"核过 cmdline 才杀" ----------
+# 目录清单取自 lib/core.sh 的 KL_BACKEND_DIRS（单一真源）；取不到就用同一份字面值。
+MODDIR="${0%/*}"
+DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
+if [ -f "$MODDIR/lib/core.sh" ]; then
+    _d=$(sed -n 's/^KL_BACKEND_DIRS="\([^"]*\)".*/\1/p' "$MODDIR/lib/core.sh" 2>/dev/null)
+    [ -n "$_d" ] && DIRS="$_d"
+    # kl_kill_pid / kl_pid_is_ours 只有这一份实现（core.sh）—— 不在这里抄第二份：
+    # 那个函数守的是"pid 被复用时别杀到别人"，抄一份就等于多一个会走样的判据。
+    . "$MODDIR/lib/core.sh" 2>/dev/null
+fi
+unset _d
+command -v kl_kill_pid >/dev/null 2>&1 || kl_kill_pid() {
+    # 连 core.sh 都读不到（模块目录残缺）时不按 pid 动手：此刻"名单里的号还是不是我们"
+    # 已经无从证明，而误杀一个不相干的进程比多留一个守护（下次开机就被清）代价大。
+    echo "找不到 lib/core.sh，跳过按 pid 收进程：$1" >&2
+    return 1
+}
+command -v log_warn >/dev/null 2>&1 || log_warn() { echo "$*" >&2; }
 
 # ---------- 结束守护进程 ----------
-for f in "$TS/.kl_daemon_pids.list" "$SIM/.kl_daemon_pids.list"; do
+# 名单跟着后端走：旧版这里只列了 TS/SIM 两个目录，OMK 机器上卸载会**留下守护进程**，
+# 它还在按名单改 injector.toml —— 用户卸了模块，配置却继续被改。
+for dir in $DIRS; do
+    f="$dir/.kl_daemon_pids.list"
     [ -f "$f" ] || continue
     while read -r pid; do
-        if [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null; then
-            kill -TERM "$pid" 2>/dev/null
-            sleep 0.1
-            kill -9 "$pid" 2>/dev/null
-        fi
+        [ -n "$pid" ] && kl_kill_pid "$pid" TERM
     done < "$f"
     rm -f "$f" 2>/dev/null
 done
+unset f
 
 # ---------- 结束残留的 inotify 进程 ----------
 # 说明：匹配串必须带**我们自己的绝对路径**，不能用通名 "rules.txt"。
@@ -40,14 +57,7 @@ pkill -f "inotifywait.*/data/adb/tricky_store/rules.txt" 2>/dev/null
 #       后端与别的模块都不往这些目录里写 `.kl_*`。
 #       `.ts_*` 是改名前那版（ts-auto-add）的同一批文件：升级路径由
 #       migrate_legacy_paths 搬走，但"只装过旧版、没升级就卸"的机器上它还躺着。
-# 目录清单取自 lib/core.sh 的 KL_BACKEND_DIRS（单一真源）；取不到就用同一份字面值。
-MODDIR="${0%/*}"
-DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
-if [ -f "$MODDIR/lib/core.sh" ]; then
-    _d=$(sed -n 's/^KL_BACKEND_DIRS="\([^"]*\)".*/\1/p' "$MODDIR/lib/core.sh" 2>/dev/null)
-    [ -n "$_d" ] && DIRS="$_d"
-fi
-unset _d
+# 目录清单在前面（结束守护进程那一段）已经算好，这里直接用。
 for dir in $DIRS; do
     [ -d "$dir" ] || continue
     rm -rf "$dir/.kl_"* "$dir/.ts_"* 2>/dev/null

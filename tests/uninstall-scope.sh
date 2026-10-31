@@ -84,7 +84,7 @@ build_sandbox() {
     sed -e "s|/data/adb|$R/data/adb|g" -e "s|/data/misc/keystore/omk|$R/data/misc/keystore/omk|g" \
         module/lib/core.sh > "$R/module/lib/core.sh"
     # 改写必须真的落到沙箱里，否则跑的是"删真机路径"的那份
-    grep -q "\"$R/data/adb/tricky_store\"" "$R/module/uninstall.sh" || return 1
+    grep -q "^\\(DIRS\\|TS\\)=\"$R/data/adb" "$R/module/uninstall.sh" || return 1
     grep -q "^KL_BACKEND_DIRS=\"$R" "$R/module/lib/core.sh" || return 1
     # 夹具自证：两张清单里的每一条都真的在场。漏造一条，"全部原样/全部清除"
     # 就会对着一个不存在的文件点头（这一版本就漏造过 teesim/rules.txt）。
@@ -129,8 +129,9 @@ M="$ROOT/mut"
 build_sandbox "$M" || { bad '变异沙箱没造起来'; }
 # 旧版那两行的形状：按后端路径删 rules.txt 与 .bak。必须插在 exit 0 **之前**，
 # 否则追加到文件尾的那句根本不会被执行，变异就成了假阳性（本项目踩过一次）。
-sed 's|^exit 0$|rm -f "$TS/rules.txt" "$SIM/rules.txt" "$TS/../omk/injector.toml.bak"|' \
-    "$M/module/uninstall.sh" > "$M/mut.sh" && mv "$M/mut.sh" "$M/module/uninstall.sh"
+MUT="rm -f '$M/data/adb/tricky_store/rules.txt' '$M/data/adb/teesim/rules.txt' '$M/data/adb/omk/injector.toml.bak'"
+sed "s|^exit 0\$|$MUT|" "$M/module/uninstall.sh" > "$M/mut.sh" && mv "$M/mut.sh" "$M/module/uninstall.sh"
+grep -q 'tricky_store/rules.txt' "$M/module/uninstall.sh" || bad '变异没插进沙箱副本'
 MTARGETS="data/adb/tricky_store/rules.txt data/adb/teesim/rules.txt data/adb/omk/injector.toml.bak"
 before=0
 for f in $MTARGETS; do [ -e "$M/$f" ] && before=$((before + 1)); done

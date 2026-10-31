@@ -50,13 +50,19 @@ acquire_lock() {
 #   单看 kill -0 会把一个毫不相干的进程当成持有者 —— 那样又会永远抢不到锁）。
 # 读不到 cmdline 时按"活着"处理：宁可这次不写，也不能踩别人的锁。
 kl_lock_holder_alive() {
-    local p="$1" cl mark="${KL_LOCK_MARK:-${MODDIR##*/}}"
+    local p="$1" cl m mark="${KL_LOCK_MARK:-${MODDIR##*/}}"
 
     [ -n "$mark" ] && [ "$mark" != "/" ] || mark=keylens
     kill -0 "$p" 2>/dev/null || return 1
     if [ -r "/proc/$p/cmdline" ]; then
         cl=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null)
-        case "$cl" in *"$mark"*) return 0 ;; *) return 1 ;; esac
+        # 认的标记与"按 pid 收进程"共用同一份清单（core.sh 的 KL_OUR_MARKS）：
+        # 升级前起的守护进程 cmdline 里还是旧名，只认新名会把它当成别人的进程。
+        for m in "$mark" ${KL_OUR_MARKS:-}; do
+            [ -n "$m" ] || continue
+            case "$cl" in *"$m"*) return 0 ;; esac
+        done
+        return 1
     fi
     return 0
 }

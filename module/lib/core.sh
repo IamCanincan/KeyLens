@@ -81,6 +81,51 @@ KL_LEGACY_BOOT_HASH="/data/adb/ts_auto.boot_hash"
 # 一个都不会搬。这条由 tests/legacy-migrate.sh 从 OMK_STATE_DIR 反查。
 KL_BACKEND_DIRS="/data/adb/teesim /data/adb/tricky_store /data/adb/omk /data/misc/keystore/omk"
 
+# ---------- 按 pid 收进程：必须先证明"这是我们的" ----------
+# pid 名单是上一次运行写下的；隔一段时间/重启后那些号可能已经属于别人。
+# 盲 kill -9 <旧 pid> 能杀掉任何进程（包括 zygote 那种），所以这里只认 cmdline：
+# 进程的命令行里要出现本模块的目录名或改名前的旧名。
+KL_OUR_MARKS="keylens ts-auto-add ts_auto"
+
+# 用法：kl_pid_is_ours <pid>  → 0=确认是本模块的进程；1=不是，或看不出来
+# 注意默认值与 lib/lock.sh 相反，是有意的：**杀进程**要"确认是"才动，
+# **等锁**则"看不出来也算活着"（宁可这次不写，也不拆别人的锁）。
+kl_pid_is_ours() {
+    local p="$1" cl m
+
+    case "$p" in ''|*[!0-9]*) return 1 ;; esac
+    kill -0 "$p" 2>/dev/null || return 1
+    [ -r "/proc/$p/cmdline" ] || return 1
+    cl=$(tr '\0' ' ' < "/proc/$p/cmdline" 2>/dev/null) || return 1
+    for m in $KL_OUR_MARKS; do
+        case "$cl" in *"$m"*) return 0 ;; esac
+    done
+    return 1
+}
+
+# 用法：kl_kill_pid <pid> [TERM|KILL]
+# 返回：0=已经不在/杀过；1=拒绝（确认不是我们的进程，或无法确认）
+kl_kill_pid() {
+    local p="$1" sig="${2:-KILL}" i=0
+
+    case "$p" in ''|*[!0-9]*) return 0 ;; esac
+    kill -0 "$p" 2>/dev/null || return 0
+    if ! kl_pid_is_ours "$p"; then
+        log_warn "⚠️ pid $p 已不是本模块的进程（cmdline 对不上），不杀"
+        return 1
+    fi
+    kill -"$sig" "$p" 2>/dev/null
+    [ "$sig" = "KILL" ] && return 0
+    while [ "$i" -lt 10 ]; do
+        kill -0 "$p" 2>/dev/null || return 0
+        sleep 0.1 2>/dev/null || sleep 1
+        i=$((i + 1))
+    done
+    kill -9 "$p" 2>/dev/null
+    return 0
+}
+
+
 # 说明：一条搬家：只在新名不存在时 mv，源不存在就什么都不做。
 #       为什么不用 `for pair in "旧|新"` 再 ${pair%%|*} 切：**Android 的 sh 把 | 当成"或"**，
 #       两个展开都变成空串，迁移静默什么都不搬（本机 dash/bash 正常，所以只有真机测得出来）。

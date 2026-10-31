@@ -162,7 +162,9 @@ dispatch_sync() {
 # 只按 PID 收会留下一个还在往管道里写的孤儿监视。所以下面再按旧版的监视规格收一次。
 if [ -f "$PIDS_FILE" ]; then
     while read -r pid; do
-        [ -n "$pid" ] && kill -0 "$pid" 2>/dev/null && kill -9 "$pid" 2>/dev/null
+        # 只结束"cmdline 里认得出本模块"的进程：这份名单是上一次运行写下的，
+        # 那些号现在可能已经属于别人（pid 会复用，盲 kill -9 能杀掉 zygote）。
+        [ -n "$pid" ] && kl_kill_pid "$pid" KILL
     done < "$PIDS_FILE"
     rm -f "$PIDS_FILE" 2>/dev/null
 fi
