@@ -469,6 +469,38 @@ pub fn excluded() {
     }
 }
 
+/// boot_hash_valid：长度 64/128 且全是十六进制。
+fn boot_hash_valid(s: &str) -> bool {
+    matches!(s.len(), 64 | 128) && s.bytes().all(|b| b.is_ascii_hexdigit())
+}
+
+/// cmd_boot_hash：configured（去空白→小写）/ current（getprop）/ status。
+pub fn boot_hash() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let raw: String = std::fs::read_to_string(&p.boot_hash)
+        .map(|t| t.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase())
+        .unwrap_or_default();
+    let current = std::process::Command::new("getprop")
+        .arg("ro.boot.vbmeta.digest")
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
+        .unwrap_or_default();
+    let status = if raw.is_empty() {
+        "unset"
+    } else if !boot_hash_valid(&raw) {
+        "invalid"
+    } else if current == raw {
+        "ok"
+    } else {
+        "mismatch"
+    };
+    println!("configured={}", raw);
+    println!("current={}", current);
+    println!("status={}", status);
+}
+
 /// cmd_target_meta：tok<TAB>base<TAB>kind<TAB>detail（三家的语义在 cmd 里分叉）。
 pub fn target_meta() {
     let root = Root::from_env();

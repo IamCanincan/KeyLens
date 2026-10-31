@@ -329,5 +329,22 @@ printf 'com.a\n' > "$EX2/data/adb/tricky_store/target.txt"
 ex_harness "$EX2"
 chk 'excluded：无 ever 时为空' "$(PATH="$T/bin:$PATH" sh "$T/h5.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$EX2" "$B" excluded)"
 
+echo "── boot-hash（configured/current/status）──"
+H64=1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+mkdir -p "$T/bhroot/data/adb"
+printf '%s' "$H64" > "$T/bhroot/data/adb/keylens.boot_hash"
+{ echo '#!/bin/sh'; echo "printf '%s\n' '$H64'"; } > "$T/bin/getprop"
+chmod +x "$T/bin/getprop"
+cat > "$T/bh.sh" <<'EOF'
+. module/lib/props.sh
+kv() { printf '%s=%s\n' "$1" "$2"; }
+prop_now() { PROP_NOW=$(getprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+EOF
+sed -n '/^cmd_boot_hash() {/,/^}/p' module/webui.sh >> "$T/bh.sh"
+echo 'cmd_boot_hash' >> "$T/bh.sh"
+chk 'boot-hash：ok' "$(PATH="$T/bin:$PATH" KL_BOOT_HASH="$T/bhroot/data/adb/keylens.boot_hash" sh "$T/bh.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$T/bhroot" "$B" boot-hash)"
+rm -f "$T/bhroot/data/adb/keylens.boot_hash"
+chk 'boot-hash：unset' "$(PATH="$T/bin:$PATH" KL_BOOT_HASH="$T/bhroot/data/adb/keylens.boot_hash" sh "$T/bh.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$T/bhroot" "$B" boot-hash)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
