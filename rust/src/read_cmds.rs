@@ -1016,6 +1016,82 @@ fn tricky_mode_rewrite(text: &str, pkg: &str, mode: &str) -> (String, &'static s
     (out, status)
 }
 
+fn resetprop(args: &[&str]) -> String {
+    std::process::Command::new("resetprop")
+        .args(args)
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default()
+}
+
+/// cmd_props_boot_hash：保存/清除 verifiedBootHash 并立即应用（resetprop -n）。
+pub fn props_boot_hash(arg: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    if arg.is_empty() || arg == "-" {
+        let _ = std::fs::remove_file(&p.boot_hash);
+        if p.boot_hash.exists() {
+            eprintln!("清除失败：{}", p.boot_hash.display());
+            std::process::exit(1);
+        }
+        log_line(&p, "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）");
+        let cur = resetprop(&["ro.boot.vbmeta.digest"]);
+        println!("saved=0");
+        println!("applied=0");
+        println!("current={}", cur);
+        return;
+    }
+    let v: String = arg.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+    if !boot_hash_valid(&v) {
+        eprintln!("哈希必须是 64 或 128 位十六进制");
+        std::process::exit(1);
+    }
+    let tmp = format!("{}.tmp.{}", p.boot_hash.display(), std::process::id());
+    let wrote = std::fs::write(&tmp, format!("{}\n", v)).is_ok();
+    if wrote {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    let ok = wrote && std::fs::rename(&tmp, &p.boot_hash).is_ok() && p.boot_hash.is_file();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        eprintln!("写入失败：{}", p.boot_hash.display());
+        std::process::exit(1);
+    }
+    // apply_boot_hash：写 digest（不同才写）、hash_alg 为空时按长度补，最后读回比对
+    let mut applied = 0;
+    let cur = resetprop(&["ro.boot.vbmeta.digest"]);
+    if cur != v {
+        let _ = resetprop(&["-n", "ro.boot.vbmeta.digest", &v]);
+    }
+    let alg = resetprop(&["ro.boot.vbmeta.hash_alg"]);
+    if alg.is_empty() {
+        let want = if v.len() == 128 { "sha512" } else { "sha256" };
+        let _ = resetprop(&["-n", "ro.boot.vbmeta.hash_alg", want]);
+    }
+    let now = resetprop(&["ro.boot.vbmeta.digest"]);
+    if now == v {
+        applied = 1;
+    }
+    if applied == 1 {
+        log_line(&p, &format!("🧩 WebUI 设置 Verified Boot 哈希（{} 位）并已应用", v.len()));
+    } else {
+        log_line(&p, "⚠️ WebUI 保存 Verified Boot 哈希，但写入后读回不一致");
+        println!("apply_note=已保存到配置，但立即应用失败（写入后读回不一致）；下次开机仍会再写一次");
+    }
+    println!("saved=1");
+    println!("applied={}", applied);
+    println!("current={}", now);
+}
+
 /// cmd_props_switch：props-on / props-off（开关文件即关闭标记）。
 pub fn props_switch(want: &str) {
     let root = Root::from_env();

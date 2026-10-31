@@ -591,5 +591,35 @@ chk 'props-off：开关文件存在且 600' "$(stat -c '%a' "$PO/keylens.props_o
 chk 'props-on：输出一致' "$(sh "$T/po.sh" on 2>&1)" "$(KEYLENS_ROOT="$T/po-root" "$B" props-on 2>&1)"
 chk 'props-on：开关文件已删除' "$([ -e "$PO/keylens.props_off" ] && echo exists || echo gone)" "gone"
 
+echo "── props-boot-hash（保存/清除 + resetprop 应用）──"
+BH="$T/bh-root"
+mkdir -p "$BH/data/adb" "$T/rpdb"
+cat > "$T/bin/resetprop" <<'EOF'
+#!/bin/sh
+db="${RP_DB:?}"
+if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
+[ -f "$db/$1" ] && cat "$db/$1"
+EOF
+chmod +x "$T/bin/resetprop"
+cat > "$T/pb.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/backend.sh
+. module/lib/props.sh
+kv() { printf "%s=%s\n" "$1" "$2"; }
+log_info() { :; }
+log_warn() { :; }
+prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+KL_BOOT_HASH="$1"
+EOF
+sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pb.sh"
+sed -n '/^cmd_set_boot_hash() {/,/^}/p' module/lib/write.sh >> "$T/pb.sh"
+echo 'cmd_set_boot_hash "$2"' >> "$T/pb.sh"
+H64B=1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
+chk 'props-boot-hash：设置并应用' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" "$H64B" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash "$H64B" 2>&1)"
+chk 'props-boot-hash：文件存在且 600' "$(stat -c '%a' "$BH/data/adb/keylens.boot_hash")" "600"
+chk 'props-boot-hash：非法哈希' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" zzzz 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash zzzz 2>&1)"
+chk 'props-boot-hash：清除' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" - 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash - 2>&1)"
+chk 'props-boot-hash：清除后文件消失' "$([ -e "$BH/data/adb/keylens.boot_hash" ] && echo exists || echo gone)" "gone"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
