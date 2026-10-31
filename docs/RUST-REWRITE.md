@@ -75,3 +75,26 @@
 6. 转义只处理 `\` `"` `\t` `\r` `\n`；其余字符原样。
 7. 一个键都没改 → `same`（不落盘）；顶层对象找不到/括号不配对 → `missing`。
 8. 调用方（cmd_teesim_save_overrides）：空值=删键；`overrides.json` 不存在时以 `{}\n` 为底本；写入用 `overrides.json.bak` 备份、落盘后 `chmod 644`（守护进程以 keystore 身份读）。
+
+## 待移植 writer 的体积清单（按行数排，决定顺序）
+
+| 文件 | 行数 | 服务于 | 备注 |
+|---|---|---|---|
+| entry_base.awk | 19 | excluded / ever | 已等价实现（Rust 内联） |
+| tricky_list.awk | 31 | targets | 已实现 |
+| omk_list.awk | 36 | targets | 已实现 |
+| tricky_info.awk | 43 | backend-info | 待做 |
+| tricky_mode.awk | 47 | set-mode | 已实现 |
+| tricky_patches.awk | 51 | tricky-patches | 已实现 |
+| teesim_list.awk | 53 | targets | 已实现 |
+| omk.awk | 66 | backend-info | 待做 |
+| **keybox_check.awk** | **78** | keybox-save / backup-restore | **下一个做**（两家校验都靠它） |
+| teesim_overrides.awk | 99 | teesim-overrides | 已实现 |
+| teesim_profile.awk | 105 | profile-new / del | 之后 |
+| tricky_patch_set.awk | 117 | tricky-save-patch | 已实现（写入分支） |
+| omk_info.awk | 136 | backend-info | 之后 |
+| teesim_profiles.awk | 152 | teesim-profiles | 已实现 |
+| teesim_info.awk | 157 | backend-info | 之后 |
+| json_flat_set.awk | 162 | teesim-save-overrides | 已实现 |
+| teesim_set.awk | 178 | teesim-save | 大件 |
+| omk_set.awk | 196 | omk-save-* | 最大件 |
