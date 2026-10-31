@@ -63,7 +63,7 @@ module/
 ├─ lib/
 │  ├─ common.sh           # 函数库加载入口
 │  ├─ core.sh             # 路径常量、运行期状态、日志（logcat + 本地缓冲）
-│  ├─ lock.sh             # 并发锁
+│  ├─ lock.sh             # 并发锁（等不到就"拒"，不抢别人的；锁目录里记持有者 pid）
 │  ├─ tools.sh            # 外部工具定位（awk / base64 / inotify）
 │  ├─ applist.sh          # 目标名单生成（增量 + 手动删除尊重）
 │  ├─ backend.sh          # 后端探测、后端写入、模块描述、同步入口
@@ -228,7 +228,7 @@ node tests/ui-shape.js                   # 表单字段 ↔ webui.sh 的 case �
 node tools/module-scope-check.mjs        # 界面三份源码里跨模块的名字都 import / 注册过
 node tools/mutate-scope.cjs              # 上面那条闸自己的牙（4 条变异，含"变异下在坏 strip 会失明的位置"）
 node tools/json-flat-set-check.cjs       # 扁平 JSON 定点改写（含"留空即删除"的四种位置）
-sh tests/*.sh                            # 26 个 shell 套子（CI 里循环全跑，一个都不漏）
+sh tests/*.sh                            # 32 个 shell 套子（CI 与本地都循环全跑，一个都不漏）
 sh tools/deploy-webui.sh                 # 推界面 + chmod 644 + 逐文件对 sha256（--shell 推命令层，--all 两者）
 ```
 

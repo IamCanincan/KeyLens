@@ -47,6 +47,12 @@ DEBOUNCE_LOCK="${KL_DIR}/.kl_debounce"
 PIDS_FILE="${KL_DIR}/.kl_daemon_pids.list"
 FP_FILE="${KL_DIR}/.kl_fingerprint"
 
+# 防抖与"拿不到锁"时的重试档位（被 dispatch_sync 用掉；tests/sync-retry.sh 里
+# 抽的是同一个函数，这几个数由台架自己给，所以线上一档没动也能测得完）。
+SYNC_DEBOUNCE_SEC=2            # 防抖窗口：2 秒内的多次事件合并成一次同步
+SYNC_RETRY_MAX=3               # 锁拒绝后重试几轮（每轮内部已等满 LOCK_TIMEOUT=15s）
+SYNC_RETRY_GAP_SEC=10          # 两轮之间再歇多久
+
 log_info "🔍 后端：$(backend_name)（配置：$TARGET_FILE，状态：$KL_DIR）"
 if [ "$KL_BACKEND" != "tricky" ] && [ -z "$AWK_CMD" ]; then
     log_warn "⚠️ 未找到 awk，暂时无法维护 $(backend_name) 配置"
@@ -119,15 +125,34 @@ do_sync() {
 # ---------- 防抖调度 ----------
 # 说明：2 秒内的多次触发合并为一次同步。
 # 用法：dispatch_sync
+#
+#       拿不到锁不再"抢"（lib/lock.sh 旧版等满超时会 rmdir 掉守护进程手里的锁，
+#       两边同时做整文件读-改-写，偶发丢更新且日志一句错都没有）。改成拒绝之后，
+#       这里多出一个以前没有的失败点：**这一趟同步被整个跳过**。指纹没推进，
+#       下一次 packages.list 变化还会再触发，但用户可能不再装应用 —— 那条就永远
+#       补不回来。所以这里做有界重试（每轮 acquire_lock 自己已等满 LOCK_TIMEOUT=15 秒），
+#       全部失败才收口，并把"这段时间名单可能落后"写进日志而不是悄悄 exit 1。
+#
+#       重试期间防抖锁已经放掉，所以新的文件变化会再起一个同样的子壳：两个各自
+#       重试是安全的（真拿不到就都退），抢到锁的那个写完指纹，另一个会被
+#       do_sync 的指纹比对判成"与上次一致"而不多写一次盘。
 dispatch_sync() {
     mkdir "$DEBOUNCE_LOCK" 2>/dev/null || return 0
 
     (
-        sleep 2
+        sleep "$SYNC_DEBOUNCE_SEC"
         rmdir "$DEBOUNCE_LOCK" 2>/dev/null
-        acquire_lock "$LOCK_DIR" || exit 1
-        do_sync
-        release_lock "$LOCK_DIR"
+        tries=0
+        while [ "$tries" -lt "$SYNC_RETRY_MAX" ]; do
+            tries=$((tries + 1))
+            if acquire_lock "$LOCK_DIR"; then
+                do_sync
+                release_lock "$LOCK_DIR"
+                exit 0
+            fi
+            [ "$tries" -ge "$SYNC_RETRY_MAX" ] || sleep "$SYNC_RETRY_GAP_SEC"
+        done
+        log_warn "⚠️ 重试 $tries 轮仍拿不到锁，本次同步跳过：新装/卸载的应用不在列表里，下一次 packages.list 变化会自动补"
     ) &
 }
 
