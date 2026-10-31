@@ -4,6 +4,8 @@
 //! `api=4` 与 `commands=<空格分隔>`。未迁移的命令返回 2（不假装成功），
 //! 便于对拍时区分「还没做」与「做错了」。
 
+mod backend;
+
 use std::io::Write;
 use std::process::{exit, Command};
 
