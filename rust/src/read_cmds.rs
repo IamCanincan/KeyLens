@@ -192,3 +192,77 @@ pub fn status() {
     kv("log_lines", &lines);
     kv("log_bytes", &bytes);
 }
+
+/// 包名语法：与 tricky_list.awk 的正则同义（≥2 段，每段字母/下划线开头）。
+fn valid_pkg(s: &str) -> bool {
+    let segs: Vec<&str> = s.split('.').collect();
+    if segs.len() < 2 {
+        return false;
+    }
+    segs.iter().all(|seg| {
+        let mut ch = seg.chars();
+        match ch.next() {
+            Some(c) if c.is_ascii_alphabetic() || c == '_' => {}
+            _ => return false,
+        }
+        ch.all(|c| c.is_ascii_alphanumeric() || c == '_')
+    })
+}
+
+/// tricky_list.awk 的等价：去 CR、剥行内 # 注释、trim、取 ?/! 后缀、包名校验，
+/// 同一基础包名按**首次出现顺序**输出**最后一次**的模式。
+fn tricky_tokens(text: &str) -> Vec<String> {
+    let mut order: Vec<String> = Vec::new();
+    let mut last: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    for raw in text.split('\n') {
+        let mut line = raw.strip_suffix('\r').unwrap_or(raw).to_string();
+        if let Some(h) = line.find('#') {
+            line.truncate(h);
+        }
+        let line = line.trim_matches(|c: char| c == ' ' || c == '\t').to_string();
+        if line.is_empty() {
+            continue;
+        }
+        let trimmed = line.as_str();
+        let (tok, base) = match trimmed.chars().last() {
+            Some(sfx @ ('?' | '!')) => {
+                let b = trimmed[..trimmed.len() - 1]
+                    .trim_end_matches(|c: char| c == ' ' || c == '\t')
+                    .to_string();
+                (format!("{}{}", b, sfx), b)
+            }
+            _ => (trimmed.to_string(), trimmed.to_string()),
+        };
+        if !valid_pkg(&base) {
+            continue;
+        }
+        if !last.contains_key(&base) {
+            order.push(base.clone());
+        }
+        last.insert(base, tok);
+    }
+    order.into_iter().map(|b| last[&b].clone()).collect()
+}
+
+/// cmd_targets：当前后端的目标列表（tricky 已迁；另两家在后续阶段）。
+pub fn targets() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    if !b.target.is_file() {
+        eprintln!("目标文件不存在：{}", b.target.display());
+        std::process::exit(1);
+    }
+    match b.id {
+        BackendId::Tricky => {
+            let text = std::fs::read_to_string(&b.target).unwrap_or_default();
+            for t in tricky_tokens(&text) {
+                println!("{}", t);
+            }
+        }
+        other => {
+            eprintln!("targets：{} 后端尚未迁移", other.as_str());
+            std::process::exit(2);
+        }
+    }
+}

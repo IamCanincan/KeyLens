@@ -153,5 +153,56 @@ printf 'id=keylens\nversion=v3.0.1\ndescription=⛔ 同时启用了多个后端\
 mk_status_harness "$S2"
 chk 'status：冲突/stopped/关闭伪装/目标缺失' "$(sh "$T/h2.sh")" "$(KEYLENS_ROOT="$S2" "$B" status)"
 
+echo "── targets（tricky：注释/后缀/重复/坏行）──"
+mk_targets_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+  } > "$T/h3.sh"
+  sed -n '/^cmd_targets() {/,/^}/p' module/webui.sh >> "$T/h3.sh"
+  cat >> "$T/h3.sh" <<'EOF'
+detect_backend "$MODDIR"
+cmd_targets
+EOF
+}
+TT="$T/troot"
+mkdir -p "$TT/data/adb/modules/tricky_store" "$TT/data/adb/tricky_store"
+cat > "$TT/data/adb/tricky_store/target.txt" <<'EOF'
+# 注释行
+com.example.a
+com.example.b?
+com.example.b!   # 行尾注释
+  com.example.c!
+com.example.d
+bad_line
+com..x
+com.example.a?
+com.example.e   ?   
+EOF
+mk_targets_harness "$TT"
+chk 'tricky target.txt 解析' "$(sh "$T/h3.sh")" "$(KEYLENS_ROOT="$TT" "$B" targets)"
+# 目标文件缺失：两边都要报错退出 1
+TT2="$T/troot2"
+mkdir -p "$TT2/data/adb/modules/tricky_store"
+mk_targets_harness "$TT2"
+sh "$T/h3.sh" >/dev/null 2>"$T/e1"; rc1=$?
+KEYLENS_ROOT="$TT2" "$B" targets >/dev/null 2>"$T/e2"; rc2=$?
+chk '目标文件缺失：退出码一致' "$rc1" "$rc2"
+chk '目标文件缺失：报错文案一致' "$(cat "$T/e1")" "$(cat "$T/e2")"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

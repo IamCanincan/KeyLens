@@ -73,6 +73,7 @@ fn main() {
         }
         "log" => read_cmds::log(arg),
         "status" => read_cmds::status(),
+        "targets" => read_cmds::targets(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
         // 尚未迁移的命令：明确返回 2，别假装成功。
