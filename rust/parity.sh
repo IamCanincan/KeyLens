@@ -912,5 +912,49 @@ chk 'backup-restore：权限保留 640' "$(stat -c '%a' "$BRS/data/adb/tricky_st
 chk 'backup-restore：非法备份名' "$(sh "$T/br.sh" '../etc/passwd' 2>&1)" "$(KEYLENS_ROOT="$BRR" "$B" backup-restore '../etc/passwd' 2>&1)"
 chk 'backup-restore：后端无关的备份名' "$(sh "$T/br.sh" nope.bak 2>&1)" "$(KEYLENS_ROOT="$BRR" "$B" backup-restore nope.bak 2>&1)"
 
+echo "── teesim-profile-del（删 profiles.<name>）──"
+mk_pd_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/pd.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/pd.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pd.sh"
+  sed -n '/^cmd_teesim_profile_del() {/,/^}/p' module/lib/write.sh >> "$T/pd.sh"
+  echo 'detect_backend "$MODDIR"; cmd_teesim_profile_del "$1"' >> "$T/pd.sh"
+}
+PD="$T/pd-root"
+mk_pd_fixture() {
+  mkdir -p "$1/data/adb/modules/teesim" "$1/data/adb/teesim"
+  printf '{\n    "profiles": {\n        "default": {"apps": []},\n        "work": {"apps": ["com.a"]},\n        "lab": {"apps": ["com.b"]}\n    }\n}\n' > "$1/data/adb/teesim/config.json"
+}
+PDS="$PD-s"; PDR="$PD-r"
+mk_pd_fixture "$PDS"; mk_pd_fixture "$PDR"
+mk_pd_harness "$PDS"
+chk 'profile-del：删中间成员输出' "$(sh "$T/pd.sh" work 2>&1)" "$(KEYLENS_ROOT="$PDR" "$B" teesim-profile-del work 2>&1)"
+chk 'profile-del：两侧 config 逐字节一致' "$(cat "$PDS/data/adb/teesim/config.json")" "$(cat "$PDR/data/adb/teesim/config.json")"
+chk 'profile-del：备份已生成' "$([ -f "$PDR/data/adb/teesim/config.json.bak" ] && echo yes)" "yes"
+chk 'profile-del：不存在' "$(sh "$T/pd.sh" nope 2>&1)" "$(KEYLENS_ROOT="$PDR" "$B" teesim-profile-del nope 2>&1)"
+chk 'profile-del：拒绝 default' "$(sh "$T/pd.sh" default 2>&1)" "$(KEYLENS_ROOT="$PDR" "$B" teesim-profile-del default 2>&1)"
+
 echo
 [ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }

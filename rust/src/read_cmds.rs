@@ -2161,3 +2161,159 @@ pub fn backup_restore(name: &str) {
     println!("restored=1");
     println!("name={}", name);
 }
+
+/// 从对象里删掉一个成员（含逗号与行内残留空白），返回新文本。
+fn delete_member(b: &[u8], ob: usize, oc: usize, hit: &crate::json_flat::Hit) -> Vec<u8> {
+    let mut rs = hit.kbs;
+    let mut re = hit.ke;
+    let hws = |c: u8| matches!(c, b' ' | b'\t' | b'\r');
+    let ws = |c: u8| matches!(c, b' ' | b'\t' | b'\r' | b'\n');
+    let mut p = re + 1;
+    while p <= oc && p < b.len() && hws(b[p]) { p += 1; }
+    if p < b.len() && b[p] == b',' {
+        re = p;
+    } else {
+        let mut q = rs.saturating_sub(1);
+        while q > ob && ws(b[q]) { q -= 1; }
+        if b[q] == b',' { rs = q; }
+    }
+    let mut a = rs.saturating_sub(1);
+    while a > ob && hws(b[a]) { a -= 1; }
+    let mut bb = re + 1;
+    while bb < b.len() && hws(b[bb]) { bb += 1; }
+    if b[a] == b'\n' && bb < b.len() && b[bb] == b'\n' { rs = a + 1; re = bb; }
+    else if b[a] == b'\n' { rs = a + 1; }
+    let mut out = Vec::with_capacity(b.len());
+    out.extend_from_slice(&b[..rs]);
+    out.extend_from_slice(&b[re + 1..]);
+    out
+}
+
+/// cmd_teesim_profile_del：删掉 config.json 里 profiles.<name>。
+pub fn teesim_profile_del(name: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    if !p.teesim_config.is_file() {
+        eprintln!("配置不存在：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    if name.is_empty() || name == "default" {
+        eprintln!("default 是兜底 profile，不能删");
+        std::process::exit(1);
+    }
+    if name.is_empty() || !name.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
+        eprintln!("名字只能用字母、数字、. _ -：{}", name);
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read(&p.teesim_config).unwrap_or_default();
+    // 定位 profiles 对象
+    let found = (|| {
+        let pp = find_from(&old, 0, b"\"profiles\"")?;
+        let colon = find_from(&old, pp + 10, b":")?;
+        let mut i = colon + 1;
+        while i < old.len() && matches!(old[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+        if old.get(i) != Some(&b'{') { return None; }
+        let end = match_close(&old, i)?;
+        Some((i, end))
+    })();
+    let Some((ob, oc)) = found else {
+        crate::lock::release(&lockdir);
+        eprintln!("删除 profile 失败");
+        std::process::exit(1);
+    };
+    let Some(hit) = member_span(&old, ob, oc, name) else {
+        crate::lock::release(&lockdir);
+        eprintln!("没有这个 profile：{}", name);
+        std::process::exit(1);
+    };
+    let new_bytes = delete_member(&old, ob, oc, &hit);
+    let bak = b.dir.join("config.json.bak");
+    let _ = std::fs::copy(&p.teesim_config, &bak);
+    let mode = std::fs::metadata(&p.teesim_config).ok().map(|m| m.permissions());
+    let tmp = b.dir.join(format!(".config.json.keylens.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &new_bytes).is_ok() && std::fs::rename(&tmp, &p.teesim_config).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        crate::lock::release(&lockdir);
+        eprintln!("写入失败：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    if let Some(m) = mode {
+        let _ = std::fs::set_permissions(&p.teesim_config, m);
+    }
+    crate::lock::release(&lockdir);
+    log_line(&p, &format!("🧰 WebUI 删除 TEESim profile（{}）", name));
+    println!("removed=1");
+    println!("profile={}", name);
+}
+
+/// 在对象里找深度 1 的成员（值可能是嵌套对象/数组，用配对跳过）。
+fn member_span(b: &[u8], ob: usize, oc: usize, key: &str) -> Option<crate::json_flat::Hit> {
+    let mut depth = 0i32;
+    let mut i = ob;
+    while i <= oc && i < b.len() {
+        let c = b[i];
+        if c == b'"' {
+            let q_end = {
+                let mut j = i + 1;
+                let mut esc = false;
+                while j <= oc && j < b.len() {
+                    if esc { esc = false; } else if b[j] == b'\\' { esc = true; } else if b[j] == b'"' { break; }
+                    j += 1;
+                }
+                j + 1
+            };
+            if depth != 1 { i = q_end; continue; }
+            let name = String::from_utf8_lossy(&b[i + 1..q_end.saturating_sub(1)]).into_owned();
+            let mut p = q_end;
+            while p <= oc && p < b.len() && matches!(b[p], b' ' | b'\t' | b'\r' | b'\n') { p += 1; }
+            if p > oc || b.get(p) != Some(&b':') { i = q_end; continue; }
+            let hit = name == key;
+            p += 1;
+            while p <= oc && p < b.len() && matches!(b[p], b' ' | b'\t' | b'\r' | b'\n') { p += 1; }
+            let ke;
+            if p < b.len() && (b[p] == b'{' || b[p] == b'[') {
+                ke = match_close(b, p).unwrap_or(p);
+            } else if p < b.len() && b[p] == b'"' {
+                let mut j = p + 1;
+                let mut esc = false;
+                while j <= oc && j < b.len() {
+                    if esc { esc = false; } else if b[j] == b'\\' { esc = true; } else if b[j] == b'"' { break; }
+                    j += 1;
+                }
+                ke = j;
+            } else {
+                let mut e = p;
+                while e <= oc && e < b.len() && !matches!(b[e], b',' | b'}' | b'\n') { e += 1; }
+                while e > p && matches!(b[e - 1], b' ' | b'\t' | b'\r') { e -= 1; }
+                ke = e.saturating_sub(1);
+            }
+            if hit {
+                return Some(crate::json_flat::Hit { ks: p, ke, kbs: i });
+            }
+            i = ke + 1;
+            continue;
+        }
+        if c == b'{' || c == b'[' { depth += 1; }
+        else if c == b'}' || c == b']' { depth -= 1; }
+        i += 1;
+    }
+    None
+}
