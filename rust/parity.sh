@@ -8,7 +8,8 @@ B=${1:-rust/target/release/keylens}
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fail=0
-chk() { if [ "$2" = "$3" ]; then echo "  ok   $1"; else echo "  ✗    $1"; echo "       shell=[$2]"; echo "       rust =[$3]"; fail=1; fi; }
+oks=0
+chk() { if [ "$2" = "$3" ]; then echo "  ok   $1"; oks=$((oks + 1)); else echo "  ✗    $1"; echo "       shell=[$2]"; echo "       rust =[$3]"; fail=1; fi; }
 
 echo "── contract ──"
 E=$(awk '
@@ -1028,4 +1029,8 @@ else
 fi
 
 echo
-[ "$fail" = 0 ] && echo "全部通过" || { echo "有断言失败"; exit 1; }
+# 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
+if [ "$oks" -lt 93 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 93），疑似用例被删"; fail=1
+fi
+[ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
