@@ -138,6 +138,15 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 以及在真实生产路径上验「预览只出一份信封、后端文件一字不变」——就是 5.3 那个发布级洞的回归。
 它只在"装完包、重启前"这一段时间里有意义，所以三条前置都做成 skip（CI 上不会假红）。
 
+**第二次真跑（2026-11-01 23:38，装 v3.0.2 的那个窗口）：28/28 全过。**
+`ksud module install` 之后同一套断言，外加三条新现场：
+① 新树 `module.prop` 是 `v3.0.2` / `versionCode=2026110123`、`bin/keylens` 644648 字节、`backends/` 只剩 `tricky.sh`；
+② `ksud module list` 里 keylens 这条现在带 `"versionCode": "2026110123"`（改 10 位之前这个字段整个是缺的，见 §3.11）；
+③ 顺手修掉台子里一条会假红的说明性断言 —— 原来写死"旧树必报 `apply_scope=restart`"，
+   而旧树一旦换了实现、或者装的是不再带 awk 的新包，它就静默空输出。现在改成
+   **"旧树 shell 预览不许静默空输出：要么给 apply_scope，要么明说缺 awk"**，
+   实测它现在报的就是 `缺少 omk_set.awk`（新包不带 awk，符合预期）。
+
 ### 3.6 重启之后复核过（2026-11-01 17:11，v3.0.1 新树已在生产模块目录里跑）
 
 - 落地：`/data/adb/modules/keylens` 里 awk **0 份**、`bin/keylens` 635672 字节且 sha256 与验过那份同（`f382d17e…`）、

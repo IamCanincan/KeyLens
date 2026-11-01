@@ -78,7 +78,18 @@ if [ -f "$REF/lib/write.sh" ] && ls "$REF"/backends/*.awk >/dev/null 2>&1; then
 else
     printf '  skip 没有可用参照树 %s（要 lib/write.sh + backends/*.awk）\n' "$REF"
 fi
-chk "旧树（可能是修复前的实现）报 restart" "restart" "$(KL_USE_RUST=0 sh "$OLD/webui.sh" preview-omk-save-config "$PL" 2>&1 | sed -n 's/^apply_scope=//p')"
+# 这一条原来写死"旧树必报 restart"。它只在旧树是 §5.1 修复前、**且还带着 awk** 的那份安装时成立：
+# 旧树一旦被热替换成修过的代码（2026-11-01 就发生过），或者装的是「不再带 awk」的新包，
+# 旧树要么报 hot、要么直接报「缺少 X.awk」—— 写死的断言就变成假红。
+# 现在改成：旧树的 shell 预览**不许静默空输出** —— 要么给出 apply_scope，要么明说缺 awk。
+old_out=$(KL_USE_RUST=0 sh "$OLD/webui.sh" preview-omk-save-config "$PL" 2>&1)
+old_scope=$(printf '%s\n' "$old_out" | sed -n 's/^apply_scope=//p')
+case "$old_scope" in
+    hot|restart) chk "旧树 shell 预览跑起来了（apply_scope=$old_scope）" "yes" "yes" ;;
+    *) chk "旧树 shell 预览要么给 apply_scope，要么明说缺 awk（不许静默空输出）" "yes" \
+           "$(printf '%s\n' "$old_out" | grep -q '缺少 .*awk' && echo yes || echo no)" ;;
+esac
+printf '  ·    旧树现状（首行）：%s\n' "$(printf '%s\n' "$old_out" | head -n 1)"
 
 echo "── 4 命令层自述：新树用的就是二进制 ──"
 chk "新树 bin 的条数 = 新树 webui.sh 的声明条数" \
