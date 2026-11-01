@@ -281,16 +281,23 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 包：`node tools/build-zip.mjs` → **`KeyLens-v3.0.2.zip` 711.6 KB / 34 条目**，
 内含 `bin/keylens`（`c9f4049d…`，与真机同字节）、**0 份 awk**、`module.prop` 里是 v3.0.2。
 
-**还差一步（要 GitHub 凭据，本机没有）**：把资产传上去，否则 `update.json` 指向的是 404：
+**资产已上传（2026-11-01 23:24）** —— `https://github.com/IamCanincan/KeyLens/releases/tag/v3.0.2`
+（tag 指向 `079abf9`，非 draft / 非 prerelease）。上传方式记一下，省得下次再问：
+本机 `gh` 没登录，但 **git 里存着 GitHub 凭据**，`git credential fill` 能取到 token，
+只在命令里 `GH_TOKEN=…` 用一次（不落盘、不打印）：
 
 ```sh
-# 需要已登录的 gh（本机未登录）；没有 gh 就在网页上新建 release v3.0.2 并附上这个 zip
-gh release create v3.0.2 KeyLens-v3.0.2.zip --repo IamCanincan/KeyLens \
-   --title "KeyLens v3.0.2" --notes-file <把 CHANGELOG 的 3.0.2 段贴进去>
+tok=$(printf 'protocol=https\nhost=github.com\n\n' | git credential fill | sed -n 's/^password=//p')
+GH_TOKEN="$tok" HTTPS_PROXY=http://127.0.0.1:7890 \
+  gh release create v3.0.2 KeyLens-v3.0.2.zip --repo IamCanincan/KeyLens \
+     --title "KeyLens v3.0.2" --notes-file <CHANGELOG 的 3.0.2 段>
 ```
 
-上传后要注意两点：① 机上装的仍是 v3.0.1，所以管理器会一直提示更新，刷一次包才变 v3.0.2；
-② 刷完 env 探针缓存的键会跟着变成 `…|v3.0.2|…`，第一次打开 `env` 会冷一次（~200ms），之后就回到 70~100ms。
+上传后复核（都过了）：资产 `KeyLens-v3.0.2.zip` **728,686 字节**、`digest sha256:6fadef49…` 与本地
+那份逐字节相同；`update.json` 里的 `zipUrl` 现在能直接下载（之前指向的是 404）。
+
+刷完之后要注意：机上版本会变成 v3.0.2，env 探针缓存的键跟着变成 `…|v3.0.2|…`，
+第一次打开 `env` 会冷一次（~200ms），之后就回到 70~100ms。
 
 ## 4. preview 的实现方式（重要）
 
