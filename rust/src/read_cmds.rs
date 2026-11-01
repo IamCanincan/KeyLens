@@ -2831,3 +2831,73 @@ mod omk_scoop_tests {
         assert!(omk_scoop_rewrite(b"scoop = [\n", &items(&["a"])).is_none());
     }
 }
+
+/// teesim.awk 的 listfile 模式：把 config.json 里 `profiles.default.apps` 整份换成给定列表。
+///
+/// 与 omk 版的差别（照抄 awk）：条目**不做转义**；数组统一重排成多行，
+/// 元素缩进 = `apps` 所在行的缩进 + 两格；最后一项不带逗号。
+pub fn teesim_apps_rewrite(text: &[u8], items: &[String]) -> Option<Vec<u8>> {
+    let pp = find_from(text, 0, b"\"profiles\"")?;
+    let dp = find_from(text, pp, b"\"default\"")?;
+    let ob = find_from(text, dp + 9, b"{")?;
+    let cb = match_close(text, ob)?;
+    let ap = find_from(text, ob, b"\"apps\"")?;
+    if ap > cb { return None; }
+    let ab = find_from(text, ap + 6, b"[")?;
+    if ab > cb { return None; }
+    let ae = match_close(text, ab)?;
+    if ae > cb { return None; }
+    // apps 键所在行的缩进
+    let mut ls = ap;
+    while ls > 0 && text[ls - 1] != b'\n' { ls -= 1; }
+    let mut ind = String::new();
+    let mut i = ls;
+    while i < ap {
+        let c = text[i];
+        if c != b' ' && c != b'\t' { break; }
+        ind.push(c as char);
+        i += 1;
+    }
+    let mut body = String::new();
+    for (idx, it) in items.iter().enumerate() {
+        body.push_str(&format!("{}  \"{}\"", ind, it));
+        if idx + 1 < items.len() { body.push(','); }
+        body.push('\n');
+    }
+    let mut out: Vec<u8> = Vec::with_capacity(text.len() + body.len() + 8);
+    out.extend_from_slice(&text[..ab]);
+    out.extend_from_slice(b"[\n");
+    out.extend_from_slice(body.as_bytes());
+    out.extend_from_slice(ind.as_bytes());
+    out.extend_from_slice(b"]");
+    out.extend_from_slice(&text[ae + 1..]);
+    Some(out)
+}
+
+#[cfg(test)]
+mod teesim_apps_tests {
+    use super::*;
+
+    fn items(xs: &[&str]) -> Vec<String> { xs.iter().map(|s| s.to_string()).collect() }
+
+    #[test]
+    fn rewrites_apps_array_multiline() {
+        let src = "{\n    \"profiles\": {\n        \"default\": {\n            \"apps\": [\"old\"]\n        }\n    }\n}\n";
+        let out = teesim_apps_rewrite(src.as_bytes(), &items(&["com.a", "com.b"])).unwrap();
+        let got = String::from_utf8(out).unwrap();
+        assert!(got.contains("\"apps\": [\n              \"com.a\",\n              \"com.b\"\n            ]"), "{}", got);
+    }
+
+    #[test]
+    fn empty_list_keeps_brackets() {
+        let src = "{\"profiles\":{\"default\":{\"apps\":[\"x\"]}}}";
+        let out = teesim_apps_rewrite(src.as_bytes(), &[]).unwrap();
+        assert_eq!(String::from_utf8(out).unwrap(), "{\"profiles\":{\"default\":{\"apps\":[\n]}}}");
+    }
+
+    #[test]
+    fn missing_default_returns_none() {
+        assert!(teesim_apps_rewrite(b"{\"profiles\":{\"work\":{\"apps\":[]}}}", &items(&["a"])).is_none());
+        assert!(teesim_apps_rewrite(b"{}", &items(&["a"])).is_none());
+    }
+}
