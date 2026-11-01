@@ -3858,3 +3858,94 @@ mod omk_toml_tests {
         assert_eq!(tomlesc("a\\b\"c\td"), "a\\\\b\\\"c\\td");
     }
 }
+
+/// omk_set.awk 的 inj_key：payload 键 → (段, 键)。空串表示不写。
+pub fn inj_key(k: &str) -> Option<(&'static str, &str)> {
+    match k {
+        "inj_main_enabled" => Some(("main", "enabled")),
+        "inj_log_level" => Some(("main", "log_level")),
+        "filter_enabled" => Some(("filter", "enabled")),
+        "filter_block_android" => Some(("filter", "block_android_package")),
+        "filter_allow_unknown" => Some(("filter", "allow_unknown_package")),
+        "filter_deny" => Some(("filter", "deny_packages")),
+        _ if k.starts_with("intercept_") => Some(("intercept", &k[10..])),
+        _ => None,
+    }
+}
+
+/// omk_set.awk 的 cfg_key：payload 键 → (段, 键)。
+pub fn cfg_key(k: &str) -> Option<(&'static str, &str)> {
+    match k {
+        "cfg_log_level" => Some(("main", "log_level")),
+        "cfg_force_skip_biometric" => Some(("main", "force_skip_system_biometric_hat_verification")),
+        "cfg_retire_stale_keys" => Some(("main", "retire_stale_keybox_bound_keys")),
+        "trust_os_version" => Some(("trust", "os_version")),
+        "trust_security_patch" => Some(("trust", "security_patch")),
+        "trust_os_patchlevel" => Some(("trust", "os_patchlevel")),
+        "trust_vendor_patchlevel" => Some(("trust", "vendor_patchlevel")),
+        "trust_boot_patchlevel" => Some(("trust", "boot_patchlevel")),
+        "trust_vb_key" => Some(("trust", "vb_key")),
+        "trust_vb_hash" => Some(("trust", "vb_hash")),
+        "trust_verified_boot" => Some(("trust", "verified_boot_state")),
+        "trust_device_locked" => Some(("trust", "device_locked")),
+        "dev_override_telephony" => Some(("device", "overrideTelephonyProperties")),
+        _ if k.starts_with("dev_") => Some(("device", &k[4..])),
+        _ => None,
+    }
+}
+
+/// omk_set.awk 的 key_type：决定值怎么渲染。
+pub fn omk_key_type(k: &str) -> &'static str {
+    if matches!(
+        k,
+        "inj_main_enabled" | "filter_enabled" | "filter_block_android" | "filter_allow_unknown"
+    ) || k.starts_with("intercept_")
+        || matches!(
+            k,
+            "cfg_force_skip_biometric"
+                | "cfg_retire_stale_keys"
+                | "trust_verified_boot"
+                | "trust_device_locked"
+                | "dev_override_telephony"
+        )
+    {
+        return "bool";
+    }
+    if k == "filter_deny" {
+        return "array";
+    }
+    "str"
+}
+
+#[cfg(test)]
+mod omk_keymap_tests {
+    use super::*;
+
+    #[test]
+    fn injector_mapping() {
+        assert_eq!(inj_key("inj_main_enabled"), Some(("main", "enabled")));
+        assert_eq!(inj_key("filter_deny"), Some(("filter", "deny_packages")));
+        assert_eq!(inj_key("intercept_grant"), Some(("intercept", "grant")));
+        assert_eq!(inj_key("intercept_get_number_of_entries"), Some(("intercept", "get_number_of_entries")));
+        assert_eq!(inj_key("nope"), None);
+    }
+
+    #[test]
+    fn config_mapping() {
+        assert_eq!(cfg_key("cfg_log_level"), Some(("main", "log_level")));
+        assert_eq!(cfg_key("trust_vb_hash"), Some(("trust", "vb_hash")));
+        assert_eq!(cfg_key("dev_product"), Some(("device", "product")));
+        assert_eq!(cfg_key("dev_override_telephony"), Some(("device", "overrideTelephonyProperties")));
+        assert_eq!(cfg_key("inj_main_enabled"), None);
+    }
+
+    #[test]
+    fn types() {
+        assert_eq!(omk_key_type("inj_main_enabled"), "bool");
+        assert_eq!(omk_key_type("intercept_grant"), "bool");
+        assert_eq!(omk_key_type("trust_device_locked"), "bool");
+        assert_eq!(omk_key_type("filter_deny"), "array");
+        assert_eq!(omk_key_type("inj_log_level"), "str");
+        assert_eq!(omk_key_type("trust_security_patch"), "str");
+    }
+}
