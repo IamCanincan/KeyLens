@@ -2730,3 +2730,104 @@ mod roster_tests {
         assert!(out.is_empty());
     }
 }
+
+/// omk.awk 的 listfile 模式：把 injector.toml 里 `scoop = [...]` 的数组内容整份换掉。
+///
+/// 规则（照抄 awk）：
+/// - 必须定位到**行首**的裸键 `scoop` `=` `[`（`[scoop.x]` 段没有等号，不会误中）；
+/// - 取 `scoop` 那一行的缩进作 `ind`，元素缩进再两格；
+/// - 每个条目渲染成 `"转义后的包名",` 一行，整体包在 `[` 与 `]` 之间；
+/// - 定位不到就返回 None（调用方据此报 fail，不写文件）。
+pub fn omk_scoop_rewrite(text: &[u8], items: &[String]) -> Option<Vec<u8>> {
+    // 行首 `scoop = [`
+    let mut pos = 0usize;
+    let mut ob = None;
+    while pos < text.len() {
+        let line_start = pos;
+        let mut i = pos;
+        while i < text.len() && (text[i] == b' ' || text[i] == b'\t') { i += 1; }
+        if text[i..].starts_with(b"scoop") {
+            let mut k = i + 5;
+            while k < text.len() && (text[k] == b' ' || text[k] == b'\t') { k += 1; }
+            if k < text.len() && text[k] == b'=' {
+                k += 1;
+                while k < text.len() && (text[k] == b' ' || text[k] == b'\t') { k += 1; }
+                if k < text.len() && text[k] == b'[' { ob = Some(k); break; }
+            }
+        }
+        match text[line_start..].iter().position(|b| *b == b'\n') {
+            Some(nl) => pos = line_start + nl + 1,
+            None => break,
+        }
+    }
+    let ob = ob?;
+    // 配对 ]
+    let mut depth = 0i32;
+    let mut instr = false;
+    let mut esc = false;
+    let mut cb = None;
+    for i in ob..text.len() {
+        let c = text[i];
+        if instr {
+            if esc { esc = false; } else if c == b'\\' { esc = true; } else if c == b'"' { instr = false; }
+            continue;
+        }
+        if c == b'"' { instr = true; continue; }
+        if c == b'{' || c == b'[' { depth += 1; }
+        else if c == b'}' || c == b']' { depth -= 1; if depth == 0 { cb = Some(i); break; } }
+    }
+    let cb = cb?;
+    // scoop 行的缩进
+    let mut ls = ob;
+    while ls > 0 && text[ls - 1] != b'\n' { ls -= 1; }
+    let mut ind = String::new();
+    let mut i = ls;
+    while i < ob {
+        let c = text[i];
+        if c != b' ' && c != b'\t' { break; }
+        ind.push(c as char);
+        i += 1;
+    }
+    let itemind = format!("{}  ", ind);
+    let mut body = String::from("\n");
+    for it in items {
+        let esc = it.replace('\\', "\\\\").replace('"', "\\\"");
+        body.push_str(&format!("{}\"{}\",\n", itemind, esc));
+    }
+    body.push_str(&ind);
+    let mut out: Vec<u8> = Vec::with_capacity(text.len() + body.len());
+    out.extend_from_slice(&text[..=ob]);
+    out.extend_from_slice(body.as_bytes());
+    out.extend_from_slice(&text[cb..]);
+    Some(out)
+}
+
+#[cfg(test)]
+mod omk_scoop_tests {
+    use super::*;
+
+    fn items(xs: &[&str]) -> Vec<String> { xs.iter().map(|s| s.to_string()).collect() }
+
+    #[test]
+    fn rewrites_array_with_indent() {
+        let src = "[main]\nlog_level = \"info\"\n\nscoop = [\n  \"old\",\n]\n\n[scoop.com.z]\n";
+        let out = omk_scoop_rewrite(src.as_bytes(), &items(&["com.a", "com.b"])).unwrap();
+        let got = String::from_utf8(out).unwrap();
+        assert_eq!(got, "[main]\nlog_level = \"info\"\n\nscoop = [\n  \"com.a\",\n  \"com.b\",\n]\n\n[scoop.com.z]\n");
+    }
+
+    #[test]
+    fn escapes_quotes_and_backslashes() {
+        let src = "scoop = [\"x\"]\n";
+        let out = omk_scoop_rewrite(src.as_bytes(), &items(&["a\"b", "c\\d"])).unwrap();
+        let got = String::from_utf8(out).unwrap();
+        assert!(got.contains("\"a\\\"b\","));
+        assert!(got.contains("\"c\\\\d\","));
+    }
+
+    #[test]
+    fn missing_key_returns_none() {
+        assert!(omk_scoop_rewrite(b"[scoop.com.z]\ndeny = true\n", &items(&["a"])).is_none());
+        assert!(omk_scoop_rewrite(b"scoop = [\n", &items(&["a"])).is_none());
+    }
+}
