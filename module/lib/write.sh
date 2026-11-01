@@ -1026,6 +1026,8 @@ cmd_props_switch() {
 # ---------- 手动同步 ----------
 cmd_sync() {
     local rc
+    # webui_lock 已经在这个进程手上，接力给可能被子进程（run_sync → bin/keylens sync）看到
+    local KL_LOCK_HELD=1
 
     require_runnable || return 1
     detect_backend "$MODDIR"

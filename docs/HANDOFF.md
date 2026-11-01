@@ -23,9 +23,10 @@
 |---|---|---|
 | Rust 单测 | 71 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | 173 项 chk（含 preview-* 11 例 ×4 条断言） | `sh rust/parity.sh` |
-| shell 测试套 | 44 套：WSL 0 失败；Git Bash 1 红（`rust-dispatch`，环境性，干净工作树同红） | 见 §2 |
+| shell 测试套 | 46 套：WSL 0 失败；Git Bash 只有 `rust-dispatch` 红（环境性，干净工作树同红） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 11 次调用**逐字节相同**；4 次真有差异，7 次只对齐错误路径 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
+| 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
 | 包内二进制握手 | contract == KL_COMMANDS | `sh tests/module-bin.sh` |
@@ -36,7 +37,8 @@
 - `omk_set` TOML 引擎、teesim 嵌套 JSON 编辑（`member_span`）、`tricky_info`/`teesim_info`/`omk_info` 摘要；
 - `sync` 的 `build_app_list` 快照差分（读空保护、OMK adopt、gone/keep、状态文件提交）；
 - `env`（探测 + 深浅色 + FRRO + seed + statusbar dp）、`icons`（桌面库 SQL + app_process 补缺 + 缓存）；
-- `lcs_diff`（与 shell `kl_capture_diff` 逐字节一致）+ **preview 影子根**（见 §4）。
+- `lcs_diff`（与 shell `kl_capture_diff` 逐字节一致，含 awk 的记录语义）+ **preview 影子根**（见 §4）；
+- `run_sync` 优先走二进制（`sync` 这条后台链路不再依赖 awk），带 `KL_LOCK_HELD` 锁接力与"拿不到 `rc=` 就回退 shell"（见 §5.2）。
 
 ## 2. 本地怎么验证
 
@@ -126,9 +128,16 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 ## 5. 剩余工作（按顺序）
 
 1. ~~真机对拍其余 `preview-*`~~ **本轮做完**（夹具根 11 例 ×4 断言 + 真机 11 次调用逐字节相同，见 §4；顺带修出三处口径问题）。
-2. **`run_sync` 接回"优先调用二进制"**：`module/lib/backend.sh` 的 `run_sync` 里加
-   `_kl_bin="${KL_BIN:-${MODDIR:-}/bin/keylens}"; if [ -x "$_kl_bin" ]; then ... "$_kl_bin" sync ...; return rc; fi`
-   ——这样 `service.sh` 的后台同步不再依赖 awk。（上一次做过，随回滚一起撤了。）
+2. ~~`run_sync` 接回"优先调用二进制"~~ **本轮做完**，落点是这样的（下一条接着做时要知道这几条都在）：
+   - `module/lib/backend.sh` 的 `run_sync` 开头先看 `${KL_BIN:-$MODDIR/bin/keylens}`：可执行、`KL_USE_RUST` 没被关掉、
+     且输出里有 `rc=` 那一行，才采用二进制的结果（返回码 + `KL_COUNT`）并**跳过** `mark_module_failed` /
+     `update_module_desc`（描述由二进制自己写）。其余一切情况——二进制不在、`KL_USE_RUST=0`、
+     跑起来了但没给出 `rc=`（锁被占、后端冲突）——都回退原来的 shell+awk 实现，**不把环境问题报成同步失败**。
+   - `KL_LOCK_HELD=1` 是锁的接力条：`cmd_sync`（write.sh）、`action.sh`、`service.sh` 的 `do_sync` 三个调用点
+     都已经先 `acquire_lock`，不设这条，子进程会自己抢自己的锁（白等 6 秒后报「守护进程正在写入」）。
+     Rust 侧只认 `KL_LOCK_HELD=1`（见 `read_cmds.rs` 的 `sync()`），`0` 或没设都照常自己取锁。
+   - 安装期的 `customize.sh` **不持锁**，所以那条路径由二进制自己取锁、自己放 ✓。
+   - 闸：`tests/run-sync-bin.sh`（分支选择三条 + 三条各自变异）与真机 `tests/device-run-sync.sh`（14 条，含锁接力变异）。
 3. **preview 交给二进制**：`webui.sh` 的 rust-dispatch 守卫现在明确**不接管** `preview-*`（`[ "${CMD#preview-}" = "$CMD" ]`），
    而 shell 侧算差异靠 `kl_capture_diff` → `AWK_CMD`。删 awk 之前必须先把这条守卫放开，
    否则九条预览一起变成「没有差异」。（放开时 `tests/rust-dispatch.sh` 的「预览命令不接管」那条要跟着改判据，别删。）
@@ -150,6 +159,9 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 - `sync` 的输出比 `rc`/`count` 多一行 `description=`；对拍里因 harness 把 `update_module_desc` 桩住，只比 rc/count 并单独断言描述行。
 - 对拍 harness 的 fixture 必须两侧独立（写入会互相污染），路径用 `sed` 归一。
 - shell 侧移除 awk 后若 `module/backends` 没有 `*.awk`，`use_backend` 会回退到 `tests/fixtures/backends`（仅仓库内有效；该逻辑在回滚里已撤，若重做需一并恢复）。
+- **`_x=$(run_sync …)` 会吞掉 `KL_COUNT`**：run_sync 是在子 shell 里更新的，主 shell 读到的一直是初值 0。真机台子第一次就这么写的，于是"两条分支的 count 相同"变成 `0 == 0` 的假绿（改成就地把输出重定向到文件才有读数）。凡是"函数返回值 + 副作用变量"的探针，都别用命令替换去接。
+- **锁接管判据看的是 cmdline，不是目录**：二进制判定持有者死活时比的是模块标记（默认取 module.prop 所在目录名）是否出现在 `/proc/<pid>/cmdline` 里。测试探针放在 `/data/local/tmp/` 下，cmdline 对不上标记，二进制会把"自己人"当陌生持有者直接接管——正对照当场哑掉。探针脚本的文件名要带模块目录名（生产里持有锁的本来就是 `/data/adb/modules/keylens/webui.sh` 这类路径）。
+- **`adb push` 批量推多个文件时，别拿"命令没报错"当"文件已更新"**：这一轮一批推送里有 `backend.sh` 没落地、退出码却是 0。推到真机的每一步都要在远端 `grep -c` 一遍新代码里才有的字面量（本轮是 `KL_USE_RUST`），只看 size/mtime 不够。
 
 ## 7. 关键文件
 
@@ -162,6 +174,8 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 | `rust/parity.sh` | 129 项逐字节对拍（含漂移闸、覆盖率、EPIPE、下限 129） |
 | `tests/device-ab.sh` | 真机 A/B（含写回文件指纹） |
 | `tests/device-preview.sh` | 真机 preview-* 逐字节 A/B（含「预览不许落盘」的后端文件指纹与覆盖口径） |
+| `tests/run-sync-bin.sh` | `run_sync` 二进制分支的三条判据 + 三条变异（CI 跑，桩掉 awk 实现） |
+| `tests/device-run-sync.sh` | 真机验锁接力：持锁不自抢、不持锁自取自放、两条分支结果一致、拿掉接力条的变异 |
 | `tests/rust-golden.sh` + `rust/golden/` | 黄金快照（删 awk 后的回归网） |
 | `tests/module-bin.sh` | 包内二进制 contract 握手 |
 | `tests/static-check.sh` | 静态链接判据 |

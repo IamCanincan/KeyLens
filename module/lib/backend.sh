@@ -644,7 +644,26 @@ mark_module_stopped() {
 # 返回：0=已写入 1=内容一致未写入 2=失败或结果为空
 run_sync() {
     local prop_file="$1" tmp="$2"
-    local rc=2
+    local rc=2 _bin _out _synced_rc _synced_count
+
+    # 优先走命令层二进制：service.sh 的后台同步、action.sh 的手动入口、安装期的 customize.sh
+    # 从此不再依赖 backends/*.awk（那十九份是这条链路上最后的 awk 用户）。
+    # 只认输出里的 `rc=` 那一行：二进制跑不起来、后端冲突、锁被占都没有这一行，
+    # 那种情况一律照旧回退到下面的 shell 实现，不把"环境问题"报成"同步失败"。
+    # KL_LOCK_HELD 是把"锁已经在调用方手上"接力给子进程——不加它，子进程会自己抢自己的锁
+    # （锁按持有者证据判活，父 shell 的 cmdline 里就带着模块名），白等六秒后报「守护进程正在写入」。
+    # 成功/失败的模块描述由二进制自己写，所以这条分支不再碰 mark_module_failed / update_module_desc。
+    # KL_USE_RUST=0 是"命令层整个回到 shell"的调试闸，这条分支也得跟着它，不然那个闸是漏的。
+    _bin="${KL_BIN:-${MODDIR:-}/bin/keylens}"
+    if [ "${KL_USE_RUST:-1}" = "1" ] && [ -x "$_bin" ]; then
+        _out=$(KL_LOCK_HELD="${KL_LOCK_HELD:-0}" "$_bin" sync)
+        _synced_rc=$(printf '%s\n' "$_out" | sed -n 's/^rc=\([0-9]*\)$/\1/p')
+        if [ -n "$_synced_rc" ]; then
+            _synced_count=$(printf '%s\n' "$_out" | sed -n 's/^count=\([0-9]*\)$/\1/p')
+            KL_COUNT="${_synced_count:-0}"
+            return "$_synced_rc"
+        fi
+    fi
 
     if [ "$KL_BACKEND" = "teesim" ]; then
         sync_teesim_config "$TARGET_FILE" "$tmp"

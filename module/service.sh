@@ -98,6 +98,9 @@ get_source_fingerprint() {
 # 用法：do_sync
 do_sync() {
     local fp rc old
+    # 唯一的调用点在 dispatch_sync 的 acquire_lock 之内：把"锁已到手"接力给 run_sync
+    # （它可能转去调 bin/keylens sync，子进程不能自己抢自己的锁）
+    local KL_LOCK_HELD=1
 
     fp=$(get_source_fingerprint)
     old=$(cat "$FP_FILE" 2>/dev/null)

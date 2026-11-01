@@ -50,6 +50,8 @@ echo "🔄 [1/1] 正在同步应用列表..."
 migrate_legacy_paths
 # 手动入口：允许把"读到空已装列表"当成真的清空处理；后台守护进程不这样处理。
 KL_EMPTY_OK=1
+# 锁已经在上面 acquire_lock 里到手，接力给 run_sync（它可能转去调 bin/keylens sync）
+KL_LOCK_HELD=1
 run_sync "$PROP_FILE" "$TMP"
 rc=$?
 

@@ -5437,7 +5437,11 @@ pub fn sync() {
         p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
     })];
     let lockdir = b.dir.join(".kl_lock");
-    if !crate::lock::acquire(&lockdir, 6, &marks) {
+    // KL_LOCK_HELD=1 是"接力条"：shell 侧的 run_sync 是在 webui_lock / acquire_lock 之内被调的，
+    // 锁已经在这个进程手上。子进程再取一次等于自己抢自己——锁是按持有者证据判活的，
+    // 父 shell 的 cmdline 里就带着模块标记，结果是白等 6 秒然后报「守护进程正在写入」。
+    let inherited_lock = std::env::var("KL_LOCK_HELD").as_deref() == Ok("1");
+    if !inherited_lock && !crate::lock::acquire(&lockdir, 6, &marks) {
         eprintln!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
@@ -5463,7 +5467,9 @@ pub fn sync() {
             }
         }
     };
-    crate::lock::release(&lockdir);
+    if !inherited_lock {
+        crate::lock::release(&lockdir);
+    }
     if rc != 2 {
         refresh_desc(&p, &b, count);
     }
