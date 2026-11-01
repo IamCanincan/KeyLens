@@ -194,6 +194,29 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 报「设备上找不到参照 awk」而拒绝开跑（这是设计，不是坏了）。已装的 `/data/adb/modules/keylens` 一个文件没动，
 删完当场复核：`bin/keylens` 仍是 `c9f4049d…`、`status` 正常、`doctor` 11 项 bad=0 warn=0。
 
+### 3.9 重启后复核（2026-11-01 22:19，`c9f4049d` 这版二进制第一次经历开机）
+
+17:11 那次开机跑的是 `f382d17e`；之后 `webui.sh`（接管点前移）与 `bin/keylens`（三版）都换过，
+都没开过机。22:19 重启后逐项核对：
+
+- **开机时间线**（`/data/adb/keylens.log`）：22:18:58 后端探测 → `监听方式：inotifyd` →
+  22:19:10 `开机完成（等了 12 秒），执行首次同步` + `开机后属性复核完成` + `守护进程就绪` →
+  22:19:12 起每 ~32 秒一条 `源数据与上次一致（指纹 3072251154），跳过同步`。
+- ⚠ **开机那趟同步常常是空转**：指纹文件 `/data/adb/omk/.kl_fingerprint` **跨重启保留**，
+  `do_sync` 一比对相同就直接返回（日志就长成上面那样），所以"重启后看到同步日志"**不等于**
+  同步真的跑过。要验同步路径，得把那个指纹文件挪走逼一次真同步。
+- **逼出来的那一次确实走二进制**：把指纹挪开、同时给 `bin/keylens` 套一层"记一行再 exec 回真身"的壳，
+  22:25:58 日志出现 `🔄 开始应用列表同步` → `列表内容一致，本次未落盘`，壳上恰好记到一条
+  `22:25:58 sync`。模块里 awk 份数是 **0**，壳层那条路本来也跑不了 —— 这条是直接证据不是推断。
+  跑完立刻还原：`bin/keylens` 的 sha 回到 `c9f4049d…`、指纹回到原来的值。
+- 守护进程：pid 5611（`busybox sh /data/adb/modules/keylens/service.sh`）；doctor 11 项 bad=0 warn=0 skip=1；
+  无 `disable`/`remove`；`/data/adb/modules_update/` 只剩一个空目录（不影响任何东西）。
+- 属性伪装：`props` 17/17 全 `ok`，与日志里 22:19:10 的「开机后属性复核完成」对得上。
+- env：冷 **344ms** / 热 **91ms**，冷=热逐字节一致；缓存按生产模块目录的键重建
+  （`v1|/data/adb/modules/keylens|v3.0.1|1230768000`，19 行、600）。
+- `module.prop` 仍是 `-rw-r--r--`（这一趟没有重写描述：列表没变，`do_sync` 没走到 `set_module_desc`；
+  这版二进制下的"改写描述"在 19:54 / 19:57 两次手动 sync 上验过）。
+
 ## 4. preview 的实现方式（重要）
 
 `preview-<cmd>` 白名单 9 条：`teesim-save`、`teesim-save-overrides`、`teesim-profile-new`、`teesim-profile-del`、
