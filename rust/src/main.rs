@@ -74,6 +74,148 @@ const USAGE: &str = "\
   excluded               列出被人为排除（手动删除）的包名
 ";
 
+/// 预览：在影子根里跑同一条命令，事后比对差异（不碰真实文件）。
+fn preview_run(cmd: &str, arg: &str) -> ! {
+    use std::path::PathBuf;
+    let real = std::env::var("KEYLENS_ROOT").unwrap_or_default();
+    let real_base: PathBuf = if real.is_empty() { PathBuf::from("/") } else { PathBuf::from(&real) };
+    let shadow = std::env::temp_dir().join(format!("keylens-preview-{}", std::process::id()));
+    let _ = std::fs::remove_dir_all(&shadow);
+    // 参与比对的候选文件：三家后端配置 + keybox + module.prop
+    let candidates = [
+        "/data/adb/tricky_store/target.txt",
+        "/data/adb/tricky_store/security_patch.txt",
+        "/data/adb/tricky_store/keybox.xml",
+        "/data/adb/teesim/config.json",
+        "/data/adb/teesim/overrides.json",
+        "/data/adb/teesim/keybox.xml",
+        "/data/misc/keystore/omk/injector.toml",
+        "/data/misc/keystore/omk/config.toml",
+        "/data/misc/keystore/omk/keybox.xml",
+        "/data/adb/modules/keylens/module.prop",
+    ];
+    for rel in candidates {
+        let src = real_base.join(rel.trim_start_matches('/'));
+        if !src.is_file() {
+            continue;
+        }
+        let dst = shadow.join(rel.trim_start_matches('/'));
+        if let Some(dir) = dst.parent() {
+            let _ = std::fs::create_dir_all(dir);
+        }
+        let _ = std::fs::copy(&src, &dst);
+    }
+    // 锁目录 / 状态目录也要在影子根里存在，否则"加锁失败"会误报成守护进程在写
+    for d in [
+        "/data/adb/omk",
+        "/data/adb/tricky_store",
+        "/data/adb/teesim",
+        "/data/misc/keystore/omk",
+    ] {
+        let src = real_base.join(d.trim_start_matches('/'));
+        if src.is_dir() {
+            let _ = std::fs::create_dir_all(shadow.join(d.trim_start_matches('/')));
+        }
+    }
+    // 后端探测看模块目录是否存在：影子根里也要有同样的目录结构，否则会认错后端
+    for md in [
+        "/data/adb/modules/oh_my_keymint",
+        "/data/adb/modules/teesim",
+        "/data/adb/modules/tricky_store",
+        "/data/adb/modules/keylens",
+    ] {
+        let src = real_base.join(md.trim_start_matches('/'));
+        if !src.is_dir() {
+            continue;
+        }
+        let dst = shadow.join(md.trim_start_matches('/'));
+        let _ = std::fs::create_dir_all(&dst);
+        for f in ["module.prop", "disable"] {
+            let sp = src.join(f);
+            if sp.is_file() {
+                let _ = std::fs::copy(&sp, dst.join(f));
+            }
+        }
+    }
+    // 影子根下的同一条命令（用环境变量防止再递归）
+    let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("keylens"));
+    let out = std::process::Command::new(exe)
+        .arg(cmd)
+        .arg(arg)
+        .env("KEYLENS_ROOT", shadow.to_string_lossy().into_owned())
+        .env("KL_PREVIEW_CHILD", "1")
+        .output();
+    let mut lines: Vec<String> = Vec::new();
+    match out {
+        Ok(o) => {
+            let text = String::from_utf8_lossy(&o.stdout).into_owned();
+            for line in text.lines() {
+                // 子进程看到的是影子根，输出里的路径要还原成真实路径
+                let sp = shadow.to_string_lossy().into_owned();
+                lines.push(line.replace(&sp, ""));
+            }
+            let err = String::from_utf8_lossy(&o.stderr).into_owned();
+            if !err.trim().is_empty() {
+                eprint!("{}", err);
+            }
+        }
+        Err(e) => {
+            eprintln!("预览失败：{}", e);
+        }
+    }
+    // keybox_sha 要报"真实文件"的哈希：子进程看到的是影子根，里面已经是新内容
+    let mut real_kb = String::new();
+    for line in &lines {
+        if let Some(v) = line.strip_prefix("keybox_file=") {
+            real_kb = v.to_string();
+            break;
+        }
+    }
+    let real_sha = if real_kb.is_empty() {
+        String::new()
+    } else {
+        std::process::Command::new("sha256sum")
+            .arg(&real_kb)
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string())
+            .unwrap_or_default()
+    };
+    for line in &lines {
+        if !real_sha.is_empty() {
+            if line.starts_with("keybox_sha=") {
+                println!("keybox_sha={}", real_sha);
+                continue;
+            }
+        }
+        println!("{}", line);
+    }
+    // 差异
+    let mut diff: Vec<String> = Vec::new();
+    for rel in candidates {
+        let a = real_base.join(rel.trim_start_matches('/'));
+        let b = shadow.join(rel.trim_start_matches('/'));
+        if !b.is_file() {
+            continue;
+        }
+        let old = std::fs::read(&a).unwrap_or_default();
+        let new = std::fs::read(&b).unwrap_or_default();
+        if old == new {
+            continue;
+        }
+        let old_s = String::from_utf8_lossy(&old).into_owned();
+        let new_s = String::from_utf8_lossy(&new).into_owned();
+        diff.extend(read_cmds::lcs_diff(&old_s, &new_s));
+    }
+    let changed = diff.iter().filter(|l| l.starts_with('+') || l.starts_with('-')).count();
+    let body = diff.join("\n");
+    println!("preview=1");
+    println!("changed={}", changed);
+    println!("diff={}", crate::b64::encode_bytes(body.as_bytes()));
+    let _ = std::fs::remove_dir_all(&shadow);
+    std::process::exit(0);
+}
+
 fn main() {
     let args: Vec<String> = std::env::args().collect();
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("help");
@@ -87,8 +229,12 @@ fn main() {
             "omk-save-injector", "omk-save-config", "tricky-save-patch", "tricky-drop-patch", "keybox-save",
         ];
         if PREVIEWABLE.contains(&base) {
-            read_cmds::set_preview(true);
-            cmd = base;
+            if std::env::var("KL_PREVIEW_CHILD").is_ok() {
+                // 子进程：正常执行，写入落在影子根里
+                cmd = base;
+            } else {
+                preview_run(base, arg);
+            }
         } else {
             eprintln!("未知命令：preview-{}", base);
             std::process::exit(1);
