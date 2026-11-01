@@ -3761,3 +3761,100 @@ mod injector_valid_tests {
         assert!(valid_deny_list("com.a\ncom.b").is_none());
     }
 }
+
+/// omk_set.awk 的 TOML 原语（split_comment / tomlesc / fmt）。
+
+/// 把一行拆成「主体」与「注释」：TOML 里引号内的 `#` 不算注释。
+pub fn split_comment(s: &str) -> (String, String) {
+    let mut body = String::new();
+    let mut instr = false;
+    let mut esc = false;
+    for (idx, c) in s.char_indices() {
+        if instr {
+            body.push(c);
+            if esc {
+                esc = false;
+            } else if c == '\\' {
+                esc = true;
+            } else if c == '"' {
+                instr = false;
+            }
+            continue;
+        }
+        if c == '#' {
+            return (body, s[idx..].to_string());
+        }
+        if c == '"' {
+            instr = true;
+        }
+        body.push(c);
+    }
+    (body, String::new())
+}
+
+/// TOML 字符串转义（与 awk 的 tomlesc 同集合）。
+pub fn tomlesc(s: &str) -> String {
+    let mut out = String::new();
+    for c in s.chars() {
+        match c {
+            '\\' => out.push_str("\\\\"),
+            '"' => out.push_str("\\\""),
+            '\t' => out.push_str("\\t"),
+            '\r' => out.push_str("\\r"),
+            '\n' => out.push_str("\\n"),
+            _ => out.push(c),
+        }
+    }
+    out
+}
+
+/// 按类型渲染值：bool 裸写、array 逐项加引号、其余字符串加引号。
+pub fn fmt_val(v: &str, ty: &str) -> String {
+    if ty == "bool" {
+        return if v == "true" { "true".to_string() } else { "false".to_string() };
+    }
+    if ty == "array" {
+        let mut s = String::from("[");
+        let mut sep = "";
+        for part in v.split(',') {
+            let item = part.trim_matches([' ', '\t']);
+            if item.is_empty() {
+                continue;
+            }
+            s.push_str(sep);
+            s.push('"');
+            s.push_str(&tomlesc(item));
+            s.push('"');
+            sep = ", ";
+        }
+        s.push(']');
+        return s;
+    }
+    format!("\"{}\"", tomlesc(v))
+}
+
+#[cfg(test)]
+mod omk_toml_tests {
+    use super::*;
+
+    #[test]
+    fn split_comment_respects_quotes() {
+        assert_eq!(split_comment("key = \"a#b\" # 注释"), ("key = \"a#b\" ".to_string(), "# 注释".to_string()));
+        assert_eq!(split_comment("plain = 1"), ("plain = 1".to_string(), String::new()));
+        // 转义引号不结束字符串
+        assert_eq!(split_comment("k = \"a\\\"#b\"#c"), ("k = \"a\\\"#b\"".to_string(), "#c".to_string()));
+    }
+
+    #[test]
+    fn fmt_bool_array_and_string() {
+        assert_eq!(fmt_val("true", "bool"), "true");
+        assert_eq!(fmt_val("false", "bool"), "false");
+        assert_eq!(fmt_val("a, b ,,c", "array"), "[\"a\", \"b\", \"c\"]");
+        assert_eq!(fmt_val("a\"b", "string"), "\"a\\\"b\"");
+    }
+
+    #[test]
+    fn escape_set() {
+        assert_eq!(tomlesc("a\\b\"c\td"), "a\\\\b\\\"c\\td");
+    }
+}
