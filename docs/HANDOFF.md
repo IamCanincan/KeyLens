@@ -119,6 +119,22 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 以及在真实生产路径上验「预览只出一份信封、后端文件一字不变」——就是 5.3 那个发布级洞的回归。
 它只在"装完包、重启前"这一段时间里有意义，所以三条前置都做成 skip（CI 上不会假红）。
 
+### 3.6 重启之后复核过（2026-11-01 17:11，v3.0.1 新树已在生产模块目录里跑）
+
+- 落地：`/data/adb/modules/keylens` 里 awk **0 份**、`bin/keylens` 635672 字节且 sha256 与验过那份同（`f382d17e…`）、
+  `modules_update` 与 `update` 标记都没了、无 `disable`。
+- 开机日志一条不缺：探测 → `监听方式：inotifyd` → 等 12 秒 → 首次同步 →
+  `列表内容一致，本次未落盘` → 之后 inotify 三轮全按指纹跳过。**没有 awk 还能报"一致"**，
+  就是后台同步在用二进制的现场证据。
+- `doctor` 11 项：守护进程 ok（1 个进程）、并发锁 ok（空闲）、keybox ok（结构通过）、
+  名单 ok（已装 129 / 名单 132）、无 bad 无 warn。
+- `action.sh`（手动入口）跑一次：`injector.toml` 指纹跑前跑后相同 —— 幂等，没改动名单；
+  这条同时是`锁接力`在现场的测试（它先 acquire_lock 再 run_sync）。
+- `preview-omk-save-config` 在生产树跑：信封恰好一份、`config.toml` 一字未变 —— 5.3 那个洞
+  在装完的模块上确认关闭。
+- 回滚件都在：设备上 `/data/adb/keylens-install-bak`（旧树 4.8 MB / 172 文件 / 19 份 awk）、
+  本机 `KeyLens-v3.0.1.zip.bak-2026-11-01`。
+
 ## 4. preview 的实现方式（重要）
 
 `preview-<cmd>` 白名单 9 条：`teesim-save`、`teesim-save-overrides`、`teesim-profile-new`、`teesim-profile-del`、
