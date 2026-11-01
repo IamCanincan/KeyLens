@@ -38,3 +38,7 @@ module/webroot/icons/
 
 # Rust ¹¹½¨²úÎï£¨²úÎï²»Èë¿â£¬¹¹½¨ÔÚ CI£©
 rust/target/
+
+# å‘å¸ƒåŒ…é‡Œä¸´æ—¶æ”¾äºŒè¿›åˆ¶/æ‰“åŒ…ç›®å½•ï¼Œä¸å…¥åº“ï¼ˆCI çš„ keylens-module-aarch64 æ‰å¸¦ï¼‰
+module/bin/
+stage/
