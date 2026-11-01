@@ -62,9 +62,16 @@ function sourcedLibs() {
   return [...out].sort();
 }
 const SOURCED = sourcedLibs();
+/* 命令层的可执行实现（阶段 5 起是唯一实现）：19 份 awk 是参照，留在
+   tests/fixtures/backends 供对拍，不再随包发布 —— 所以包里没带 bin/keylens 的 zip
+   装上就是一个跑不动的命令层，装机脚本现在会直接 abort。这里在**做包的时候**就拦掉，
+   不等它装到手机上才红。 */
+const BIN_REL = 'bin/keylens';
+const BIN_SRC = path.join(repo, 'rust', 'target', 'aarch64-linux-android', 'release', 'keylens');
+const REQUIRED_ALL = [...REQUIRED, BIN_REL];
 const MISSING_FROM_LIST = SOURCED.filter(s => !REQUIRED.includes(s));
 
-const execy = (rel) => /\.sh$|\.awk$|update-binary$|updater-script$/.test(rel) || rel.endsWith('/');
+const execy = (rel) => /\.sh$|\.awk$|update-binary$|updater-script$/.test(rel) || /(^|\/)keylens$/.test(rel) || rel.endsWith('/');
 function walk(dir, base, out) {
   for (const name of fs.readdirSync(dir).sort()) {
     if (name === '.DS_Store' || name.endsWith('.tmp')) continue;
@@ -156,7 +163,7 @@ if (CHECK) {
   const bs = list.filter(e => e.name.includes('\\'));
   chk('没有反斜杠条目名（busybox unzip 会摊平目录树）', bs.length === 0, bs.slice(0, 3).map(e => e.name).join(' '));
   const names = new Set(list.map(e => e.name));
-  const want = [...new Set([...REQUIRED, ...SOURCED])];
+  const want = [...new Set([...REQUIRED_ALL, ...SOURCED])];   // 含 bin/keylens：没二进制的包装上就是死的
   const miss = want.filter(r => !names.has(r));
   chk('装机必需文件齐（手抄表 + 从代码推出的 source 清单）', miss.length === 0, miss.join(' '));
   chk('代码里 source 的库文件都在必需表里（漏一项就会在这里现形）',
@@ -169,7 +176,16 @@ if (CHECK) {
   process.exit(bad ? 1 : 0);
 }
 
+if (!fs.existsSync(BIN_SRC)) {
+  console.error(`✗ 找不到命令层二进制 ${path.relative(repo, BIN_SRC)}
+  自阶段 5 起 awk 参照实现不随包发布：没有 bin/keylens 的包装上就跑不动（装机脚本会 abort）。
+  先交叉编译再打包：cargo build --release --target aarch64-linux-android --manifest-path rust/Cargo.toml`);
+  process.exit(1);
+}
 const entries = walk(MOD, '', []);
+/* bin/ 不在 module/ 里（产物目录），手动补两条条目：目录 + 文件，权限走 execy() */
+entries.push({ rel: 'bin/', dir: true });
+entries.push({ rel: BIN_REL, file: BIN_SRC, size: fs.statSync(BIN_SRC).size });
 const buf = build(entries);
 fs.writeFileSync(TARGET, buf);
 console.log(`已打包 ${path.relative(repo, TARGET)}：${(buf.length / 1024).toFixed(1)} KB，${entries.length} 个条目（正斜杠 + unix 权限）`);

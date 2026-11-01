@@ -177,6 +177,11 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
    让 module 代码在设备上找不到参照时会往 `../tests/fixtures` 看——那是"参照只装在仓库里"的
    必然代价，不是死代码。
 6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
+   - **发布流程这次多了一步**：`node tools/build-zip.mjs` 现在**要求** `rust/target/aarch64-linux-android/release/keylens`，
+     没有就拒绝打包（`--check` 也会报缺 `bin/keylens`）。本机没有 NDK，所以那个产物只能从 CI 的
+     `keylens-module-aarch64` artifact 里取 —— 或者干脆改用 CI 打的包。
+     以前在本地 `node tools/build-zip.mjs` 直接出一个能用的 zip 这条路已经不存在了：
+     awk 参照不再随包发布，没二进制的 zip 装上就是死的（装机脚本会 abort 并说清原因）。
 
 ## 6. 坑（都踩过）
 

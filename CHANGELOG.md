@@ -13,6 +13,9 @@
   （KernelSU 解包会把执行位抹成 644）；三个真机台子都加了"参照 awk 必须推进 A/B 树"的前置——
   缺了它 shell 那半边退化成「缺少 X.awk」，报出来的差异看着像实现写坏了。
   `sh tools/deploy-webui.sh --shell` 会把参照一起推上去。对拍网不变：`rust/parity.sh` 仍 175 项全绿。
+  **打包也跟着变**：`node tools/build-zip.mjs` 现在要 `rust/target/aarch64-linux-android/release/keylens`，
+  没有就拒绝出包（`--check` 同样报缺 `bin/keylens`）；那个产物本机没有 NDK 造不出来，得从 CI 的
+  `keylens-module-aarch64` artifact 取。
 
 #### 修复
 
