@@ -3288,3 +3288,85 @@ pub fn remove_apps(raw: &str) {
         }
     }
 }
+
+/// teesim-save 的字段校验（webui.sh 里那几个 valid_* 的等价）。
+
+/// valid_text：不含换行/制表/控制字符，且长度不超过 max。
+pub fn valid_text(v: &str, max: usize) -> bool {
+    if v.contains('\n') || v.contains('\t') || v.contains('\r') {
+        return false;
+    }
+    if v.chars().count() > max {
+        return false;
+    }
+    // [[:cntrl:]]：ASCII 控制字符（含 0x00-0x1F、0x7F）；换行/制表上面已挡
+    !v.chars().any(|c| c.is_control())
+}
+
+/// valid_bool：只认 true / false（小写）。
+pub fn valid_bool(v: &str) -> bool {
+    v == "true" || v == "false"
+}
+
+/// valid_keybox_name：字母数字与 . _ -，必须以 .xml 结尾，不许带路径。
+pub fn valid_keybox_name(v: &str) -> bool {
+    if v.is_empty() || v.contains('/') {
+        return false;
+    }
+    if !v.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
+        return false;
+    }
+    v.ends_with(".xml")
+}
+
+/// valid_os_version：空 / harvested / system_property 放行，否则 1–3 段十进制数字。
+pub fn valid_os_version(v: &str) -> bool {
+    if v.is_empty() || v == "harvested" || v == "system_property" {
+        return true;
+    }
+    let segs: Vec<&str> = v.split('.').collect();
+    (1..=3).contains(&segs.len())
+        && segs.iter().all(|s| !s.is_empty() && s.bytes().all(|c| c.is_ascii_digit()))
+}
+
+#[cfg(test)]
+mod teesim_valid_tests {
+    use super::*;
+
+    #[test]
+    fn text_rejects_control_and_overlong() {
+        assert!(valid_text("XQ-DQ72", 256));
+        assert!(!valid_text("a\tb", 256));
+        assert!(!valid_text("a\nb", 256));
+        assert!(!valid_text(&"x".repeat(257), 256));
+    }
+
+    #[test]
+    fn bool_is_strict_lowercase() {
+        assert!(valid_bool("true"));
+        assert!(valid_bool("false"));
+        assert!(!valid_bool("TRUE"));
+        assert!(!valid_bool("1"));
+    }
+
+    #[test]
+    fn keybox_name_rules() {
+        assert!(valid_keybox_name("keybox.xml"));
+        assert!(valid_keybox_name("my-kb_2.xml"));
+        assert!(!valid_keybox_name("../keybox.xml"));
+        assert!(!valid_keybox_name("keybox.txt"));
+        assert!(!valid_keybox_name(""));
+    }
+
+    #[test]
+    fn os_version_rules() {
+        assert!(valid_os_version(""));
+        assert!(valid_os_version("harvested"));
+        assert!(valid_os_version("15"));
+        assert!(valid_os_version("15.1"));
+        assert!(valid_os_version("15.1.2"));
+        assert!(!valid_os_version("15.1.2.3"));
+        assert!(!valid_os_version("15..1"));
+        assert!(!valid_os_version("v15"));
+    }
+}
