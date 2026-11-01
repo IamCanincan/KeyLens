@@ -3714,3 +3714,50 @@ pub fn teesim_save(payload: &str) {
     println_ok!("fields={}", n);
     println_ok!("profile={}", profile);
 }
+
+/// valid_inj_log_level：injector 认的日志级别。
+pub fn valid_inj_log_level(v: &str) -> bool {
+    matches!(v, "off" | "error" | "warn" | "warning" | "info" | "debug" | "trace")
+}
+
+/// valid_deny_list：逗号分隔的包名列表；返回归一化后的串（去掉空白与空段），不合法返回 None。
+pub fn valid_deny_list(raw: &str) -> Option<String> {
+    if raw.contains('\n') || raw.contains('\t') || raw.contains('\r') {
+        return None;
+    }
+    let mut out: Vec<String> = Vec::new();
+    for part in raw.split(',') {
+        let p: String = part.chars().filter(|c| *c != ' ' && *c != '\t').collect();
+        if p.is_empty() {
+            continue;
+        }
+        if !valid_pkg(&p) {
+            return None;
+        }
+        out.push(p);
+    }
+    Some(out.join(","))
+}
+
+#[cfg(test)]
+mod injector_valid_tests {
+    use super::*;
+
+    #[test]
+    fn log_level_whitelist() {
+        for v in ["off", "error", "warn", "warning", "info", "debug", "trace"] {
+            assert!(valid_inj_log_level(v), "{}", v);
+        }
+        for v in ["", "INFO", "verbose"] {
+            assert!(!valid_inj_log_level(v), "{}", v);
+        }
+    }
+
+    #[test]
+    fn deny_list_normalizes_and_validates() {
+        assert_eq!(valid_deny_list("com.a, com.b ,,com.c").as_deref(), Some("com.a,com.b,com.c"));
+        assert_eq!(valid_deny_list("").as_deref(), Some(""));
+        assert!(valid_deny_list("com.a, bad..pkg").is_none());
+        assert!(valid_deny_list("com.a\ncom.b").is_none());
+    }
+}
