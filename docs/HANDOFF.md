@@ -34,6 +34,7 @@
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
+| 装机核对（重启前） | **28 条全过**：新树无 awk、旧树 shell vs 新树二进制 17 条逐字节、预览不落盘 | 见 §3.5 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
 | 包内二进制握手 | contract == KL_COMMANDS | `sh tests/module-bin.sh` |
@@ -101,6 +102,22 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-ab.s
 adb push tests/device-preview.sh /data/adb/keylens-ab/device-preview.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-preview.sh"
 ```
+
+## 3.5 装包后、重启前该跑的那一条（真做过一次）
+
+```sh
+node tools/build-zip.mjs && node tools/build-zip.mjs --check      # 本机就能出包（musl 产物，不用 NDK）
+adb push KeyLens-v3.0.1.zip /data/local/tmp/
+adb shell "/data/adb/ksud module install /data/local/tmp/KeyLens-v3.0.1.zip"
+# KernelSU 把新包解到 /data/adb/modules_update/keylens，重启才落地 —— 下面这条就是趁这个窗口跑的：
+adb push tests/device-install-check.sh /data/local/tmp/
+adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
+```
+
+`tests/device-install-check.sh` 干的事：拿**正在跑的旧树（shell+awk）**当现场参照，逐条比对新装树（只有二进制）；
+核新包里确实没有 awk、安装期同步确实走的是二进制（没有 awk 可退，出了 132 就是证据）；
+以及在真实生产路径上验「预览只出一份信封、后端文件一字不变」——就是 5.3 那个发布级洞的回归。
+它只在"装完包、重启前"这一段时间里有意义，所以三条前置都做成 skip（CI 上不会假红）。
 
 ## 4. preview 的实现方式（重要）
 
