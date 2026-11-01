@@ -28,7 +28,7 @@
 
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
-| Rust 单测 | 71 项 | 见 §2 |
+| Rust 单测 | 72 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | **205 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条） | `sh rust/parity.sh` |
 | shell 测试套 | **48 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
@@ -148,7 +148,7 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 `post-fs-data.sh`、`uninstall.sh` 生产设备上与 HEAD 逐个 sha256 相同；`customize.sh` 装完不在模块目录里，
 `module.prop` 的 `description=` 本来就被每次同步重写），所以**不重装、直接换二进制**：
 
-- 生产 `/data/adb/modules/keylens/bin/keylens` → 644176 字节、sha256 `d03ef5ae…`，
+- 生产 `/data/adb/modules/keylens/bin/keylens` → 644176 字节、sha256 `d03ef5ae…`（19:57 为修 `module.prop` 权限漂移又换过一次：644648 字节、`c9f4049d…`），
   与仓库里 `rust/target/aarch64-unknown-linux-musl/release/keylens` 逐字节相同；
   被换下的那份留在 `/data/local/tmp/keylens.prodbak`（636712 字节），要回滚就是 `cp -a` 回去 + `chmod 755`。
 - 生产实测（同机交替、各 5 次取最快）：经界面入口 `env` **冷 204ms / 热 70ms**（上一轮同机 334ms）；
@@ -321,6 +321,8 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 - **`_x=$(run_sync …)` 会吞掉 `KL_COUNT`**：run_sync 是在子 shell 里更新的，主 shell 读到的一直是初值 0。真机台子第一次就这么写的，于是"两条分支的 count 相同"变成 `0 == 0` 的假绿（改成就地把输出重定向到文件才有读数）。凡是"函数返回值 + 副作用变量"的探针，都别用命令替换去接。
 - **锁接管判据看的是 cmdline，不是目录**：二进制判定持有者死活时比的是模块标记（默认取 module.prop 所在目录名）是否出现在 `/proc/<pid>/cmdline` 里。测试探针放在 `/data/local/tmp/` 下，cmdline 对不上标记，二进制会把"自己人"当陌生持有者直接接管——正对照当场哑掉。探针脚本的文件名要带模块目录名（生产里持有锁的本来就是 `/data/adb/modules/keylens/webui.sh` 这类路径）。
 - **`adb push` 批量推多个文件时，别拿"命令没报错"当"文件已更新"**：这一轮一批推送里有 `backend.sh` 没落地、退出码却是 0。推到真机的每一步都要在远端 `grep -c` 一遍新代码里才有的字面量（本轮是 `KL_USE_RUST`），只看 size/mtime 不够。
+- **台子只 eval shell 那份函数，就等于在给没在跑的实现盖章**：`tests/module-desc.sh` 从 `backend.sh` 里抽出 `set_module_desc` 验"改名后把原 mode 补回去"，一直绿；而命令层默认走 `bin/keylens`，Rust 的同名函数**只 write tmp + rename、没补 mode** —— 真机上 `module.prop` 于是跟着调用者的 umask 漂（实测漂成 666，是整棵模块目录里唯一世界可写的文件）。同一族还有一条：Rust 的 tmp 名不带 pid（`module.prop.tmp` 固定名），而 `ls module.prop.tmp.*` 那种残留判据压根看不见它。现在两边都钉：行为在 cargo 单测（`set_module_desc_keeps_mode_and_other_lines`，删掉补权限那行它当场红），形状在 `tests/module-desc.sh`。
+- **写"保住原权限"的测试，原权限要写得和这台机 umask 造出来的不一样**：第一版写死 644，而 WSL 的 umask 就是 022（`fs::write` 造出来也是 644）⇒ 把补权限那行删掉测试照样绿。现在先用一个 probe 文件探出"这里造出来是几"，再取一个与之不同的 mode 当原权限；探到 chmod 不生效的平台（drvfs/MSYS）就明说"没测到"并跳过，不许当通过。
 - **接管段的顺序就是功能正确性**：`webui.sh` 里「剥 `preview-` 前缀」和「二进制接管」的先后，决定预览是预览还是真写（本轮 §5.3 修的就是这个）。动这两段之前先跑 `sh tests/rust-dispatch.sh`，它的 6 条 preview 判据就是钉这个顺序的。
 - **影子根的落脚点不能只认 `temp_dir()`**：Android 上没有 `/tmp`。只认它时 TMPDIR 一坏，影子根建不出来、子进程什么都读不到，父进程照样打 `changed=0`，界面把"没有差异"当成无需确认**直接真写**。现在按 `TMPDIR → /data/local/tmp → temp_dir` 找落脚点，全建不出来退 2 交给 shell（`rust/parity.sh` 与 `tests/device-preview.sh` 各钉一条）。复现这种"建不出来"要把 `TMPDIR` 的父路径做成一个**普通文件**——指到一个不存在的目录会被 `create_dir_all` 顺手建出来，测不出失败。
 - **台子调了没定义的函数，mksh 只报一句 command not found、不置 fail**：`tests/device-preview.sh` 上一版就这么在 5 条断言没跑的情况下打了「全部通过」。现在它自带 `chk` 与断言计数，条数低于下限直接红。写台子时"末尾那句结论"必须来自计数器，不能来自"没看见 ✗"。

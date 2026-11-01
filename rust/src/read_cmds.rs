@@ -3096,9 +3096,32 @@ fn set_module_desc(prop: &std::path::Path, desc: &str) {
     if !done {
         out.push_str(&format!("description={}\n", desc));
     }
-    let tmp = prop.with_extension("prop.tmp");
-    if std::fs::write(&tmp, out.as_bytes()).is_ok() {
-        let _ = std::fs::rename(&tmp, prop);
+    // 改名会把 tmp 的权限带过去（继承调用者的 umask），而 module.prop 的原 mode 是安装脚本定的。
+    // 所以**改名之前**把原 mode 记下来，改名之后再补回去 —— 与 lib/backend.sh 的同名函数同一口径
+    // （生产机上实测漂过：整棵模块目录里唯一世界可写的文件就是 module.prop）。
+    #[cfg(unix)]
+    let keep_mode = std::fs::metadata(prop).ok().map(|md| {
+        use std::os::unix::fs::PermissionsExt;
+        md.permissions().mode() & 0o7777
+    });
+    #[cfg(not(unix))]
+    let keep_mode: Option<u32> = None;
+    let tmp = match prop.file_name() {
+        Some(n) => prop.with_file_name(format!("{}.tmp.{}", n.to_string_lossy(), std::process::id())),
+        None => return,
+    };
+    if std::fs::write(&tmp, out.as_bytes()).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    if std::fs::rename(&tmp, prop).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return;
+    }
+    #[cfg(unix)]
+    if let Some(m) = keep_mode {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(prop, std::fs::Permissions::from_mode(m));
     }
 }
 
@@ -5884,5 +5907,54 @@ pub fn icons(arg: &str) {
             let _ = std::fs::set_permissions(format!("{}/.dbmtime", dir), std::fs::Permissions::from_mode(0o644));
             let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
         }
+    }
+}
+
+#[cfg(all(test, unix))]
+mod tests {
+    use super::*;
+    use std::os::unix::fs::PermissionsExt;
+
+    /// `set_module_desc` 只换 description 一行，并且必须保住 module.prop 原有的 mode：
+    /// 落盘走"写 tmp + 改名"，改名会把 tmp 的权限（继承调用者 umask）带过去，
+    /// 不补回去，装机那份 644 就会一路漂（生产机上实测漂成过 666）。
+    /// ⚠ "原 mode"不能随手写死：它得和"这个平台 fs::write 造出来的权限"不一样才测得出差别。
+    /// 第一版写死 644，而 WSL 的 umask 就是 022（造出来也是 644），把补权限那行删掉测试照样绿。
+    #[test]
+    fn set_module_desc_keeps_mode_and_other_lines() {
+        let dir = std::env::temp_dir().join(format!("kl-desc-{}", std::process::id()));
+        std::fs::create_dir_all(&dir).unwrap();
+        let prop = dir.join("module.prop");
+
+        // 先探一下这里 fs::write 落出来的权限，取一个与它不同的 mode 当"要保住的原权限"
+        let probe = dir.join("probe");
+        std::fs::write(&probe, "x").unwrap();
+        let created = std::fs::metadata(&probe).unwrap().permissions().mode() & 0o7777;
+        std::fs::remove_file(&probe).ok();
+        let keep: u32 = (created ^ 0o020) & 0o777;
+
+        std::fs::write(&prop, "id=keylens\nname=KeyLens\nversion=v1\ndescription=旧描述\n").unwrap();
+        std::fs::set_permissions(&prop, std::fs::Permissions::from_mode(keep)).unwrap();
+        let got = std::fs::metadata(&prop).unwrap().permissions().mode() & 0o7777;
+        if got != keep {
+            // chmod 敌不过这个文件系统（drvfs/MSYS 那类）：明说"没测到"，不许当成通过
+            eprintln!("  --  跳过权限断言：{} 上 chmod 不生效（想要 {:o}，实得 {:o}）",
+                dir.display(), keep, got);
+            std::fs::remove_dir_all(&dir).ok();
+            return;
+        }
+
+        set_module_desc(&prop, "✅ [OMK | 应用: 12 | 更新: 12:34]");
+
+        let text = std::fs::read_to_string(&prop).unwrap();
+        assert_eq!(text, "id=keylens\nname=KeyLens\nversion=v1\ndescription=✅ [OMK | 应用: 12 | 更新: 12:34]\n");
+        let after = std::fs::metadata(&prop).unwrap().permissions().mode() & 0o7777;
+        assert_eq!(after, keep, "module.prop 的权限被改名带跑了（{:o} → {:o}）", keep, after);
+        let leftovers: Vec<String> = std::fs::read_dir(&dir).unwrap().flatten()
+            .map(|e| e.file_name().to_string_lossy().into_owned())
+            .filter(|n| n != "module.prop")
+            .collect();
+        assert!(leftovers.is_empty(), "留下了 tmp 文件：{:?}", leftovers);
+        std::fs::remove_dir_all(&dir).ok();
     }
 }
