@@ -8,9 +8,11 @@
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
 - 未推送提交：写作时 129 个，每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
-- 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01-1415.bundle`（到 `4c39bb8`，全历史，3.4 MB，
-  已 `git bundle verify`）；更早那份 `keylens-unpushed-2026-11-01.bundle`（只到交接文档那次）留着没删
-  - 恢复：`git fetch <bundle> main:recovered`
+- 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
+  `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
+  ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
+  本机现有几份（`…-1500.bundle` 最新、`…-1415`、`…-1305`、`…-2026-11-01.bundle` 最早那份），都没删，
+  用 `git bundle list-heads <文件>` 看各覆盖到哪个提交。
 - 网络现状：**github.com DNS 解析失败**；`static.rust-lang.org` / `baidu` 可达。所以 `rustup target add` 能用，`git push` 不能。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
@@ -224,6 +226,7 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 ## 8. 最近提交（倒序）
 
 ```
+c5eb978 修发布链自洽：build-zip 必须打进 bin/keylens，否则拒绝出包
 4c39bb8 阶段 5.4：awk 参照实现移出发布包，命令层实现只剩 bin/keylens
 21c04e6 文档：AWK-REMOVAL 第 1 步实测作废
 199ba6d 文档：HANDOFF 记下本轮三个提交与新的离线 bundle
