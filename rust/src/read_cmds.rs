@@ -5110,3 +5110,204 @@ pub fn env_cmd() {
     let _ = &mut seed_raw;
     let _ = &mut seed_src;
 }
+
+/// 已装第三方应用（排序去重，含去前缀与去 [N] 尾缀）。
+fn installed_pkgs() -> Vec<String> {
+    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
+        std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
+    };
+    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+        .filter(|o| !o.is_empty())
+        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .unwrap_or_default();
+    let mut v: Vec<String> = String::from_utf8_lossy(&out)
+        .lines()
+        .filter_map(|l| l.strip_prefix("package:").map(|s| {
+            let s = s.trim_end_matches('\r');
+            match s.rfind('[') {
+                Some(i) if s.ends_with(']') && s[i + 1..s.len() - 1].bytes().all(|c| c.is_ascii_digit()) => s[..i].to_string(),
+                _ => s.to_string(),
+            }
+        }))
+        .filter(|s| !s.is_empty())
+        .collect();
+    v.sort();
+    v.dedup();
+    v
+}
+
+fn read_lines(path: &std::path::Path) -> Vec<String> {
+    std::fs::read_to_string(path)
+        .map(|t| t.lines().map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default()
+}
+
+/// build_app_list：返回 (新名单行, KL_COUNT)；None = 读空保护触发（rc 1）。
+fn build_app_list(p: &Paths, b: &Backend, empty_ok: bool) -> (Option<Vec<String>>, usize) {
+    let inst = installed_pkgs();
+    let cur = cur_target_tokens(p, b);
+    let st_installed = b.dir.join(".kl_installed_last");
+    let st_ever = b.dir.join(".kl_ever");
+    let was = read_lines(&st_installed);
+    if inst.is_empty() && !was.is_empty() && !empty_ok {
+        return (None, 0);
+    }
+    // 首次安装种子
+    let mut seed: Vec<String> = Vec::new();
+    if !st_installed.exists() && cur.is_empty() {
+        seed = vec![
+            "com.android.vending".to_string(),
+            "com.google.android.gms".to_string(),
+            "com.google.android.gsf".to_string(),
+        ];
+    }
+    // OMK 首次接入沿用现有名单
+    let adopt = b.id == BackendId::Omk && !st_installed.exists() && !cur.is_empty();
+    let inst_set: std::collections::HashSet<&String> = inst.iter().collect();
+    let was_set: std::collections::HashSet<&String> = was.iter().collect();
+    let gone: std::collections::HashSet<String> = was
+        .iter()
+        .filter(|p| !inst_set.contains(p))
+        .map(|s| s.clone())
+        .collect();
+    let base_of = |t: &str| entry_base(t, b.id);
+    let mut keep: Vec<String> = Vec::new();
+    let mut keepbase: std::collections::HashSet<String> = std::collections::HashSet::new();
+    for tok in &cur {
+        let base = base_of(tok);
+        if !base.is_empty() && gone.contains(&base) {
+            continue;
+        }
+        keep.push(tok.clone());
+        if !base.is_empty() {
+            keepbase.insert(base);
+        }
+    }
+    if !adopt {
+        for p in &inst {
+            if !was_set.contains(p) && !keepbase.contains(p) {
+                keep.push(p.clone());
+                keepbase.insert(p.clone());
+            }
+        }
+    }
+    for p in &seed {
+        if !keepbase.contains(p) {
+            keep.push(p.clone());
+            keepbase.insert(p.clone());
+        }
+    }
+    keep.sort();
+    keep.dedup();
+    let n = keep.len();
+    // 状态文件（NEW）先写，等目标文件写成功后再提交
+    let installed_new = b.dir.join(".kl_installed_last.new");
+    let ever_new = b.dir.join(".kl_ever.new");
+    let _ = std::fs::write(&installed_new, inst.join("\n") + "\n");
+    let mut ever: Vec<String> = read_lines(&st_ever);
+    ever.extend(keep.iter().map(|t| base_of(t)).filter(|s| !s.is_empty()));
+    ever.sort();
+    ever.dedup();
+    let _ = std::fs::write(&ever_new, ever.join("\n") + "\n");
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&installed_new, std::fs::Permissions::from_mode(0o600));
+        let _ = std::fs::set_permissions(&ever_new, std::fs::Permissions::from_mode(0o600));
+    }
+    (Some(keep), n)
+}
+
+/// 提交状态文件（目标文件写成功后调用）。
+fn commit_state(p: &Paths, b: &Backend) {
+    let _ = p;
+    let inst = b.dir.join(".kl_installed_last");
+    let ever = b.dir.join(".kl_ever");
+    let _ = std::fs::rename(b.dir.join(".kl_installed_last.new"), &inst);
+    let _ = std::fs::rename(b.dir.join(".kl_ever.new"), &ever);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        for f in [&inst, &ever] {
+            let _ = std::fs::set_permissions(f, std::fs::Permissions::from_mode(0o600));
+        }
+    }
+    for legacy in [".kl_written_last", ".kl_written.new", ".kl_removed", ".kl_removed.new"] {
+        let _ = std::fs::remove_file(b.dir.join(legacy));
+    }
+}
+
+/// 把新名单写回目标文件：0=写了 1=内容一致 2=失败。
+fn write_synced_list(b: &Backend, list: &[String]) -> i32 {
+    let old = std::fs::read(&b.target).unwrap_or_default();
+    let body = if list.is_empty() { String::new() } else { list.join("\n") + "\n" };
+    let new: Option<Vec<u8>> = match b.id {
+        BackendId::Tricky => Some(body.into_bytes()),
+        BackendId::Teesim => teesim_apps_rewrite(&old, list),
+        BackendId::Omk => omk_scoop_rewrite(&old, list),
+    };
+    let Some(new) = new else { return 2 };
+    if new == old {
+        return 1;
+    }
+    let tmp = b.dir.join(format!(".kl_tmp.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &new).is_ok() && std::fs::rename(&tmp, &b.target).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return 2;
+    }
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        let mode = if b.id == BackendId::Tricky { 0o644 } else { 0o600 };
+        let _ = std::fs::set_permissions(&b.target, std::fs::Permissions::from_mode(mode));
+    }
+    0
+}
+
+/// cmd_sync：立即同步一次（用户显式触发，允许把"读到空"当真清空）。
+pub fn sync() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let (list, count) = build_app_list(&p, &b, true);
+    let rc = match list {
+        None => {
+            // 读空且不允许清空：按失败处理，不提交基线
+            let bname = match b.id { BackendId::Teesim => "TEE Simulator", BackendId::Omk => "OhMyKeymint", BackendId::Tricky => "Tricky Store" };
+            let hm = std::process::Command::new("date").arg("+%H:%M").output().ok()
+                .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string()).unwrap_or_default();
+            set_module_desc(&p.module_prop, &format!("⚠️ [{} | 写入失败 | 更新: {}]", bname, hm));
+            2
+        }
+        Some(rows) => {
+            if rows.is_empty() {
+                2
+            } else {
+                let rc = write_synced_list(&b, &rows);
+                if rc == 0 || rc == 1 {
+                    commit_state(&p, &b);
+                }
+                rc
+            }
+        }
+    };
+    crate::lock::release(&lockdir);
+    if rc != 2 {
+        refresh_desc(&p, &b, count);
+    }
+    println_ok!("rc={}", rc);
+    println_ok!("count={}", count);
+}

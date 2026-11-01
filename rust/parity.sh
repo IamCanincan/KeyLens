@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="icons sync"
+LEFT="icons"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1485,9 +1485,65 @@ sed -n '/^cmd_env() {/,/^}/p' module/webui.sh >> "$T/env.sh"
 echo 'cmd_env' >> "$T/env.sh"
 chk 'env：逐行一致' "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" sh "$T/env.sh" 2>&1 | sed -e 's|/data/resource-cache/|/data/resource-cache/|')" "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" KEYLENS_ROOT="$ENV_ROOT" "$B" env 2>&1)"
 
+echo "── sync（快照差分 + 写回 + 状态提交）──"
+mk_sy_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo '. module/backends/tricky.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'log_warn() { :; }'
+    echo 'update_module_desc() { :; }'
+    echo 'mark_module_failed() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "PROP_FILE='$1/data/adb/modules/keylens/module.prop'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/sy.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/sy.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/sy.sh"
+  sed -n '/^cmd_sync() {/,/^}/p' module/lib/write.sh >> "$T/sy.sh"
+  echo 'detect_backend "$MODDIR"; cmd_sync' >> "$T/sy.sh"
+}
+SYS="$T/sy-root-s"; SYR="$T/sy-root-r"
+mk_sy_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store" "$1/data/adb/modules/keylens"
+  printf 'com.a\n' > "$1/data/adb/tricky_store/target.txt"
+  printf 'com.a\n' > "$1/data/adb/tricky_store/.kl_installed_last"
+  printf 'id=keylens\nversion=v3.0.1\ndescription=ok\n' > "$1/data/adb/modules/keylens/module.prop"
+}
+mk_sy_fixture "$SYS"; mk_sy_fixture "$SYR"
+mk_sy_harness "$SYS"
+mkdir -p "$T/sybin"
+cat > "$T/sybin/cmd" <<'EOF'
+#!/bin/sh
+printf 'package:com.a\npackage:com.b\n'
+EOF
+chmod +x "$T/sybin/cmd"
+chk 'sync：新装应用被加入（输出）' "$(PATH="$T/sybin:$PATH" sh "$T/sy.sh" 2>/dev/null | grep -E '^(rc|count)=')" "$(PATH="$T/sybin:$PATH" KEYLENS_ROOT="$SYR" "$B" sync 2>&1)"
+chk 'sync：两侧目标文件逐字节一致' "$(cat "$SYS/data/adb/tricky_store/target.txt")" "$(cat "$SYR/data/adb/tricky_store/target.txt")"
+chk 'sync：基线已提交' "$(cat "$SYR/data/adb/tricky_store/.kl_installed_last")" "$(cat "$SYS/data/adb/tricky_store/.kl_installed_last")"
+chk 'sync：ever 已更新' "$(cat "$SYR/data/adb/tricky_store/.kl_ever" 2>/dev/null)" "$(cat "$SYS/data/adb/tricky_store/.kl_ever" 2>/dev/null)"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 121 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 121），疑似用例被删"; fail=1
+if [ "$oks" -lt 125 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 125），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
