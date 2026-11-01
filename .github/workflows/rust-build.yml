@@ -51,6 +51,10 @@ jobs:
       - name: Behaviour parity（逐命令与 shell 版逐字节对拍）
         run: sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 
+      - name: Golden snapshots（删 awk 之后的参照物）
+        run: |
+          KEYLENS_BIN=rust/target/x86_64-unknown-linux-musl/release/keylens sh tests/rust-golden.sh
+
       - name: Module binary handshake（包内二进制 contract == KL_COMMANDS）
         run: |
           # ARM 产物在 x86 runner 上跑不了，这里用同源码的 musl 产物做契约检查：
