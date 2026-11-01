@@ -4166,3 +4166,187 @@ pub fn omk_save_injector(payload: &str) {
     println_ok!("saved={}", saved);
     println_ok!("fields={}", n);
 }
+
+/// config.toml 的日志级别（比 injector 少一个 warning 别名）。
+pub fn valid_log_level(v: &str) -> bool {
+    matches!(v, "off" | "error" | "warn" | "info" | "debug" | "trace")
+}
+
+/// OMK 的日期写法：YYYY-MM-DD（月 01-12、日 01-31）。
+pub fn valid_omk_date(v: &str) -> bool {
+    let p: Vec<&str> = v.split('-').collect();
+    if p.len() != 3 || p[0].len() != 4 || !p[0].bytes().all(|c| c.is_ascii_digit()) { return false; }
+    let m_ok = p[1].len() == 2 && p[1].bytes().all(|c| c.is_ascii_digit())
+        && (1..=12).contains(&p[1].parse::<u32>().unwrap_or(0));
+    let d_ok = p[2].len() == 2 && p[2].bytes().all(|c| c.is_ascii_digit())
+        && (1..=31).contains(&p[2].parse::<u32>().unwrap_or(0));
+    m_ok && d_ok
+}
+
+/// auto / latest / 日期。
+pub fn valid_omk_patch(v: &str) -> bool {
+    matches!(v, "auto" | "latest") || valid_omk_date(v)
+}
+
+/// boot 还接受十进制 u32（最多 10 位）。
+pub fn valid_omk_boot(v: &str) -> bool {
+    if valid_omk_patch(v) { return true; }
+    !v.is_empty() && v.len() <= 10 && v.bytes().all(|c| c.is_ascii_digit())
+}
+
+/// auto / random / 64 位十六进制。
+pub fn valid_omk_hash(v: &str) -> bool {
+    if matches!(v, "auto" | "random") { return true; }
+    v.len() == 64 && v.bytes().all(|c| c.is_ascii_hexdigit())
+}
+
+/// auto 或 0–99（MMmmss 编码值）。
+pub fn valid_omk_os_version(v: &str) -> bool {
+    if v == "auto" { return true; }
+    !v.is_empty() && v.len() <= 2 && v.bytes().all(|c| c.is_ascii_digit())
+        && v.parse::<u32>().map(|n| n <= 99).unwrap_or(false)
+}
+
+/// 只动四个补丁字段 → hot，否则 restart。
+pub fn omk_apply_scope(keys: &[String]) -> &'static str {
+    if keys.is_empty() { return "restart"; }
+    let only_patch = keys.iter().all(|k| matches!(
+        k.as_str(),
+        "trust_security_patch" | "trust_os_patchlevel" | "trust_vendor_patchlevel" | "trust_boot_patchlevel"
+    ));
+    if only_patch { "hot" } else { "restart" }
+}
+
+/// vb_key / vb_hash 由 random 切到 auto → 需要重启整机。
+pub fn omk_reboot_needed(ovbk: &str, nvbk: &str, ovbh: &str, nvbh: &str) -> bool {
+    (ovbk == "random" && nvbk == "auto") || (ovbh == "random" && nvbh == "auto")
+}
+
+/// cmd_omk_save_config：写 config.toml（含 apply_scope / apply_note）。
+pub fn omk_save_config(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Omk {
+        eprintln!("当前后端不是 OhMyKeymint");
+        std::process::exit(1);
+    }
+    let cfg = p.omk_dir.join("config.toml");
+    if !cfg.is_file() {
+        eprintln!("config.toml 不存在");
+        std::process::exit(1);
+    }
+    let fields = match crate::payload::parse(payload) {
+        Ok(v) => v,
+        Err(msg) => { eprintln!("{}", msg); std::process::exit(1); }
+    };
+    let old_text = std::fs::read_to_string(&cfg).unwrap_or_default();
+    let read_scalar = |key: &str| -> String {
+        for line in old_text.lines() {
+            let t = line.trim_start();
+            let (body, _) = split_comment(t);
+            let Some((k, v)) = body.split_once('=') else { continue };
+            if k.trim() == key {
+                let val = v.trim().trim_matches('"').to_string();
+                return val;
+            }
+        }
+        String::new()
+    };
+    let old_vbk = read_scalar("vb_key");
+    let old_vbh = read_scalar("vb_hash");
+    let mut new_vbk = String::new();
+    let mut new_vbh = String::new();
+    let mut keys: Vec<String> = Vec::new();
+    for (k, v) in &fields {
+        match k.as_str() {
+            "cfg_log_level" => {
+                if !valid_log_level(v) { eprintln!("日志级别不合法"); std::process::exit(1); }
+            }
+            "cfg_force_skip_biometric" | "cfg_retire_stale_keys" | "trust_verified_boot" | "trust_device_locked" | "dev_override_telephony" => {
+                if !valid_bool(v) { eprintln!("字段只能是 true/false：{}", k); std::process::exit(1); }
+            }
+            "trust_os_version" => {
+                if !valid_omk_os_version(v) { eprintln!("OS 版本只能是 auto 或 0–99（MMmmss 编码值）"); std::process::exit(1); }
+            }
+            "trust_security_patch" | "trust_os_patchlevel" | "trust_vendor_patchlevel" => {
+                if !valid_omk_patch(v) { eprintln!("{} 只能是 auto / latest / YYYY-MM-DD", k); std::process::exit(1); }
+            }
+            "trust_boot_patchlevel" => {
+                if !valid_omk_boot(v) { eprintln!("trust_boot_patchlevel 只能是 auto / latest / YYYY-MM-DD / 十进制数"); std::process::exit(1); }
+            }
+            "trust_vb_key" | "trust_vb_hash" => {
+                if !valid_omk_hash(v) { eprintln!("{} 只能是 auto / random / 64 位十六进制", k); std::process::exit(1); }
+            }
+            "dev_brand" | "dev_device" | "dev_product" | "dev_manufacturer" | "dev_model" | "dev_serial" | "dev_imei" | "dev_imei2" | "dev_meid" => {
+                if !valid_text(v, 128) { eprintln!("字段不合法：{}", k); std::process::exit(1); }
+            }
+            other => { eprintln!("未知字段：{}", other); std::process::exit(1); }
+        }
+        keys.push(k.clone());
+        if k == "trust_vb_key" { new_vbk = v.clone(); }
+        if k == "trust_vb_hash" { new_vbh = v.clone(); }
+    }
+    let n = fields.len();
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let (new_text, status) = omk_set(&old_text, &fields, "config");
+    let mut saved = 0;
+    match status {
+        "ok" => {
+            if new_text != old_text {
+                let bak = b.dir.join("config.toml.bak");
+                let _ = std::fs::copy(&cfg, &bak);
+                let tmp = b.dir.join(format!(".config.toml.keylens.{}", std::process::id()));
+                let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+                    && std::fs::rename(&tmp, &cfg).is_ok();
+                if !ok {
+                    let _ = std::fs::remove_file(&tmp);
+                    crate::lock::release(&lockdir);
+                    eprintln!("写入失败：{}", cfg.display());
+                    std::process::exit(1);
+                }
+                saved = 1;
+            }
+        }
+        "same" => {}
+        _ => {
+            crate::lock::release(&lockdir);
+            eprintln!("配置定位失败：{}", cfg.display());
+            std::process::exit(1);
+        }
+    }
+    crate::lock::release(&lockdir);
+    let mut scope = "restart";
+    let mut note = String::new();
+    if saved == 1 {
+        scope = omk_apply_scope(&keys);
+        if scope == "hot" {
+            note = "四个补丁字段整组热生效，没有重启 keymint".to_string();
+        } else {
+            let _ = std::fs::File::create(p.omk_state_dir.join("restart.keymint"));
+            note = "已请求重启 keymint".to_string();
+        }
+        if omk_reboot_needed(&old_vbk, &new_vbk, &old_vbh, &new_vbh) {
+            scope = "reboot";
+            note = "vb_key/vb_hash 从 random 切到 auto：要重启【整机】才读得到启动元数据，重启 keymint 不够".to_string();
+        }
+        log_line(&p, &format!("🧩 WebUI 更新 OMK config.toml（{} 项，生效代价 {}）", n, scope));
+    }
+    println_ok!("saved={}", saved);
+    println_ok!("fields={}", n);
+    println_ok!("apply_scope={}", scope);
+    if !note.is_empty() {
+        println_ok!("apply_note={}", note);
+    }
+}

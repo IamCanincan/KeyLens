@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info omk-save-config sync"
+LEFT="env icons backend-info sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1336,9 +1336,59 @@ chk 'omk-save-injector：输出' "$(sh "$T/oi.sh" "$PLOI" 2>&1)" "$(KEYLENS_ROOT
 chk 'omk-save-injector：两侧 injector 逐字节一致' "$(cat "$OIS/data/misc/keystore/omk/injector.toml")" "$(cat "$OIR/data/misc/keystore/omk/injector.toml")"
 chk 'omk-save-injector：备份已生成' "$([ -f "$OIR/data/adb/omk/injector.toml.bak" ] && echo yes)" "yes"
 
+echo "── omk-save-config（复用同一 TOML 引擎 + apply_scope）──"
+mk_oc_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/omk.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/oc.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/oc.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/oc.sh"
+  for fn in parse_payload valid_log_level valid_bool valid_omk_os_version valid_omk_patch valid_omk_boot valid_omk_hash valid_text valid_omk_date omk_apply_scope omk_reboot_needed; do
+    sed -n "/^$fn() {/,/^}/p" module/webui.sh >> "$T/oc.sh"
+  done
+  sed -n '/^cmd_omk_save_config() {/,/^}/p' module/lib/write.sh >> "$T/oc.sh"
+  sed -n '/^omk_restart() {/,/^}/p' module/webui.sh >> "$T/oc.sh"
+  echo 'detect_backend "$MODDIR"; cmd_omk_save_config "$1"' >> "$T/oc.sh"
+}
+OCS="$T/oc-root-s"; OCR="$T/oc-root-r"
+mk_oc_fixture() {
+  mkdir -p "$1/data/adb/modules/oh_my_keymint" "$1/data/misc/keystore/omk" "$1/data/adb/omk"
+  printf '[main]\nlog_level = "info"\n\n[trust]\nsecurity_patch = "2026-09-01"\nos_patchlevel = "auto"\nvb_key = "random"\nvb_hash = "random"\n' > "$1/data/misc/keystore/omk/config.toml"
+}
+mk_oc_fixture "$OCS"; mk_oc_fixture "$OCR"
+mk_oc_harness "$OCS"
+PLOC=$(printf 'trust_security_patch=%s\ntrust_os_patchlevel=%s' \
+  "$(printf '2026-10-01' | base64 | tr -d '\n')" \
+  "$(printf 'latest' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'omk-save-config：只动补丁字段（hot）' "$(sh "$T/oc.sh" "$PLOC" 2>&1)" "$(KEYLENS_ROOT="$OCR" "$B" omk-save-config "$PLOC" 2>&1)"
+chk 'omk-save-config：两侧 config 逐字节一致' "$(cat "$OCS/data/misc/keystore/omk/config.toml")" "$(cat "$OCR/data/misc/keystore/omk/config.toml")"
+PLOC2=$(printf 'trust_vb_key=%s' "$(printf 'auto' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'omk-save-config：vb_key random→auto（需要重启整机）' "$(sh "$T/oc.sh" "$PLOC2" 2>&1)" "$(KEYLENS_ROOT="$OCR" "$B" omk-save-config "$PLOC2" 2>&1)"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 116 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 116），疑似用例被删"; fail=1
+if [ "$oks" -lt 119 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 119），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
