@@ -3081,3 +3081,69 @@ fn set_module_desc(prop: &std::path::Path, desc: &str) {
         let _ = std::fs::rename(&tmp, prop);
     }
 }
+
+/// cmd_restore_apps：逗号分隔的批量加入（全部校验后只写一次）。
+pub fn restore_apps(raw: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    if raw.is_empty() {
+        eprintln!("参数为空");
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    let mut req: Vec<String> = Vec::new();
+    for pkg in raw.split(',') {
+        if pkg.is_empty() { continue; }
+        if !is_target_entry(pkg, b.id) {
+            eprintln!("不是合法的目标条目：{}", pkg);
+            std::process::exit(1);
+        }
+        req.push(pkg.to_string());
+    }
+    if req.is_empty() {
+        eprintln!("没有有效包名");
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let rc = add_target_apps(&p, &b, &req);
+    crate::lock::release(&lockdir);
+    match rc {
+        0 => {
+            let n = cur_target_tokens(&p, &b).len();
+            if n > 0 {
+                refresh_desc(&p, &b, n);
+            }
+            log_line(&p, &format!("🧩 WebUI 批量加入目标名单（{} 个包名）", req.len()));
+            println_ok!("restored=1");
+        }
+        1 => println_ok!("restored=0"),
+        _ => {
+            eprintln!("写入失败：{}", b.target.display());
+            std::process::exit(1);
+        }
+    }
+}
+
+/// 刷新模块描述里的条数（restore-app / restore-apps 共用）。
+pub fn refresh_desc(p: &Paths, b: &Backend, n: usize) {
+    let bname = match b.id {
+        BackendId::Teesim => "TEE Simulator",
+        BackendId::Omk => "OhMyKeymint",
+        BackendId::Tricky => "Tricky Store",
+    };
+    let hm = std::process::Command::new("date").arg("+%H:%M").output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default();
+    set_module_desc(&p.module_prop, &format!("✅ [{} | 应用: {} | 更新: {}]", bname, n, hm));
+}

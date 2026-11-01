@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config restore-apps remove-apps sync"
+LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config remove-apps sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1139,6 +1139,51 @@ chk 'restore-app：目标文件逐字节一致' "$(cat "$RAS/data/adb/tricky_sto
 chk 'restore-app：ever 名单一致' "$(cat "$RAS/data/adb/tricky_store/.kl_ever" 2>/dev/null)" "$(cat "$RAR/data/adb/tricky_store/.kl_ever" 2>/dev/null)"
 chk 'restore-app：已在名单（restored=0）' "$(sh "$T/ra.sh" 'com.a?' 2>&1)" "$(KEYLENS_ROOT="$RAR" "$B" restore-app 'com.a?' 2>&1)"
 chk 'restore-app：非法条目' "$(sh "$T/ra.sh" 'bad..pkg' 2>&1)" "$(KEYLENS_ROOT="$RAR" "$B" restore-app 'bad..pkg' 2>&1)"
+
+echo "── restore-apps（批量，一次落盘）──"
+mk_ras_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "PROP_FILE='$1/data/adb/modules/keylens/module.prop'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/ras.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/ras.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/ras.sh"
+  sed -n '/^cmd_restore_apps() {/,/^}/p' module/lib/write.sh >> "$T/ras.sh"
+  echo 'detect_backend "$MODDIR"; cmd_restore_apps "$1"' >> "$T/ras.sh"
+}
+RASS="$T/ras-root-s"; RASR="$T/ras-root-r"
+mk_ras_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store" "$1/data/adb/modules/keylens"
+  printf 'com.a\n' > "$1/data/adb/tricky_store/target.txt"
+  printf 'id=keylens\nversion=v3.0.1\ndescription=ok\n' > "$1/data/adb/modules/keylens/module.prop"
+}
+mk_ras_fixture "$RASS"; mk_ras_fixture "$RASR"
+mk_ras_harness "$RASS"
+chk 'restore-apps：批量输出' "$(sh "$T/ras.sh" 'com.b,com.c' 2>&1)" "$(KEYLENS_ROOT="$RASR" "$B" restore-apps 'com.b,com.c' 2>&1)"
+chk 'restore-apps：目标文件逐字节一致' "$(cat "$RASS/data/adb/tricky_store/target.txt")" "$(cat "$RASR/data/adb/tricky_store/target.txt")"
+chk 'restore-apps：全都已在名单（restored=0）' "$(sh "$T/ras.sh" 'com.a' 2>&1)" "$(KEYLENS_ROOT="$RASR" "$B" restore-apps 'com.a' 2>&1)"
+chk 'restore-apps：参数为空' "$(sh "$T/ras.sh" '' 2>&1)" "$(KEYLENS_ROOT="$RASR" "$B" restore-apps '' 2>&1)"
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
