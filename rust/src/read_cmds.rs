@@ -787,7 +787,9 @@ pub fn teesim_profiles() {
     // profiles 对象的一层：深 1 处 `"名字" : { … }`
     let mut entries: Vec<(String, Vec<u8>)> = Vec::new();
     let mut j = 1usize;
-    let mut depth = 0i32;
+    // 注：参照 awk 里也有一个 depth 计数器，加了从来不读（顶层判定靠的是
+    // "命中就把整块跳过去"，见 teesim_profiles.awk 的 j = e + 1），所以这里不搬。
+    // 夹具里的 profiles.strong.limits.max_apps 诱饵钉住这件事（rust/parity.sh）。
     let mut instr = false;
     let mut esc = false;
     while j < obj.len() {
@@ -830,11 +832,6 @@ pub fn teesim_profiles() {
             }
             j = k + 1;
             continue;
-        }
-        if c == b'{' || c == b'[' {
-            depth += 1;
-        } else if c == b'}' || c == b']' {
-            depth -= 1;
         }
         j += 1;
     }
@@ -1398,7 +1395,9 @@ fn tricky_patch_set_rewrite(text: &str, scope: &str, pairs: &[(String, String)])
         v
     };
     let nl = lines.len();
-    let is_blank = |s: &str| s.chars().all(|c| c == ' ' || c == '\t');
+    // 注：shell 参照 tricky_patch_set.awk 的第 4/5 步会"回缩跳过段尾空行与注释行"，
+    // 这里没有同形代码 —— 夹具补上那个形状后两侧逐字节仍相同（rust/parity.sh 的
+    // save-patch 组，含两条防空转断言），所以不需要；别再顺手加一个没人用的 is_blank。
     let mut secl: Vec<usize> = Vec::new();
     let mut secn: Vec<String> = Vec::new();
     for (i, line) in lines.iter().enumerate() {
@@ -2925,7 +2924,7 @@ fn is_target_entry(t: &str, id: BackendId) -> bool {
 }
 
 /// 目标文件的当前条目（按后端解析）。
-fn cur_target_tokens(p: &Paths, b: &Backend) -> Vec<String> {
+fn cur_target_tokens(b: &Backend) -> Vec<String> {
     if !b.target.is_file() {
         return Vec::new();
     }
@@ -2961,9 +2960,9 @@ fn ever_add_list(dir: &std::path::Path, bases: &[String]) {
 }
 
 /// add_target_apps（backend.sh:152）：0=加入了 1=本来就在 2=失败。
-pub fn add_target_apps(p: &Paths, b: &Backend, req: &[String]) -> i32 {
+pub fn add_target_apps(b: &Backend, req: &[String]) -> i32 {
     if !b.target.is_file() { return 2; }
-    let cur = cur_target_tokens(p, b);
+    let cur = cur_target_tokens(b);
     let new = new_target_entries(&cur, req, b.id);
     if new.is_empty() { return 1; }
     let mut combo: Vec<String> = cur.clone();
@@ -3031,12 +3030,12 @@ pub fn restore_app(pkg: &str) {
         eprintln!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
-    let rc = add_target_apps(&p, &b, &[pkg.to_string()]);
+    let rc = add_target_apps(&b, &[pkg.to_string()]);
     crate::lock::release(&lockdir);
     match rc {
         0 => {
             // 顺手刷新模块描述里的条数（管理器里不用等下一轮同步）
-            let n = cur_target_tokens(&p, &b).len();
+            let n = cur_target_tokens(&b).len();
             if n > 0 {
                 let bname = match b.id {
                     BackendId::Teesim => "TEE Simulator",
@@ -3116,11 +3115,11 @@ pub fn restore_apps(raw: &str) {
         eprintln!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
-    let rc = add_target_apps(&p, &b, &req);
+    let rc = add_target_apps(&b, &req);
     crate::lock::release(&lockdir);
     match rc {
         0 => {
-            let n = cur_target_tokens(&p, &b).len();
+            let n = cur_target_tokens(&b).len();
             if n > 0 {
                 refresh_desc(&p, &b, n);
             }
@@ -3150,9 +3149,9 @@ pub fn refresh_desc(p: &Paths, b: &Backend, n: usize) {
 
 /// remove_target_apps（backend.sh:248）：0=移出了 1=本来都不在 2=失败 3=会清空名单。
 /// 返回 (rc, 实际移出的条目（按原顺序去重）)。
-pub fn remove_target_apps(p: &Paths, b: &Backend, req: &[String]) -> (i32, Vec<String>) {
+pub fn remove_target_apps(b: &Backend, req: &[String]) -> (i32, Vec<String>) {
     if !b.target.is_file() { return (2, Vec::new()); }
-    let cur = cur_target_tokens(p, b);
+    let cur = cur_target_tokens(b);
     let mut req_sorted: Vec<String> = req.to_vec();
     req_sorted.sort();
     req_sorted.dedup();
@@ -3263,8 +3262,8 @@ pub fn remove_apps(raw: &str) {
         eprintln!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
-    let (rc, removed) = remove_target_apps(&p, &b, &req);
-    let after = cur_target_tokens(&p, &b).len();
+    let (rc, removed) = remove_target_apps(&b, &req);
+    let after = cur_target_tokens(&b).len();
     crate::lock::release(&lockdir);
     match rc {
         0 => {
@@ -3979,7 +3978,7 @@ pub fn omk_set(text: &str, pairs: &[(String, String)], target: &str) -> (String,
     let mut seen_sec: std::collections::HashSet<String> = std::collections::HashSet::new();
     seen_sec.insert(String::new());
     let mut sec = String::new();
-    let mut flush_missing = |out: &mut String, sec: &str, handled: &mut std::collections::HashSet<(String, String)>| {
+    let flush_missing = |out: &mut String, sec: &str, handled: &mut std::collections::HashSet<(String, String)>| {
         for (s, k, v, ty) in &items {
             if s != sec {
                 continue;
@@ -4056,7 +4055,7 @@ pub fn omk_set(text: &str, pairs: &[(String, String)], target: &str) -> (String,
     }
     flush_missing(&mut out, &sec, &mut handled);
     // 文件里没有的段：末尾新建
-    for (s, k, v, ty) in &items {
+    for (s, ..) in &items {
         if seen_sec.contains(s) {
             continue;
         }
@@ -4979,7 +4978,7 @@ pub fn backend_info() {
         }
     }
     kv("module_version", &ver);
-    let n = cur_target_tokens(&p, &b).len();
+    let n = cur_target_tokens(&b).len();
     kv("target_file", &b.target.to_string_lossy());
     kv("target_entries", &n.to_string());
     let kb = std::path::PathBuf::from(&keybox);
@@ -5052,7 +5051,6 @@ fn module_dir(root: &Root) -> String {
 }
 pub fn env_cmd() {
     let root = Root::from_env();
-    let p = Paths::new(&root);
     let moddir = module_dir(&root);
     let cache = std::env::var("KL_ENV_CACHE")
         .map(std::path::PathBuf::from)
@@ -5265,9 +5263,9 @@ fn read_lines(path: &std::path::Path) -> Vec<String> {
 }
 
 /// build_app_list：返回 (新名单行, KL_COUNT)；None = 读空保护触发（rc 1）。
-fn build_app_list(p: &Paths, b: &Backend, empty_ok: bool) -> (Option<Vec<String>>, usize) {
+fn build_app_list(b: &Backend, empty_ok: bool) -> (Option<Vec<String>>, usize) {
     let inst = installed_pkgs();
-    let cur = cur_target_tokens(p, b);
+    let cur = cur_target_tokens(b);
     let st_installed = b.dir.join(".kl_installed_last");
     let st_ever = b.dir.join(".kl_ever");
     let was = read_lines(&st_installed);
@@ -5408,7 +5406,7 @@ pub fn sync() {
         eprintln!("守护进程正在写入，请几秒后再试");
         std::process::exit(1);
     }
-    let (list, count) = build_app_list(&p, &b, true);
+    let (list, count) = build_app_list(&b, true);
     let rc = match list {
         None => {
             // 读空且不允许清空：按失败处理，不提交基线
