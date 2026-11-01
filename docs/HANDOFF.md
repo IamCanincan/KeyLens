@@ -159,9 +159,12 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - `env` 冷跑与热跑逐字节相同；`status`/`doctor` 照旧（11 项无 bad 无 warn）；
   `config.toml` 与 `injector.toml` 的 sha256 跑前跑后相同（env 是只读命令）。
 - 发布包重打：`KeyLens-v3.0.1.zip` 711.2 KB / 34 条目（比上一版 +5 KB，就是二进制长了 7.5 KB 再扣掉压缩）。
-- **推不动**：`curl -m 8` 走代理与直连都是 000（超时）。7 个提交留在本地，离线包
-  `../keylens-unpushed-2026-11-01-1849.bundle`（37 KB，`git bundle verify` 通过，
-  前置 ref = `origin/main` 的 `036778b`，含 HEAD `66449de`）。命令与判据见 §0。
+- **已推上去（19:02）**：`036778b..2aedde5` 共 8 个提交进 `main`。代理一开就通，
+  此前 `curl -m 8` 走代理与直连都是 000（超时）—— 网络这一关的判据用 `curl -x …/meta` 的 http_code，
+  别拿"代理软件开着"当"端口在听"（18:53 那次 `git push` 明确报 `connect to 127.0.0.1 port 7890 … Connection refused`）。
+- **CI 第一次跑到这两条新闸**：`Build CI Module` **Run 76** 与 `Rust CLI` **Run 6** 都落在 `2aedde5` 上、
+  全绿（一次推 8 个提交只各起一轮，GitHub 按最新提交合并触发）。
+  `rust/parity.sh` 末尾那条 `oks < 205` 的下限闸就是"新节真的跑了"的证据：作业绿 ⇒ CI 上至少数到 205 项 chk。
 
 ## 4. preview 的实现方式（重要）
 
