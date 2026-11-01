@@ -44,3 +44,26 @@
 需要桩：`getprop`、`resetprop`、`awk`、`base64`、`id`、`inotifywait`/`inotifyd`、`dumpsys`、`wm`、
 `settings`、`stat`（真实即可）、`ls -t`（真实）。建议用 `PATH` 前置一个桩目录，
 再用 `KEYLENS_ROOT` 夹具控制缓存路径，两侧跑同一套桩。
+
+## 已核实的输出尾部顺序（`webui.sh:954-964`）
+
+```
+kv sdk <sdk>
+kv build_type <build_type>
+kv vbstate <vbstate>
+[ -n "$sb_dp_v" ] && kv sys_statusbar_dp <dp>   # 只有算出来才打这一行
+```
+
+也就是说完整顺序是：
+`sys_dark`、`sys_dark_src`、（有 FRRO 时）`sys_frro`、`sys_frro_src`、`sys_seed_raw`、`sys_seed_src`、
+`resetprop`、`awk`、`base64`、`inotify_mode`、`inotify_cmd`、`root_user`、`webui_sh`、
+`device`、`brand`、`android`、`sdk`、`build_type`、`vbstate`、（可选）`sys_statusbar_dp`。
+
+## 缓存写入
+
+- 仅当 `cache_dirty=1` 且缓存目录存在且可写时落盘；
+- 内容是一个整串（`v1<TAB>ckey` 起，其后每行 `键<TAB>值`，共 18 行：resetprop/awk/base64/base64_cmd/
+  ino_mode/ino_cmd/root_user/webui_sh/device/brand/android/sdk/build_type/vbstate/statusbar_dp/
+  frro_path/frro_mtime/frro_b64）；
+- 写临时文件 → `chmod 600` → `mv` 覆盖；注意 **`statusbar_dp` 为 0 时写空串**（与输出时"不打这一行"不同）。
+
