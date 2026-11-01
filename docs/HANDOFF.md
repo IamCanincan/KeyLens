@@ -142,6 +142,27 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - 回滚件都在：设备上 `/data/adb/keylens-install-bak`（旧树 4.8 MB / 172 文件 / 19 份 awk）、
   本机 `KeyLens-v3.0.1.zip.bak-2026-11-01`。
 
+### 3.7 热替换二进制复核过（2026-11-01 18:46，env 探针缓存那一版）
+
+命令层这一版只动 `bin/keylens`（`webui.sh`、`lib/*.sh`、`service.sh`、`action.sh`、
+`post-fs-data.sh`、`uninstall.sh` 生产设备上与 HEAD 逐个 sha256 相同；`customize.sh` 装完不在模块目录里，
+`module.prop` 的 `description=` 本来就被每次同步重写），所以**不重装、直接换二进制**：
+
+- 生产 `/data/adb/modules/keylens/bin/keylens` → 644176 字节、sha256 `d03ef5ae…`，
+  与仓库里 `rust/target/aarch64-unknown-linux-musl/release/keylens` 逐字节相同；
+  被换下的那份留在 `/data/local/tmp/keylens.prodbak`（636712 字节），要回滚就是 `cp -a` 回去 + `chmod 755`。
+- 生产实测（同机交替、各 5 次取最快）：经界面入口 `env` **冷 204ms / 热 70ms**（上一轮同机 334ms）；
+  直调二进制热跑 69ms，壳层地板 `sh -c true` 23ms ⇒ 剩下的是"每次现取"那两条（`dumpsys uimode` + `settings get`）。
+- `/data/adb/keylens.env.cache` 由新二进制重写：19 行、`-rw-------`、首行
+  `v1<TAB>v1|/data/adb/modules/keylens|v3.0.1|1230768000`（模块目录与版本、build.prop mtime 都在键里）。
+  旧文件那行的模块目录是 `/data/adb/keylens-ab` —— 键不同 ⇒ A/B 台子与生产各用各的缓存，不会互喂。
+- `env` 冷跑与热跑逐字节相同；`status`/`doctor` 照旧（11 项无 bad 无 warn）；
+  `config.toml` 与 `injector.toml` 的 sha256 跑前跑后相同（env 是只读命令）。
+- 发布包重打：`KeyLens-v3.0.1.zip` 711.2 KB / 34 条目（比上一版 +5 KB，就是二进制长了 7.5 KB 再扣掉压缩）。
+- **推不动**：`curl -m 8` 走代理与直连都是 000（超时）。7 个提交留在本地，离线包
+  `../keylens-unpushed-2026-11-01-1849.bundle`（37 KB，`git bundle verify` 通过，
+  前置 ref = `origin/main` 的 `036778b`，含 HEAD `66449de`）。命令与判据见 §0。
+
 ## 4. preview 的实现方式（重要）
 
 `preview-<cmd>` 白名单 9 条：`teesim-save`、`teesim-save-overrides`、`teesim-profile-new`、`teesim-profile-del`、
