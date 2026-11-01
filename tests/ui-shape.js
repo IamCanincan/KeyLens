@@ -722,7 +722,7 @@ chk('界面留了一条三家都成立的宽判据（<Key）', /v\.indexOf\('<Ke
 const shCode = sh.split('\n').filter(l => !/^\s*#/.test(l)).join('\n');
 chk('webui.sh 代码里没有 AndroidAttestation 字面量', !/AndroidAttestation/.test(shCode));
 chk('cmd_keybox_save 调用 keybox_check.awk', /keybox_check\.awk/.test(sh));
-chk('awk 校验脚本在仓库里', fs.existsSync(SRC('module/backends/keybox_check.awk')));
+chk('awk 校验脚本在仓库里', fs.existsSync(SRC('tests/fixtures/backends/keybox_check.awk')));
 /* 假数据里的哈希必须是完整 sha256：截半的哈希是最像真话的假数据 */
 const kbHash = (bridge.match(/keybox_hash=([0-9a-f]+)/) || [])[1] || '';
 chk('假数据的 keybox_hash 是完整 64 位十六进制', /^[0-9a-f]{64}$/.test(kbHash), kbHash.length + ' 位');
@@ -766,7 +766,7 @@ chk('OMK 配置页有运行状态卡（两个 daemon + keystore2 注入）',
 chk('命令层上报 OMK daemon/注入状态',
   /kv omk_keymint_daemon/.test(sh) && /kv omk_injector_daemon/.test(sh)
   && /kv omk_keystore_pid/.test(sh) && /kv omk_keystore_injected/.test(sh));
-chk('omk_info 解析 1.2.5 的 [main].backend', /omk_backend=/.test(read('module/backends/omk_info.awk')));
+chk('omk_info 解析 1.2.5 的 [main].backend', /omk_backend=/.test(read('tests/fixtures/backends/omk_info.awk')));
 
 /* 生效代价：命令层算出来的 apply_note 必须真的被界面读走（kv-shape 那道闸看不见
    局部 parseKV 结果上的读取，所以这里单独钉一条） */

@@ -31,6 +31,7 @@
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
 | 包内二进制握手 | contract == KL_COMMANDS | `sh tests/module-bin.sh` |
+| 发布包内容 | `module/backends/` 只剩 `tricky.sh`；19 份 awk 参照在 `tests/fixtures/backends/`；包里没带 `bin/keylens` 时安装中止 | `ls module/backends`、`module/customize.sh` |
 | 体积 | x86_64 glibc 639 KB / x86_64 静态 musl 712 KB / aarch64 musl 620 KB | `stat -c %s` |
 
 已实现的关键设施：
@@ -81,6 +82,8 @@ adb shell "id"               # 应为 uid=0
 # 在 Git Bash 里先 export MSYS2_ARG_CONV_EXCL='*'，否则 adb 的远端路径会被 MSYS 改写
 # 把工作树和二进制推到临时目录（不动已安装的模块）
 adb push module/. /data/adb/keylens-ab/
+# 参照 awk 不在模块里了（阶段 5 起在 tests/fixtures/backends），三个真机台子都要它当 shell 参照
+for f in tests/fixtures/backends/*.awk; do adb push "$f" "/data/adb/keylens-ab/backends/$(basename "$f")"; done   # 或 sh tools/deploy-webui.sh --shell
 adb push rust/target/aarch64-unknown-linux-musl/release/keylens /data/adb/keylens-ab/bin/keylens   # 注意路径写全
 adb shell "chmod 755 /data/adb/keylens-ab/bin/keylens"
 adb push tests/device-ab.sh /data/adb/keylens-ab/device-ab.sh
@@ -153,13 +156,17 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
    这也是 §5 剩下那条"首次真实 CI 运行"必须尽快跑的原因之一。
    闸：`tests/rust-dispatch.sh`（preview 接管/回落 6 条 + 普通命令退码透传的正对照）、
    `tests/device-preview.sh`（三条腿逐字节 + 信封恰好一份 + 三条腿都不许落盘）。
-4. **删 `module/backends/*.awk`**（19 份）——**剩下唯一的大件，且不可拆**。
-   `docs/AWK-REMOVAL.md` 里"先删零调用者的"那一步 2026-11-01 实测**个数为 0**：19 份全都还有 shell 引用。
-   所以这一步等于同时做三件事：回退路径改成「必须有二进制，否则明确报错」→ 删 awk →
-   退役 `rust/parity.sh` 的 shell 侧（现在 175 项里绝大多数靠抽 shell 函数当参照，删了 awk 就没了参照，
-   只剩 10 条黄金快照 + Rust 单测 + 真机 38 条）。这是产品决定，不是施工细节：
-   要不要为了少 19 份文件，把"两套实现互相对拍"这张网换掉。上一轮试过一把删，真机 A/B 全挂后 `git revert`（`1838f8b`）。
-5. 清理无用的 shell 函数（删 awk 之后 `grep` 确认零引用再删）。
+4. ~~删 `module/backends/*.awk`~~ **本轮做完（阶段 5 收尾）**：19 份 awk 用 `git mv` 移进
+   `tests/fixtures/backends/`，**发布包里不再有 awk**，模块目录只剩 `tricky.sh`。
+   - `lib/backend.sh` 的 `use_backend` 现在解析 `KL_PATCH_DIR`：模块目录里有 awk（老安装，或真机台子把参照推进去）→ 用它；
+     否则找仓库布局的 `../tests/fixtures/backends`；两个都没有就照旧报「缺少 X.awk」。
+     所有调用点都是 `${KL_PATCH%/*}` 派生的，所以运行时代码只改了这两行。
+   - `customize.sh`：包里没带 `bin/keylens` 就 **abort**（没有二进制 = 没有命令层），带着就点名 `chmod 0755`。
+   - 真机台子的前提：`backends/*.awk` 要在 A/B 树里，否则 shell 那半边退化成「缺少 X.awk」，
+     报出来的差异看着像实现坏了（实测 device-ab 17 条里红 6 条）。三个真机台子都加了这条前置，
+     `sh tools/deploy-webui.sh --shell` 会把参照一起推进 `backends/`。
+   - 对拍网**没有**被拆掉：`rust/parity.sh` 175 项照旧全绿（它抽的 shell 参照还在仓库里，只是不在发布包了）。
+5. 清理无用的 shell 函数（`grep` 确认零引用再删）——**还没做**，下一步就是这个。
 6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
 
 ## 6. 坑（都踩过）

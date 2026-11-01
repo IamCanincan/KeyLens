@@ -1553,7 +1553,7 @@ function omkReload() {
 
 /* keybox：三家都有，路径与指纹来自 backend-info */
 /* 三家的 keybox 判据互不相同，共用一句校验必然在其中一家是错的
-   （判据与出处见 module/backends/keybox_check.awk 抬头）。 */
+   （判据与出处见 tests/fixtures/backends/keybox_check.awk 抬头）。 */
 const KEYBOX_HINT = {
   tricky: 'Tricky 的解析器要求根元素是 <AndroidAttestation>，里面要有 <Keybox>、<Key algorithm>、<PrivateKey> 与 <CertificateChain>。解析不过会留用上一份，不会覆盖。',
   teesim: 'TEESim 运行时不看根元素名，只认 <Key algorithm="rsa"|"ecdsa">（小写）、<PrivateKey> 与至少两张 <Certificate>；读不懂就跳过这个 profile，名单里的应用退回真硬件。',

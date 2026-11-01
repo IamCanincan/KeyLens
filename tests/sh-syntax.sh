@@ -69,9 +69,13 @@ fi
 # ── 变异 ②：写命令的实现文件根本没进包也要能被上面那条清单抓到 ──────────
 # （build-zip 的必需文件清单已从代码推导，这里只保证 glob 本身不是空的）
 libn=$(ls module/lib/*.sh 2>/dev/null | wc -l | tr -d ' ')
-backn=$(ls module/backends/* 2>/dev/null | wc -l | tr -d ' ')
+# 机上目录与参照目录分开数：awk 参照实现自阶段 5 起在 tests/fixtures/backends，
+# module/backends 只剩会被 source 的 .sh。任一边空了都要当场红（清单空 = 闸没牙）。
+backn=$(ls module/backends/*.sh 2>/dev/null | wc -l | tr -d ' ')
+awkn=$(ls tests/fixtures/backends/*.awk 2>/dev/null | wc -l | tr -d ' ')
 [ "$libn" -ge 5 ] && ok "lib/ 下 $libn 个 .sh 全在 glob 里" || bad "lib/ 只扫到 $libn 个 .sh（<5）"
-[ "$backn" -ge 3 ] && ok "backends/ 下 $backn 个文件全在 glob 里" || bad "backends/ 只扫到 $backn 个（<3）"
+[ "$backn" -ge 1 ] && ok "module/backends 下 $backn 个 .sh 在 glob 里" || bad "module/backends 只扫到 $backn 个 .sh（<1）"
+[ "$awkn" -ge 19 ] && ok "tests/fixtures/backends 下 $awkn 份 awk 参照实现都在" || bad "参照 awk 只剩 $awkn 份（<19）—— 对拍的 shell 侧没得抽了"
 
 rm -rf "$W"
 [ "$fail" = 0 ] && echo '全部通过' || echo '有断言失败'

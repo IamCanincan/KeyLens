@@ -30,7 +30,7 @@
   （按后端分叉的判据照抄现有 `keybox_check.awk` 规则）。四条 `*-save` 命令迁移。
 - **阶段 4（daemon/同步）**：`service.sh` 的 inotifyd 循环与 `run_sync` 逻辑迁入
   Rust（保留 shell 入口启停）；`doctor` / `backups` / `backup-restore` / `diff 预览`。
-- **阶段 5（切换与退役）**：`webui.sh` 改为转发；awk 文件删除；30+ 套 shell 测试
+- **阶段 5（切换与退役）已做完**（2026-11-01）：`webui.sh` 转发 + `run_sync` 优先二进制 + `preview-*` 交给影子根；awk 参照实现移进 `tests/fixtures/backends`（发布包不再有 awk，缺 `bin/keylens` 时安装中止）；30+ 套 shell 测试
   改为对拍测试（同一套输入，输出必须一致）；补体积/启动时间实测。
 
 ## 验收

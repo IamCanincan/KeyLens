@@ -179,7 +179,7 @@ mk_targets_harness() { # <root>
     echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
     echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
   } > "$T/h3.sh"
   sed -n '/^cmd_targets() {/,/^}/p' module/webui.sh >> "$T/h3.sh"
   cat >> "$T/h3.sh" <<'EOF'
@@ -258,7 +258,7 @@ mk_meta_harness() { # <root>
     echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
     echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
   } > "$T/h4.sh"
   sed -n '/^cmd_targets() {/,/^}/p' module/webui.sh >> "$T/h4.sh"
   sed -n '/^cmd_target_meta() {/,/^}/p' module/webui.sh >> "$T/h4.sh"
@@ -311,7 +311,7 @@ ex_harness() { # <root>
     echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
     echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
   } > "$T/h5.sh"
   sed -n '/^cmd_excluded() {/,/^}/p' module/webui.sh >> "$T/h5.sh"
   cat >> "$T/h5.sh" <<'EOF'
@@ -428,7 +428,7 @@ EOF
 sed -n '/^cmd_tricky_patches() {/,/^}/p' module/webui.sh >> "$T/tp.sh"
 cat >> "$T/tp.sh" <<'EOF'
 TSTORE_DIR="$1"
-KL_PATCH="$PWD/module/backends/tricky.awk"
+KL_PATCH="$PWD/tests/fixtures/backends/tricky.awk"
 detect_backend "$MODDIR"
 cmd_tricky_patches
 EOF
@@ -448,7 +448,7 @@ cat > "$T/to.sh" <<'EOF'
 . module/lib/tools.sh
 . module/lib/backend.sh
 MODDIR="$PWD/module"
-KL_PATCH="$PWD/module/backends/teesim.awk"
+KL_PATCH="$PWD/tests/fixtures/backends/teesim.awk"
 TEESIM_DIR="$1"
 TEESIM_CONFIG="$1/config.json"
 TEESIM_MODULE="$1/../modules/teesim"
@@ -471,7 +471,7 @@ cat > "$T/tsp.sh" <<'EOF'
 . module/lib/tools.sh
 . module/lib/backend.sh
 MODDIR="$PWD/module"
-KL_PATCH="$PWD/module/backends/teesim.awk"
+KL_PATCH="$PWD/tests/fixtures/backends/teesim.awk"
 TEESIM_DIR="$1"
 TEESIM_CONFIG="$1/config.json"
 TEESIM_MODULE="$1/../modules/teesim"
@@ -546,7 +546,7 @@ mk_mode_harness() { # <root>
     echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -681,7 +681,7 @@ mk_drop_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'commit_backend_file() { cp "$1" "$1.pre"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -738,7 +738,7 @@ mk_save_harness() { # <root>
     echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
     echo 'commit_backend_file() { cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -788,7 +788,7 @@ mk_ov_harness() { # <root>
     echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
     echo 'commit_backend_file() { cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/teesim.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -841,7 +841,7 @@ mk_kb_harness() { # <root>
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo 'backend_name() { case "$KL_BACKEND" in teesim) echo "TEE Simulator";; omk) echo "OhMyKeymint";; *) echo "Tricky Store";; esac; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -886,7 +886,7 @@ mk_br_harness() { # <root>
     echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -933,7 +933,7 @@ mk_pd_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/teesim.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -977,7 +977,7 @@ mk_pn_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/teesim.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1061,7 +1061,7 @@ mk_doc_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'backend_name() { case "$KL_BACKEND" in teesim) echo "TEE Simulator";; omk) echo "OhMyKeymint";; *) echo "Tricky Store";; esac; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1114,7 +1114,7 @@ mk_ra_harness() { # <root>
     echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1161,7 +1161,7 @@ mk_ras_harness() { # <root>
     echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1206,7 +1206,7 @@ mk_rm_harness() { # <root>
     echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1257,7 +1257,7 @@ mk_ts_harness() { # <root>
     echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/teesim.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1307,7 +1307,7 @@ mk_oi_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/omk.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/omk.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1357,7 +1357,7 @@ mk_oc_harness() { # <root>
     echo 'log_info() { :; }'
     echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/omk.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/omk.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1407,7 +1407,7 @@ mk_bi_harness() { # <root>
     echo 'tsv() { local IFS="$(printf "\t")"; printf "%s\n" "$*"; }'
     echo 'log_info() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
@@ -1510,7 +1510,7 @@ mk_sy_harness() { # <root>
     echo 'update_module_desc() { :; }'
     echo 'mark_module_failed() { :; }'
     echo "MODDIR='$PWD/module'"
-    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "KL_PATCH='$PWD/tests/fixtures/backends/tricky.awk'"
     echo "TSTORE_DIR='$1/data/adb/tricky_store'"
     echo "TEESIM_DIR='$1/data/adb/teesim'"
     echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"

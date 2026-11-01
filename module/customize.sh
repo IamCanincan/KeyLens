@@ -65,7 +65,20 @@ chmod 0755 "$MODPATH/action.sh" 2>/dev/null
 # 而 webui.sh 由管理器按 sh 调用、backends/*.sh 会被 source、部署脚本还要核对模式 ——
 # 不点名就会留一堆 644，看着能跑，一核对就红（2026-10-30 装 KeyLens 时实测如此）。
 chmod 0755 "$MODPATH/webui.sh" "$MODPATH/uninstall.sh" 2>/dev/null
-chmod 0755 "$MODPATH"/backends/*.sh "$MODPATH"/backends/*.awk 2>/dev/null
+chmod 0755 "$MODPATH"/backends/*.sh 2>/dev/null
+# 命令层的可执行实现只剩 bin/keylens：那十九份 awk 是**参照实现**，移进了
+# tests/fixtures/backends 供对拍用，不再随模块发布（见 lib/backend.sh 的 KL_PATCH_DIR）。
+# 所以包里没带二进制 = 装上就是一套跑不动的命令层，与其留着半残的模块等用户报"不生效"，
+# 不如在这里当场收口。KernelSU 解包会把执行位抹成 644，这里点名补一次。
+if [ -f "$MODPATH/bin/keylens" ]; then
+    chmod 0755 "$MODPATH/bin/keylens" 2>/dev/null
+    ui_print "  ⚙️ 命令层：bin/keylens（$(wc -c < "$MODPATH/bin/keylens" 2>/dev/null) 字节）"
+else
+    ui_print "  ✗ 这个包里没带 bin/keylens，安装中止。"
+    ui_print "    自本版起 awk 参照实现不再随模块发布：没有二进制就没有命令层。"
+    ui_print "    请用 CI 的 keylens-module-aarch64 产物打包，或重新下载完整包。"
+    abort "缺少 bin/keylens"
+fi
 
 # ---------- [4/5] 清理旧版残留 ----------
 ui_print " "

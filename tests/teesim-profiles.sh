@@ -45,7 +45,7 @@ cat > "$dir/config.json" <<'EOF'
 }
 EOF
 
-out=$($AWK -f module/backends/teesim_profiles.awk "$dir/config.json" 2>&1); rc=$?
+out=$($AWK -f tests/fixtures/backends/teesim_profiles.awk "$dir/config.json" 2>&1); rc=$?
 chk "退出码" 0 "$rc"
 lines=$(printf '%s\n' "$out" | grep -c . )
 chk "三个 profile" 3 "$lines"
@@ -58,7 +58,7 @@ chk "空 profile：mode 缺省 patch、apps=0、keybox 照读" "empty${TAB}k2.xm
 
 # 反例：没有 profiles 就不能瞎输出
 printf '{ "version": 1 }\n' > "$dir/no.json"
-out2=$($AWK -f module/backends/teesim_profiles.awk "$dir/no.json" 2>&1); rc2=$?
+out2=$($AWK -f tests/fixtures/backends/teesim_profiles.awk "$dir/no.json" 2>&1); rc2=$?
 chk "没有 profiles → 退码 1" 1 "$rc2"
 chk "没有 profiles → 不输出行" "0" "$(printf '%s' "$out2" | grep -c . )"
 
@@ -67,7 +67,7 @@ cat > "$dir/nest.json" <<'EOF'
 { "profiles": { "default": { "keybox": "a.xml",
     "apps": ["one", "two", "three", "four"] } } }
 EOF
-chk "apps 四条时数到 4" "4" "$($AWK -f module/backends/teesim_profiles.awk "$dir/nest.json" | cut -f4)"
+chk "apps 四条时数到 4" "4" "$($AWK -f tests/fixtures/backends/teesim_profiles.awk "$dir/nest.json" | cut -f4)"
 
 rm -rf "$dir"
 [ "$fail" = 0 ] && echo "全部通过" || echo "有断言失败"

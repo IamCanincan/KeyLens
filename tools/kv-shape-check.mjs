@@ -8,7 +8,7 @@
  * 所以这次不靠眼看：从三个真源里各抽一份键名，交叉比。
  *
  *   1) module/webui.sh  →  `kv <key>` 字面量（命令层实际输出的键）
- *   2) module/backends/*.awk + webui/src/*.js 的假数据  →  对照样本
+ *   2) tests/fixtures/backends/*.awk + webui/src/*.js 的假数据  →  对照样本
  *   3) webui/src/screens.js →  从 parseKV 对象上读出来的 `.key`
  *
  * 跑法：node tools/kv-shape-check.mjs   （有偏差就退 1）
@@ -39,14 +39,23 @@ const emitted = new Set();
 for (const m of SH.matchAll(/(?<![\w$-])kv\s+([A-Za-z_][A-Za-z0-9_]*)\s/g)) emitted.add(m[1]);
 /* awk 脚本里 print "键=值" 的形状：'key=" ... 以及 printf "%s=...". 这里只认
    明确的 `print "k="` / `printf "k=` 字面量，避免把 shell 变量名当键。 */
-const awkDir = path.join(repo, 'module', 'backends');
+/* awk 参照实现现在在 tests/fixtures/backends（不随模块发布，见 lib/backend.sh 的 KL_PATCH_DIR）。
+   这份来料是白名单的原料，目录被挪走时会**静默变空**（下面所有比对照跑、照样绿），
+   所以扫到几份要当场核出来。 */
+const awkDir = path.join(repo, 'tests', 'fixtures', 'backends');
 const awkKeys = new Set();
+let awkFiles = 0;
 if (fs.existsSync(awkDir)) {
   for (const f of fs.readdirSync(awkDir)) {
     if (!f.endsWith('.awk')) continue;
+    awkFiles++;
     const t = fs.readFileSync(path.join(awkDir, f), 'utf8');
     for (const m of t.matchAll(/(?:print|printf)\s*\(?\s*"([A-Za-z_][A-Za-z0-9_]*)=/g)) awkKeys.add(m[1]);
   }
+}
+if (awkFiles < 19) {
+  console.error(`✗   awk 参照实现只扫到 ${awkFiles} 份（要 ≥19，目录：${awkDir}）—— 这道闸的白名单来料空了，继续跑只会假绿`);
+  process.exit(1);
 }
 /* 上游文件的键也算命令层键：cmd_tee_status 之类的 case 分支按上游键名读，
    但对外输出的是 kv 的那个名字，所以 case 里的名字**不该**进白名单。 */

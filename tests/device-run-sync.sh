@@ -18,6 +18,12 @@ MODDIR=${MODDIR:-/data/adb/modules/keylens}
 [ -f "$MODDIR/webui.sh" ] || { echo "  skip 找不到 $MODDIR/webui.sh"; echo "全部通过"; exit 0; }
 [ -x "$MODDIR/bin/keylens" ] || { echo "  skip 没有 $MODDIR/bin/keylens"; echo "全部通过"; exit 0; }
 [ "$(id -u)" = "0" ] || { echo "  skip 需要 root"; echo "全部通过"; exit 0; }
+# 第 4 组要拿 shell+awk 那条分支跟二进制比结果；参照 awk 不在，那条分支只会报「缺少 X.awk」，
+# 比出来的差异与实现无关，只会把人引去查错地方。
+if ! ls "$MODDIR"/backends/*.awk >/dev/null 2>&1; then
+    echo "  ✗   设备上找不到参照 awk：$MODDIR/backends/*.awk（先 sh tools/deploy-webui.sh --shell 推上去）"
+    exit 1
+fi
 
 T=$(mktemp -d) || exit 1
 trap 'rm -rf "$T"' EXIT

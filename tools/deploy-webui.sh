@@ -43,7 +43,7 @@ cd "$ROOT" || fail "进不去仓库根"
 # ── 要推的文件清单（相对仓库根 → 设备上 mode）────────────────────────
 FILES=""
 add() { FILES="$FILES
-$1|$2"; }
+$1|$2|$3"; }
 want_webui=0; want_shell=0
 case "$GROUP" in
     webui) want_webui=1 ;;
@@ -55,6 +55,10 @@ if [ "$want_shell" = 1 ]; then
     add module/webui.sh "$MODE_SH"
     for f in module/lib/*.sh; do   [ -f "$f" ] && add "$f" "$MODE_SH"; done
     for f in module/backends/*; do [ -f "$f" ] && add "$f" "$MODE_SH"; done
+    # 参照 awk 不在模块里了（阶段 5 移进 tests/fixtures/backends），但真机那套 A/B 台子
+    # 要拿 shell 实现当参照，所以显式推进 backends/ —— lib/backend.sh 的 KL_PATCH_DIR
+    # 第一条分支就是"模块目录里有 awk 就用它"，A/B 树靠这个继续跑得通。
+    for f in tests/fixtures/backends/*.awk; do [ -f "$f" ] && add "$f" "$MODE_SH" "backends/$(basename "$f")"; done
 fi
 FILES=$(printf '%s\n' "$FILES" | grep -v '^$')
 [ -n "$FILES" ] || fail "这一组没有要推的文件（清单空 —— 宁可失败也不要推了个寂寞）"
@@ -92,9 +96,9 @@ n=0
 want_n=$(printf '%s\n' "$FILES" | grep -c .)
 # 清单走 fd 3，不占 stdin：adb 会读 stdin，靠"每条都记得加 </dev/null"是
 # 一个会漏的约定（实测加了那一处仍然只推成 1 个 —— 命令替换里那两处还在吃）。
-while IFS='|' read -r rel want <&3; do
+while IFS='|' read -r rel want relpath <&3; do
     [ -n "$rel" ] || continue
-    dest="$MODDIR/${rel#module/}"
+    dest="$MODDIR/${relpath:-${rel#module/}}"
     LOCAL=$(sha256sum "$rel" | cut -c1-64) || fail "本地算 sha 失败：$rel"
     # MSYS 会把 /data/... 改写成 D:\Git\data\... —— 这一条必须带这个变量
     MSYS2_ARG_CONV_EXCL='*' adb push "$rel" "$dest" >/dev/null 2>&1 || fail "adb push $rel 失败"

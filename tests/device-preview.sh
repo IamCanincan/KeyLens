@@ -24,6 +24,12 @@ MODDIR=${MODDIR:-/data/adb/modules/keylens}
 [ -f "$MODDIR/webui.sh" ] || { echo "  skip 找不到 $MODDIR/webui.sh"; echo "全部通过"; exit 0; }
 [ -x "$MODDIR/bin/keylens" ] || { echo "  skip 没有 $MODDIR/bin/keylens（用带二进制的发布包）"; echo "全部通过"; exit 0; }
 [ "$(id -u)" = "0" ] || { echo "  skip 需要 root"; echo "全部通过"; exit 0; }
+# 同 device-ab：参照 awk 不随模块发布，缺了它 shell 那半边会退化成「缺少 X.awk」，
+# 报出来的差异与实现无关。
+if ! ls "$MODDIR"/backends/*.awk >/dev/null 2>&1; then
+    echo "  ✗   设备上找不到参照 awk：$MODDIR/backends/*.awk（先 sh tools/deploy-webui.sh --shell 推上去）"
+    exit 1
+fi
 
 T=$(mktemp -d) || exit 1
 trap 'rm -rf "$T"' EXIT

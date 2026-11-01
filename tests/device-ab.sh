@@ -15,6 +15,14 @@ MODDIR=${MODDIR:-/data/adb/modules/keylens}
 [ -f "$MODDIR/webui.sh" ] || { echo "  skip 找不到 $MODDIR/webui.sh"; echo "全部通过"; exit 0; }
 [ -x "$MODDIR/bin/keylens" ] || { echo "  skip 没有 $MODDIR/bin/keylens（用带二进制的发布包）"; echo "全部通过"; exit 0; }
 [ "$(id -u)" = "0" ] || { echo "  skip 需要 root"; echo "全部通过"; exit 0; }
+# 参照 awk 自阶段 5 起不随模块发布（在 tests/fixtures/backends），A/B 的 shell 那半边靠它。
+# 实测少了它不是沉默通过，而是 17 条里 6 条红、差异看着像 Rust 实现写坏了（targets 整列空、
+# backend-info 的 target_entries=0…）。与其让人去查代码，不如开跑前一句说清缺什么。
+if ! ls "$MODDIR"/backends/*.awk >/dev/null 2>&1; then
+    echo "  ✗   设备上找不到参照 awk：$MODDIR/backends/*.awk"
+    echo "      推上去再来（sh tools/deploy-webui.sh --shell 会连参照一起推进 backends/）"
+    exit 1
+fi
 WITH_WRITE=0
 [ "${1:-}" = "--write" ] && WITH_WRITE=1
 

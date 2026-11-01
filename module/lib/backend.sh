@@ -6,7 +6,8 @@
 #   teesim -> /data/adb/teesim/config.json        仅替换 profiles.default.apps
 #   tricky -> /data/adb/tricky_store/target.txt   整体重写为纯包名列表
 #   omk    -> /data/misc/keystore/omk/injector.toml  仅替换 scoop 数组（config.toml 不碰）
-#   写入实现分别位于 backends/teesim.awk、backends/tricky.sh 与 backends/omk.awk
+#   写入实现：awk 那十九份是**参照实现**，放在 tests/fixtures/backends（不随模块发布）；
+#   tricky 的 shell 实现仍在 backends/tricky.sh。运行期由 KL_PATCH_DIR 解析，见 use_backend。
 #=============================================================================
 
 # ---------- 模块探测 ----------
@@ -51,7 +52,22 @@ KL_CONFLICT_MSG="检测到多个密钥库后端同时启用（Tricky Store / TEE
 use_backend() {
     local mdir="$2"
 
-    KL_PATCH="$mdir/backends/teesim.awk"
+    # awk 参照实现不随模块发布（19 份都在仓库的 tests/fixtures/backends 里当对拍参照）。
+    # 解析顺序：① 模块目录里还有 awk（老的安装，或真机台子把参照推进了 A/B 树）→ 用它；
+    # ② 仓库布局里的 tests/fixtures/backends（只有从仓库跑台子时存在）；
+    # ③ 两个都没有 → 仍指向模块目录，各命令照旧报「缺少 X.awk」：那意味着这台设备上
+    #    既没有 awk 也没有可执行的 bin/keylens，命令层本来就没有能跑的实现。
+    if [ -z "${KL_PATCH_DIR:-}" ]; then
+        if ls "$mdir"/backends/*.awk >/dev/null 2>&1; then
+            KL_PATCH_DIR="$mdir/backends"
+        elif [ -d "$mdir/../tests/fixtures/backends" ]; then
+            KL_PATCH_DIR="$mdir/../tests/fixtures/backends"
+        else
+            KL_PATCH_DIR="$mdir/backends"
+        fi
+    fi
+
+    KL_PATCH="$KL_PATCH_DIR/teesim.awk"
 
     if [ "$1" = "teesim" ]; then
         KL_BACKEND="teesim"
@@ -63,7 +79,7 @@ use_backend() {
         # 状态寄生在 OMK 自己的状态目录（.kl_* 前缀不会和它的 pid/restart 撞名）
         KL_DIR="$OMK_STATE_DIR"
         TARGET_FILE="$OMK_INJECTOR"
-        KL_PATCH="$mdir/backends/omk.awk"
+        KL_PATCH="$KL_PATCH_DIR/omk.awk"
         AWK_CMD=$(find_awk)
         mkdir -p "$KL_DIR" 2>/dev/null
     else
