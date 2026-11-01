@@ -548,6 +548,14 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
 - **带桩的 harness 里不要拿"整棵树一致"当 A/B 判据**：`tests/device-six.sh` 第一版比的是夹具根的文件清单，四条红 —— 全是桩的形状：shell 侧 `commit_backend_file` 被 parity 桩成 `cp`（于是不生成 `.bak`、留下 `.<file>.keylens.<pid>` 临时文件、drop 那条还多一个 `.pre`），Rust 侧则会写 `data/adb/keylens.log`。判据要收口到**目标文件的字节**，白名单滤掉的每一类都得另有一格点名验回来。
 - **adb 那个 root shell 的 umask 是 000**（`touch` 出来就是 666），而 `webui.sh`/`service.sh` 里都是 `umask 077`：凡"从 adb 直接调命令层"的测试，落盘形状会与守护进程/界面那条路不一样 —— 前面那条 module.prop 权限漂成 666 就是这么来的（不是守护进程写的）。
 - **接管段的顺序就是功能正确性**：`webui.sh` 里「剥 `preview-` 前缀」和「二进制接管」的先后，决定预览是预览还是真写（本轮 §5.3 修的就是这个）。动这两段之前先跑 `sh tests/rust-dispatch.sh`，它的 6 条 preview 判据就是钉这个顺序的。
+- **台子的"写命令"串里混着「用户状态」，跑完必须快照 + 还原 + 断言**：`device-ab --write` 的
+  `WRITE_CMDS` 里有 `props-on` / `props-off` / `props-boot-hash` / `props-apply` —— 它们改的是
+  `/data/adb/keylens.props_off` 与 `/data/adb/keylens.boot_hash`（**不是**后端文件，原来的
+  `backup_backend` 覆盖不到）。2026-11-01 这一串跑完停在"最后一条命令"的形状上：属性伪装被关掉、
+  boot hash 被清空，直到**重启后**（post-fs-data 按开关不写）属性全变 `diff/missing` 才暴露。
+  现在台子在 `--write` 前后快照这两个文件、跑完还原并重新 `props-apply`，外加三条断言
+  （开关状态、boot_hash 内容、属性差项数）。真机验证：跑前 `props_off=no / boot_hash=0561fff0…`，
+  38 条跑完仍是 `no / 0561fff0…`、属性差项数 0。
 - **影子根的落脚点不能只认 `temp_dir()`**：Android 上没有 `/tmp`。只认它时 TMPDIR 一坏，影子根建不出来、子进程什么都读不到，父进程照样打 `changed=0`，界面把"没有差异"当成无需确认**直接真写**。现在按 `TMPDIR → /data/local/tmp → temp_dir` 找落脚点，全建不出来退 2 交给 shell（`rust/parity.sh` 与 `tests/device-preview.sh` 各钉一条）。复现这种"建不出来"要把 `TMPDIR` 的父路径做成一个**普通文件**——指到一个不存在的目录会被 `create_dir_all` 顺手建出来，测不出失败。
 - **台子调了没定义的函数，mksh 只报一句 command not found、不置 fail**：`tests/device-preview.sh` 上一版就这么在 5 条断言没跑的情况下打了「全部通过」。现在它自带 `chk` 与断言计数，条数低于下限直接红。写台子时"末尾那句结论"必须来自计数器，不能来自"没看见 ✗"。
 - **对拍会测到上一版产物**：改完 Rust 忘了 `cargo build` 就 `sh rust/parity.sh`，新断言红得像实现写错了。`rust/parity.sh` 现在先做 `find rust/src rust/Cargo.toml -newer "$B"`，二进制不比源码新就拒绝开跑。

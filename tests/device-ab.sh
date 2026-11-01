@@ -67,7 +67,29 @@ WRITE_CMDS="set-mode props-on props-off props-boot-hash props-apply omk-restart 
 LIST="$READ_CMDS"
 [ "$WITH_WRITE" = 1 ] && LIST="$READ_CMDS $WRITE_CMDS"
 
+# 用户状态（不是后端文件）：属性伪装开关与 Verified Boot 哈希配置。--write 那串里有
+# props-on / props-off / props-boot-hash，跑完会停在"最后一条命令"的形状 —— 2026-11-01 就这么
+# 把主人的属性伪装关掉、boot hash 清空了一次，直到重启后属性全变 diff/missing 才暴露。
+# 所以单独快照 + 还原，并且**断言还原到位**（状态类副作用不许靠人记得）。
+snapshot_flags() {
+    _po=no; [ -f /data/adb/keylens.props_off ] && _po=yes
+    _bh=""; [ -f /data/adb/keylens.boot_hash ] && _bh=$(tr -d '[:space:]' < /data/adb/keylens.boot_hash)
+    _pc=$(sh "$MODDIR/webui.sh" props 2>/dev/null | awk -F'\t' 'NF>1 && $4!="ok" {c++} END{print c+0}')
+}
+restore_flags() {
+    if [ "$_po" = yes ]; then : > /data/adb/keylens.props_off; chmod 600 /data/adb/keylens.props_off 2>/dev/null
+    else rm -f /data/adb/keylens.props_off; fi
+    if [ -n "$_bh" ]; then
+        sh "$MODDIR/webui.sh" props-boot-hash "$_bh" >/dev/null 2>&1
+    else
+        rm -f /data/adb/keylens.boot_hash
+    fi
+    # props-off 不回滚运行期值、props-boot-hash - 会清 digest ⇒ 跑完再应用一次
+    sh "$MODDIR/webui.sh" props-apply >/dev/null 2>&1
+}
+
 fail=0; n=0
+[ "$WITH_WRITE" = 1 ] && snapshot_flags
 for c in $LIST; do
     n=$((n + 1))
     backup_backend
@@ -96,6 +118,19 @@ for c in $LIST; do
         fail=1
     fi
 done
+
+if [ "$WITH_WRITE" = 1 ]; then
+    restore_flags
+    _po2=no; [ -f /data/adb/keylens.props_off ] && _po2=yes
+    _bh2=""; [ -f /data/adb/keylens.boot_hash ] && _bh2=$(tr -d '[:space:]' < /data/adb/keylens.boot_hash)
+    _pc2=$(sh "$MODDIR/webui.sh" props 2>/dev/null | awk -F'\t' 'NF>1 && $4!="ok" {c++} END{print c+0}')
+    [ "$_po" = "$_po2" ] && echo "  ok   属性伪装开关已还原（props_off=$_po）" \
+        || { echo "  ✗   属性伪装开关没还原：跑前 $_po、跑后 $_po2"; fail=1; }
+    [ "$_bh" = "$_bh2" ] && echo "  ok   boot_hash 已还原（${_bh:-未配置}）" \
+        || { echo "  ✗   boot_hash 没还原：跑前 [${_bh}]、跑后 [${_bh2}]"; fail=1; }
+    [ "$_pc" = "$_pc2" ] && echo "  ok   属性差项数与跑前相同（非 ok = $_pc）" \
+        || { echo "  ✗   属性差项数变了：跑前 $_pc、跑后 $_pc2"; fail=1; }
+fi
 
 echo "── 统计：$n 条（写命令$( [ "$WITH_WRITE" = 1 ] && echo 含 || echo 不含)）"
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; exit 1; fi
