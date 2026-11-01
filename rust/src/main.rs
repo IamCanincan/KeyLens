@@ -113,6 +113,7 @@ fn main() {
         "teesim-profile-del" => read_cmds::teesim_profile_del(arg),
         "teesim-profile-new" => read_cmds::teesim_profile_new(arg),
         "doctor" => read_cmds::doctor(),
+        "restore-app" => read_cmds::restore_app(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),

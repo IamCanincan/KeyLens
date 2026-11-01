@@ -2901,3 +2901,183 @@ mod teesim_apps_tests {
         assert!(teesim_apps_rewrite(b"{}", &items(&["a"])).is_none());
     }
 }
+
+/// is_target_entry（applist.sh:81）：按后端校验一个目标条目是否合法。
+fn is_target_entry(t: &str, id: BackendId) -> bool {
+    match id {
+        BackendId::Tricky => {
+            let base = t.trim_end_matches(['?', '!']);
+            valid_pkg(base)
+        }
+        BackendId::Teesim => {
+            if let Some(rest) = t.strip_prefix("uid:") {
+                return !rest.is_empty() && rest.bytes().all(|c| c.is_ascii_digit());
+            }
+            match t.split_once('@') {
+                Some((pkg, user)) => {
+                    !user.is_empty() && user.bytes().all(|c| c.is_ascii_digit()) && valid_pkg(pkg)
+                }
+                None => valid_pkg(t),
+            }
+        }
+        BackendId::Omk => valid_pkg(t),
+    }
+}
+
+/// 目标文件的当前条目（按后端解析）。
+fn cur_target_tokens(p: &Paths, b: &Backend) -> Vec<String> {
+    if !b.target.is_file() {
+        return Vec::new();
+    }
+    let data = std::fs::read(&b.target).unwrap_or_default();
+    match b.id {
+        BackendId::Tricky => tricky_tokens(&String::from_utf8_lossy(&data)),
+        BackendId::Teesim => teesim_apps(&data).unwrap_or_default(),
+        BackendId::Omk => omk_scoop(&data).unwrap_or_default(),
+    }
+}
+
+/// 把一批基础包名并入 ever 名单（`.kl_ever`，600）。
+fn ever_add_list(dir: &std::path::Path, bases: &[String]) {
+    if bases.is_empty() { return; }
+    let path = dir.join(".kl_ever");
+    let mut all: Vec<String> = std::fs::read_to_string(&path)
+        .map(|t| t.lines().filter(|l| !l.trim().is_empty()).map(|s| s.to_string()).collect())
+        .unwrap_or_default();
+    all.extend(bases.iter().cloned());
+    all.sort();
+    all.dedup();
+    let text = all.join("\n") + "\n";
+    let tmp = dir.join(format!(".kl_ever.new.{}", std::process::id()));
+    if std::fs::write(&tmp, text.as_bytes()).is_ok() && std::fs::rename(&tmp, &path).is_ok() {
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&path, std::fs::Permissions::from_mode(0o600));
+        }
+    } else {
+        let _ = std::fs::remove_file(&tmp);
+    }
+}
+
+/// add_target_apps（backend.sh:152）：0=加入了 1=本来就在 2=失败。
+pub fn add_target_apps(p: &Paths, b: &Backend, req: &[String]) -> i32 {
+    if !b.target.is_file() { return 2; }
+    let cur = cur_target_tokens(p, b);
+    let new = new_target_entries(&cur, req, b.id);
+    if new.is_empty() { return 1; }
+    let mut combo: Vec<String> = cur.clone();
+    combo.extend(new.iter().cloned());
+    combo.sort();
+    combo.dedup();
+    let old = std::fs::read(&b.target).unwrap_or_default();
+    let written: Option<(Vec<u8>, u32)> = match b.id {
+        BackendId::Tricky => {
+            let mut out = old.clone();
+            if !out.is_empty() && out.last() != Some(&b'\n') { out.push(b'\n'); }
+            for it in &new {
+                out.extend_from_slice(it.as_bytes());
+                out.push(b'\n');
+            }
+            Some((out, 0o644))
+        }
+        BackendId::Teesim => teesim_apps_rewrite(&old, &combo).map(|v| (v, 0o600)),
+        BackendId::Omk => omk_scoop_rewrite(&old, &combo).map(|v| (v, 0)),
+    };
+    let Some((bytes, mode)) = written else { return 2; };
+    if bytes == old {
+        // 内容没变：omk 的语义是返回 1（不写、不备份）
+        return 1;
+    }
+    // omk 需要保留原文件的属主/权限/SELinux 上下文，并先备份
+    if b.id == BackendId::Omk {
+        let bak = b.dir.join("injector.toml.bak");
+        let _ = std::fs::copy(&b.target, &bak);
+    }
+    let tmp = b.dir.join(format!(".kl_restore.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &b.target).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return 2;
+    }
+    #[cfg(unix)]
+    if mode != 0 {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&b.target, std::fs::Permissions::from_mode(mode));
+    }
+    let bases: Vec<String> = new.iter().map(|t| entry_base(t, b.id)).filter(|s| !s.is_empty()).collect();
+    ever_add_list(&b.dir, &bases);
+    0
+}
+
+/// cmd_restore_app：把一个应用加回目标名单（含 ever 与描述刷新）。
+pub fn restore_app(pkg: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if !is_target_entry(pkg, b.id) {
+        eprintln!("不是合法的目标条目：{}", pkg);
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let rc = add_target_apps(&p, &b, &[pkg.to_string()]);
+    crate::lock::release(&lockdir);
+    match rc {
+        0 => {
+            // 顺手刷新模块描述里的条数（管理器里不用等下一轮同步）
+            let n = cur_target_tokens(&p, &b).len();
+            if n > 0 {
+                let bname = match b.id {
+                    BackendId::Teesim => "TEE Simulator",
+                    BackendId::Omk => "OhMyKeymint",
+                    BackendId::Tricky => "Tricky Store",
+                };
+                let hm = std::process::Command::new("date").arg("+%H:%M").output().ok()
+                    .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+                    .unwrap_or_default();
+                set_module_desc(&p.module_prop, &format!("✅ [{} | 应用: {} | 更新: {}]", bname, n, hm));
+            }
+            log_line(&p, &format!("🧩 WebUI 把 {} 加回目标名单", pkg));
+            println_ok!("restored=1");
+        }
+        1 => println_ok!("restored=0"),
+        _ => {
+            eprintln!("写入失败：{}", b.target.display());
+            std::process::exit(1);
+        }
+    }
+}
+
+/// 只改 module.prop 里的 description 一行，其余原样。
+fn set_module_desc(prop: &std::path::Path, desc: &str) {
+    let Ok(text) = std::fs::read_to_string(prop) else { return };
+    let mut out = String::new();
+    let mut done = false;
+    for line in text.lines() {
+        if line.starts_with("description=") {
+            out.push_str(&format!("description={}\n", desc));
+            done = true;
+        } else {
+            out.push_str(line);
+            out.push('\n');
+        }
+    }
+    if !done {
+        out.push_str(&format!("description={}\n", desc));
+    }
+    let tmp = prop.with_extension("prop.tmp");
+    if std::fs::write(&tmp, out.as_bytes()).is_ok() {
+        let _ = std::fs::rename(&tmp, prop);
+    }
+}
