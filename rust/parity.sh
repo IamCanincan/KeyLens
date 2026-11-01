@@ -464,7 +464,7 @@ echo "── teesim-profiles（多 profile 列表）──"
 TSP="$T/tsp"
 mkdir -p "$TSP/data/adb/modules/teesim" "$TSP/data/adb/teesim"
 cat > "$TSP/data/adb/teesim/config.json" <<'EOF'
-{"version":1,"profiles":{"work":{"keybox":"kb.xml","mode":"leaf","apps":["com.a","com.b"]},"default":{"apps":["com.x@10"]},"strong":{"mode":"generate","apps":[]}}}
+{"version":1,"profiles":{"work":{"keybox":"kb.xml","mode":"leaf","apps":["com.a","com.b"]},"default":{"apps":["com.x@10"]},"strong":{"limits":{"max_apps":{"mode":"decoy"},"n":1},"mode":"generate","apps":[]}}}
 EOF
 cat > "$T/tsp.sh" <<'EOF'
 . module/lib/core.sh
@@ -480,6 +480,14 @@ EOF
 sed -n '/^cmd_teesim_profiles() {/,/^}/p' module/webui.sh >> "$T/tsp.sh"
 echo 'detect_backend "$MODDIR"; cmd_teesim_profiles' >> "$T/tsp.sh"
 chk 'teesim-profiles：default 在前 + 其余顺序' "$(sh "$T/tsp.sh" "$TSP/data/adb/teesim")" "$(KEYLENS_ROOT="$TSP" "$B" teesim-profiles)"
+# 绝对断言（不能只比"两侧相同"）：夹具里 profiles.strong.limits.max_apps 是个诱饵 ——
+# 只要实现肯往下钻一层，"limits"/"max_apps" 就会被当成 profile 列出来，
+# 而两侧一起错的话上面那条逐字节相同照样绿。参照 awk 靠"命中就把整块跳过去"停在顶层；
+# 它那个 depth 计数器加了从来不读，Rust 侧原来照抄了同一个死计数器。
+chk 'teesim-profiles：只列顶层三个 profile' \
+    "$(KEYLENS_ROOT="$TSP" "$B" teesim-profiles | cut -f1 | tr '\n' ',' )" "default,work,strong,"
+chk 'teesim-profiles：诱饵键没被当成 profile' \
+    "$(KEYLENS_ROOT="$TSP" "$B" teesim-profiles | grep -c 'limits\|max_apps')" "0"
 
 echo "── clear-log（删缓冲 + 写一条记录）──"
 cat > "$T/cl.sh" <<'EOF'
@@ -760,7 +768,7 @@ mk_save_harness() { # <root>
 SP="$T/sv-root"
 mk_sp_fixture() {
   mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
-  printf '2026-10-05\nsystem=2026-10-01\n\n[com.example.a]\nsystem=2026-09-01\n' > "$1/data/adb/tricky_store/security_patch.txt"
+  printf '2026-10-05\nsystem=2026-10-01\n\n# 说明：下面按包名覆盖\n\n[com.example.a]\nsystem=2026-09-01\n\n' > "$1/data/adb/tricky_store/security_patch.txt"
 }
 SPS="$SP-s"; SPR="$SP-r"
 mk_sp_fixture "$SPS"; mk_sp_fixture "$SPR"
@@ -770,6 +778,13 @@ PL=$(printf 'patch_system=%s\npatch_boot=%s' "$(printf '2026-10-07' | base64)" "
 chk 'save-patch：写入输出' "$(sh "$T/sv.sh" "$PL" 2>&1)" "$(KEYLENS_ROOT="$SPR" "$B" tricky-save-patch "$PL" 2>&1)"
 chk 'save-patch：两侧结果逐字节一致' "$(cat "$SPS/data/adb/tricky_store/security_patch.txt")" "$(cat "$SPR/data/adb/tricky_store/security_patch.txt")"
 chk 'save-patch：备份已生成' "$([ -f "$SPR/data/adb/tricky_store/security_patch.txt.bak" ] && echo yes)" "yes"
+# 防空转：上面两条都比"两侧相同"，两侧都"什么都没写"也能过。夹具这次特意带上了
+# 空行 + 注释行 + 段尾空行（tricky_patch_set.awk 第 4/5 步要回缩的那种形状，Rust 侧没有
+# 同形的回缩代码），所以必须钉住"新键真落在全局段内、在原段头之前"和"注释行没被吃掉"。
+chk 'save-patch：新键写在全局段内（段头之前）' \
+    "$(awk '/^boot = no$/{b=NR} /^\[com\.example\.a\]$/{s=NR} END{print (b > 0 && s > 0 && b < s) ? "yes" : "no"}' "$SPR/data/adb/tricky_store/security_patch.txt")" "yes"
+chk 'save-patch：夹具里的注释行还在' \
+    "$(grep -c '^# 说明：下面按包名覆盖$' "$SPR/data/adb/tricky_store/security_patch.txt")" "1"
 BAD=$(printf 'patch_system=%s' "$(printf '2026-13-01' | base64)" | base64 | tr -d '\n')
 chk 'save-patch：非法补丁值' "$(sh "$T/sv.sh" "$BAD" 2>&1)" "$(KEYLENS_ROOT="$SPR" "$B" tricky-save-patch "$BAD" 2>&1)"
 
@@ -1658,7 +1673,9 @@ echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
 # 129 → 173：新增 preview-* 的 11 个用例 ×4 条断言（逐字节 / 两侧夹具不落盘 / changed>0 正对照）
 # 173 → 175：影子根落脚点全不可用时的两条（退 2 / 不许打空信封）
-if [ "$oks" -lt 175 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 175），疑似用例被删"; fail=1
+# 175 → 177：save-patch 的两条防空转断言（新键落在全局段内 / 注释行没被吃掉）
+# 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
+if [ "$oks" -lt 179 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 179），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
