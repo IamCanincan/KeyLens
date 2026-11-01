@@ -2649,3 +2649,84 @@ fn find_inotify() -> Option<&'static str> {
     }
     None
 }
+
+/// 名单去重（add_target_apps 的判重语义）：返回需要追加的新条目。
+///
+/// 规则（照抄 shell 的 awk）：
+/// - 按**基础包名**判重：tricky 去掉 `?`/`!`；teesim 去掉 `@数字`、`uid:` 丢弃；omk 原样；
+/// - 已在名单里的**完全相同的 token** 直接跳过；
+/// - 基础包名已存在时跳过，**唯一例外**是 teesim 的 `pkg@用户`（独立作用域，可与裸 pkg 并存）。
+pub fn new_target_entries(cur: &[String], req: &[String], id: BackendId) -> Vec<String> {
+    let base_of = |t: &str| -> String {
+        match id {
+            BackendId::Tricky => t.trim_end_matches(['?', '!']).to_string(),
+            BackendId::Teesim => {
+                if t.starts_with("uid:") {
+                    String::new()
+                } else {
+                    match t.rfind('@') {
+                        Some(at) if t[at + 1..].bytes().all(|c| c.is_ascii_digit()) => t[..at].to_string(),
+                        _ => t.to_string(),
+                    }
+                }
+            }
+            BackendId::Omk => t.to_string(),
+        }
+    };
+    let mut exact: std::collections::HashSet<String> = cur.iter().cloned().collect();
+    let mut bases: std::collections::HashSet<String> = cur
+        .iter()
+        .map(|t| base_of(t))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut out = Vec::new();
+    for t in req {
+        if t.is_empty() || exact.contains(t) {
+            continue;
+        }
+        let b = base_of(t);
+        let teesim_user = id == BackendId::Teesim
+            && t.rfind('@').map(|at| t[at + 1..].bytes().all(|c| c.is_ascii_digit()) && at > 0).unwrap_or(false);
+        if !b.is_empty() && bases.contains(&b) && !teesim_user {
+            continue;
+        }
+        out.push(t.clone());
+        exact.insert(t.clone());
+        if !b.is_empty() {
+            bases.insert(b);
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod roster_tests {
+    use super::*;
+
+    fn v(xs: &[&str]) -> Vec<String> { xs.iter().map(|s| s.to_string()).collect() }
+
+    #[test]
+    fn tricky_dedupes_by_base_and_allows_mode_change() {
+        // com.a 已在名单（裸），再加 com.a? → 跳过；com.b 已带 ?，再加 com.b → 跳过
+        let out = new_target_entries(&v(&["com.a", "com.b?"]), &v(&["com.a?", "com.b", "com.c"]), BackendId::Tricky);
+        assert_eq!(out, v(&["com.c"]));
+    }
+
+    #[test]
+    fn teesim_allows_user_scope_beside_bare() {
+        let out = new_target_entries(&v(&["com.a"]), &v(&["com.a@10", "com.a@10", "com.b@20"]), BackendId::Teesim);
+        assert_eq!(out, v(&["com.a@10", "com.b@20"]));
+    }
+
+    #[test]
+    fn uid_entries_never_match_by_base() {
+        let out = new_target_entries(&v(&["com.a"]), &v(&["uid:10123"]), BackendId::Teesim);
+        assert_eq!(out, v(&["uid:10123"]));
+    }
+
+    #[test]
+    fn exact_duplicate_is_skipped() {
+        let out = new_target_entries(&v(&["com.a"]), &v(&["com.a"]), BackendId::Omk);
+        assert!(out.is_empty());
+    }
+}
