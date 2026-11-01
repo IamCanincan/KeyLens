@@ -13,7 +13,11 @@
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
   本机现有几份（`…-1500.bundle` 最新、`…-1415`、`…-1305`、`…-2026-11-01.bundle` 最早那份），都没删，
   用 `git bundle list-heads <文件>` 看各覆盖到哪个提交。
-- 网络现状：**github.com DNS 解析失败**；`static.rust-lang.org` / `baidu` 可达。所以 `rustup target add` 能用，`git push` 不能。
+- 网络现状：**直连 github.com 会 DNS 解析失败，走本机代理才行**（`git` 已配
+  `http.proxy/https.proxy = http://127.0.0.1:7890`，所以 `git push` / `git fetch` 直接可用）。
+  两个例外：`curl` 调 GitHub API 要显式 `-x http://127.0.0.1:7890`（匿名 API 限额 60/小时，
+  读日志还得要 token；配额打光时改读 HTML 页面更快）；`gh` 装好了但没登录，且它不读
+  `git config` 的代理，要显式给 `HTTPS_PROXY`。`static.rust-lang.org`（rustup target）本来就可达。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
   模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）。测试用的临时副本在 `/data/adb/keylens-ab`。
@@ -193,6 +197,10 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
      （device-ab 38、device-preview 16、device-run-sync 14）跑的正是这份产物。
      已本机真出一只包：705 KB / 34 条目，`--check` 全绿，包里 `bin/keylens` 的 sha256
      与手机上那份逐字节相同（`c3d6f41dcd5a7c03…`）。**上一版文档里"要配 NDK / 只能从 CI artifact 取"那句作废。**
+   - **换完产物 CI 两条都绿**：`Rust CLI` Run 3 与 `Build CI Module` Run 75（commit `fdc841b`）都是
+     `completed successfully`。`rust-build.yml` 里 13 步没有一个带条件跳过 ⇒ 这道绿就是
+     `Contract parity` / `Golden snapshots` / `Verify static` / `Module binary handshake`
+     **第一次真跑通过**，不是"步骤被 skip 所以没红"。§5 到这里全部做完。
 
 ## 6. 坑（都踩过）
 
