@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config restore-app restore-apps remove-apps sync doctor"
+LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config restore-app restore-apps remove-apps sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1035,6 +1035,63 @@ if grep -q panicked "$T/epipe.err"; then
 else
   echo "  ok   contract | head -1 不 panic"; oks=$((oks + 1))
 fi
+
+echo "── doctor（11 项自检）──"
+mk_doc_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/props.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'tsv() { local IFS="$(printf "\t")"; printf "%s\n" "$*"; }'
+    echo 'print() { while [ "${1#-}" != "$1" ]; do shift; done; printf "%s\n" "$*"; }'
+    echo 'log_info() { :; }'
+    echo 'backend_name() { case "$KL_BACKEND" in teesim) echo "TEE Simulator";; omk) echo "OhMyKeymint";; *) echo "Tricky Store";; esac; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "KL_LOG='$1/data/adb/keylens.log'"
+    echo "KL_PROPS_OFF='$1/data/adb/keylens.props_off'"
+    echo "KL_BOOT_HASH='$1/data/adb/keylens.boot_hash'"
+    echo "PROP_FILE='$1/data/adb/modules/keylens/module.prop'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/doc.sh"
+  sed -n '/^backend_keybox_path() {/,/^}/p' module/webui.sh >> "$T/doc.sh"
+  sed -n '/^prop_now() {/,/^}/p' module/webui.sh >> "$T/doc.sh"
+  sed -n '/^cmd_doctor() {/,/^}/p' module/webui.sh >> "$T/doc.sh"
+  cat >> "$T/doc.sh" <<'EOF'
+detect_backend "$MODDIR"
+cmd_doctor
+EOF
+}
+DOCR="$T/doc-root"
+mk_doc_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf 'com.a\n' > "$1/data/adb/tricky_store/target.txt"
+  printf '<AndroidAttestation><Keybox><Key algorithm="ec"><PrivateKey>p</PrivateKey><CertificateChain><Certificate>c</Certificate></CertificateChain></Key></Keybox></AndroidAttestation>\n' > "$1/data/adb/tricky_store/keybox.xml"
+}
+DOCS="$DOCR-s"; DOCRR="$DOCR-r"
+mk_doc_fixture "$DOCS"; mk_doc_fixture "$DOCRR"
+mk_doc_harness "$DOCS"
+cat > "$T/bin/cmd" <<'EOF'
+#!/bin/sh
+printf 'package:com.a\npackage:com.b\n'
+EOF
+chk 'doctor：11 项逐行一致' "$(PATH="$T/bin:$PATH" sh "$T/doc.sh" 2>&1 | sed 's/doc-root-[sr]/doc-root/g')" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$DOCRR" "$B" doctor 2>&1 | sed 's/doc-root-[sr]/doc-root/g')"
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）

@@ -112,6 +112,7 @@ fn main() {
         "backup-restore" => read_cmds::backup_restore(arg),
         "teesim-profile-del" => read_cmds::teesim_profile_del(arg),
         "teesim-profile-new" => read_cmds::teesim_profile_new(arg),
+        "doctor" => read_cmds::doctor(),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),

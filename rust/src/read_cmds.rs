@@ -2440,3 +2440,212 @@ pub fn teesim_profile_new(name: &str) {
     println_ok!("created=1");
     println_ok!("profile={}", name);
 }
+
+/// doctor：11 项自检（与 webui.sh 的 cmd_doctor 同序同文案）。
+pub fn doctor() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    let has_backend = true; // detect 总会给出一个后端；shell 里 KL_BACKEND 为空才算没有
+    let mut rows: Vec<(String, String, String, String)> = Vec::new();
+    let mut doc = |cat: &str, st: &str, desc: &str, tip: &str| {
+        rows.push((cat.to_string(), st.to_string(), desc.to_string(), tip.to_string()));
+    };
+    // 1. 权限
+    if is_root() {
+        doc("权限", "ok", "以 root 运行", "");
+    } else {
+        doc("权限", "bad", "不是 root", "在管理器里给本模块 / WebUI root 权限");
+    }
+    // 2. 后端
+    let bname = match b.id {
+        BackendId::Teesim => "TEE Simulator",
+        BackendId::Omk => "OhMyKeymint",
+        BackendId::Tricky => "Tricky Store",
+    };
+    doc("后端", "ok", &format!("{} · 配置 {}", bname, b.target.display()), "");
+
+    if has_backend {
+        let marks: Vec<String> = {
+            let mut v = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+                p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+            })];
+            if let Ok(extra) = std::env::var("KL_OUR_MARKS") {
+                v.extend(extra.split_whitespace().map(|s| s.to_string()));
+            }
+            v
+        };
+        // 3. 守护进程
+        let mut np = 0;
+        if let Ok(text) = std::fs::read_to_string(b.dir.join(".kl_daemon_pids.list")) {
+            for pid in text.lines().map(str::trim).filter(|s| !s.is_empty()) {
+                if pid_is_ours(pid, &marks) {
+                    np += 1;
+                }
+            }
+        }
+        if np > 0 {
+            doc("守护进程", "ok", &format!("{} 个进程在跑", np), "");
+        } else {
+            doc("守护进程", "bad", "没有守护进程在跑", "现在装/卸应用不会自动进名单：重启一次，或重新刷入模块");
+        }
+        // 4. 目标文件
+        if b.target.is_file() {
+            if writable(&b.target) {
+                doc("目标文件", "ok", &format!("{} 存在且可写", b.target.display()), "");
+            } else {
+                doc("目标文件", "warn", &format!("{} 不可写", b.target.display()), "检查是否被别的模块或后端改成了只读");
+            }
+        } else {
+            doc("目标文件", "bad", &format!("不存在：{}", b.target.display()), "让后端先跑一轮生成默认文件，或在名单页点「立即同步」");
+        }
+        // 5. 名单 vs 已装（只比数量）
+        let nl = if b.target.is_file() {
+            let data = std::fs::read(&b.target).unwrap_or_default();
+            match b.id {
+                BackendId::Tricky => tricky_tokens(&String::from_utf8_lossy(&data)).len(),
+                BackendId::Teesim => teesim_apps(&data).map(|v| v.len()).unwrap_or(0),
+                BackendId::Omk => omk_scoop(&data).map(|v| v.len()).unwrap_or(0),
+            }
+        } else {
+            0
+        };
+        let ni = installed_count();
+        if ni > 0 {
+            if nl < ni {
+                doc("名单", "warn", &format!("已装 {} 个 · 名单 {} 条（只比数量，可能只是你手动排除过）", ni, nl), "点「立即同步一次」，或等下一次安装/卸载自动触发");
+            } else {
+                doc("名单", "ok", &format!("已装 {} 个 · 名单 {} 条", ni, nl), "");
+            }
+        } else {
+            doc("名单", "skip", "读不到已装应用列表", "");
+        }
+        // 6. keybox
+        let kb = keybox_path_for(&p, b.id);
+        if !kb.is_file() {
+            doc("keybox", "bad", &format!("不存在：{}", kb.display()), "在「密钥箱」页粘贴一份，或让后端生成默认 keybox");
+        } else {
+            let data = std::fs::read(&kb).unwrap_or_default();
+            match crate::keybox::check(&data, b.id.as_str()) {
+                Ok(()) => {
+                    let base = kb.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                    doc("keybox", "ok", &format!("{} 结构通过校验", base), "");
+                }
+                Err(msg) => {
+                    doc("keybox", "bad", &format!("结构不合格：{}", msg), "在「密钥箱」页重新粘贴一份完整的 keybox.xml");
+                }
+            }
+        }
+        // 7. 属性伪装
+        if p.props_off.is_file() {
+            doc("属性伪装", "ok", "开机写入已关闭（开关文件存在）", "");
+        } else {
+            let mut dif = 0;
+            for (name, expected) in PROPS_PAIRS {
+                let cur = getprop(name);
+                if cur.is_empty() || cur != *expected {
+                    dif += 1;
+                }
+            }
+            if dif > 0 {
+                doc("属性伪装", "warn", &format!("开机写入已开启，{} 项与期望值不符", dif), "点「立即应用一次」；仍不符就看属性页里那几行的当前值");
+            } else {
+                doc("属性伪装", "ok", "开机写入已开启，对照项全部一致", "");
+            }
+        }
+        // 8. 启动哈希
+        let raw = std::fs::read_to_string(&p.boot_hash).unwrap_or_default()
+            .chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+        let cur = getprop("ro.boot.vbmeta.digest").to_ascii_lowercase();
+        if raw.is_empty() {
+            doc("启动哈希", "skip", "没有配置 vbmeta digest", "");
+        } else if !boot_hash_valid(&raw) {
+            doc("启动哈希", "bad", "配置的哈希格式不对", "只接受 64/128 位十六进制，在「属性伪装」页重填");
+        } else if cur == raw {
+            doc("启动哈希", "ok", "当前值等于配置值", "");
+        } else {
+            doc("启动哈希", "warn", "当前值与配置值不一致", "点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了");
+        }
+        // 9. 监听工具
+        match find_inotify() {
+            Some(mode) => doc("监听工具", "ok", mode, ""),
+            None => doc("监听工具", "bad", "没找到 inotify 工具", "模块靠它感知安装/卸载；这期间只能手动同步"),
+        }
+        // 10. 并发锁
+        let lock = b.dir.join(".kl_lock");
+        if lock.is_dir() {
+            let pid = std::fs::read_to_string(lock.join("pid")).unwrap_or_default().trim().to_string();
+            if !pid.is_empty() && pid_is_ours(&pid, &marks) {
+                doc("并发锁", "warn", &format!("正在写入（pid {}）", pid), "等几秒再试；长期不释放的会在日志里留一条");
+            } else {
+                doc("并发锁", "warn", "有残留锁，持有者已不在", "不用管，下一次写入会自动接管");
+            }
+        } else {
+            doc("并发锁", "ok", "空闲", "");
+        }
+        // 11. 日志
+        match std::fs::metadata(&p.log) {
+            Ok(md) => {
+                let base = p.log.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
+                doc("日志", "ok", &format!("{} {} 字节", base, md.len()), "");
+            }
+            Err(_) => doc("日志", "skip", "还没有日志文件（没发生过同步）", ""),
+        }
+    }
+    let count = |st: &str| rows.iter().filter(|r| r.1 == st).count();
+    let (n_ok, n_warn, n_bad, n_skip) = (count("ok"), count("warn"), count("bad"), count("skip"));
+    // 与 shell 版一致：checks 计入 skip（skip 也是"检查过的一项"）
+    println_ok!("checks={}", n_ok + n_warn + n_bad + n_skip);
+    println_ok!("bad={}", n_bad);
+    println_ok!("warn={}", n_warn);
+    println_ok!("skip={}", n_skip);
+    for (cat, st, desc, tip) in rows {
+        println_ok!("{}\t{}\t{}\t{}", cat, st, desc, tip);
+    }
+}
+
+fn is_root() -> bool {
+    if let Ok(t) = std::fs::read_to_string("/proc/self/status") {
+        for line in t.lines() {
+            if let Some(rest) = line.strip_prefix("Uid:") {
+                let uid: String = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+                return uid == "0";
+            }
+        }
+    }
+    std::process::Command::new("id").arg("-u").output().ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim() == "0")
+        .unwrap_or(false)
+}
+
+fn pid_is_ours(pid: &str, marks: &[String]) -> bool {
+    let dir = std::path::PathBuf::from(format!("/proc/{}", pid));
+    if !dir.exists() { return false; }
+    match std::fs::read(dir.join("cmdline")) {
+        Ok(d) => {
+            let text = String::from_utf8_lossy(&d).replace('\0', " ");
+            marks.iter().filter(|m| !m.is_empty()).any(|m| text.contains(m.as_str()))
+        }
+        Err(_) => true,
+    }
+}
+
+fn installed_count() -> usize {
+    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
+        std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
+    };
+    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+        .filter(|o| !o.is_empty())
+        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .unwrap_or_default();
+    String::from_utf8_lossy(&out).lines().filter(|l| !l.trim().is_empty()).count()
+}
+
+fn find_inotify() -> Option<&'static str> {
+    for name in ["inotifywait", "inotifyd"] {
+        if std::process::Command::new(name).arg("--help").output().is_ok() {
+            return Some(name);
+        }
+    }
+    None
+}
