@@ -31,11 +31,12 @@
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | **205 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条） | `sh rust/parity.sh` |
-| shell 测试套 | **49 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell 测试套 | **50 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
 | 真机 env 探针缓存 | **28 条全过**：冷=热、两边互读、热跑不起 getprop/dumpsys/wm/id、FRRO 的 mtime 与路径各一条变异 | `sh tests/device-env-cache.sh`，见 §5.9 |
+| 真机 OMK 写路径（`omk-save-config`） | **20 条全过**：夹具根上真写 + 二次保存不落盘 + 预览不落盘 + 把参照校验改坏的变异 | `sh tests/device-omk-write.sh`，见 §5.11 |
 | 真机 teesim/tricky 六条（写 + 预览） | **83 条全过**：夹具与 harness 抽自 `parity.sh`，参照实现在设备的 toybox awk + mksh 下跑；带"改坏 shell 侧一处键名"的变异 | `sh tests/device-six.sh`，见 §5.10 |
 | 装机核对（重启前） | **28 条全过**：新树无 awk、旧树 shell vs 新树二进制 17 条逐字节、预览不落盘 | 见 §3.5 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
@@ -66,12 +67,12 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **49 套**，两边都得跑，各有盲区：
+shell 测试套 **50 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
-| WSL | 49/49 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
-| Windows Git Bash（有 node） | 49/49 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
+| WSL | 50/50 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
+| Windows Git Bash（有 node） | 50/50 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
 
 > `tests/rust-dispatch.sh` 以前在 Git Bash 恒红，是台子自己用了 `env VAR=x sh -c …`：
 > 这台的 `env` 会把 `env sh 脚本` 跑成**空输出且退 0**，与被测代码无关。已改成在一个 shell 里赋值。
@@ -116,6 +117,9 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-env-
 adb push rust/parity.sh /data/adb/keylens-ab/parity.sh
 adb push tests/device-six.sh /data/adb/keylens-ab/device-six.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-six.sh"
+# OMK 的写路径（真写，夹具根，不碰正在用的配置；见 §5.11）
+adb push tests/device-omk-write.sh /data/adb/keylens-ab/device-omk-write.sh
+adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab AWKSRC=\$PWD/backends sh device-omk-write.sh"
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -360,6 +364,27 @@ adb shell "sed -i 's/\r\$//' /data/adb/keylens-ab/{parity.sh,device-six.sh} && \
 顺带一处可移植性改动：`rust/parity.sh` 里 `head -n -1` 换成 `sed '$d'` —— toybox 的 `head` 不收负数，
 不换的话预览 harness 在设备上直接坏掉（11 例 preview 全红，看着像实现坏了）。
 
+## 5.11 真机验 OMK 的写路径（`tests/device-omk-write.sh`，真机 20 项全过）
+
+这台的后端是 OhMyKeymint，界面上每一次"保存配置"都走 `omk-save-config` → `omk_set.awk`
+（19 份参照里最复杂的一份：TOML 定点改写 + 未知键策略）。`rust/parity.sh` 覆盖了它，但跑在
+WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这个差。
+
+跑的是**真写**，但在夹具根里跑（`KEYLENS_ROOT` / harness 双份夹具），现场配置一个字节不碰：
+- 两侧输出逐字节一致、写出的 `config.toml` 逐字节一致；
+- 正对照：补丁字段真的写进去了、夹具真的变了、`.bak` 真的生成了（落在 **`KL_DIR`**，不是目标文件旁边）；
+- 再保存一次同样的内容必须 `saved=0` 且不再落盘（写路径里 `cmp -s out cfg` 的短路）；
+- 预览：两侧夹具一字不动、`changed>0`；
+- `vb_key random→auto` 那条要判出 `apply_scope=reboot`（两侧输出仍逐字节一致）；
+- 变异：把参照实现 `write.sh` 的字段校验改坏 → 两侧输出必须当场对不上。
+
+两个坑记在这（都真踩了）：
+1. **payload 在 `parity.sh` 里是跨行的**（行尾反斜杠续行），`grep '^PLOC='` 只抓到第一行，
+   得到一个没闭合的 `$( `，`eval` 时就是 mksh 的 `syntax error: unmatched (`。要按"行尾反斜杠就继续"取整条赋值。
+2. **`omk_set.awk` 里那条 `"trust" SUBSEP "security_patch"` 不是这个键实际走的路径** ——
+   拿它做变异，改完两侧输出仍然一样，等于没变异；换成动 shell 侧 `write.sh` 的校验分支才真的响。
+   记这条是因为"变异没落地"和"变异落了但没用"在输出上长得一模一样。
+
 ## 6. 坑（都踩过）
 
 
@@ -404,6 +429,7 @@ adb shell "sed -i 's/\r\$//' /data/adb/keylens-ab/{parity.sh,device-six.sh} && \
 | `tests/device-preview.sh` | 真机 preview-* 逐字节 A/B（含「预览不许落盘」的后端文件指纹与覆盖口径） |
 | `tests/device-env-cache.sh` | 真机验 env 探针缓存：冷=热、两边互读、热跑不起进程、FRRO 的 mtime/路径各一条变异（夹具机测不到 FRRO） |
 | `tests/device-six.sh` | 真机跑 teesim/tricky 那六条的写与预览 A/B（夹具+harness 抽自 `parity.sh`，参照实现走设备的 toybox awk） |
+| `tests/device-omk-write.sh` | 真机跑 `omk-save-config` 的真写/预览（夹具根，不碰现场配置；验 `.bak`、幂等、reboot 判据与一条变异） |
 | `tests/run-sync-bin.sh` | `run_sync` 二进制分支的三条判据 + 三条变异（CI 跑，桩掉 awk 实现） |
 | `tests/device-run-sync.sh` | 真机验锁接力：持锁不自抢、不持锁自取自放、两条分支结果一致、拿掉接力条的变异 |
 | `tests/rust-golden.sh` + `rust/golden/` | 黄金快照（删 awk 后的回归网） |
