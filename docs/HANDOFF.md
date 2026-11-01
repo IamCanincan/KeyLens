@@ -29,17 +29,18 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 71 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | 173 项 chk（含 preview-* 11 例 ×4 条断言） | `sh rust/parity.sh` |
-| shell 测试套 | **46 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红本轮修掉了，成因见 §6） | 见 §2 |
+| shell↔Rust 逐字节对拍 | **205 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条） | `sh rust/parity.sh` |
+| shell 测试套 | **48 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
+| 真机 env 探针缓存 | **28 条全过**：冷=热、两边互读、热跑不起 getprop/dumpsys/wm/id、FRRO 的 mtime 与路径各一条变异 | `sh tests/device-env-cache.sh`，见 §5.9 |
 | 装机核对（重启前） | **28 条全过**：新树无 awk、旧树 shell vs 新树二进制 17 条逐字节、预览不落盘 | 见 §3.5 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
 | 包内二进制握手 | contract == KL_COMMANDS | `sh tests/module-bin.sh` |
 | 发布包内容 | `module/backends/` 只剩 `tricky.sh`；19 份 awk 参照在 `tests/fixtures/backends/`；包里没带 `bin/keylens` 时安装中止 | `ls module/backends`、`module/customize.sh` |
-| 体积 | x86_64 glibc 639 KB / x86_64 静态 musl 712 KB / aarch64 musl 620 KB | `stat -c %s` |
+| 体积 | x86_64 glibc 639 KB / x86_64 静态 musl 712 KB / aarch64 musl 629 KB | `stat -c %s` |
 
 已实现的关键设施：
 - 后端探测（teesim/omk/tricky，含 disable 与冲突检测）、并发锁（证据式接管）、base64/payload、`json_flat`、keybox 三家校验；
@@ -101,6 +102,12 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-ab.s
 # preview-* 逐字节 A/B（跑完自己核对 7 个后端文件的 sha256 没变；见 §4 的覆盖口径）
 adb push tests/device-preview.sh /data/adb/keylens-ab/device-preview.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-preview.sh"
+# run_sync 的二进制分支与锁接力
+adb push tests/device-run-sync.sh /data/adb/keylens-ab/device-run-sync.sh
+adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-run-sync.sh"
+# env 探针缓存（FRRO 那一段夹具机测不到，只有真机算数；见 §5.9）
+adb push tests/device-env-cache.sh /data/adb/keylens-ab/device-env-cache.sh
+adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-env-cache.sh"
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -241,22 +248,43 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 |---|---|---|---|
 | 任意命令的壳层 | 69~89ms | 25~37ms | 接管点从 1273 行挪到 54 行：mksh 边读边解析，排在函数体之后等于每条命令先建一遍 70KB 的函数定义。六个 lib 一起 load 其实只值 ~7ms（我先前判断错过一次） |
 | props 页 | 311~366ms | 59~91ms | 17 次单键 `getprop`（每次 ~18ms）改成一次全量 dump 查表 |
-| env 页 | 410ms | 310~338ms | 同上，env 的 6 个属性字段 + 1 个密度兜底也吃快照 |
+| env 页（无缓存） | 410ms | 334ms | 同上，env 的 6 个属性字段 + 1 个密度兜底也吃快照 |
+| env 页（命中缓存） | 334ms | **93ms**（直调二进制 69ms） | 见下：19 键探针缓存落到 Rust 侧 |
 | `run_sync` 的后台同步 | 走 awk 链 | 走二进制 | 见 §5.2；新包里没有 awk，安装期能报出 132 就是证据 |
 
-**还没收的一半**：`env_cmd` 里那句 `let _ = cache;` —— shell 侧那套 19 个键的环境探针缓存在移植时被桩掉、没实现。
-实测：Rust 冷 383 / 热 380ms（缓存文件根本不存在），shell 冷 691 / 热 244ms（写满 19 个键）。
-所以界面每开一次，13 个外部进程重跑一遍。要补的话注意两件事：缓存键必须含
-`module.prop 的 version` 与 `/system/build.prop` 的 mtime（用 mtime 键会被"每次同步重写描述"自己作废，
-shell 侧踩过）；FRRO 强调色要另带 mtime 判失效 —— 做错就是"换了主题还显示旧颜色"，比慢 140ms 严重。
+**env 探针缓存（`let _ = cache;` 那半刀，本轮收掉）**：`env_cmd` 现在与 `cmd_env` 共用
+`/data/adb/keylens.env.cache`（`KL_ENV_CACHE` 可改），同一套 19 个键、同一个 TAB 分隔、同样
+`chmod 600` + 临时文件改名落盘。缓存键 = `v1|模块目录|module.prop 的 version|/system/build.prop 的 mtime`。
+深浅色（`dumpsys uimode`）与种子（`settings get`）每次现取，FRRO 按**路径 + mtime** 判重编。
+
+顺带改掉的一处口径：Rust 原来用 `spawn("<工具> --version")` 当"可用"，shell 用的是
+`command -v` + 真跑一次（`awk 'BEGIN{}'`、解一段 base64、`--help` 里找标记）。缓存是两边共用的，
+两种答案写进同一份文件会互相污染，所以 Rust 改成与 shell 同语义（`cmd_available` 扫 PATH，不起进程）。
+副作用只有好处：只有 busybox、且 applet 没编进去的机器，以前二进制报 `awk=0` 而 shell 报 `awk=1`。
+
+覆盖分两层，缺一不可：
+- `rust/parity.sh` 的「env 缓存」一节 24 条（冷=热、两个方向互读、热跑不起 getprop/dumpsys window/wm/id
+  且**仍**起 uimode/settings、键名 19 个逐字点名、600、换版本重探）。夹具机的 `/data/resource-cache`
+  是空的 ⇒ **FRRO 那一段结构性测不到**。
+- `tests/device-env-cache.sh` 28 条补的就是那一段：这台有 `com.android.systemui-accent-pQcS.frro`，
+  冷跑先把 base64 写进缓存，热跑逐行一致；再把缓存里的 `frro_mtime` 改成 1、`frro_path` 后面加 `.stale`，
+  两次都必须重编并把真值写回（变异不落地会当场报错，不留假绿）。
+- `tests/env-cache.sh` 加了 Rust 侧的静态形状闸：两份**源码里的键名名单**逐个同序。
+  运行时对拍比的是输出，名单一起漂时输出不漂，只有这条会响（已拿真源改名验过它会红）。
 
 量法（要复现就这么量）：`PATH` 前置一层"记一笔再转给 /system/bin"的壳去数外部进程，
 但**只能直调二进制时用** —— `webui.sh` 会重新 `export PATH` 把 /system/bin 排到前面，
-走脚本时那些壳根本不参与，会量出"0 次"的假象（我踩过一次）。
+走脚本时那些壳根本不参与，会量出"0 次"的假象（我踩过一次）。设备台子里同理，
+`cnt()` 先证明冷跑确实记了 4 笔，再拿"热跑 0 笔"当结论。
 
 ## 6. 坑（都踩过）
 
 - **PowerShell 写文件/内联脚本**会带 BOM/CRLF、`$` 会被解析：Rust/sh 源码一律用编辑工具写，或用 `node <文件>.cjs` 脚本改；写完 `\r` 要清掉（否则 `sh` 报 `EOF unexpected`）。
+- **设备上那台 shell 的两种"静默"**（本轮加 env 缓存台子时各撞一次，症状都是"实现看着坏了"）：
+  - mksh 的 `${v%|*}` **不生效**（`a|b|c` 原样出来）。剥缓存键的末段要走 `sed 's/|[^|]*$//'`；
+    同一条断言在 WSL 的 dash 下是正常的，所以只有上机才会看见它红。
+  - toybox `grep` **不支持 BRE 的 `\|`**：`grep -c '^A\|^B'` 恒 0，两个 `-e` 或 `-E` 才对。
+    凡"用 0 命中下结论"的场合，先拿一个已知会命中的样本验它能数到非零。
 - **从源码抽函数当台子时，sed 的结束锚要写 `^}$` 而不是 `^}`**：`kl_capture_diff` 里那句 awk 程序以 `}' "$1" "$2" 2>/dev/null` 收尾，`^}` 会在那一行截断，抽出来的函数少个尾巴，症状是 shell 侧整条命令报 `Syntax error: end of file unexpected (expecting "}")`（对拍里表现为"输出不一致"，很容易被误读成实现有问题）。
 - **文档自己会撞改名残留闸**：上一轮的 `docs/HANDOFF.md` 把仓库绝对路径与三个守护进程标记原样写进去，`tools/name-residue-check.mjs` 当场报 6 处 → `tests/legacy-migrate.sh` 红。这条闸只在**有 node 的环境**里才真的响（WSL 没 node，走 skip 分支），所以两套环境都得跑。
 - **`tests/rust-dispatch.sh` 在 Windows Git Bash 下恒红**（`run` 取到空串），WSL 下全绿；HEAD 干净工作树里同样红，别把它当成新改动引入的失败。
@@ -282,9 +310,10 @@ shell 侧踩过）；FRRO 强调色要另带 mtime 判失效 —— 做错就是
 | `rust/src/read_cmds.rs` | 40 条命令实现 + 校验器 + `lcs_diff` + preview 基础设施 |
 | `rust/src/backend.rs` | `Root`/`Paths`/后端探测/冲突 |
 | `rust/src/{b64,payload,json_flat,keybox,lock,ov_valid}.rs` | 基础件 |
-| `rust/parity.sh` | 129 项逐字节对拍（含漂移闸、覆盖率、EPIPE、下限 129） |
+| `rust/parity.sh` | 205 项逐字节对拍（含漂移闸、覆盖率、EPIPE、下限 205） |
 | `tests/device-ab.sh` | 真机 A/B（含写回文件指纹） |
 | `tests/device-preview.sh` | 真机 preview-* 逐字节 A/B（含「预览不许落盘」的后端文件指纹与覆盖口径） |
+| `tests/device-env-cache.sh` | 真机验 env 探针缓存：冷=热、两边互读、热跑不起进程、FRRO 的 mtime/路径各一条变异（夹具机测不到 FRRO） |
 | `tests/run-sync-bin.sh` | `run_sync` 二进制分支的三条判据 + 三条变异（CI 跑，桩掉 awk 实现） |
 | `tests/device-run-sync.sh` | 真机验锁接力：持锁不自抢、不持锁自取自放、两条分支结果一致、拿掉接力条的变异 |
 | `tests/rust-golden.sh` + `rust/golden/` | 黄金快照（删 awk 后的回归网） |
@@ -295,23 +324,20 @@ shell 侧踩过）；FRRO 强调色要另带 mtime 判失效 —— 做错就是
 ## 8. 最近提交（倒序）
 
 ```
+bf54d4a 文档：§5.9 启动开销实测（壳层 69→27、props 366→91、env 410→338）与还没收的 env 缓存一半
+fa62b95 性能③(前半)：env 页也改吃一次 getprop 快照，真机 410ms → 310ms
+13a77b7 性能②：props 页从 17 次 getprop 改成一次全量 dump，真机 311ms → 59ms
+a7001b0 性能①：接管点挪到 webui.sh 自己的函数体之前，每条命令省 ~54ms
+072780d 文档：§3.6 重启后复核结果（新树已在生产模块目录跑，doctor 11 项无 bad、后台同步走二进制、预览不落盘、回滚件在位）
+24e8fab 新增 tests/device-install-check.sh：装完包、重启前那段时间窗口的核对（真跑过，28 条全过）
+036778b 清死代码：删掉"加了从不读"的 depth 计数器与三个从来没用 Paths 的函数参数
+69d556f 对拍补形状：save-patch 带上"段尾空行+注释"，teesim-profiles 埋一个嵌套诱饵 + 四条绝对断言，下限 175→179
+42558f2 清理：删掉 Rust 里那套已经死掉的 PREVIEW 机器（a961f8e 的残留）
+0ffcb71 文档：CI 两条已全绿（Run 3 / Run 75，13 步无条件跳过=真跑过），§0 网络现状改成'走代理可用'
+fdc841b 修 CI 的红（第三处，也是最实的一处）：发布产物换成 aarch64-unknown-linux-musl
+9f8a703 修 CI 的第二处红：rust-build 的 Contract parity 提取器没在收尾引号处停下
+ed2a2df 修 CI 红：json-flat-set-check 还指着 module/backends（重指脚本漏了 .cjs 后缀）
+88efac1 小修：device-preview 的 profile-del default 那条补上目标文件参数
+86b87bb 文档：bundle 不再写死文件名（给命令与 list-heads 判据），§8 补最新提交
 c5eb978 修发布链自洽：build-zip 必须打进 bin/keylens，否则拒绝出包
-4c39bb8 阶段 5.4：awk 参照实现移出发布包，命令层实现只剩 bin/keylens
-21c04e6 文档：AWK-REMOVAL 第 1 步实测作废
-199ba6d 文档：HANDOFF 记下本轮三个提交与新的离线 bundle
-8c01f42 阶段 5.3：预览交给二进制，并修掉"点预览却真写"这个发布包级的洞
-6eb58c5 阶段 5.2：run_sync 优先走二进制，后台同步链路从此不吃 awk；补锁接力 KL_LOCK_HELD
-4f6b8f2 阶段 5.1：preview-* 全九条对拍落地，影子根修出三处口径
-f3c61f3 文档：交接说明（状态/验证方式/剩余工作/踩过的坑），供其他 agent 接手
-7eeb941 preview 走影子根，真机与 shell 逐字节相同
-a961f8e preview 基础设施（PREVIEW/commit_target/preview_tail），keybox-save 接入
-19cb0dd lcs_diff（与 kl_capture_diff 一致，含 awk 怪癖），4 单测
-1838f8b Revert "删掉模块内 19 份 awk…"
-6404192 删掉模块内 19 份 awk…（已回滚，勿再直接照做）
-04cd9bf 对拍：sync 比 rc/count + 单独断言描述行，下限 129
-d4666bd sync 补打 description 行（真机写命令 21/21）
-4f9e753 模块目录按二进制位置推导 + doctor 标记对齐（真机只读 17/17）
-be3c14d 真机 A/B 比对写回文件指纹
-a602731 黄金快照扩到 10 条只读命令
-fb3fb2c aarch64 静态链接 CI 判据 + 本地 static-check
 ```

@@ -1480,6 +1480,7 @@ ro.sf.lcd_density|420'
 {
     printf '#!/bin/sh\nTBL=%s\n' "'$ENV_TBL'"
     cat <<'EOF'
+if [ -n "${ENV_LOG:-}" ]; then printf 'getprop %s\n' "${1:-<dump>}" >> "$ENV_LOG"; fi
 if [ $# -eq 0 ]; then
     printf '%s\n' "$TBL" | while IFS='|' read -r k v; do printf '[%s]: [%s]\n' "$k" "$v"; done
     exit 0
@@ -1494,10 +1495,12 @@ exit 0
 EOF
 cat > "$T/envbin/id" <<'EOF'
 #!/bin/sh
+if [ -n "${ENV_LOG:-}" ]; then printf 'id %s\n' "$*" >> "$ENV_LOG"; fi
 echo 0
 EOF
 cat > "$T/envbin/dumpsys" <<'EOF'
 #!/bin/sh
+if [ -n "${ENV_LOG:-}" ]; then printf 'dumpsys %s\n' "$*" >> "$ENV_LOG"; fi
 case "$1" in
   uimode) echo 'mCurUiMode=0x21' ;;
   window) echo 'type=statusBars frame=[0,0][1080,66]' ;;
@@ -1506,10 +1509,12 @@ esac
 EOF
 cat > "$T/envbin/wm" <<'EOF'
 #!/bin/sh
+if [ -n "${ENV_LOG:-}" ]; then printf 'wm %s\n' "$*" >> "$ENV_LOG"; fi
 echo 'Physical density: 420'
 EOF
 cat > "$T/envbin/settings" <<'EOF'
 #!/bin/sh
+if [ -n "${ENV_LOG:-}" ]; then printf 'settings %s\n' "$*" >> "$ENV_LOG"; fi
 echo null
 EOF
 chmod +x "$T/envbin"/*
@@ -1520,15 +1525,77 @@ NL=\$(printf "\nX"); NL=\${NL%X}
 . module/lib/tools.sh
 . module/lib/backend.sh
 kv() { printf "%s=%s\n" "\$1" "\$2"; }
-MODDIR="$PWD/module"
-PROP_FILE="$ENV_ROOT/data/adb/modules/keylens/module.prop"
-KL_ENV_CACHE="$ENV_ROOT/data/adb/keylens.env.cache"
+MODDIR="\${KL_TEST_MODDIR:-$PWD/module}"
+PROP_FILE="\${MODDIR}/module.prop"
+KL_ENV_CACHE="\${KL_ENV_CACHE:-$ENV_ROOT/data/adb/keylens.env.cache}"
 SH
 sed -n '/^mod_prop() {/,/^}/p' module/webui.sh >> "$T/env.sh"
 sed -n '/^prop_now() {/,/^}/p' module/webui.sh >> "$T/env.sh"
 sed -n '/^cmd_env() {/,/^}/p' module/webui.sh >> "$T/env.sh"
 echo 'cmd_env' >> "$T/env.sh"
-chk 'env：逐行一致' "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" sh "$T/env.sh" 2>&1 | sed -e 's|/data/resource-cache/|/data/resource-cache/|')" "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" KEYLENS_ROOT="$ENV_ROOT" "$B" env 2>&1)"
+# 两边各用一份空缓存：这条必须是「冷 vs 冷」，否则 shell 先落盘、Rust 直接读缓存，
+# 看着像对拍其实只证了"读缓存读得对"。冷热与互读在下面单独一节钉住。
+rm -f "$ENV_ROOT/cold.shell" "$ENV_ROOT/cold.rust"
+KL_ENV_CACHE="$ENV_ROOT/cold.shell" PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" \
+    sh "$T/env.sh" > "$ENV_ROOT/cold.shell.out" 2>&1
+KL_ENV_CACHE="$ENV_ROOT/cold.rust" PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" \
+    KEYLENS_ROOT="$ENV_ROOT" "$B" env > "$ENV_ROOT/cold.rust.out" 2>&1
+chk 'env：逐行一致（冷 vs 冷）' "$(cat "$ENV_ROOT/cold.shell.out")" "$(cat "$ENV_ROOT/cold.rust.out")"
+
+echo "── env 缓存（两边共用一个文件、同一套键）──"
+# 缓存文件是 shell 与 Rust 共用的：任何一边的探测口径不同，就会把两种答案写进同一份文件
+# 互相污染。这一节证三件事：冷=热（缓存不改答案）、互读（谁写的都能被对方读出一样的行）、
+# 热了真的不起那些进程（只看输出一样是证不出省了 fork 的）。
+EMOD="$ENV_ROOT/data/adb/modules/keylens"
+es() { KL_TEST_MODDIR="$EMOD" KL_ENV_CACHE="$1" ENV_LOG="$2" PATH="$T/envbin:$PATH" sh "$T/env.sh" 2>&1; }
+er() { KL_ENV_CACHE="$1" ENV_LOG="$2" PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$EMOD" KEYLENS_ROOT="$ENV_ROOT" "$B" env 2>&1; }
+rm -f "$ENV_ROOT/ks.cache" "$ENV_ROOT/kr.cache"
+es "$ENV_ROOT/ks.cache" "$ENV_ROOT/log.s1" > "$ENV_ROOT/s1.out"
+es "$ENV_ROOT/ks.cache" "$ENV_ROOT/log.s2" > "$ENV_ROOT/s2.out"
+er "$ENV_ROOT/kr.cache" "$ENV_ROOT/log.r1" > "$ENV_ROOT/r1.out"
+er "$ENV_ROOT/kr.cache" "$ENV_ROOT/log.r2" > "$ENV_ROOT/r2.out"
+chk 'env 冷（同一个模块根）：shell vs Rust 逐行一致' "$(cat "$ENV_ROOT/s1.out")" "$(cat "$ENV_ROOT/r1.out")"
+chk 'env 缓存：shell 冷=热（缓存不改答案）' "$(cat "$ENV_ROOT/s1.out")" "$(cat "$ENV_ROOT/s2.out")"
+chk 'env 缓存：Rust 冷=热（缓存不改答案）' "$(cat "$ENV_ROOT/r1.out")" "$(cat "$ENV_ROOT/r2.out")"
+chk 'env 缓存互读：shell 写的缓存 Rust 读出同样的行' "$(cat "$ENV_ROOT/s1.out")" "$(er "$ENV_ROOT/ks.cache" "$ENV_ROOT/log.x1")"
+chk 'env 缓存互读：Rust 写的缓存 shell 读出同样的行' "$(cat "$ENV_ROOT/r1.out")" "$(es "$ENV_ROOT/kr.cache" "$ENV_ROOT/log.x2")"
+# 起了几个进程：热跑一次都不许再碰 getprop / dumpsys window / wm / id
+cnt() { if [ -f "$2" ]; then grep -c -- "$1" "$2"; else echo 0; fi; }
+chk 'env 热：Rust 不再起 getprop' "0" "$(cnt '^getprop' "$ENV_ROOT/log.r2")"
+chk 'env 热：Rust 不再起 dumpsys window' "0" "$(cnt '^dumpsys window' "$ENV_ROOT/log.r2")"
+chk 'env 热：Rust 不再起 wm' "0" "$(cnt '^wm' "$ENV_ROOT/log.r2")"
+chk 'env 热：Rust 不再起 id' "0" "$(cnt '^id' "$ENV_ROOT/log.r2")"
+# 反面对照：热跑仍要起"每次现取"的那两条，否则上面四个 0 可能只是日志压根没写
+chk 'env 热：Rust 仍现取深浅色（dumpsys uimode）' "1" "$(cnt '^dumpsys uimode' "$ENV_ROOT/log.r2")"
+chk 'env 热：Rust 仍现取种子（settings get）' "1" "$(cnt '^settings get' "$ENV_ROOT/log.r2")"
+chk 'env 冷：Rust 只起一次 getprop（全量快照）' "1" "$(cnt '^getprop <dump>' "$ENV_ROOT/log.r1")"
+chk 'env 冷：Rust 逐键取为零' "0" "$(cnt '^getprop [^<]' "$ENV_ROOT/log.r1")"
+chk 'env 冷：shell 参照仍是逐键取（6 次）' "6" "$(cnt '^getprop [^<]' "$ENV_ROOT/log.s1")"
+chk 'env 冷：shell 参照起 dumpsys window + wm + id' "3" "$(( $(cnt '^dumpsys window' "$ENV_ROOT/log.s1") + $(cnt '^wm' "$ENV_ROOT/log.s1") + $(cnt '^id' "$ENV_ROOT/log.s1") ))"
+# 落盘形状：19 行、键名逐个点名（只跟 shell 比会让两边一起漂）
+chk 'env 缓存：键名与顺序（19 个，逐字）' \
+  "v1,resetprop,awk,base64,base64_cmd,ino_mode,ino_cmd,root_user,webui_sh,device,brand,android,sdk,build_type,vbstate,statusbar_dp,frro_path,frro_mtime,frro_b64" \
+  "$(cut -f1 "$ENV_ROOT/kr.cache" | tr '\n' ',' | sed 's/,$//')"
+chk 'env 缓存：键名与顺序（shell 写的同一份）' \
+  "$(cut -f1 "$ENV_ROOT/ks.cache" | tr '\n' ',' | sed 's/,$//')" \
+  "$(cut -f1 "$ENV_ROOT/kr.cache" | tr '\n' ',' | sed 's/,$//')"
+# 缓存键 = v1|模块目录|module.prop 的 version|/system/build.prop 的 mtime。
+# 末段按宿主机自己算（WSL/Git Bash 没有 /system），所以比前三段。
+# 剥末段走 sed 不走 ${v%|*}：真机的 mksh 里那个写法不生效（设备台子上实测出来的）。
+v1r=$(awk -F'\t' 'NR==1{print $2}' "$ENV_ROOT/kr.cache" | sed 's/|[^|]*$//')
+chk 'env 缓存：缓存键带模块目录与版本' "v1|$EMOD|v3.0.1" "$v1r"
+chk 'env 缓存：权限 600' "600" "$(stat -c %a "$ENV_ROOT/kr.cache" 2>/dev/null || echo 无)"
+chk 'env 缓存：改名落盘，不留 .tmp.*' "0" "$(ls "$ENV_ROOT"/kr.cache.tmp.* 2>/dev/null | wc -l | tr -d ' ')"
+# 正对照：改 module.prop 的 version → 缓存必须作废（重探），输出仍逐行一致
+printf 'id=keylens\nversion=v9.9.9\n' > "$EMOD/module.prop"
+er "$ENV_ROOT/kr.cache" "$ENV_ROOT/log.r3" > "$ENV_ROOT/r3.out"
+chk 'env 缓存：换模块版本 → 重探（getprop 又起了一次）' "1" "$(cnt '^getprop <dump>' "$ENV_ROOT/log.r3")"
+v1r3=$(awk -F'\t' 'NR==1{print $2}' "$ENV_ROOT/kr.cache" | sed 's/|[^|]*$//')
+chk 'env 缓存：换版本后缓存键跟着走' "v1|$EMOD|v9.9.9" "$v1r3"
+chk 'env 缓存：换版本不改变答案（版本不进输出）' "$(cat "$ENV_ROOT/r1.out")" "$(cat "$ENV_ROOT/r3.out")"
+er "$ENV_ROOT/kr.cache" "$ENV_ROOT/log.r4" > "$ENV_ROOT/r4.out"
+chk 'env 缓存：改完一轮后重新命中（热跑回到零 getprop）' "0" "$(cnt '^getprop' "$ENV_ROOT/log.r4")"
+printf 'id=keylens\nversion=v3.0.1\n' > "$EMOD/module.prop"
 
 echo "── sync（快照差分 + 写回 + 状态提交）──"
 mk_sy_harness() { # <root>
@@ -1698,8 +1765,9 @@ echo
 # 173 → 175：影子根落脚点全不可用时的两条（退 2 / 不许打空信封）
 # 179 → 181：props 的"起了几次 getprop"计数断言（Rust 1 次快照 vs shell 17 次逐键）
 # 175 → 177：save-patch 的两条防空转断言（新键落在全局段内 / 注释行没被吃掉）
+# 181 → 205：env 探针缓存一节（冷=热 / 互读 / 热跑不起 getprop·dumpsys·wm·id / 键名逐个点名 / 换版本重探）
 # 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
-if [ "$oks" -lt 181 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 181），疑似用例被删"; fail=1
+if [ "$oks" -lt 205 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 205），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

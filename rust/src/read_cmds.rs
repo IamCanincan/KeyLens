@@ -5054,6 +5054,114 @@ pub fn backend_info() {
     }
 }
 
+/// `stat -c %Y` 的等价：文件不存在/读不到时返回空串（shell 那边是 `2>/dev/null` 的空输出）。
+fn mtime_secs(p: &Path) -> String {
+    std::fs::metadata(p).ok()
+        .and_then(|md| md.modified().ok())
+        .and_then(|t| t.duration_since(UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default()
+}
+
+/// tools.sh 里写死的那三个 busybox 落点。
+const BUSYBOX_CANDIDATES: [&str; 3] =
+    ["/data/adb/magisk/busybox", "/data/adb/ksu/bin/busybox", "/data/adb/ap/bin/busybox"];
+
+/// shell 的 `command -v`：带 `/` 的按路径判，否则扫 `$PATH`。**不起进程** ——
+/// 探测三个工具是否可用本来不该付 fork 的钱，而这条又是 env 页每次都要算的。
+fn cmd_available(prog: &str) -> bool {
+    use std::os::unix::fs::PermissionsExt;
+    let hit = |p: PathBuf| -> bool {
+        std::fs::metadata(&p)
+            .map(|md| md.is_file() && md.permissions().mode() & 0o111 != 0)
+            .unwrap_or(false)
+    };
+    if prog.contains('/') {
+        return hit(PathBuf::from(prog));
+    }
+    match std::env::var_os("PATH") {
+        Some(path) => std::env::split_paths(&path).any(|d| hit(d.join(prog))),
+        None => false,
+    }
+}
+
+struct Probed { ok: bool, out: String, err: String }
+
+/// 跑一条探测命令，拿回退码与两路输出（可给 stdin）。
+fn probe_run(prog: &str, args: &[&str], input: Option<&[u8]>) -> Option<Probed> {
+    use std::io::Write as _;
+    let mut cmd = std::process::Command::new(prog);
+    cmd.args(args)
+        .stdin(std::process::Stdio::piped())
+        .stdout(std::process::Stdio::piped())
+        .stderr(std::process::Stdio::piped());
+    let mut child = cmd.spawn().ok()?;
+    // 句柄在这个 if 体结束时就关掉，否则被探测的命令会等 stdin 不退出
+    if let Some(mut si) = child.stdin.take() {
+        let _ = si.write_all(input.unwrap_or(b""));
+    }
+    let out = child.wait_with_output().ok()?;
+    Some(Probed {
+        ok: out.status.success(),
+        out: String::from_utf8_lossy(&out.stdout).into_owned(),
+        err: String::from_utf8_lossy(&out.stderr).into_owned(),
+    })
+}
+
+/// tools.sh 的 find_awk：必须真跑一次 `awk 'BEGIN{}'`。只看"命令存在"会把
+/// applet 没编进去的 busybox 当成可用，于是缓存里存进一条用不了的路。
+fn find_awk_cmd() -> Option<String> {
+    if cmd_available("awk") { return Some("awk".to_string()); }
+    for b in BUSYBOX_CANDIDATES {
+        if cmd_available(b) && probe_run(b, &["awk", "BEGIN{}"], None).map(|p| p.ok).unwrap_or(false) {
+            return Some(format!("{b} awk"));
+        }
+    }
+    None
+}
+
+/// tools.sh 的 find_base64：解一次 `aGk=` 要求得到 hi。
+fn find_base64_cmd() -> Option<String> {
+    if cmd_available("base64") && decodes("base64", &["-d"]) { return Some("base64".to_string()); }
+    for b in BUSYBOX_CANDIDATES {
+        if cmd_available(b) && decodes(b, &["base64", "-d"]) { return Some(format!("{b} base64")); }
+    }
+    None
+}
+fn decodes(prog: &str, args: &[&str]) -> bool {
+    probe_run(prog, args, Some(b"aGk=")).map(|p| p.out.contains("hi")).unwrap_or(false)
+}
+
+/// tools.sh 的 find_inotify_cmd：按 inotifywait → inotifyd，且用 `--help` 里的标记验真身。
+/// 返回 (模式, 命令)，找不到是 ("none", "")。
+fn find_inotify_cmd() -> (String, String) {
+    for mode in ["inotifywait", "inotifyd"] {
+        let marker = if mode == "inotifywait" { "--monitor" } else { "inotifyd" };
+        let mut cands: Vec<String> = vec![mode.to_string()];
+        for b in BUSYBOX_CANDIDATES {
+            cands.push(format!("{b} {mode}"));
+        }
+        for cmd in cands {
+            let (base, applet) = match cmd.split_once(' ') {
+                Some((b, a)) => (b, Some(a)),
+                None => (cmd.as_str(), None),
+            };
+            if !cmd_available(base) { continue; }
+            let mut argv: Vec<&str> = Vec::new();
+            if let Some(a) = applet { argv.push(a); }
+            argv.push("--help");
+            // shell 是 `2>&1 | grep`：两路合起来找标记，且不看退码
+            match probe_run(base, &argv, None) {
+                Some(p) if format!("{}{}", p.out, p.err).contains(marker) => {
+                    return (mode.to_string(), cmd);
+                }
+                _ => {}
+            }
+        }
+    }
+    ("none".to_string(), String::new())
+}
+
 /// cmd_env：环境能力与设备信息（顺序见 docs/ENV-SPEC.md）。
 /// 模块目录：优先 KEYLENS_MODDIR，其次「二进制自己在 bin/ 下」推导，最后回落到默认路径。
 /// 这样 env/webui_sh 与 icons/webroot 在非默认安装位置也正确。
@@ -5084,19 +5192,112 @@ pub fn env_cmd() {
             .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
             .unwrap_or_default()
     };
-    let has = |prog: &str| -> bool { std::process::Command::new(prog).arg("--version").output().is_ok() };
-    // env 页有 6 个属性字段 + 一个密度兜底：逐键 getprop 每次约 18ms（真机实测 13 次外部进程里
-    // 占 7 次）。与 props 页同一招：一次全量 dump 查表。
-    let prop_snap = prop_snapshot();
-    let prop = |name: &str| -> String { prop_snap.get(name).cloned().unwrap_or_default() };
-    let base64_cmd = if has("base64") { "base64".to_string() } else { String::new() };
-    let ino = if has("inotifywait") {
-        ("inotifywait".to_string(), "inotifywait".to_string())
-    } else if has("inotifyd") {
-        ("inotifyd".to_string(), "inotifyd".to_string())
-    } else {
-        ("none".to_string(), String::new())
+    // 探针缓存：四个工具要真跑一次才知道可用，六个属性 + 状态栏高度要起 getprop/dumpsys/wm，
+    // 但它们只在装机、换工具、系统 OTA 时才变 —— 与 webui.sh 的 cmd_env 共用同一个文件、
+    // 同一套键：谁先算谁落盘，另一边直接读（所以这里的探测口径必须和 shell 一致，
+    // 否则会把两种答案写进同一份缓存互相污染）。缓存键里带 MODDIR，
+    // A/B 树与生产树各用各的缓存，不会互相喂值。
+    let ckey = {
+        let ver = mod_prop(&Path::new(&moddir).join("module.prop"), "version");
+        let bp = mtime_secs(Path::new("/system/build.prop"));
+        format!("v1|{}|{}|{}", moddir, if ver.is_empty() { "none" } else { &ver }, bp)
     };
+    let mut cached: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    if let Ok(text) = std::fs::read_to_string(&cache) {
+        for line in text.lines() {
+            if let Some((k, v)) = line.split_once('\t') {
+                cached.insert(k.to_string(), v.to_string());
+            }
+        }
+    }
+    let cache_hit = cached.get("v1").map(|s| s.as_str()) == Some(ckey.as_str());
+    let cg = |k: &str| -> String { cached.get(k).cloned().unwrap_or_default() };
+    let mut dirty = false;
+    let resetprop_v: String;
+    let awk_v: String;
+    let mut base64_cmd: String;
+    let ino_mode_v: String;
+    let ino_cmd_v: String;
+    let root_user: String;
+    let webui_sh: String;
+    let device_v: String;
+    let brand_v: String;
+    let android_v: String;
+    let sdk_v: String;
+    let build_v: String;
+    let vb_v: String;
+    let sb_dp_v: String;
+    if cache_hit {
+        resetprop_v = cg("resetprop");
+        awk_v = cg("awk");
+        base64_cmd = cg("base64_cmd");
+        ino_mode_v = cg("ino_mode");
+        ino_cmd_v = cg("ino_cmd");
+        root_user = cg("root_user");
+        webui_sh = cg("webui_sh");
+        device_v = cg("device");
+        brand_v = cg("brand");
+        android_v = cg("android");
+        sdk_v = cg("sdk");
+        build_v = cg("build_type");
+        vb_v = cg("vbstate");
+        sb_dp_v = cg("statusbar_dp");
+    } else {
+        // 一次全量 dump 查表：逐键 getprop 每次约 18ms，这一页要 6 个键 + 一个密度兜底。
+        let prop_snap = prop_snapshot();
+        let prop = |name: &str| -> String { prop_snap.get(name).cloned().unwrap_or_default() };
+        resetprop_v = if cmd_available("resetprop") { "1" } else { "0" }.to_string();
+        awk_v = if find_awk_cmd().is_some() { "1" } else { "0" }.to_string();
+        base64_cmd = find_base64_cmd().unwrap_or_default();
+        let ino = find_inotify_cmd();
+        ino_mode_v = ino.0;
+        ino_cmd_v = ino.1;
+        root_user = run("id", &["-u"]).trim().to_string();
+        webui_sh = format!("{moddir}/webui.sh");
+        device_v = prop("ro.product.model");
+        brand_v = prop("ro.product.brand");
+        android_v = prop("ro.build.version.release");
+        sdk_v = prop("ro.build.version.sdk");
+        build_v = prop("ro.build.type");
+        vb_v = prop("ro.boot.verifiedbootstate");
+        // 状态栏高度：dumpsys window 量像素、wm density 量 dpi，两个都要现算
+        let mut sbh = String::new();
+        {
+            let out = run("dumpsys", &["window", "displays"]);
+            for line in out.lines() {
+                if let Some(pos) = line.find("type=statusBars frame=[") {
+                    let mut nums: Vec<String> = Vec::new();
+                    let mut cur = String::new();
+                    for c in line[pos..].chars() {
+                        if c.is_ascii_digit() { cur.push(c); }
+                        else if !cur.is_empty() { nums.push(std::mem::take(&mut cur)); }
+                    }
+                    if !cur.is_empty() { nums.push(cur); }
+                    if nums.len() >= 4 { sbh = nums[3].clone(); break; }
+                }
+            }
+        }
+        let mut dens = String::new();
+        {
+            let out = run("wm", &["density"]);
+            for line in out.lines() {
+                if let Some(rest) = line.trim().strip_prefix("Physical density:") {
+                    dens = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+                    break;
+                }
+            }
+            if dens.is_empty() { dens = prop("ro.sf.lcd_density"); }
+        }
+        let sbh_n: u64 = sbh.parse().unwrap_or(0);
+        let dens_n: u64 = dens.parse().unwrap_or(0);
+        sb_dp_v = if sbh_n > 0 && dens_n > 0 {
+            ((sbh_n * 160 + dens_n - 1) / dens_n).to_string()
+        } else {
+            String::new()
+        };
+        dirty = true;
+    }
+    let base64_v = if base64_cmd.is_empty() { "0" } else { "1" }.to_string();
     // 每次现取：深浅色
     let uimode = {
         let mut o = run("dumpsys", &["uimode"]);
@@ -5124,7 +5325,8 @@ pub fn env_cmd() {
     } else {
         dark_src = "none".to_string();
     }
-    // FRRO：优先 SystemUI 的 accent，其次 dynamic；按 mtime 取最新
+    // FRRO：优先 SystemUI 的 accent，其次 dynamic；按 mtime 取最新。
+    // 路径与 mtime 每次现查（换主题必须马上看见），base64 只在二者之一变了时才重编。
     let rc_dir = root.join("/data/resource-cache");
     let pick = |pat_prefix: &str| -> Option<std::path::PathBuf> {
         let rd = std::fs::read_dir(&rc_dir).ok()?;
@@ -5144,12 +5346,33 @@ pub fn env_cmd() {
         best.map(|(_, p)| p)
     };
     let frro = pick("com.android.systemui-accent-").or_else(|| pick("com.android.systemui-dynamic-"));
-    let mut frro_b64 = String::new();
-    let mut frro_path = String::new();
-    if let Some(f) = &frro {
-        if let Ok(data) = std::fs::read(f) {
-            frro_b64 = crate::b64::encode_bytes(&data);
-            frro_path = f.to_string_lossy().into_owned();
+    let frro_now = frro.as_ref().map(|p| p.to_string_lossy().into_owned()).unwrap_or_default();
+    let frro_mtime_now = frro.as_ref().map(|p| mtime_secs(p.as_path())).unwrap_or_default();
+    let mut frro_path_v = cg("frro_path");
+    let mut frro_mtime_v = cg("frro_mtime");
+    let mut frro_b64_v = cg("frro_b64");
+    if frro_now != frro_path_v || frro_mtime_now != frro_mtime_v || frro_b64_v.is_empty() {
+        let mut enc = String::new();
+        if !frro_now.is_empty() {
+            // 与 shell 同一道闸：base64 探不到就不交这张 overlay。Rust 自己能编码，
+            // 但缓存是两边共用的 —— 输出一边有一边没有，界面就会看出"按了同一个按钮换了个实现"。
+            if base64_cmd.is_empty() { base64_cmd = find_base64_cmd().unwrap_or_default(); }
+            if !base64_cmd.is_empty() {
+                if let Some(f) = &frro {
+                    if let Ok(data) = std::fs::read(f) { enc = crate::b64::encode_bytes(&data); }
+                }
+            }
+        }
+        if !enc.is_empty() {
+            frro_path_v = frro_now;
+            frro_mtime_v = frro_mtime_now;
+            frro_b64_v = enc;
+            dirty = true;
+        } else if frro_now.is_empty() && !frro_path_v.is_empty() {
+            frro_path_v = String::new();
+            frro_mtime_v = String::new();
+            frro_b64_v = String::new();
+            dirty = true;
         }
     }
     let seeding = {
@@ -5157,12 +5380,12 @@ pub fn env_cmd() {
         let t = s.trim();
         if t.is_empty() || t == "null" || t.starts_with("null") { String::new() } else { t.to_string() }
     };
-    let mut seed_raw;
-    let mut seed_src;
+    let seed_raw;
+    let seed_src;
     if !seeding.is_empty() {
         seed_raw = seeding.clone();
         seed_src = "theme_custom_color".to_string();
-    } else if !frro_b64.is_empty() {
+    } else if !frro_b64_v.is_empty() {
         seed_raw = String::new();
         seed_src = "none".to_string();
     } else {
@@ -5180,79 +5403,72 @@ pub fn env_cmd() {
             seed_src = "wallpaper_color0".to_string();
         }
     }
-    // statusbar dp
-    let sbh = {
-        let out = run("dumpsys", &["window", "displays"]);
-        let mut v = String::new();
-        for line in out.lines() {
-            if let Some(pos) = line.find("type=statusBars frame=[") {
-                let rest = &line[pos..];
-                // frame=[l,t][r,b] → 取第 4 个数字（b，底部坐标）
-                let mut nums: Vec<String> = Vec::new();
-                let mut cur = String::new();
-                for c in rest.chars() {
-                    if c.is_ascii_digit() { cur.push(c); }
-                    else if !cur.is_empty() { nums.push(std::mem::take(&mut cur)); }
-                }
-                if !cur.is_empty() { nums.push(cur); }
-                if nums.len() >= 4 { v = nums[3].clone(); break; }
-            }
-        }
-        v
-    };
-    let dens = {
-        let out = run("wm", &["density"]);
-        let mut v = String::new();
-        for line in out.lines() {
-            if let Some(rest) = line.trim().strip_prefix("Physical density:") {
-                v = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
-                break;
-            }
-        }
-        if v.is_empty() {
-            prop("ro.sf.lcd_density")
-        } else {
-            v
-        }
-    };
-    let sbh_n: u64 = sbh.parse().unwrap_or(0);
-    let dens_n: u64 = dens.parse().unwrap_or(0);
-    let dp = if sbh_n > 0 && dens_n > 0 {
-        ((sbh_n * 160 + dens_n - 1) / dens_n).to_string()
-    } else {
-        String::new()
-    };
     // 输出
     println_ok!("sys_dark={}", dark);
     println_ok!("sys_dark_src={}", dark_src);
-    if !frro_b64.is_empty() {
-        println_ok!("sys_frro={}", frro_b64);
-        println_ok!("sys_frro_src={}", frro_path);
+    if !frro_b64_v.is_empty() {
+        println_ok!("sys_frro={}", frro_b64_v);
+        println_ok!("sys_frro_src={}", frro_path_v);
     }
     println_ok!("sys_seed_raw={}", seed_raw);
     println_ok!("sys_seed_src={}", seed_src);
-    println_ok!("resetprop={}", if has("resetprop") { "1" } else { "0" });
-    println_ok!("awk={}", if has("awk") { "1" } else { "0" });
-    println_ok!("base64={}", if base64_cmd.is_empty() { "0" } else { "1" });
-    println_ok!("inotify_mode={}", ino.0);
-    println_ok!("inotify_cmd={}", ino.1);
-    println_ok!("root_user={}", run("id", &["-u"]).trim());
-    println_ok!("webui_sh={}/webui.sh", moddir);
-    println_ok!("device={}", prop("ro.product.model"));
-    println_ok!("brand={}", prop("ro.product.brand"));
-    println_ok!("android={}", prop("ro.build.version.release"));
-    println_ok!("sdk={}", prop("ro.build.version.sdk"));
-    println_ok!("build_type={}", prop("ro.build.type"));
-    println_ok!("vbstate={}", prop("ro.boot.verifiedbootstate"));
-    if !dp.is_empty() {
-        println_ok!("sys_statusbar_dp={}", dp);
+    println_ok!("resetprop={}", resetprop_v);
+    println_ok!("awk={}", awk_v);
+    println_ok!("base64={}", base64_v);
+    println_ok!("inotify_mode={}", ino_mode_v);
+    println_ok!("inotify_cmd={}", ino_cmd_v);
+    println_ok!("root_user={}", root_user);
+    println_ok!("webui_sh={}", webui_sh);
+    println_ok!("device={}", device_v);
+    println_ok!("brand={}", brand_v);
+    println_ok!("android={}", android_v);
+    println_ok!("sdk={}", sdk_v);
+    println_ok!("build_type={}", build_v);
+    println_ok!("vbstate={}", vb_v);
+    if !sb_dp_v.is_empty() {
+        println_ok!("sys_statusbar_dp={}", sb_dp_v);
     }
-    // 落缓存（这里只写 shell 会读的那份，字段与 shell 一致）
-    let ckey = format!("v1|{}|{}|{}", moddir, "", "");
-    let _ = ckey;
-    let _ = cache;
-    let _ = &mut seed_raw;
-    let _ = &mut seed_src;
+    // 落盘：首次 / 缓存键变了 / 换主题时才写。键与顺序必须和 cmd_env 那 19 行一致，
+    // 否则 shell 的 `case "$k"` 读不到、下一轮又当空缓存重算一遍。
+    if dirty {
+        let rows: [(&str, &str); 19] = [
+            ("v1", ckey.as_str()),
+            ("resetprop", resetprop_v.as_str()),
+            ("awk", awk_v.as_str()),
+            ("base64", base64_v.as_str()),
+            ("base64_cmd", base64_cmd.as_str()),
+            ("ino_mode", ino_mode_v.as_str()),
+            ("ino_cmd", ino_cmd_v.as_str()),
+            ("root_user", root_user.as_str()),
+            ("webui_sh", webui_sh.as_str()),
+            ("device", device_v.as_str()),
+            ("brand", brand_v.as_str()),
+            ("android", android_v.as_str()),
+            ("sdk", sdk_v.as_str()),
+            ("build_type", build_v.as_str()),
+            ("vbstate", vb_v.as_str()),
+            ("statusbar_dp", sb_dp_v.as_str()),
+            ("frro_path", frro_path_v.as_str()),
+            ("frro_mtime", frro_mtime_v.as_str()),
+            ("frro_b64", frro_b64_v.as_str()),
+        ];
+        let mut body = String::new();
+        for (k, v) in rows {
+            body.push_str(k);
+            body.push('\t');
+            body.push_str(v);
+            body.push('\n');
+        }
+        // 先写临时文件再改名：读的一方永远只会看见完整的 19 行
+        let tmp = PathBuf::from(format!("{}.tmp.{}", cache.display(), std::process::id()));
+        if std::fs::write(&tmp, body.as_bytes()).is_ok() {
+            use std::os::unix::fs::PermissionsExt;
+            let _ = std::fs::set_permissions(&tmp, std::fs::Permissions::from_mode(0o600));
+            if std::fs::rename(&tmp, &cache).is_err() {
+                let _ = std::fs::remove_file(&tmp);
+            }
+        }
+    }
 }
 
 /// 已装第三方应用（排序去重，含去前缀与去 [N] 尾缀）。
