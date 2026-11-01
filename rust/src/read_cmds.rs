@@ -4350,3 +4350,101 @@ pub fn omk_save_config(payload: &str) {
         println_ok!("apply_note={}", note);
     }
 }
+
+/// tricky_info.awk 的等价：security_patch.txt 的摘要行（顺序与 awk 一致）。
+///
+/// 只读**全局段**（第一个 `[包名]` 之前）：裸值进 `patch_all`，`system`/`vendor`/`boot`/`all`
+/// 键各自取值（后出现者覆盖）。`patch_lines` 数的是"去掉注释与空白后仍非空"的行，
+/// 段头也算一行；`patch_packages` 数段头。
+pub fn tricky_info_lines(text: &str) -> Vec<String> {
+    let mut n = 0usize;
+    let mut npkg = 0usize;
+    let mut cur = String::new();
+    let (mut sysval, mut venval, mut bootval, mut allval) = (String::new(), String::new(), String::new(), String::new());
+    let is_pkg = |t: &str| {
+        t.starts_with('[') && t.ends_with(']') && t.len() >= 3 && {
+            let name = &t[1..t.len() - 1];
+            !name.is_empty() && name.bytes().all(|b| b.is_ascii_alphanumeric() || matches!(b, b'_' | b'.' | b'-'))
+        }
+    };
+    for raw in text.split('\n') {
+        let mut line = raw.strip_suffix('\r').unwrap_or(raw).to_string();
+        if let Some(h) = line.find('#') {
+            line.truncate(h);
+        }
+        let line = line.trim_matches([' ', '\t']).to_string();
+        if line.is_empty() {
+            continue;
+        }
+        n += 1;
+        if is_pkg(&line) {
+            cur = line[1..line.len() - 1].to_string();
+            npkg += 1;
+            continue;
+        }
+        if cur.is_empty() {
+            match line.find('=') {
+                None => {
+                    if allval.is_empty() {
+                        allval = line.clone();
+                    }
+                }
+                Some(e) => {
+                    let k = line[..e].trim_matches([' ', '\t']).to_ascii_lowercase();
+                    let v = line[e + 1..].trim_matches([' ', '\t']).to_string();
+                    match k.as_str() {
+                        "system" => sysval = v,
+                        "vendor" => venval = v,
+                        "boot" => bootval = v,
+                        "all" => allval = v,
+                        _ => {}
+                    }
+                }
+            }
+        }
+    }
+    let mut out = vec![format!("patch_lines={}", n), format!("patch_packages={}", npkg)];
+    for (key, val) in [("patch_system", &sysval), ("patch_vendor", &venval), ("patch_boot", &bootval), ("patch_all", &allval)] {
+        if !val.is_empty() {
+            out.push(format!("{}={}", key, val));
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod tricky_info_tests {
+    use super::*;
+
+    #[test]
+    fn bare_value_and_sections() {
+        let text = "2026-10-05\nsystem=2026-10-01\n[com.a]\nvendor=2026-09-01\n";
+        let got = tricky_info_lines(text);
+        assert_eq!(got, vec![
+            "patch_lines=4".to_string(),
+            "patch_packages=1".to_string(),
+            "patch_system=2026-10-01".to_string(),
+            "patch_all=2026-10-05".to_string(),
+        ]);
+    }
+
+    #[test]
+    fn comments_and_blank_lines_do_not_count() {
+        let text = "# 注释\n\n  system = 2026-10-01  # 行尾\n";
+        let got = tricky_info_lines(text);
+        assert_eq!(got, vec!["patch_lines=1".to_string(), "patch_packages=0".to_string(), "patch_system=2026-10-01".to_string()]);
+    }
+
+    #[test]
+    fn all_key_wins_over_bare() {
+        let text = "2026-01-01\nall=2026-02-02\n";
+        assert!(tricky_info_lines(text).contains(&"patch_all=2026-02-02".to_string()));
+    }
+
+    #[test]
+    fn section_only_after_global_is_ignored() {
+        let text = "[com.a]\nsystem=2026-01-01\n";
+        let got = tricky_info_lines(text);
+        assert_eq!(got, vec!["patch_lines=2".to_string(), "patch_packages=1".to_string()]);
+    }
+}
