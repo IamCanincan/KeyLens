@@ -153,10 +153,12 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
    这也是 §5 剩下那条"首次真实 CI 运行"必须尽快跑的原因之一。
    闸：`tests/rust-dispatch.sh`（preview 接管/回落 6 条 + 普通命令退码透传的正对照）、
    `tests/device-preview.sh`（三条腿逐字节 + 信封恰好一份 + 三条腿都不许落盘）。
-4. **删 `module/backends/*.awk`**（19 份）。步骤与影响面见 `docs/AWK-REMOVAL.md`。
-   注意：上次直接删导致真机 A/B 从 38/38 掉到全挂，已 `git revert`（`1838f8b`）；
-   上面第 2、3 步都已做完，剩下的顾虑只有 shell 回退路径（`KL_USE_RUST=0` 与没带二进制的场景）
-   —— 删之前先定它要不要保留：保留就还得留着 awk，不保留就把回退路径改成"明确报错"而不是静默半功能。
+4. **删 `module/backends/*.awk`**（19 份）——**剩下唯一的大件，且不可拆**。
+   `docs/AWK-REMOVAL.md` 里"先删零调用者的"那一步 2026-11-01 实测**个数为 0**：19 份全都还有 shell 引用。
+   所以这一步等于同时做三件事：回退路径改成「必须有二进制，否则明确报错」→ 删 awk →
+   退役 `rust/parity.sh` 的 shell 侧（现在 175 项里绝大多数靠抽 shell 函数当参照，删了 awk 就没了参照，
+   只剩 10 条黄金快照 + Rust 单测 + 真机 38 条）。这是产品决定，不是施工细节：
+   要不要为了少 19 份文件，把"两套实现互相对拍"这张网换掉。上一轮试过一把删，真机 A/B 全挂后 `git revert`（`1838f8b`）。
 5. 清理无用的 shell 函数（删 awk 之后 `grep` 确认零引用再删）。
 6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
 
