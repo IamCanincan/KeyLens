@@ -4750,3 +4750,178 @@ mod omk_info_tests {
         assert_eq!(got, vec!["intercept_true=0".to_string(), "filter_deny=0".to_string(), "filter_deny_list=".to_string()]);
     }
 }
+
+/// cmd_backend_info：三家后端的配置摘要（输出顺序见 docs/BACKEND-INFO-SPEC.md）。
+pub fn backend_info() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let b = backend::detect(&p);
+    let bname = match b.id {
+        BackendId::Teesim => "TEE Simulator",
+        BackendId::Omk => "OhMyKeymint",
+        BackendId::Tricky => "Tricky Store",
+    };
+    let kv = |k: &str, v: &str| println_ok!("{}={}", k, v);
+    let mut info: Vec<String> = Vec::new();
+    let mut keybox = String::new();
+    let mut mdir = String::new();
+    let (teesim_module, omk_module, tricky_module) = (
+        root.join("/data/adb/modules/teesim"),
+        root.join("/data/adb/modules/oh_my_keymint"),
+        root.join("/data/adb/modules/tricky_store"),
+    );
+    match b.id {
+        BackendId::Teesim => {
+            mdir = teesim_module.to_string_lossy().into_owned();
+            keybox = keybox_path_for(&p, b.id).to_string_lossy().into_owned();
+            if p.teesim_config.is_file() {
+                let text = std::fs::read_to_string(&p.teesim_config).unwrap_or_default();
+                info = teesim_info_lines(&text);
+            }
+        }
+        BackendId::Omk => {
+            mdir = omk_module.to_string_lossy().into_owned();
+            keybox = p.omk_dir.join("keybox.xml").to_string_lossy().into_owned();
+            let inj = if p.omk_injector.is_file() {
+                std::fs::read_to_string(&p.omk_injector).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            let cfg_path = p.omk_dir.join("config.toml");
+            let cfg = if cfg_path.is_file() {
+                std::fs::read_to_string(&cfg_path).unwrap_or_default()
+            } else {
+                String::new()
+            };
+            if p.omk_injector.is_file() || cfg_path.is_file() {
+                info = omk_info_lines(&inj, &cfg);
+            }
+        }
+        BackendId::Tricky => {
+            mdir = tricky_module.to_string_lossy().into_owned();
+            keybox = p.tstore_dir.join("keybox.xml").to_string_lossy().into_owned();
+            let patch = p.tstore_dir.join("security_patch.txt");
+            kv("patch_file", &patch.to_string_lossy());
+            if patch.is_file() {
+                kv("patch_exists", "1");
+                let text = std::fs::read_to_string(&patch).unwrap_or_default();
+                for line in tricky_info_lines(&text) {
+                    println_ok!("{}", line);
+                }
+            } else {
+                kv("patch_exists", "0");
+            }
+        }
+    }
+    // omk 的守护/注入（本模块自己看，OMK 不自报）
+    if b.id == BackendId::Omk {
+        let read_pid = |name: &str| -> String {
+            std::fs::read_to_string(p.omk_state_dir.join(name))
+                .unwrap_or_default()
+                .trim()
+                .to_string()
+        };
+        let cmdline_second = |pid: &str| -> String {
+            let Ok(data) = std::fs::read(format!("/proc/{}/cmdline", pid)) else { return String::new() };
+            let text = String::from_utf8_lossy(&data).replace('\0', "\n");
+            text.lines().nth(1).unwrap_or("").to_string()
+        };
+        let d1 = read_pid("keymint-daemon.pid");
+        let d1_alive = !d1.is_empty()
+            && std::path::Path::new(&format!("/proc/{}", d1)).exists()
+            && cmdline_second(&d1) == format!("{}/daemon", omk_module.display());
+        let d2 = read_pid("injector-daemon.pid");
+        let d2_alive = !d2.is_empty()
+            && std::path::Path::new(&format!("/proc/{}", d2)).exists()
+            && cmdline_second(&d2) == format!("{}/daemon-injector", omk_module.display());
+        let ks = std::process::Command::new("pidof")
+            .arg("keystore2")
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string())
+            .unwrap_or_default();
+        let mut injected = 0;
+        if !ks.is_empty() {
+            if let Ok(pay) = std::fs::read_to_string(p.omk_state_dir.join("injector.payload")) {
+                let mut it = pay.split_whitespace();
+                let pid = it.next().unwrap_or("");
+                let id = it.next().unwrap_or("");
+                if pid == ks && !id.is_empty() {
+                    injected = 1;
+                }
+            }
+        }
+        kv("omk_keymint_daemon", &d1);
+        kv("omk_keymint_alive", if d1_alive { "1" } else { "0" });
+        kv("omk_injector_daemon", &d2);
+        kv("omk_injector_alive", if d2_alive { "1" } else { "0" });
+        kv("omk_keystore_pid", &ks);
+        kv("omk_keystore_injected", if injected == 1 { "1" } else { "0" });
+    }
+    kv("backend", b.id.as_str());
+    kv("backend_name", bname);
+    kv("module_dir", &mdir);
+    let mut ver = String::new();
+    if let Ok(text) = std::fs::read_to_string(format!("{}/module.prop", mdir)) {
+        for line in text.lines() {
+            if let Some(v) = line.strip_prefix("version=") {
+                ver = v.to_string();
+                break;
+            }
+        }
+    }
+    kv("module_version", &ver);
+    let n = cur_target_tokens(&p, &b).len();
+    kv("target_file", &b.target.to_string_lossy());
+    kv("target_entries", &n.to_string());
+    let kb = std::path::PathBuf::from(&keybox);
+    let mut kb_exists = 0;
+    let (mut kb_bytes, mut kb_mtime) = (String::new(), String::new());
+    if kb.is_file() {
+        kb_exists = 1;
+        if let Ok(md) = std::fs::metadata(&kb) {
+            kb_bytes = md.len().to_string();
+            kb_mtime = md
+                .modified()
+                .ok()
+                .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+                .map(|d| d.as_secs().to_string())
+                .unwrap_or_default();
+        }
+    }
+    kv("keybox_file", &keybox);
+    kv("keybox_exists", if kb_exists == 1 { "1" } else { "0" });
+    kv("keybox_bytes", &kb_bytes);
+    kv("keybox_mtime", &kb_mtime);
+    let mut sha = String::new();
+    if kb_exists == 1 {
+        if let Ok(o) = std::process::Command::new("sha256sum").arg(&kb).output() {
+            if o.status.success() {
+                sha = String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string();
+                kv("keybox_hash_algo", "sha256");
+            }
+        } else if let Ok(o) = std::process::Command::new("md5sum").arg(&kb).output() {
+            if o.status.success() {
+                sha = String::from_utf8_lossy(&o.stdout).split_whitespace().next().unwrap_or("").to_string();
+                kv("keybox_hash_algo", "md5");
+            }
+        }
+    }
+    kv("keybox_hash", &sha);
+    if b.id == BackendId::Teesim {
+        let mut list: Vec<String> = Vec::new();
+        if let Ok(rd) = std::fs::read_dir(&p.teesim_dir) {
+            for e in rd.flatten() {
+                let name = e.file_name().to_string_lossy().into_owned();
+                if name.ends_with(".xml") {
+                    list.push(name);
+                }
+            }
+        }
+        list.sort();
+        kv("keybox_files", &list.join(","));
+    }
+    for line in info {
+        println_ok!("{}", line);
+    }
+}

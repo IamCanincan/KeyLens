@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info sync"
+LEFT="env icons sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1386,9 +1386,50 @@ chk 'omk-save-config：两侧 config 逐字节一致' "$(cat "$OCS/data/misc/key
 PLOC2=$(printf 'trust_vb_key=%s' "$(printf 'auto' | base64 | tr -d '\n')" | base64 | tr -d '\n')
 chk 'omk-save-config：vb_key random→auto（需要重启整机）' "$(sh "$T/oc.sh" "$PLOC2" 2>&1)" "$(KEYLENS_ROOT="$OCR" "$B" omk-save-config "$PLOC2" 2>&1)"
 
+echo "── backend-info（三家摘要）──"
+mk_bi_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'tsv() { local IFS="$(printf "\t")"; printf "%s\n" "$*"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+  } > "$T/bi.sh"
+  sed -n '/^backend_name() {/,/^}/p' module/lib/backend.sh >> "$T/bi.sh"
+  sed -n '/^cmd_backend_info() {/,/^}/p' module/webui.sh >> "$T/bi.sh"
+  echo 'detect_backend "$MODDIR"; cmd_backend_info' >> "$T/bi.sh"
+}
+BIS="$T/bi-root-s"; BIR="$T/bi-root-r"
+mk_bi_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store"
+  printf 'id=tricky_store\nversion=v1.9.9\n' > "$1/data/adb/modules/tricky_store/module.prop"
+  printf 'com.a\ncom.b?\n' > "$1/data/adb/tricky_store/target.txt"
+  printf '2026-10-05\nsystem=2026-10-01\n\n[com.a]\nvendor=2026-09-01\n' > "$1/data/adb/tricky_store/security_patch.txt"
+  printf '<k/>\n' > "$1/data/adb/tricky_store/keybox.xml"
+}
+mk_bi_fixture "$BIS"; mk_bi_fixture "$BIR"
+mk_bi_harness "$BIS"
+chk 'backend-info（tricky）：逐行一致' "$(sh "$T/bi.sh" 2>&1 | sed -e 's/bi-root-[sr]/bi-root/g' -e 's/keybox_mtime=[0-9]*/keybox_mtime=X/')" "$(KEYLENS_ROOT="$BIR" "$B" backend-info 2>&1 | sed -e 's/bi-root-[sr]/bi-root/g' -e 's/keybox_mtime=[0-9]*/keybox_mtime=X/')"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 119 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 119），疑似用例被删"; fail=1
+if [ "$oks" -lt 120 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 120），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
