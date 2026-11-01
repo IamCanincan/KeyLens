@@ -234,3 +234,14 @@ restore-app / restore-apps / remove-apps（三条命令）
 
 `omk_write_list` 还额外负责保存目标文件的 **uid:gid / mode / SELinux 上下文**（`stat -c %u/%g/%a`、`ls -Zd`），
 写回前 `chown`/`chmod`/`chcon`，并先 `cp -p` 到 `injector.toml.bak`；内容不变时返回 1（不写、不备份）。
+
+## 阶段 5 已预置的开关（可做真机 A/B）
+
+`module/webui.sh` 里有一段用 `# >>> rust-dispatch` / `# <<< rust-dispatch` 包住的转发逻辑：
+
+- `KL_USE_RUST=1` 且 `KL_RUST_BIN`（默认 `$MODDIR/bin/keylens`）可执行时，命令先交给 Rust；
+- Rust 返回 **2**（未迁移）→ 不接管，回落原 shell 分派；`preview-*` 一律不接管；
+- 默认不设这两个变量 → **行为与现在完全一致**，所以可以随包发布。
+- 真机验收：`KL_USE_RUST=1 sh webui.sh <cmd>` 与 `sh webui.sh <cmd>` 输出逐字节比对；
+- `tests/rust-dispatch.sh` 用「按标记抽取 + 假二进制」的方式测这条通路（不需要 root，也不需要真机）。
+
