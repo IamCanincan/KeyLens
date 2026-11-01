@@ -1469,18 +1469,25 @@ echo "── env（探测 + 深浅色 + 强调色/种子）──"
 ENV_ROOT="$T/env-root"
 mkdir -p "$ENV_ROOT/data/adb/modules/keylens" "$ENV_ROOT/data/resource-cache" "$T/envbin"
 printf 'id=keylens\nversion=v3.0.1\n' > "$ENV_ROOT/data/adb/modules/keylens/module.prop"
-cat > "$T/envbin/getprop" <<'EOF'
-#!/bin/sh
-case "$1" in
-  ro.product.model) echo XQ-DQ72 ;;
-  ro.product.brand) echo Sony ;;
-  ro.build.version.release) echo 15 ;;
-  ro.build.version.sdk) echo 35 ;;
-  ro.build.type) echo user ;;
-  ro.boot.verifiedbootstate) echo green ;;
-  ro.sf.lcd_density) echo 420 ;;
-esac
+# 表驱动：单键查询（shell 参照）与全量 dump（Rust 的 env 快照）共用同一份值
+ENV_TBL='ro.product.model|XQ-DQ72
+ro.product.brand|Sony
+ro.build.version.release|15
+ro.build.version.sdk|35
+ro.build.type|user
+ro.boot.verifiedbootstate|green
+ro.sf.lcd_density|420'
+{
+    printf '#!/bin/sh\nTBL=%s\n' "'$ENV_TBL'"
+    cat <<'EOF'
+if [ $# -eq 0 ]; then
+    printf '%s\n' "$TBL" | while IFS='|' read -r k v; do printf '[%s]: [%s]\n' "$k" "$v"; done
+    exit 0
+fi
+printf '%s\n' "$TBL" | while IFS='|' read -r k v; do [ "$k" = "$1" ] && printf '%s\n' "$v"; done
+exit 0
 EOF
+} > "$T/envbin/getprop"
 cat > "$T/envbin/resetprop" <<'EOF'
 #!/bin/sh
 exit 0

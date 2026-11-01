@@ -5085,7 +5085,10 @@ pub fn env_cmd() {
             .unwrap_or_default()
     };
     let has = |prog: &str| -> bool { std::process::Command::new(prog).arg("--version").output().is_ok() };
-    let prop = |name: &str| -> String { run("getprop", &[name]).trim_end_matches('\n').to_string() };
+    // env 页有 6 个属性字段 + 一个密度兜底：逐键 getprop 每次约 18ms（真机实测 13 次外部进程里
+    // 占 7 次）。与 props 页同一招：一次全量 dump 查表。
+    let prop_snap = prop_snapshot();
+    let prop = |name: &str| -> String { prop_snap.get(name).cloned().unwrap_or_default() };
     let base64_cmd = if has("base64") { "base64".to_string() } else { String::new() };
     let ino = if has("inotifywait") {
         ("inotifywait".to_string(), "inotifywait".to_string())
