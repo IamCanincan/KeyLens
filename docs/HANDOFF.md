@@ -21,7 +21,7 @@
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
   模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）。测试用的临时副本 `/data/adb/keylens-ab`
-  **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（一条 deploy + 六条 push）。
+  **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（先 mkdir，再一条 deploy + 六条 push）。
 
 ## 1. 现在完成到哪
 
@@ -91,6 +91,8 @@ adb root                     # 设备是 userdebug，可用
 adb shell "id"               # 应为 uid=0
 # 在 Git Bash 里先 export MSYS2_ARG_CONV_EXCL='*'，否则 adb 的远端路径会被 MSYS 改写
 # 把工作树和二进制推到临时目录（不动已安装的模块）
+# 目录不存在就先建：`adb push` 会自己建父目录，但 `tools/deploy-webui.sh` 会拒绝推（它有 [ -d ] 前置）
+adb shell "mkdir -p /data/adb/keylens-ab"
 adb push module/. /data/adb/keylens-ab/
 # 参照 awk 不在模块里了（阶段 5 起在 tests/fixtures/backends），三个真机台子都要它当 shell 参照
 for f in tests/fixtures/backends/*.awk; do adb push "$f" "/data/adb/keylens-ab/backends/$(basename "$f")"; done   # 或 sh tools/deploy-webui.sh --shell
@@ -178,7 +180,7 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 | 删掉的东西 | 原本是什么 | 现在靠什么 |
 |---|---|---|
 | 设备 `/data/adb/keylens-install-bak`（4.7 MB，172 文件 / 19 份 awk） | 17:11 刷入前的旧模块树，唯一含 awk 的现场参照 | awk 参照在仓库 `tests/fixtures/backends/`（阶段 5.4 移进去的，没删）；旧实现整棵树在 git 里 |
-| 设备 `/data/adb/keylens-ab`（1.9 MB） | 真机台子的 A/B 树（含推上去的 5 个 `device-*.sh` 与 `parity.sh`） | §3 那一整段就是重建流程：`sh tools/deploy-webui.sh --shell`（把 MODDIR 指过去）+ 六条 `adb push` |
+| 设备 `/data/adb/keylens-ab`（1.9 MB） | 真机台子的 A/B 树（含推上去的 5 个 `device-*.sh` 与 `parity.sh`） | §3 那一整段就是重建流程：先 `mkdir -p`（deploy 会拒绝往不存在的目录推），再 `sh tools/deploy-webui.sh --shell`（把 MODDIR 指过去）+ 六条 `adb push` |
 | 设备 `/data/local/tmp/keylens.prodbak`（624 KB） | 18:46 换下来的上一版二进制 | `RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' cargo build --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml`（本机 6 秒，不用 NDK） |
 | 本机 `KeyLens-v3.0.1.zip.bak-2026-11-01` | 13:56 那次打包的 zip | `node tools/build-zip.mjs` 重打；现在的包是 711.6 KB / 34 条目（内含 `c9f4049d…` 的二进制） |
 | 本机 `../keylens-unpushed-*.bundle` 共 8 只 | 代理不通时的离线兜底 | 提交已全部推到 `origin/main`，bundle 失去意义 |
