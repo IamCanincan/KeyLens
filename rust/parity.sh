@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="icons"
+LEFT=""
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1541,9 +1541,41 @@ chk 'sync：两侧目标文件逐字节一致' "$(cat "$SYS/data/adb/tricky_stor
 chk 'sync：基线已提交' "$(cat "$SYR/data/adb/tricky_store/.kl_installed_last")" "$(cat "$SYS/data/adb/tricky_store/.kl_installed_last")"
 chk 'sync：ever 已更新' "$(cat "$SYR/data/adb/tricky_store/.kl_ever" 2>/dev/null)" "$(cat "$SYS/data/adb/tricky_store/.kl_ever" 2>/dev/null)"
 
+echo "── icons（桌面库 → PNG + 显示名，缓存）──"
+ICS="$T/ic-mod-s"; ICR="$T/ic-mod-r"
+mkdir -p "$ICS/webroot" "$ICR/webroot" "$T/icbin"
+cat > "$T/icbin/sqlite3" <<'EOF'
+#!/bin/sh
+echo 'com.a	应用A	icons/com.a.png'
+EOF
+cat > "$T/icbin/app_process" <<'EOF'
+#!/bin/sh
+echo 'com.b	应用B	icons/com.b.png'
+EOF
+chmod +x "$T/icbin"/*
+# 空环境：两侧都找不到桌面库，应打印同一条提示（shell 侧固定读真实 /data/data）
+ICNONE="$T/ic-none"; mkdir -p "$ICNONE"
+cat > "$T/ic.sh" <<SH
+TAB=\$(printf "\t")
+NL=\$(printf "\nX"); NL=\${NL%X}
+. module/lib/core.sh
+. module/lib/tools.sh
+MODDIR="$ICS"
+ICONS_SUBDIR=icons
+ARG="com.a,com.b"
+SH
+sed -n '/^cmd_icons() {/,/^}/p' module/webui.sh >> "$T/ic.sh"
+echo 'cmd_icons' >> "$T/ic.sh"
+chk 'icons：缺桌面库时提示一致' "$(PATH="$T/icbin:$PATH" sh "$T/ic.sh" 2>&1)" "$(PATH="$T/icbin:$PATH" KEYLENS_MODDIR="$ICR" KEYLENS_ROOT="$ICNONE" "$B" icons 'com.a,com.b' 2>&1)"
+# 有库时 shell 侧读不到夹具（路径写死 /data/data），这半边只断言 Rust 的行为
+mkdir -p "$ICNONE/data/data/com.android.launcher3/databases"
+printf 'db' > "$ICNONE/data/data/com.android.launcher3/databases/app_icons.db"
+chk 'icons（Rust）：SQL 行 + 缓存占位' "$(PATH="$T/icbin:$PATH" KEYLENS_MODDIR="$ICR" KEYLENS_ROOT="$ICNONE" "$B" icons 'com.a,com.b' 2>&1 | head -2 | tr '\n' '|')" "com.a	应用A	icons/com.a.png|"
+chk 'icons（Rust）：缓存含缺图占位行' "$(grep -c 'com.b' "$ICR/webroot/icons/index.tsv" 2>/dev/null)" "1"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 125 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 125），疑似用例被删"; fail=1
+if [ "$oks" -lt 128 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 128），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

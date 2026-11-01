@@ -5311,3 +5311,206 @@ pub fn sync() {
     println_ok!("rc={}", rc);
     println_ok!("count={}", count);
 }
+
+/// cmd_icons：从桌面图标缓存导出 PNG + 显示名（`包名<TAB>显示名<TAB>相对路径`）。
+pub fn icons(arg: &str) {
+    if arg.is_empty() {
+        return;
+    }
+    let root = Root::from_env();
+    let moddir = std::env::var("KEYLENS_MODDIR")
+        .unwrap_or_else(|_| root.join("/data/adb/modules/keylens").to_string_lossy().into_owned());
+    let mut db = String::new();
+    for p in [
+        "/data/data/com.android.launcher3/databases/app_icons.db",
+        "/data/data/com.google.android.apps.nexuslauncher/databases/app_icons.db",
+    ] {
+        let full = root.join(p);
+        if full.is_file() {
+            db = full.to_string_lossy().into_owned();
+            break;
+        }
+    }
+    if db.is_empty() {
+        if let Ok(rd) = std::fs::read_dir(root.join("/data/data")) {
+            for e in rd.flatten() {
+                let cand = e.path().join("databases/app_icons.db");
+                if cand.is_file() {
+                    db = cand.to_string_lossy().into_owned();
+                    break;
+                }
+            }
+        }
+    }
+    if db.is_empty() {
+        eprintln!("未找到桌面图标缓存 app_icons.db");
+        return;
+    }
+    if std::process::Command::new("sqlite3").arg("-version").output().is_err() {
+        eprintln!("未找到 sqlite3，无法读图标缓存");
+        return;
+    }
+    let dir = format!("{}/webroot/icons", moddir);
+    if std::fs::create_dir_all(&dir).is_err() {
+        eprintln!("无法创建 {}", dir);
+        std::process::exit(1);
+    }
+    // 包名校验后拼 chain
+    let mut want: Vec<String> = Vec::new();
+    let mut chain = String::new();
+    for p in arg.split(',') {
+        let ok_first = p.chars().next().map(|c| c.is_ascii_alphabetic()).unwrap_or(false);
+        if !ok_first {
+            continue;
+        }
+        if p.contains("..") || p.contains('/')
+            || !p.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-'))
+        {
+            continue;
+        }
+        want.push(p.to_string());
+        chain.push_str(&format!("{}componentName like '{}/%'", if chain.is_empty() { "" } else { " or " }, p));
+    }
+    if chain.is_empty() {
+        return;
+    }
+    let cache = format!("{}/index.tsv", dir);
+    let dbm = std::fs::metadata(&db)
+        .ok()
+        .and_then(|m| m.modified().ok())
+        .and_then(|t| t.duration_since(std::time::UNIX_EPOCH).ok())
+        .map(|d| d.as_secs().to_string())
+        .unwrap_or_default();
+    // 快路：缓存命中且 PNG 都在
+    if std::path::Path::new(&cache).is_file() && !dbm.is_empty() {
+        let dbm_cached = std::fs::read_to_string(format!("{}/.dbmtime", dir)).unwrap_or_default();
+        if dbm_cached.trim() == dbm {
+            let idx = std::fs::read_to_string(&cache).unwrap_or_default();
+            let mut map: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+            for line in idx.lines() {
+                if let Some((p, _)) = line.split_once('\t') {
+                    map.entry(p.to_string()).or_insert_with(|| line.to_string());
+                }
+            }
+            let mut hit: Vec<String> = Vec::new();
+            let mut ok = true;
+            for p in &want {
+                let Some(line) = map.get(p) else { ok = false; break };
+                hit.push(line.clone());
+                let third = line.splitn(3, '\t').nth(2).unwrap_or("");
+                if third.is_empty() {
+                    continue;
+                }
+                if !std::path::Path::new(&format!("{}/{}.png", dir, p)).is_file() {
+                    ok = false;
+                    break;
+                }
+            }
+            if ok && !hit.is_empty() {
+                for l in hit {
+                    println_ok!("{}", l);
+                }
+                return;
+            }
+        }
+    }
+    // 冷路：桌面库 SQL（与 shell 同一条语句）
+    let sql = format!(
+        "select p || char(9) || l || char(9) || 'icons/' || p || '.png' from (select p, min(rank) r, l, writefile('{dir}/' || p || '.png', ic) w from (select substr(componentName, 1, instr(componentName, '/') - 1) p,(case when instr(substr(componentName, instr(componentName, '/') + 1), '.') = 0 then 900000 when substr(componentName, instr(componentName, '/') + 1) like substr(componentName, 1, instr(componentName, '/') - 1) || '.%' then 0 else 100000 end) + length(componentName) rank,replace(replace(label, char(9), ' '), char(10), ' ') l, icon ic from icons where componentName not like '%#%' and ({chain})) group by p ) where w > 0;",
+        dir = dir,
+        chain = chain
+    );
+    let rows = std::process::Command::new("sqlite3")
+        .arg(&db)
+        .arg(&sql)
+        .output()
+        .ok()
+        .map(|o| String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string())
+        .unwrap_or_default();
+    if !rows.is_empty() {
+        println_ok!("{}", rows);
+    }
+    // 补缺：app_process + icondump.dex
+    let dex = format!("{}/lib/icondump.dex", moddir);
+    let mut res2 = String::new();
+    let mut dbm_exists = false;
+    if !dbm.is_empty() {
+        dbm_exists = true;
+    }
+    if !want.is_empty() && std::path::Path::new(&dex).is_file() {
+        let have: std::collections::HashSet<String> = rows
+            .lines()
+            .filter_map(|l| l.split('\t').next().map(|s| s.to_string()))
+            .collect();
+        let mut miss: Vec<String> = Vec::new();
+        for p in &want {
+            if have.contains(p) {
+                continue;
+            }
+            miss.push(p.clone());
+            if miss.len() >= 60 {
+                break;
+            }
+        }
+        if !miss.is_empty() {
+            if let Ok(o) = std::process::Command::new("app_process")
+                .arg(format!("-Djava.class.path={}", dex))
+                .arg("/system/bin")
+                .arg("IconDump")
+                .arg(miss.join(","))
+                .arg(&dir)
+                .arg("192")
+                .output()
+            {
+                res2 = String::from_utf8_lossy(&o.stdout).trim_end_matches('\n').to_string();
+                if !res2.is_empty() {
+                    println_ok!("{}", res2);
+                }
+            }
+        }
+    }
+    // 落缓存：请求了什么、拿到什么
+    if dbm_exists {
+        let mut out: Vec<String> = Vec::new();
+        let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for chunk in [rows.as_str(), res2.as_str()] {
+            for line in chunk.lines() {
+                if line.split('\t').count() < 2 {
+                    continue;
+                }
+                let first = line.split('\t').next().unwrap_or("").to_string();
+                if seen.insert(first) {
+                    out.push(line.to_string());
+                }
+            }
+        }
+        let mut present: std::collections::HashSet<String> = out
+            .iter()
+            .map(|l| l.split('\t').next().unwrap_or("").to_string())
+            .collect();
+        for p in &want {
+            if !present.contains(p) {
+                out.push(format!("{}\t\t", p));
+                present.insert(p.clone());
+            }
+        }
+        let body = if out.is_empty() { String::new() } else { out.join("\n") + "\n" };
+        let _ = std::fs::write(&cache, body.as_bytes());
+        let _ = std::fs::write(format!("{}/.dbmtime", dir), dbm.as_bytes());
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            if let Ok(rd) = std::fs::read_dir(&dir) {
+                for e in rd.flatten() {
+                    let p = e.path();
+                    if p.extension().map(|x| x == "png").unwrap_or(false) {
+                        let _ = std::fs::set_permissions(&p, std::fs::Permissions::from_mode(0o644));
+                    }
+                }
+            }
+            let _ = std::fs::set_permissions(&cache, std::fs::Permissions::from_mode(0o644));
+            let _ = std::fs::set_permissions(format!("{}/.dbmtime", dir), std::fs::Permissions::from_mode(0o644));
+            let _ = std::fs::set_permissions(&dir, std::fs::Permissions::from_mode(0o755));
+        }
+    }
+}

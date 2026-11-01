@@ -122,6 +122,7 @@ fn main() {
         "backend-info" => read_cmds::backend_info(),
         "env" => read_cmds::env_cmd(),
         "sync" => read_cmds::sync(),
+        "icons" => read_cmds::icons(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
