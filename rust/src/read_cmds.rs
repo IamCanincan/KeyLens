@@ -4448,3 +4448,150 @@ mod tricky_info_tests {
         assert_eq!(got, vec!["patch_lines=2".to_string(), "patch_packages=1".to_string()]);
     }
 }
+
+/// 数一个 JSON 对象里**顶层**成员个数（深度 1 的 `"键"` + `:`）。
+fn count_members(obj: &[u8]) -> usize {
+    let mut depth = 0i32;
+    let mut n = 0usize;
+    let mut i = 0usize;
+    while i < obj.len() {
+        let c = obj[i];
+        if c == b'"' {
+            if depth != 1 {
+                // 跳过字符串
+                let mut j = i + 1;
+                let mut esc = false;
+                while j < obj.len() {
+                    if esc { esc = false; } else if obj[j] == b'\\' { esc = true; } else if obj[j] == b'"' { break; }
+                    j += 1;
+                }
+                i = j + 1;
+                continue;
+            }
+            // 深度 1：看后面是不是冒号
+            let mut j = i + 1;
+            let mut esc = false;
+            while j < obj.len() {
+                if esc { esc = false; } else if obj[j] == b'\\' { esc = true; } else if obj[j] == b'"' { break; }
+                j += 1;
+            }
+            let mut k = j + 1;
+            while k < obj.len() && matches!(obj[k], b' ' | b'\t' | b'\r' | b'\n') { k += 1; }
+            if obj.get(k) == Some(&b':') {
+                n += 1;
+            }
+            i = j + 1;
+            continue;
+        }
+        if c == b'{' || c == b'[' { depth += 1; }
+        else if c == b'}' || c == b']' { depth -= 1; }
+        i += 1;
+    }
+    n
+}
+
+/// teesim_info.awk 的等价：config.json 的摘要行（顺序与 awk 一致）。
+pub fn teesim_info_lines(text: &str) -> Vec<String> {
+    let b = text.as_bytes();
+    let mut out: Vec<String> = Vec::new();
+    // 顶层 version
+    let ver = flat(b, "version");
+    out.push(format!("config_version={}", ver));
+    // profiles 对象
+    let mut pobj: Vec<u8> = Vec::new();
+    if let (Some(pp), Some(colon)) = (find_from(b, 0, b"\"profiles\""), None::<usize>) {
+        let _ = pp;
+        let _ = colon;
+    }
+    if let Some(pp) = find_from(b, 0, b"\"profiles\"") {
+        if let Some(colon) = find_from(b, pp + 10, b":") {
+            let mut i = colon + 1;
+            while i < b.len() && matches!(b[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+            if b.get(i) == Some(&b'{') {
+                if let Some(e) = match_close(b, i) {
+                    pobj = b[i..=e].to_vec();
+                }
+            }
+        }
+    }
+    out.push(format!("profiles={}", if pobj.is_empty() { 0 } else { count_members(&pobj) }));
+    // default 对象
+    let mut dobj: Vec<u8> = Vec::new();
+    if !pobj.is_empty() {
+        if let Some((ob, oc)) = {
+            let needle = b"\"default\"";
+            find_from(&pobj, 0, needle).and_then(|p| {
+                let mut m = p + needle.len();
+                while m < pobj.len() && matches!(pobj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                if pobj.get(m) != Some(&b':') { return None; }
+                m += 1;
+                while m < pobj.len() && matches!(pobj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                if pobj.get(m) != Some(&b'{') { return None; }
+                let e = match_close(&pobj, m)?;
+                Some((m, e))
+            })
+        } {
+            dobj = pobj[ob..=oc].to_vec();
+        }
+    }
+    let get = |k: &str| -> String { if dobj.is_empty() { String::new() } else { obj_string(&dobj, k) } };
+    out.push(format!("default_mode={}", get("mode")));
+    out.push(format!("default_keybox={}", get("keybox")));
+    out.push(format!("default_os_version={}", get("osVersion")));
+    // auto_include：裸布尔（没有就空）
+    let ai = if dobj.is_empty() { String::new() } else { flat(&dobj, "autoIncludeNewApps") };
+    out.push(format!("default_auto_include={}", ai));
+    for k in ["brand", "device", "product", "manufacturer", "model", "serial", "imei", "meid", "imei2"] {
+        out.push(format!("default_{}={}", k, get(k)));
+    }
+    // patchLevel 嵌套
+    if !dobj.is_empty() {
+        if let Some((ob, oc)) = {
+            let needle = b"\"patchLevel\"";
+            find_from(&dobj, 0, needle).and_then(|p| {
+                let mut m = p + needle.len();
+                while m < dobj.len() && matches!(dobj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                if dobj.get(m) != Some(&b':') { return None; }
+                m += 1;
+                while m < dobj.len() && matches!(dobj[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+                if dobj.get(m) != Some(&b'{') { return None; }
+                let e = match_close(&dobj, m)?;
+                Some((m, e))
+            })
+        } {
+            let pl = &dobj[ob..=oc];
+            for k in ["system", "vendor", "boot"] {
+                out.push(format!("default_patch_{}={}", k, obj_string(pl, k)));
+            }
+        }
+    }
+    out
+}
+
+#[cfg(test)]
+mod teesim_info_tests {
+    use super::*;
+
+    #[test]
+    fn full_summary() {
+        let text = r#"{"version":1,"profiles":{"default":{"mode":"patch","keybox":"kb.xml","osVersion":"15","autoIncludeNewApps":true,"brand":"XQ","device":"DQ72","patchLevel":{"system":"2026-10-01"}},"work":{"apps":[]}}}"#;
+        let got = teesim_info_lines(text);
+        assert_eq!(got[0], "config_version=1");
+        assert_eq!(got[1], "profiles=2");
+        assert!(got.contains(&"default_mode=patch".to_string()));
+        assert!(got.contains(&"default_keybox=kb.xml".to_string()));
+        assert!(got.contains(&"default_os_version=15".to_string()));
+        assert!(got.contains(&"default_auto_include=true".to_string()));
+        assert!(got.contains(&"default_brand=XQ".to_string()));
+        assert!(got.contains(&"default_device=DQ72".to_string()));
+        assert!(got.contains(&"default_patch_system=2026-10-01".to_string()));
+    }
+
+    #[test]
+    fn empty_config_yields_zero_profiles() {
+        let got = teesim_info_lines("{}");
+        assert_eq!(got[0], "config_version=");
+        assert_eq!(got[1], "profiles=0");
+        assert!(got.contains(&"default_mode=".to_string()));
+    }
+}
