@@ -136,7 +136,7 @@ one teesim-profile-new kltest "$TS"
 one teesim-profile-del work "$TS"
 one tricky-save-patch "$(mkpl patch_system=2026-10-07 patch_boot=no)" "$SP"
 one tricky-drop-patch com.example.a "$SP"
-one teesim-profile-del default
+one teesim-profile-del default "$TS"
 
 printf '── TMPDIR 坏掉时预览仍要成立（影子根换落脚点）──\n'
 # Android 上没有 /tmp，界面给的 TMPDIR 也不一定是真目录。以前的写法只认 temp_dir()：
