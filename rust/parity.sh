@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config remove-apps sync"
+LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1184,6 +1184,57 @@ chk 'restore-apps：批量输出' "$(sh "$T/ras.sh" 'com.b,com.c' 2>&1)" "$(KEYL
 chk 'restore-apps：目标文件逐字节一致' "$(cat "$RASS/data/adb/tricky_store/target.txt")" "$(cat "$RASR/data/adb/tricky_store/target.txt")"
 chk 'restore-apps：全都已在名单（restored=0）' "$(sh "$T/ras.sh" 'com.a' 2>&1)" "$(KEYLENS_ROOT="$RASR" "$B" restore-apps 'com.a' 2>&1)"
 chk 'restore-apps：参数为空' "$(sh "$T/ras.sh" '' 2>&1)" "$(KEYLENS_ROOT="$RASR" "$B" restore-apps '' 2>&1)"
+
+echo "── remove-apps（批量移出 + 至少保留一条）──"
+mk_rm_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/tricky.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "PROP_FILE='$1/data/adb/modules/keylens/module.prop'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/tricky_store'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/rm.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/rm.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/rm.sh"
+  sed -n '/^cmd_remove_apps() {/,/^}/p' module/lib/write.sh >> "$T/rm.sh"
+  echo 'detect_backend "$MODDIR"; cmd_remove_apps "$1"' >> "$T/rm.sh"
+}
+RMS="$T/rm-root-s"; RMR="$T/rm-root-r"
+mk_rm_fixture() {
+  mkdir -p "$1/data/adb/modules/tricky_store" "$1/data/adb/tricky_store" "$1/data/adb/modules/keylens"
+  printf '# 注释\ncom.a\ncom.b?\n\ncom.c\n' > "$1/data/adb/tricky_store/target.txt"
+  printf 'id=keylens\nversion=v3.0.1\ndescription=ok\n' > "$1/data/adb/modules/keylens/module.prop"
+}
+mk_rm_fixture "$RMS"; mk_rm_fixture "$RMR"
+mk_rm_harness "$RMS"
+chk 'remove-apps：removed_list 逐字一致' "$(sh "$T/rm.sh" 'com.b' 2>&1 | grep removed_list)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.b' 2>&1 | grep removed_list)"
+# shell 版把 KL_REMOVED_LIST（逗号拼接、无尾换行）直接喂 wc -l：单项时得 0、多项时少 1。
+# Rust 版按条目数如实计数，所以这一条单独断言，不与 shell 比对。
+chk 'remove-apps：removed 计数如实（shell 会少 1）' "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.zzz' 2>/dev/null | grep -c '^removed=0$')" "1"
+chk 'remove-apps：目标文件逐字节一致' "$(cat "$RMS/data/adb/tricky_store/target.txt")" "$(cat "$RMR/data/adb/tricky_store/target.txt")"
+chk 'remove-apps：注释与空行保留' "$(sed -n '1p' "$RMR/data/adb/tricky_store/target.txt")" "# 注释"
+chk 'remove-apps：不能移出全部' "$(sh "$T/rm.sh" 'com.a,com.c' 2>&1)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.a,com.c' 2>&1)"
+# 这一条只比 stdout：shell 版在"本来就不在"分支会漏一句 stderr（wc: 文件不存在），
+# 那是它的瑕疵，Rust 版不复制，所以两边 stderr 不做逐字节比较。
+chk 'remove-apps：本来就不在（removed=0）' "$(sh "$T/rm.sh" 'com.zzz' 2>/dev/null)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.zzz' 2>/dev/null)"
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）

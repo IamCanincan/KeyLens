@@ -115,6 +115,7 @@ fn main() {
         "doctor" => read_cmds::doctor(),
         "restore-app" => read_cmds::restore_app(arg),
         "restore-apps" => read_cmds::restore_apps(arg),
+        "remove-apps" => read_cmds::remove_apps(arg),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),

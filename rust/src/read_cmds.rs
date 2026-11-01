@@ -3147,3 +3147,144 @@ pub fn refresh_desc(p: &Paths, b: &Backend, n: usize) {
         .unwrap_or_default();
     set_module_desc(&p.module_prop, &format!("✅ [{} | 应用: {} | 更新: {}]", bname, n, hm));
 }
+
+/// remove_target_apps（backend.sh:248）：0=移出了 1=本来都不在 2=失败 3=会清空名单。
+/// 返回 (rc, 实际移出的条目（按原顺序去重）)。
+pub fn remove_target_apps(p: &Paths, b: &Backend, req: &[String]) -> (i32, Vec<String>) {
+    if !b.target.is_file() { return (2, Vec::new()); }
+    let cur = cur_target_tokens(p, b);
+    let mut req_sorted: Vec<String> = req.to_vec();
+    req_sorted.sort();
+    req_sorted.dedup();
+    let base_of = |t: &str| entry_base(t, b.id);
+    let req_exact: std::collections::HashSet<&String> = req_sorted.iter().collect();
+    let req_base: std::collections::HashSet<String> = req_sorted
+        .iter()
+        .map(|t| base_of(t))
+        .filter(|s| !s.is_empty())
+        .collect();
+    let mut removed: Vec<String> = Vec::new();
+    let mut seen: std::collections::HashSet<String> = std::collections::HashSet::new();
+    let mut keep: Vec<String> = Vec::new();
+    for tok in &cur {
+        let base = base_of(tok);
+        let hit = req_exact.contains(tok)
+            || (b.id == BackendId::Tricky && !base.is_empty() && req_base.contains(&base));
+        if hit {
+            if seen.insert(tok.clone()) {
+                removed.push(tok.clone());
+            }
+        } else {
+            keep.push(tok.clone());
+        }
+    }
+    if removed.is_empty() { return (1, Vec::new()); }
+    if keep.is_empty() { return (3, removed); }
+    let old = std::fs::read(&b.target).unwrap_or_default();
+    let written: Option<(Vec<u8>, u32)> = match b.id {
+        BackendId::Omk => omk_scoop_rewrite(&old, &keep).map(|v| (v, 0)),
+        BackendId::Teesim => teesim_apps_rewrite(&old, &keep).map(|v| (v, 0o600)),
+        BackendId::Tricky => {
+            // 逐行：注释与空行原样保留，按基础包名删；行内注释不参与比较
+            let mut out: Vec<u8> = Vec::new();
+            for raw in old.split_inclusive(|c| *c == b'\n') {
+                let text = String::from_utf8_lossy(raw).into_owned();
+                let line = text.trim_end_matches('\n');
+                let stripped = line.strip_suffix('\r').unwrap_or(line);
+                let body = match stripped.find('#') { Some(h) => &stripped[..h], None => stripped };
+                let tok = body.trim_matches([' ', '\t']);
+                let base = tok.trim_end_matches(['?', '!']).trim_end_matches([' ', '\t']);
+                let hit = req_exact.contains(&tok.to_string())
+                    || (!base.is_empty() && req_base.contains(base));
+                if !hit {
+                    out.extend_from_slice(raw);
+                }
+            }
+            Some((out, 0o644))
+        }
+    };
+    let Some((bytes, mode)) = written else { return (2, removed); };
+    if b.id == BackendId::Omk && bytes == old {
+        // 请求里明明有可移出的条目、writer 却说内容一致：按失败处理
+        return (2, removed);
+    }
+    if b.id == BackendId::Omk {
+        let bak = b.dir.join("injector.toml.bak");
+        let _ = std::fs::copy(&b.target, &bak);
+    }
+    let tmp = b.dir.join(format!(".kl_remove.{}", std::process::id()));
+    let ok = std::fs::write(&tmp, &bytes).is_ok() && std::fs::rename(&tmp, &b.target).is_ok();
+    if !ok {
+        let _ = std::fs::remove_file(&tmp);
+        return (2, removed);
+    }
+    #[cfg(unix)]
+    if mode != 0 {
+        use std::os::unix::fs::PermissionsExt;
+        let _ = std::fs::set_permissions(&b.target, std::fs::Permissions::from_mode(mode));
+    }
+    // 移出前把当前名单并入 ever：手工加进文件、还没同步过的包也被记住
+    let cur_bases: Vec<String> = cur.iter().map(|t| entry_base(t, b.id)).filter(|s| !s.is_empty()).collect();
+    ever_add_list(&b.dir, &cur_bases);
+    (0, removed)
+}
+
+/// cmd_remove_apps：逗号分隔的批量移出（名单至少保留一条）。
+pub fn remove_apps(raw: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    if raw.is_empty() {
+        eprintln!("参数为空");
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    let mut req: Vec<String> = Vec::new();
+    for pkg in raw.split(',') {
+        if pkg.is_empty() { continue; }
+        if !is_target_entry(pkg, b.id) {
+            eprintln!("不是合法的目标条目：{}", pkg);
+            std::process::exit(1);
+        }
+        req.push(pkg.to_string());
+    }
+    if req.is_empty() {
+        eprintln!("没有有效包名");
+        std::process::exit(1);
+    }
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let (rc, removed) = remove_target_apps(&p, &b, &req);
+    let after = cur_target_tokens(&p, &b).len();
+    crate::lock::release(&lockdir);
+    match rc {
+        0 => {
+            refresh_desc(&p, &b, after);
+            let list = removed.join(",");
+            log_line(&p, &format!("🧩 WebUI 从目标名单移出 {} 个应用", removed.len()));
+            println_ok!("removed={}", removed.len());
+            println_ok!("removed_list={}", list);
+        }
+        1 => {
+            println_ok!("removed=0");
+            println_ok!("removed_list=");
+        }
+        3 => {
+            eprintln!("不能移出全部应用：目标名单至少保留一个");
+            std::process::exit(1);
+        }
+        _ => {
+            eprintln!("写入失败：{}", b.target.display());
+            std::process::exit(1);
+        }
+    }
+}
