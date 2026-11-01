@@ -551,10 +551,31 @@ fn getprop(name: &str) -> String {
         .unwrap_or_default()
 }
 
+/// 一次 `getprop` 全量 dump 建快照。
+/// 为什么：这台机每次 fork 约 18ms，props 页有 17 行，逐键取实测 294ms；
+/// 而全量 dump 实测 45ms（同机、同一次开机）。只给只读的 props 页用 ——
+/// props_apply 的"写完读回"仍逐键读，那是复核，不能拿快照糊过去。
+fn prop_snapshot() -> std::collections::HashMap<String, String> {
+    let mut m = std::collections::HashMap::new();
+    if let Ok(o) = std::process::Command::new("getprop").output() {
+        for line in String::from_utf8_lossy(&o.stdout).lines() {
+            // 形如 `[键]: [值]`；值里可以有 ] 与空格，所以只在第一个 `]: [` 处切
+            if let Some(rest) = line.strip_prefix('[') {
+                if let Some((k, v)) = rest.split_once("]: [") {
+                    m.insert(k.to_string(), v.strip_suffix(']').unwrap_or(v).to_string());
+                }
+            }
+        }
+    }
+    m
+}
+
 /// cmd_props：name<TAB>当前<TAB>期望<TAB>状态（先固定表，再特征替换表）。
 pub fn props() {
+    let snap = prop_snapshot();
+    let cur_of = |name: &str| -> String { snap.get(name).cloned().unwrap_or_default() };
     for (name, expected) in PROPS_PAIRS {
-        let cur = getprop(name);
+        let cur = cur_of(name);
         let st = if cur.is_empty() {
             "missing"
         } else if &cur == expected {
@@ -565,7 +586,7 @@ pub fn props() {
         println_ok!("{}\t{}\t{}\t{}", name, cur, expected, st);
     }
     for (name, needle, replacement) in PROPS_RULES {
-        let cur = getprop(name);
+        let cur = cur_of(name);
         let st = if cur.is_empty() {
             "missing"
         } else if cur.contains(needle) {

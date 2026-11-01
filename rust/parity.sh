@@ -371,28 +371,37 @@ rm -f "$TS3/data/adb/tricky_store/tee_status"
 chk 'tee-status：文件缺失 present=0' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TS3" "$B" tee-status)"
 
 echo "── props（15 固定 + 2 特征替换）──"
-cat > "$T/bin/getprop" <<'EOF'
-#!/bin/sh
-case "$1" in
-  ro.boot.vbmeta.device_state) echo locked ;;
-  ro.boot.verifiedbootstate) echo green ;;
-  ro.boot.flash.locked) echo 1 ;;
-  ro.boot.veritymode) echo enforcing ;;
-  ro.boot.warranty_bit) echo 0 ;;
-  ro.warranty_bit) echo 0 ;;
-  ro.debuggable) echo 1 ;;
-  ro.force.debuggable) echo 0 ;;
-  ro.secure) : ;;
-  ro.adb.secure) echo 1 ;;
-  ro.build.type) echo user ;;
-  ro.build.tags) echo release-keys ;;
-  ro.vendor.boot.warranty_bit) echo 0 ;;
-  ro.vendor.warranty_bit) echo 0 ;;
-  vendor.boot.warranty_bit) echo 0 ;;
-  ro.bootloader) echo engineering ;;
-  ro.build.description) echo test-keys ;;
-esac
+# 表驱动的桩：同一份值既服务单键查询（shell 参照走的）也服务全量 dump（Rust 的 props 页走的）。
+# 值只有一个来源，否则两侧会各自漂；GETPROP_LOG 记每次调用，用来钉"到底起了几个进程"。
+TBL_PROPS='ro.boot.vbmeta.device_state|locked
+ro.boot.verifiedbootstate|green
+ro.boot.flash.locked|1
+ro.boot.veritymode|enforcing
+ro.boot.warranty_bit|0
+ro.warranty_bit|0
+ro.debuggable|1
+ro.force.debuggable|0
+ro.secure|
+ro.adb.secure|1
+ro.build.type|user
+ro.build.tags|release-keys
+ro.vendor.boot.warranty_bit|0
+ro.vendor.warranty_bit|0
+vendor.boot.warranty_bit|0
+ro.bootloader|engineering
+ro.build.description|test-keys'
+{
+  printf '#!/bin/sh\nTBL=%s\n' "'$TBL_PROPS'"
+  cat <<'EOF'
+if [ -n "${GETPROP_LOG:-}" ]; then printf '%s\n' "${1:-<dump>}" >> "$GETPROP_LOG"; fi
+if [ $# -eq 0 ]; then
+    printf '%s\n' "$TBL" | while IFS='|' read -r k v; do printf '[%s]: [%s]\n' "$k" "$v"; done
+    exit 0
+fi
+printf '%s\n' "$TBL" | while IFS='|' read -r k v; do [ "$k" = "$1" ] && printf '%s\n' "$v"; done
+exit 0
 EOF
+} > "$T/bin/getprop"
 chmod +x "$T/bin/getprop"
 cat > "$T/pr.sh" <<'EOF'
 . module/lib/props.sh
@@ -402,6 +411,13 @@ EOF
 sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pr.sh"
 echo 'cmd_props' >> "$T/pr.sh"
 chk 'props：missing/diff/ok 与规则行' "$(PATH="$T/bin:$PATH" sh "$T/pr.sh")" "$(PATH="$T/bin:$PATH" "$B" props)"
+# 输出相同不代表没白 fork：这条台子把"起了几个进程"也钉住。
+# Rust 侧读一次全量 dump（1 次），shell 参照仍是逐键取（15 固定 + 2 特征 = 17 次）。
+rm -f "$T/gp.rust" "$T/gp.shell"
+GETPROP_LOG="$T/gp.rust" PATH="$T/bin:$PATH" "$B" props >/dev/null 2>&1
+GETPROP_LOG="$T/gp.shell" PATH="$T/bin:$PATH" sh "$T/pr.sh" >/dev/null 2>&1
+chk 'props：Rust 侧只起一次 getprop（快照）' "1" "$(wc -l < "$T/gp.rust" | tr -d ' ')"
+chk 'props：shell 参照仍是逐键取（17 次）' "17" "$(wc -l < "$T/gp.shell" | tr -d ' ')"
 
 echo "── tricky-patches（global + 包段 + all=）──"
 TP="$T/tproot"
@@ -1673,9 +1689,10 @@ echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
 # 129 → 173：新增 preview-* 的 11 个用例 ×4 条断言（逐字节 / 两侧夹具不落盘 / changed>0 正对照）
 # 173 → 175：影子根落脚点全不可用时的两条（退 2 / 不许打空信封）
+# 179 → 181：props 的"起了几次 getprop"计数断言（Rust 1 次快照 vs shell 17 次逐键）
 # 175 → 177：save-patch 的两条防空转断言（新键落在全局段内 / 注释行没被吃掉）
 # 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
-if [ "$oks" -lt 179 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 179），疑似用例被删"; fail=1
+if [ "$oks" -lt 181 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 181），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
