@@ -51,6 +51,16 @@ jobs:
       - name: Behaviour parity（逐命令与 shell 版逐字节对拍）
         run: sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 
+      - name: Module binary handshake（包内二进制 contract == KL_COMMANDS）
+        run: |
+          # ARM 产物在 x86 runner 上跑不了，这里用同源码的 musl 产物做契约检查：
+          # 两份二进制来自同一次 cargo build，commands 清单必然一致。
+          mkdir -p module/bin
+          cp rust/target/x86_64-unknown-linux-musl/release/keylens module/bin/keylens
+          chmod +x module/bin/keylens
+          sh tests/module-bin.sh
+          rm -rf module/bin
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:
