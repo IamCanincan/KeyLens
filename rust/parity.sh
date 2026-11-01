@@ -1518,6 +1518,7 @@ mk_sy_harness() { # <root>
   } > "$T/sy.sh"
   sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/sy.sh"
   sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/sy.sh"
+  sed -n '/^mod_prop() {/,/^}/p' module/webui.sh >> "$T/sy.sh"
   sed -n '/^cmd_sync() {/,/^}/p' module/lib/write.sh >> "$T/sy.sh"
   echo 'detect_backend "$MODDIR"; cmd_sync' >> "$T/sy.sh"
 }
@@ -1536,10 +1537,12 @@ cat > "$T/sybin/cmd" <<'EOF'
 printf 'package:com.a\npackage:com.b\n'
 EOF
 chmod +x "$T/sybin/cmd"
-chk 'sync：新装应用被加入（输出）' "$(PATH="$T/sybin:$PATH" sh "$T/sy.sh" 2>/dev/null | grep -E '^(rc|count)=')" "$(PATH="$T/sybin:$PATH" KEYLENS_ROOT="$SYR" "$B" sync 2>&1)"
+chk 'sync：新装应用被加入（输出）' "$(PATH="$T/sybin:$PATH" sh "$T/sy.sh" 2>/dev/null | grep -E '^(rc|count)=')" "$(PATH="$T/sybin:$PATH" KEYLENS_ROOT="$SYR" "$B" sync 2>&1 | grep -E '^(rc|count)=')"
 chk 'sync：两侧目标文件逐字节一致' "$(cat "$SYS/data/adb/tricky_store/target.txt")" "$(cat "$SYR/data/adb/tricky_store/target.txt")"
 chk 'sync：基线已提交' "$(cat "$SYR/data/adb/tricky_store/.kl_installed_last")" "$(cat "$SYS/data/adb/tricky_store/.kl_installed_last")"
 chk 'sync：ever 已更新' "$(cat "$SYR/data/adb/tricky_store/.kl_ever" 2>/dev/null)" "$(cat "$SYS/data/adb/tricky_store/.kl_ever" 2>/dev/null)"
+# harness 里 update_module_desc 是桩，description 两侧不可比；单独断言 Rust 会打这一行
+chk 'sync：Rust 打出同步后的描述行' "$(PATH="$T/sybin:$PATH" KEYLENS_ROOT="$SYR" "$B" sync 2>&1 | grep -c '^description=')" '1'
 
 echo "── icons（桌面库 → PNG + 显示名，缓存）──"
 ICS="$T/ic-mod-s"; ICR="$T/ic-mod-r"
@@ -1575,7 +1578,7 @@ chk 'icons（Rust）：缓存含缺图占位行' "$(grep -c 'com.b' "$ICR/webroo
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 128 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 128），疑似用例被删"; fail=1
+if [ "$oks" -lt 129 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 129），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
