@@ -133,7 +133,7 @@ cat > "$T/overrides.json" <<EOF
 }
 EOF
 printf 'attestationVersion\t301\nattestationSecurityLevel\t2\nverifiedBootKey\t\nfutureField\tkeep\n' > "$T/pairs"
-awk -v pairsfile="$T/pairs" -v statusfile="$T/st" -f tests/fixtures/backends/json_flat_set.awk "$T/overrides.json" > "$T/out" 2>"$T/err"
+awk -v pairsfile="$T/pairs" -v statusfile="$T/st" -f module/backends/json_flat_set.awk "$T/overrides.json" > "$T/out" 2>"$T/err"
 [ -s "$T/err" ] && bad "awk 有告警：$(cat "$T/err")" || ok 'awk 一声不响'
 chk=$(cat "$T/st")
 [ "$chk" = ok ] && ok 'status=ok' || bad "status=$chk"
@@ -155,10 +155,10 @@ else
 fi
 # 再跑一遍同样的 pairs：必须是 same（幂等，不重复落盘）
 cp "$T/out" "$T/overrides2.json"
-awk -v pairsfile="$T/pairs" -v statusfile="$T/st2" -f tests/fixtures/backends/json_flat_set.awk "$T/overrides2.json" > "$T/out2"
+awk -v pairsfile="$T/pairs" -v statusfile="$T/st2" -f module/backends/json_flat_set.awk "$T/overrides2.json" > "$T/out2"
 # 第二单里 verifiedBootKey 已经不存在，留空对它应是 no-op → 仍要 same
 printf 'attestationVersion\t301\nattestationSecurityLevel\t2\nfutureField\tkeep\n' > "$T/pairs3"
-awk -v pairsfile="$T/pairs3" -v statusfile="$T/st3" -f tests/fixtures/backends/json_flat_set.awk "$T/overrides2.json" > "$T/out3"
+awk -v pairsfile="$T/pairs3" -v statusfile="$T/st3" -f module/backends/json_flat_set.awk "$T/overrides2.json" > "$T/out3"
 chk3=$(cat "$T/st3")
 [ "$chk3" = same ] && ok '重复写同样的值 = same（不落盘）' || bad "重复写报 $chk3，应为 same"
 cmp -s "$T/out3" "$T/overrides2.json" && ok 'same 那一趟产物逐字节不变' || bad 'same 却改了内容'

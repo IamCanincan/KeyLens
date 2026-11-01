@@ -20,7 +20,7 @@ trap 'rm -rf "$T"' EXIT
 KL_DIR="$T/state"
 mkdir -p "$KL_DIR"
 TARGET_FILE="$T/injector.toml"
-KL_PATCH="$ROOT/tests/fixtures/backends/omk.awk"
+KL_PATCH="$ROOT/module/backends/omk.awk"
 AWK_CMD="awk"
 KL_BACKEND="omk"
 ST_INSTALLED="$KL_DIR/.kl_installed_last"
@@ -72,7 +72,7 @@ printf 'scoop = []\n' > "$TARGET_FILE"
 chk "空数组" "" "$(current_target_apps)"
 printf 'version = 1\n[main]\nenabled = true\n' > "$TARGET_FILE"
 chk "没有 scoop" "" "$(current_target_apps)"
-awk -f "$ROOT/tests/fixtures/backends/omk_list.awk" "$TARGET_FILE" >/dev/null 2>&1
+awk -f "$ROOT/module/backends/omk_list.awk" "$TARGET_FILE" >/dev/null 2>&1
 chk_rc "没有 scoop 时读取器退出 1" 1 "$?"
 
 echo "── 2 只替换 scoop，其它原样保留 ──"

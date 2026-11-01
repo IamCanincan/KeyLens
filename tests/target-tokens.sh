@@ -36,7 +36,7 @@ state
 
 echo "── 1 Tricky target.txt：注释 / 后缀 / 非法行 ──"
 KL_BACKEND="tricky"
-KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"    # 只作为 backends/ 目录锚点
+KL_PATCH="$ROOT/module/backends/teesim.awk"    # 只作为 backends/ 目录锚点
 TARGET_FILE="$T/target.txt"
 cat > "$TARGET_FILE" <<'EOF'
 # google
@@ -76,7 +76,7 @@ chk_has "$TARGET_FILE" '^com\.s! # spaced$' "改成规范写法，注释保留"
 echo "── 4 TEESim：@用户 / uid: 原样 ──"
 KL_BACKEND="teesim"
 TARGET_FILE="$T/config.json"
-KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 printf '%s' '{"profiles":{"default":{"apps":["com.a","com.b@10","uid:10123"]},"work":{"apps":["x"]}}}' > "$TARGET_FILE"
 chk "读取原样 token" "com.a com.b@10 uid:10123" "$(list)"
 req com.b com.c
@@ -130,7 +130,7 @@ echo "── 7 backend-info 解析器 ──"
 cat > "$T/teesim.json" <<'EOF'
 {"version":1,"profiles":{"default":{"keybox":"a.xml","mode":"generation","patchLevel":{"system":"today","vendor":"YYYY-MM-05","boot":"no"},"apps":["com.a"]},"work":{"apps":["com.c"]}}}
 EOF
-info=$(awk -f "$ROOT/tests/fixtures/backends/teesim_info.awk" "$T/teesim.json")
+info=$(awk -f "$ROOT/module/backends/teesim_info.awk" "$T/teesim.json")
 chk "config_version" "1" "$(printf '%s\n' "$info" | sed -n 's/^config_version=//p')"
 chk "profiles 数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^profiles=//p')"
 chk "default mode" "generation" "$(printf '%s\n' "$info" | sed -n 's/^default_mode=//p')"
@@ -139,7 +139,7 @@ chk "patch system" "today" "$(printf '%s\n' "$info" | sed -n 's/^default_patch_s
 chk "patch boot" "no" "$(printf '%s\n' "$info" | sed -n 's/^default_patch_boot=//p')"
 
 printf '20241101\n[com.google.android.gms]\nsystem=2024-10-01\n[com.foo]\nboot=no\n' > "$T/patch.txt"
-info=$(awk -f "$ROOT/tests/fixtures/backends/tricky_info.awk" "$T/patch.txt")
+info=$(awk -f "$ROOT/module/backends/tricky_info.awk" "$T/patch.txt")
 chk "Tricky 全局 all" "20241101" "$(printf '%s\n' "$info" | sed -n 's/^patch_all=//p')"
 chk "Tricky 包级段数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^patch_packages=//p')"
 chk "Tricky 行数" "5" "$(printf '%s\n' "$info" | sed -n 's/^patch_lines=//p')"
@@ -178,7 +178,7 @@ verified_boot_state = true
 device_locked = true
 EOF
 info=$(awk -v injector="$T/injector.toml" -v config="$T/omk-config.toml" \
-    -f "$ROOT/tests/fixtures/backends/omk_info.awk" "$T/injector.toml" "$T/omk-config.toml")
+    -f "$ROOT/module/backends/omk_info.awk" "$T/injector.toml" "$T/omk-config.toml")
 chk "injector version" "1" "$(printf '%s\n' "$info" | sed -n 's/^injector_version=//p')"
 chk "deny 数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^filter_deny=//p')"
 chk "intercept true 数量" "2" "$(printf '%s\n' "$info" | sed -n 's/^intercept_true=//p')"
@@ -194,9 +194,9 @@ com.c!
 com.d@10
 uid:10123
 EOF
-got=$(awk -v backend=tricky -f "$ROOT/tests/fixtures/backends/entry_base.awk" "$T/toks" | tr '\n' ' ' | sed 's/ $//')
+got=$(awk -v backend=tricky -f "$ROOT/module/backends/entry_base.awk" "$T/toks" | tr '\n' ' ' | sed 's/ $//')
 chk "tricky 变体" "com.a com.b com.c com.d@10 uid:10123" "$got"
-got=$(awk -v backend=teesim -f "$ROOT/tests/fixtures/backends/entry_base.awk" "$T/toks" | tr '\n' ' ' | sed 's/ $//')
+got=$(awk -v backend=teesim -f "$ROOT/module/backends/entry_base.awk" "$T/toks" | tr '\n' ' ' | sed 's/ $//')
 chk "teesim 变体（uid 丢弃）" "com.a com.b? com.c! com.d" "$got"
 
 echo "── 9 is_target_entry：按后端校验 ──"

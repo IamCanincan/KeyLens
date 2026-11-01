@@ -39,7 +39,7 @@ list() { current_target_apps | tr '\n' ' ' | sed 's/ $//'; }
 
 echo "── 1 Tricky：只删匹配行 ──"
 KL_BACKEND="tricky"
-KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 TARGET_FILE="$T/target.txt"
 : > "$ST_EVER"
 printf '# keep\ncom.a\ncom.b\ncom.c' > "$TARGET_FILE"   # 故意不带结尾换行
@@ -86,7 +86,7 @@ chk_no "$TARGET_FILE" '^com\.b$' "目标文件里没有 b"
 echo "── 3 TEESim：只改 default.apps ──"
 KL_BACKEND="teesim"
 TARGET_FILE="$T/config.json"
-KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 : > "$ST_EVER"
 cat > "$TARGET_FILE" <<'EOF'
 {
@@ -131,7 +131,7 @@ remove_target_apps "$T/req"; chk_rc "定位不到 apps 返回 2" 2 "$?"
 echo "── 4 OhMyKeymint：只改 scoop ──"
 KL_BACKEND="omk"
 TARGET_FILE="$T/injector.toml"
-KL_PATCH="$ROOT/tests/fixtures/backends/omk.awk"
+KL_PATCH="$ROOT/module/backends/omk.awk"
 : > "$ST_EVER"
 cat > "$TARGET_FILE" <<'EOF'
 # top comment

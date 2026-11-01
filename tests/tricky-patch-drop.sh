@@ -37,7 +37,7 @@ EOF
 run() {
     cp "$dir/base.txt" "$dir/in.txt"
     $AWK -v drop="$1" -v pairsfile=/dev/null -v statusfile="$dir/s" \
-        -f tests/fixtures/backends/tricky_patch_set.awk "$dir/in.txt" > "$dir/out.txt" 2>/dev/null
+        -f module/backends/tricky_patch_set.awk "$dir/in.txt" > "$dir/out.txt" 2>/dev/null
 }
 
 echo "── 删除中间段 ──"

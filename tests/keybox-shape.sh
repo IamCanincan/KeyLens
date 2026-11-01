@@ -20,7 +20,7 @@ cd "$(dirname "$0")/.." || exit 1
 . tests/lib/kl-src.sh        # 命令层实现分两份（webui.sh + lib/write.sh），见该文件说明
 AWK=${AWK:-awk}
 fail=0
-AWKF=tests/fixtures/backends/keybox_check.awk
+AWKF=module/backends/keybox_check.awk
 F1=tests/fixtures/keybox-tricky-aosp.xml
 F2=tests/fixtures/keybox-omk-template.xml
 D=$(mktemp -d 2>/dev/null || echo /tmp/kbs-$$); mkdir -p "$D"

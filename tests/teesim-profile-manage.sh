@@ -16,7 +16,7 @@ dir=$(mktemp -d 2>/dev/null || echo /tmp/tpm-$$); mkdir -p "$dir"
 chk() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"; else printf '  ✗    %s：期望 [%s] 实得 [%s]\n' "$1" "$2" "$3"; fail=1; fi; }
 has() { if grep -q -- "$2" "$1"; then printf '  ok   %s\n' "$3"; else printf '  ✗    %s\n' "$3"; fail=1; fi; }
 hasnt() { if grep -q -- "$2" "$1"; then printf '  ✗    %s\n' "$3"; fail=1; else printf '  ok   %s\n' "$3"; fi; }
-profiles() { $AWK -f tests/fixtures/backends/teesim_profiles.awk "$1" 2>/dev/null; }
+profiles() { $AWK -f module/backends/teesim_profiles.awk "$1" 2>/dev/null; }
 names() { profiles "$1" | cut -f1 | sort | tr '\n' ' ' | sed 's/ $//'; }
 
 cat > "$dir/base.json" <<'EOF'
@@ -46,7 +46,7 @@ run() {  # run <mode> <name> —— 一律从 base.json 起跑
 runOn() {  # runOn <mode> <name> <输入文件>
     # 输出先写临时文件再替换：直接 `> out.json` 会在 awk 读之前把它截断，读到空文件
     $AWK -v mode="$1" -v name="$2" -v statusfile="$dir/s" \
-        -f tests/fixtures/backends/teesim_profile.awk "$3" > "$dir/out2.json" 2>/dev/null
+        -f module/backends/teesim_profile.awk "$3" > "$dir/out2.json" 2>/dev/null
     mv -f "$dir/out2.json" "$dir/out.json"
 }
 

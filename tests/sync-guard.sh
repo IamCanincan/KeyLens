@@ -17,7 +17,7 @@ T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 KL_DIR="$T"
 AWK_CMD="awk"
-KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"
+KL_PATCH="$ROOT/module/backends/teesim.awk"
 ST_INSTALLED="$T/.kl_installed_last"
 ST_INSTALLED_NEW="$T/.kl_installed.new"
 ST_EVER="$T/.kl_ever"

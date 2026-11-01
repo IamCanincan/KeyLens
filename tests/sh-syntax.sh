@@ -69,9 +69,9 @@ fi
 # ── 变异 ②：写命令的实现文件根本没进包也要能被上面那条清单抓到 ──────────
 # （build-zip 的必需文件清单已从代码推导，这里只保证 glob 本身不是空的）
 libn=$(ls module/lib/*.sh 2>/dev/null | wc -l | tr -d ' ')
-backn=$(ls module/backends/*.sh 2>/dev/null | wc -l | tr -d ' ')
+backn=$(ls module/backends/* 2>/dev/null | wc -l | tr -d ' ')
 [ "$libn" -ge 5 ] && ok "lib/ 下 $libn 个 .sh 全在 glob 里" || bad "lib/ 只扫到 $libn 个 .sh（<5）"
-[ "$backn" -ge 1 ] && ok "backends/ 下 $backn 个后端 .sh 全在 glob 里（awk 已移出模块）" || bad "backends/ 一个 .sh 都没有"
+[ "$backn" -ge 3 ] && ok "backends/ 下 $backn 个文件全在 glob 里" || bad "backends/ 只扫到 $backn 个（<3）"
 
 rm -rf "$W"
 [ "$fail" = 0 ] && echo '全部通过' || echo '有断言失败'
