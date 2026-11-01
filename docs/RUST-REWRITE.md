@@ -195,3 +195,19 @@ git merge recovered                     # 或 cherry-pick
   并把实际移出的条目放进 `KL_REMOVED_LIST` 供界面撤销。
 
 **顺序结论**：先迁这份 writer，再一次性拿下 `restore-app` / `restore-apps` / `remove-apps` 三条。
+
+#### 但这份 writer 比看上去大：它还依赖两个"列表写入"的 awk
+
+读完 `add_target_apps`（`backend.sh:152-233`）后确认，三条命令合起来要移植的是：
+
+1. **去重逻辑**：按基础包名判重（tricky 去 `?`/`!`；teesim 去 `@数字`、`uid:` 丢弃），
+   但 **teesim 的 `pkg@用户` 允许与裸 `pkg` 并存**（独立作用域，撤销要用），tricky 的模式与裸包名互斥；
+   判重要用 `FILENAME == ARGV[1]` 语义（cur 为空时 `NR==FNR` 会把新包当成"已存在"吞掉——真机上就是返回 1）。
+2. **写入分叉**：
+   - tricky：`cat 目标文件` + 补末尾换行 + 追加新行；`chmod 644`、`mv` 覆盖；
+   - teesim：调 `$KL_PATCH`（`teesim.awk`，**尚未移植**）按 `listfile` 重写 `config.json` 的 apps，成功后 `chmod 600` + `chown root:root`；
+   - omk：调 `omk_write_list`（**尚未移植**）重写 `injector.toml` 的 scoop 数组。
+3. **善后**：`entries_to_bases` + `ever_add_list` 更新 `.kl_ever`；`restore-app` 还要 `update_module_desc` 刷新描述条数。
+
+所以正确的下一步不是直接写 `restore-app`，而是先补 **`teesim.awk` 的 listfile 模式** 与 **`omk_write_list`** 这两个列表写入器
+（各自都要能对拍：给定新旧列表，写回的 `config.json` / `injector.toml` 与 shell 版逐字节一致）。
