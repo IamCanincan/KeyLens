@@ -8,7 +8,13 @@ const path = require('path');
 const { execFileSync } = require('child_process');
 
 const repo = path.resolve(__dirname, '..');
-const AWK = path.join(repo, 'module/backends/json_flat_set.awk');
+// 参照实现自阶段 5 起在 tests/fixtures/backends（不随模块发布）。这里先验它在不在：
+// 不在就一句说清，别让 19 个用例各自报"awk 崩了"糊住真原因（CI 第一次红就是这样）。
+const AWK = path.join(repo, 'tests', 'fixtures', 'backends', 'json_flat_set.awk');
+if (!fs.existsSync(AWK)) {
+  console.error(`✗   找不到参照实现 ${path.relative(repo, AWK)}\n    awk 参照实现移进了 tests/fixtures/backends，这条路径要跟着走`);
+  process.exit(1);
+}
 const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'jfs-'));
 /* 一律换成正斜杠：gawk 的 `-v 名=值` 会对值做转义展开，Windows 路径里的
    `\Users\...\Temp\` 会被啃成 `Users20653...`，于是 awk 根本找不到 pairs 文件 ——
