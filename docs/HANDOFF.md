@@ -217,6 +217,50 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - `module.prop` 仍是 `-rw-r--r--`（这一趟没有重写描述：列表没变，`do_sync` 没走到 `set_module_desc`；
   这版二进制下的"改写描述"在 19:54 / 19:57 两次手动 sync 上验过）。
 
+### 3.10 DuckDetector 复核（2026-11-01 22:52 → 22:55，两份报告对比）
+
+靶子：`com.eltavine.duckdetector`（nightly 2026.11.01，源码在 `D:\下载\Duck-Detector-Refactoring`）。
+
+**唯一由 KeyLens 引起、也由 KeyLens 修掉的：`ro.boot.vbmeta.digest` 是空的。**
+两份报告里 Bootloader（Danger）与 TEE（Danger）引的是同一句判据：
+“Attested verifiedBootHash was present, but `ro.boot.vbmeta.digest` was empty.”
+用模块自带的功能补上（值取自报告里 attestation 的 verifiedBootHash，不是编的）：
+
+```sh
+sh /data/adb/modules/keylens/webui.sh props-boot-hash 0561fff01a287ce84e1591d31ae1ec17524c9fc28846710bfb2ca1e0b4d128e1
+```
+
+结果（同一台机、同一版 App，相隔 3 分钟两次扫描）：
+
+| | 修之前 | 修之后 |
+|---|---|---|
+| Overall | Danger | Danger |
+| Danger 数 | **4**（Bootloader / Mount / SELinux / TEE） | **2**（Mount / SELinux） |
+| Bootloader | Danger，"Boot consistency: Anomaly" | **整张卡清空** |
+| TEE | Danger，Score 32，"Boot: Mismatch" | Warning，Score **4**，"Boot: **Matched**"，`0 policy hard • 0 policy review` |
+
+TEE 剩下的那条是 `Grant isolated-domain: ISOLATED_PRIVATE_READBACK_CRASH`（隔离进程读回时连不上
+Keystore，探针自己崩了），报告自己写着 "Attestation and trust-path checks still aligned" —— 是探针可用性，
+不是完整性证据。
+
+**剩下两张 Danger 不是 KeyLens 的（都量过现场）：**
+- **Mount**：唯一 artifact 是 `/apex/com.android.art/bin/dex2oat64` 的 mount root 写着
+  `/adb/modules/zygisk_vector/bin/dex2oat64` —— **zygisk_vector** 的 bind mount 在 zygote_next 隔离视图里露出来。
+  主人明确说**不动它**。
+- **SELinux**：根因是 KSU 自己的 `u:r:ksu:s0` 域。`ps -Z` 现量 **15 个进程**在这个域（`zygiskd64`、
+  `vectord`、OMK 三个 daemon、还有 **KeyLens 自己的 `service.sh` + `inotifyd`**）。为此做过一次 `adb unroot`
+  复核：**一个都没少** —— 与"adbd 是 root"无关，有模块服务就必然有。
+
+**两条被证伪的猜测（别再当成待办）：**
+- 「属性伪装会被"原始 vs 运行期"抓到」——**不会**：`/proc/bootconfig` 在这台是 `-r--r----- root system`，
+  以 `u:r:untrusted_app` 读直接 `Permission denied`，应用拿不到原始侧；而 17 条被伪装的属性里只有
+  `verifiedbootstate` 在 bootconfig 里有对应键，其余（flash.locked / veritymode / warranty_bit / build.tags…）
+  根本没有原始源。报告里这 13 条全是 "Cross-checked across 3 sources"（三源一致）。
+- 「SELinux 那张是因为我开着 adb root」——**不是**，见上。
+
+**顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——
+`service.adb.root: 1`（`adb unroot` 后下次重启自然消失）与 `persist.sys.usb.config: adb`（要关掉 USB 调试）。
+
 ## 4. preview 的实现方式（重要）
 
 `preview-<cmd>` 白名单 9 条：`teesim-save`、`teesim-save-overrides`、`teesim-profile-new`、`teesim-profile-del`、
