@@ -41,4 +41,14 @@
 - `valid_inj_log_level`、`valid_deny_list`（含归一化）、`valid_bool`、`valid_text`、`valid_patch`、
   `valid_os_version`、`valid_keybox_name` 均已在 `read_cmds.rs` 实现并有单测；
 - `payload::parse`（外层/逐字段 base64、错误文案）已实现；
-- 还差：`omk_set.awk` 的 TOML 读改定值（`split_comment`/`fmt`/`key_type`/`flush_missing`/`wval_for` 那一套）。
+- 已实现：`omk_set()`（TOML 定值引擎：段定位、多行 `deny_packages`、行内注释保留、缺键补齐、缺段新建、`same/ok/missing`）、
+  `inj_key` / `cfg_key` / `omk_key_type`、`split_comment` / `tomlesc` / `fmt_val`，以及 `cmd_omk_save_injector` 全链路
+  （`injector.toml.bak` 备份、`restart.injector` 触发）——对拍 3 条通过。
+- 还差 `cmd_omk_save_config`：它的字段校验比 injector 多五个函数——
+  `valid_log_level`、`valid_omk_os_version`（`auto` 或 0–99 的 MMmmss 编码）、
+  `valid_omk_patch` / `valid_omk_boot`（`auto` / `latest` / `YYYY-MM-DD`，boot 还接受十进制）、
+  `valid_omk_hash`（`auto` / `random` / 64 位十六进制）；
+  另外两个决定「生效代价」的助手：`omk_apply_scope`（只动四个补丁字段 → `hot`，否则 `restart`）与
+  `omk_reboot_needed`（`vb_key`/`vb_hash` 由 `random` 切到 `auto` → 需要重启整机）。
+  输出键比 injector 多两个：`apply_scope` 与可选的 `apply_note`。
+
