@@ -6,6 +6,20 @@
 
 #### 修复
 
+* **带命令层二进制的发布包里，「写入前预览」会真的写入**（发布前必须修，别从这版之前的提交出包）：
+  `webui.sh` 的接管点排在「剥 `preview-` 前缀」之后，二进制收到的是一条不带前缀的写命令。
+  真机复现：点 `preview-omk-save-config` 之后 `config.toml` 的 `security_patch` 从 `auto` 变成 `2026-10-01`，
+  界面拿到的是 `saved=1`、连差异都没有。现在接管段排在剥前缀之前并认识 `preview-*`：
+  成功就整份采用二进制打印的信封（`preview=1` / `changed=N` / `diff=`，不会打两份），
+  退码非 0（老命令层不认识 `preview-*`，或它自己失败）回落 shell 原地预览。
+  本机已安装的模块 `bin/` 是空的，所以这台机没被波及。
+  闸：`tests/rust-dispatch.sh` 的 preview 接管/回落 6 条，`tests/device-preview.sh` 的三条腿逐字节 +
+  信封恰好一份 + 三条腿都不许落盘。
+* **命令层二进制的预览落脚点**：影子根以前只认 `temp_dir()`，而 Android 上没有 `/tmp`。
+  TMPDIR 一坏，影子根建不出来 → 子进程什么都读不到 → 父进程照样报 `changed=0` → 界面把"没有差异"
+  当成无需确认直接写。现在按 `TMPDIR → /data/local/tmp → temp_dir` 依次找落脚点，
+  全都建不出来就退 2 交给 shell 算预览（宁可退化，不可谎报"没变化"）。
+
 * **安装即接管旧名模块**：从 TS-AUTO-ADD（id `ts-auto-add`）升级不再需要"先卸载再刷"——
   安装脚本先跑 `migrate_legacy_paths` 把 `ts_auto.*` 与后端目录里的 `.ts_*` 搬到新名字，
   随后自动移除旧模块目录。旧目录留着会是两套 `service.sh` 同跑（两份守护进程各写同一份

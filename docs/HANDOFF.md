@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：126 个（`git rev-list --count origin/main..main`）
+- 未推送提交：写作时 129 个，每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01.bundle`（只覆盖到生成时刻）
   - 恢复：`git fetch <bundle> main:recovered`
 - 网络现状：**github.com DNS 解析失败**；`static.rust-lang.org` / `baidu` 可达。所以 `rustup target add` 能用，`git push` 不能。
@@ -23,14 +23,14 @@
 |---|---|---|
 | Rust 单测 | 71 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | 173 项 chk（含 preview-* 11 例 ×4 条断言） | `sh rust/parity.sh` |
-| shell 测试套 | 46 套：WSL 0 失败；Git Bash 只有 `rust-dispatch` 红（环境性，干净工作树同红） | 见 §2 |
+| shell 测试套 | **46 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红本轮修掉了，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
-| 真机 preview 对拍 | 11 次调用**逐字节相同**；4 次真有差异，7 次只对齐错误路径 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
+| 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
 | 包内二进制握手 | contract == KL_COMMANDS | `sh tests/module-bin.sh` |
-| 体积 | x86_64 glibc 637 KB / x86_64 静态 musl 713 KB / aarch64 musl 620 KB | `stat -c %s` |
+| 体积 | x86_64 glibc 639 KB / x86_64 静态 musl 712 KB / aarch64 musl 620 KB | `stat -c %s` |
 
 已实现的关键设施：
 - 后端探测（teesim/omk/tricky，含 disable 与冲突检测）、并发锁（证据式接管）、base64/payload、`json_flat`、keybox 三家校验；
@@ -54,12 +54,16 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **43 套**，两边都得跑，各有盲区：
+shell 测试套 **46 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
-| WSL | 43/43 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
-| Windows Git Bash（有 node） | `tests/rust-dispatch.sh` 恒红（`run` 取到空串；HEAD 干净工作树里同样红，与代码无关） | 这一条要按 WSL 的结果读 |
+| WSL | 46/46 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
+| Windows Git Bash（有 node） | 46/46 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑 |
+
+> `tests/rust-dispatch.sh` 以前在 Git Bash 恒红，是台子自己用了 `env VAR=x sh -c …`：
+> 这台的 `env` 会把 `env sh 脚本` 跑成**空输出且退 0**，与被测代码无关。已改成在一个 shell 里赋值。
+> 教训：`env` 在这台 Windows 上不能用来给 `sh` 传变量。
 
 Git Bash 侧逐套跑（PowerShell）与两份 node 闸：
 
@@ -138,12 +142,20 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
      Rust 侧只认 `KL_LOCK_HELD=1`（见 `read_cmds.rs` 的 `sync()`），`0` 或没设都照常自己取锁。
    - 安装期的 `customize.sh` **不持锁**，所以那条路径由二进制自己取锁、自己放 ✓。
    - 闸：`tests/run-sync-bin.sh`（分支选择三条 + 三条各自变异）与真机 `tests/device-run-sync.sh`（14 条，含锁接力变异）。
-3. **preview 交给二进制**：`webui.sh` 的 rust-dispatch 守卫现在明确**不接管** `preview-*`（`[ "${CMD#preview-}" = "$CMD" ]`），
-   而 shell 侧算差异靠 `kl_capture_diff` → `AWK_CMD`。删 awk 之前必须先把这条守卫放开，
-   否则九条预览一起变成「没有差异」。（放开时 `tests/rust-dispatch.sh` 的「预览命令不接管」那条要跟着改判据，别删。）
+3. ~~preview 交给二进制~~ **本轮做完，顺带修掉一个发布包级的洞**：
+   接管点原来排在「剥 `preview-` 前缀」之后 —— 二进制收到的是不带前缀的**写命令**，
+   于是界面上点「预览」会直接真写（真机复现：`preview-omk-save-config` 把 `security_patch`
+   从 `auto` 写成 `2026-10-01`，输出 `saved=1`、连 diff 都没有）。已把接管段整体移到剥前缀之前，
+   并让它认识 `preview-*`：成功 → 直接 `exit 0`（信封由二进制打印，shell 再补就成两份）；
+   非 0（老命令层不认识 `preview-*`、或它自己失败）→ 回落 shell 原地预览。
+   装了的模块目前 `bin/` 是空的，所以这个洞还没上到真机上，但**带二进制的发布包一装就会中招** ——
+   这也是 §5 剩下那条"首次真实 CI 运行"必须尽快跑的原因之一。
+   闸：`tests/rust-dispatch.sh`（preview 接管/回落 6 条 + 普通命令退码透传的正对照）、
+   `tests/device-preview.sh`（三条腿逐字节 + 信封恰好一份 + 三条腿都不许落盘）。
 4. **删 `module/backends/*.awk`**（19 份）。步骤与影响面见 `docs/AWK-REMOVAL.md`。
    注意：上次直接删导致真机 A/B 从 38/38 掉到全挂，已 `git revert`（`1838f8b`）；
-   删之前必须先做完第 2、3 步，另外 shell 回退路径也依赖 awk。
+   上面第 2、3 步都已做完，剩下的顾虑只有 shell 回退路径（`KL_USE_RUST=0` 与没带二进制的场景）
+   —— 删之前先定它要不要保留：保留就还得留着 awk，不保留就把回退路径改成"明确报错"而不是静默半功能。
 5. 清理无用的 shell 函数（删 awk 之后 `grep` 确认零引用再删）。
 6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
 
@@ -162,6 +174,10 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 - **`_x=$(run_sync …)` 会吞掉 `KL_COUNT`**：run_sync 是在子 shell 里更新的，主 shell 读到的一直是初值 0。真机台子第一次就这么写的，于是"两条分支的 count 相同"变成 `0 == 0` 的假绿（改成就地把输出重定向到文件才有读数）。凡是"函数返回值 + 副作用变量"的探针，都别用命令替换去接。
 - **锁接管判据看的是 cmdline，不是目录**：二进制判定持有者死活时比的是模块标记（默认取 module.prop 所在目录名）是否出现在 `/proc/<pid>/cmdline` 里。测试探针放在 `/data/local/tmp/` 下，cmdline 对不上标记，二进制会把"自己人"当陌生持有者直接接管——正对照当场哑掉。探针脚本的文件名要带模块目录名（生产里持有锁的本来就是 `/data/adb/modules/keylens/webui.sh` 这类路径）。
 - **`adb push` 批量推多个文件时，别拿"命令没报错"当"文件已更新"**：这一轮一批推送里有 `backend.sh` 没落地、退出码却是 0。推到真机的每一步都要在远端 `grep -c` 一遍新代码里才有的字面量（本轮是 `KL_USE_RUST`），只看 size/mtime 不够。
+- **接管段的顺序就是功能正确性**：`webui.sh` 里「剥 `preview-` 前缀」和「二进制接管」的先后，决定预览是预览还是真写（本轮 §5.3 修的就是这个）。动这两段之前先跑 `sh tests/rust-dispatch.sh`，它的 6 条 preview 判据就是钉这个顺序的。
+- **影子根的落脚点不能只认 `temp_dir()`**：Android 上没有 `/tmp`。只认它时 TMPDIR 一坏，影子根建不出来、子进程什么都读不到，父进程照样打 `changed=0`，界面把"没有差异"当成无需确认**直接真写**。现在按 `TMPDIR → /data/local/tmp → temp_dir` 找落脚点，全建不出来退 2 交给 shell（`rust/parity.sh` 与 `tests/device-preview.sh` 各钉一条）。复现这种"建不出来"要把 `TMPDIR` 的父路径做成一个**普通文件**——指到一个不存在的目录会被 `create_dir_all` 顺手建出来，测不出失败。
+- **台子调了没定义的函数，mksh 只报一句 command not found、不置 fail**：`tests/device-preview.sh` 上一版就这么在 5 条断言没跑的情况下打了「全部通过」。现在它自带 `chk` 与断言计数，条数低于下限直接红。写台子时"末尾那句结论"必须来自计数器，不能来自"没看见 ✗"。
+- **对拍会测到上一版产物**：改完 Rust 忘了 `cargo build` 就 `sh rust/parity.sh`，新断言红得像实现写错了。`rust/parity.sh` 现在先做 `find rust/src rust/Cargo.toml -newer "$B"`，二进制不比源码新就拒绝开跑。
 
 ## 7. 关键文件
 

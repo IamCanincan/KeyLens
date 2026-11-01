@@ -5,6 +5,13 @@ set -u
 cd "$(dirname "$0")/.."
 B=${1:-rust/target/release/keylens}
 [ -x "$B" ] || { echo "缺少二进制：$B（先 cargo build --release）" >&2; exit 1; }
+# 二进制比源码新才有资格当被测对象。本轮踩过一次：改完 main.rs 忘了重新 cargo build，
+# 两条新断言当场红，看着像实现写错了，其实对拍在测上一版产物。这里直接拒绝。
+_stale=$(find rust/src rust/Cargo.toml -newer "$B" 2>/dev/null | head -n 1)
+if [ -n "$_stale" ]; then
+    echo "二进制 $B 比源码旧（$_stale 在其之后改过）——先 cargo build --release 再对拍" >&2
+    exit 1
+fi
 T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 fail=0
@@ -1639,10 +1646,19 @@ PLCLOG=$(printf 'cfg_log_level=%s' "$(printf 'debug' | base64 | tr -d '\n')" | b
 pv_case omk-save-config mk_oc_fixture mk_oc_harness oc "$PLCLOG" 'restart 臂'
 pv_case omk-save-config mk_oc_fixture mk_oc_harness oc "$PLOC2"  'reboot 臂'
 
+# 影子根落脚点全不可用时，绝不能打一份 changed=0 的空信封：界面把"没有差异"当成无需确认，
+# 直接就真写了。夹具机上没有 /data/local/tmp，所以把 TMPDIR 的父路径做成一个**普通文件**
+# （create_dir_all 必然 ENOTDIR；指到不存在的目录可不行，那会被它顺手建出来）。
+: > "$T/not-a-dir"
+_pv_no=$(TMPDIR="$T/not-a-dir/sub" KEYLENS_ROOT="$KBR" "$B" preview-keybox-save "$KBPL" 2>&1); _pv_rc=$?
+chk 'preview：落脚点全不可用 → 退 2 交给 shell' "2" "$_pv_rc"
+chk 'preview：落脚点全不可用 → 不打印空信封' "0" "$(printf '%s\n' "$_pv_no" | grep -c '^changed=0')"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
 # 129 → 173：新增 preview-* 的 11 个用例 ×4 条断言（逐字节 / 两侧夹具不落盘 / changed>0 正对照）
-if [ "$oks" -lt 173 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 173），疑似用例被删"; fail=1
+# 173 → 175：影子根落脚点全不可用时的两条（退 2 / 不许打空信封）
+if [ "$oks" -lt 175 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 175），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

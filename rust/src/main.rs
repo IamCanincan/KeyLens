@@ -79,8 +79,36 @@ fn preview_run(cmd: &str, arg: &str) -> ! {
     use std::path::PathBuf;
     let real = std::env::var("KEYLENS_ROOT").unwrap_or_default();
     let real_base: PathBuf = if real.is_empty() { PathBuf::from("/") } else { PathBuf::from(&real) };
-    let shadow = std::env::temp_dir().join(format!("keylens-preview-{}", std::process::id()));
-    let _ = std::fs::remove_dir_all(&shadow);
+    // 影子根的落脚点：TMPDIR → /data/local/tmp → /tmp。Android 上没有 /tmp，
+    // 而界面的 TMPDIR 不一定是真目录。**建不出来绝不能继续**：那样子进程什么都读不到，
+    // 父进程会报「changed=0」，界面把"没有差异"当成无需确认，直接真写。
+    // 三个都不行就退 2 —— webui.sh 的接管段把 2 解释成"这条我不会"，回落到 shell 原地预览。
+    let mut shadow: Option<PathBuf> = None;
+    {
+        let mut bases: Vec<PathBuf> = Vec::new();
+        if let Ok(t) = std::env::var("TMPDIR") {
+            if !t.is_empty() {
+                bases.push(PathBuf::from(t));
+            }
+        }
+        bases.push(PathBuf::from("/data/local/tmp"));
+        bases.push(std::env::temp_dir());
+        for b in bases {
+            let cand = b.join(format!("keylens-preview-{}", std::process::id()));
+            let _ = std::fs::remove_dir_all(&cand);
+            if std::fs::create_dir_all(&cand).is_ok() {
+                shadow = Some(cand);
+                break;
+            }
+        }
+    }
+    let shadow = match shadow {
+        Some(s) => s,
+        None => {
+            eprintln!("预览失败：影子根建不出来（TMPDIR、/data/local/tmp、/tmp 都不可用），交给 shell 算预览");
+            exit(2);
+        }
+    };
     // 参与比对的候选文件：三家后端配置 + keybox + module.prop
     let candidates = [
         "/data/adb/tricky_store/target.txt",

@@ -1270,6 +1270,32 @@ cmd_help() {
 EOF
 }
 
+# ---------- 命令层二进制接管 ----------
+# 说明：命令层 Rust 化的接管点，**必须排在下面「剥 preview- 前缀」之前**。
+#   先剥前缀再接管的话，二进制收到的是一条不带 preview 的写命令 —— 预览会变成真写
+#   （本轮真机抓到过一次：preview-omk-save-config 把 security_patch 从 auto 写成 2026-10-01，
+#   界面拿到的还是 saved=1，连 diff 都没有）。
+#   preview-* 交给二进制的影子根：它自己打印 preview=/changed=/diff=，所以成功要 exit 0，
+#   否则下面 shell 的信封会再补一份同样的三行。非 0 退码（老命令层不认识 preview-*，
+#   或它自己失败）一律回落到 shell 原地预览 —— 升级顺序里命令层可能比界面旧。
+#   普通命令维持原样：退码 2 = 「这条还没迁移」→ 回落 shell 分派；其余退码直接透传。
+#   默认开：发布包带 bin/keylens（见 CI 的 keylens-module-aarch64）；没有二进制的场景
+#   （直接 clone 仓库跑测试）自然走 shell，行为与以前一致。KL_USE_RUST=0 可强制回 shell。
+# >>> rust-dispatch
+if [ "${KL_USE_RUST:-1}" = "1" ]; then
+    _kl_rust="${KL_RUST_BIN:-$MODDIR/bin/keylens}"
+    if [ -x "$_kl_rust" ]; then
+        "$_kl_rust" "$CMD" ${ARG:+"$ARG"}
+        _kl_rc=$?
+        if [ "${CMD#preview-}" != "$CMD" ]; then
+            [ "$_kl_rc" = 0 ] && exit 0
+        elif [ "$_kl_rc" != 2 ]; then
+            exit "$_kl_rc"
+        fi
+    fi
+fi
+# <<< rust-dispatch
+
 # ---------- 写命令的实现按需加载 ----------
 # 说明：写命令的实现有 949 行 / 42.8KB，原来占这份脚本的四成。界面读 status / env /
 #       backend-info 时一行都用不到，却每次都要付"读 + lex + 建函数定义"的几十毫秒
@@ -1462,23 +1488,6 @@ PAIRS
     kv skip "${4:-0}"
     print -r -- "$rows"
 }
-
-# >>> rust-dispatch
-# 命令层 Rust 化（默认开启，但只在二进制真的存在时才接管）。
-#   条件：$KL_RUST_BIN（默认 $MODDIR/bin/keylens）可执行；KL_USE_RUST=0 可强制回到 shell；
-#   preview-* 不接管（预览要在 shell 侧原地态算 diff）；
-#   Rust 返回 2 表示「这条还没迁移」→ 不接管，回落下面的 shell 分派。
-# 为什么默认改成 1：发布包里带 bin/keylens（见 CI 的 keylens-module-aarch64），
-# 没有二进制的场景（比如直接 clone 仓库跑测试）自然走 shell，行为与以前一致。
-if [ "${KL_USE_RUST:-1}" = "1" ] && [ "${CMD#preview-}" = "$CMD" ]; then
-    _kl_rust="${KL_RUST_BIN:-$MODDIR/bin/keylens}"
-    if [ -x "$_kl_rust" ]; then
-        "$_kl_rust" "$CMD" ${ARG:+"$ARG"}
-        _kl_rc=$?
-        [ "$_kl_rc" = 2 ] || exit "$_kl_rc"
-    fi
-fi
-# <<< rust-dispatch
 
 case "$CMD" in
     doctor)      cmd_doctor ;;

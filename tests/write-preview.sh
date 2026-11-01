@@ -56,11 +56,30 @@ chk_has "$ROOT/module/webui.sh" "KL_PREVIEW=1" "分发里认 preview- 前缀"
 chk_has "$ROOT/module/webui.sh" 'keybox-save " | grep -q' "白名单钉死在写命令上"
 chk_has "$ROOT/module/webui.sh" "kv preview 1" "信封报 preview"
 chk_has "$ROOT/module/webui.sh" "kv diff" "信封带 diff"
-# 声明必须=实现：preview-* 在分派表里没有自己的 arm（走重定向），
-# 所以不能进 KL_COMMANDS —— 否则 ui-shape 的「声明=实现」当场红。
+# 声明必须=实现：preview-* 在分派表里没有自己的 arm（走前缀重定向），所以不能进 KL_COMMANDS。
+# 判据只看**声明串**与**分派表的 arm**：原来写成"整份 webui.sh 里搜不到 preview-<cmd>"，
+# 那连注释都禁了（本轮接管点的注释里写了真实事故的名字，被自家闸咬了一口）。
+awk '/^KL_COMMANDS="/{f=1; sub(/^KL_COMMANDS="/,"")} f{ had=/"$/; sub(/\\$/,""); sub(/"$/,""); printf "%s ", $0; if (had) exit }' \
+    "$ROOT/module/webui.sh" > "$T/decl"
 for c in teesim-save teesim-save-overrides teesim-profile-new teesim-profile-del omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save; do
-  chk_no "$ROOT/module/webui.sh" "preview-$c" "KL_COMMANDS 不含 preview-$c"
+  chk_no "$T/decl" "preview-$c" "KL_COMMANDS 不含 preview-$c"
 done
+
+# 分派表也不许开 preview-* 的 arm —— 多一个 arm，「写实现只被分派表调用」那条锚就瞎了
+_pv_arm() { grep -Eq '^[[:space:]]*preview-[a-z-]+\)' "$1"; }
+if _pv_arm "$ROOT/module/webui.sh"; then
+    printf '  ✗    分派表里出现了 preview-* 的 arm\n'; fail=1
+else
+    printf '  ok   分派表里没有 preview-* 的 arm\n'
+fi
+# 正对照：造一份带 arm 的副本，判据必须响（不响就是这条闸没有牙）
+sed 's/^    doctor)      cmd_doctor ;;/    preview-doctor)  : ;;\n    doctor)      cmd_doctor ;;/' \
+    "$ROOT/module/webui.sh" > "$T/witharm"
+if _pv_arm "$T/witharm"; then
+    printf '  ok   正对照：有 arm 时这条判据会响\n'
+else
+    printf '  ✗    正对照没响：分派表判据是空的\n'; fail=1
+fi
 
 if [ "$fail" = 1 ]; then printf '有断言失败\n'; exit 1; fi
 printf '全部通过\n'
