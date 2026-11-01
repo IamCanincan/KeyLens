@@ -138,21 +138,23 @@ fn preview_run(cmd: &str, arg: &str) -> ! {
         }
     }
     // 影子根下的同一条命令（用环境变量防止再递归）
+    let shadow_s = shadow.to_string_lossy().into_owned();
     let exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("keylens"));
     let out = std::process::Command::new(exe)
         .arg(cmd)
         .arg(arg)
-        .env("KEYLENS_ROOT", shadow.to_string_lossy().into_owned())
+        .env("KEYLENS_ROOT", &shadow_s)
         .env("KL_PREVIEW_CHILD", "1")
         .output();
     let mut lines: Vec<String> = Vec::new();
+    let mut raw: Vec<String> = Vec::new();
     match out {
         Ok(o) => {
             let text = String::from_utf8_lossy(&o.stdout).into_owned();
-            for line in text.lines() {
+            raw = text.lines().map(|s| s.to_string()).collect();
+            for line in &raw {
                 // 子进程看到的是影子根，输出里的路径要还原成真实路径
-                let sp = shadow.to_string_lossy().into_owned();
-                lines.push(line.replace(&sp, ""));
+                lines.push(line.replace(&shadow_s, ""));
             }
             let err = String::from_utf8_lossy(&o.stderr).into_owned();
             if !err.trim().is_empty() {
@@ -163,15 +165,20 @@ fn preview_run(cmd: &str, arg: &str) -> ! {
             eprintln!("预览失败：{}", e);
         }
     }
-    // keybox_sha 要报"真实文件"的哈希：子进程看到的是影子根，里面已经是新内容
+    // keybox_sha 要报"真实文件"的哈希：子进程看到的是影子根，里面已经是新内容。
+    // 还原后的路径不能再当真实路径用（夹具根时 KEYLENS_ROOT 不是 "/"，那个值指向一个
+    // 不存在的路径，sha256sum 静默失败，就会把影子里的新内容哈希当成真实哈希打出去）。
     let mut real_kb = String::new();
-    for line in &lines {
+    for line in &raw {
         if let Some(v) = line.strip_prefix("keybox_file=") {
-            real_kb = v.to_string();
+            let rel = v.strip_prefix(&shadow_s).unwrap_or(v).trim_start_matches('/');
+            real_kb = real_base.join(rel).to_string_lossy().into_owned();
             break;
         }
     }
-    let real_sha = if real_kb.is_empty() {
+    let has_kb = !real_kb.is_empty();
+    let real_sha = if !has_kb || !std::path::Path::new(&real_kb).is_file() {
+        // 真实文件不存在（新建 keybox）时 shell 也是空串：sha256sum 失败 → keybox_sha=
         String::new()
     } else {
         std::process::Command::new("sha256sum")
@@ -182,7 +189,7 @@ fn preview_run(cmd: &str, arg: &str) -> ! {
             .unwrap_or_default()
     };
     for line in &lines {
-        if !real_sha.is_empty() {
+        if has_kb {
             if line.starts_with("keybox_sha=") {
                 println!("keybox_sha={}", real_sha);
                 continue;
@@ -196,6 +203,11 @@ fn preview_run(cmd: &str, arg: &str) -> ! {
         let a = real_base.join(rel.trim_start_matches('/'));
         let b = shadow.join(rel.trim_start_matches('/'));
         if !b.is_file() {
+            continue;
+        }
+        // shell 的 kl_capture_diff 第一句是 `[ -f "$1" ] || return 0`：目标文件还不存在
+        // （新建）时它一条差异都不出。影子根这边照抄，别把"新建"报成"整份都是新增行"。
+        if !a.is_file() {
             continue;
         }
         let old = std::fs::read(&a).unwrap_or_default();

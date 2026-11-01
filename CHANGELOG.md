@@ -12,6 +12,13 @@
   后端配置），这是改名后唯一需要人工规避的坑，现在安装器自己处理。
   迁移目录表补上旧版 OMK 状态目录 `/data/adb/ts_auto.omk`（只装过旧版的 OMK 机器上
   基线/ever/pid 原样躺在那里，漏扫等于一个都不搬）。闸 `tests/legacy-migrate.sh` 加三条断言。
+* **写前预览不再谎报生效代价**：OhMyKeymint 的 `[trust]` 保存整块代价判定（`apply_scope`）原本连同"重启请求 + 日志条目"
+  一起留在 `KL_PREVIEW != 1` 的闸门后，于是预览把一次「四个补丁字段整组热生效」（同一条命令真写时报 `hot`）
+  报成 `apply_scope=restart`，界面据此提示"要重启 keymint"。代价是判据不是副作用，现在预览照常算；
+  留在闸门后的只剩重启请求与日志（"还没真写，不能留假条目"这条要求不变）。
+  命令层的影子根预览同步对齐：预览时不再写 `restart.keymint`、也不打 `apply_note=已请求重启 keymint`（那句在预览里是假话）。
+  闸：`rust/parity.sh` 新增 preview-* 11 例（逐字节 / 夹具不落盘 / `changed>0` 正对照，含 hot·restart·reboot 三条臂），
+  真机侧新增 `tests/device-preview.sh`。
 ### 3.0.0 - 2026-11-01
 
 #### 新增

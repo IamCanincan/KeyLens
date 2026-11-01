@@ -44,11 +44,21 @@
 - 已实现：`omk_set()`（TOML 定值引擎：段定位、多行 `deny_packages`、行内注释保留、缺键补齐、缺段新建、`same/ok/missing`）、
   `inj_key` / `cfg_key` / `omk_key_type`、`split_comment` / `tomlesc` / `fmt_val`，以及 `cmd_omk_save_injector` 全链路
   （`injector.toml.bak` 备份、`restart.injector` 触发）——对拍 3 条通过。
-- 还差 `cmd_omk_save_config`：它的字段校验比 injector 多五个函数——
+- 已实现 `cmd_omk_save_config`：字段校验比 injector 多五个函数——
   `valid_log_level`、`valid_omk_os_version`（`auto` 或 0–99 的 MMmmss 编码）、
   `valid_omk_patch` / `valid_omk_boot`（`auto` / `latest` / `YYYY-MM-DD`，boot 还接受十进制）、
   `valid_omk_hash`（`auto` / `random` / 64 位十六进制）；
   另外两个决定「生效代价」的助手：`omk_apply_scope`（只动四个补丁字段 → `hot`，否则 `restart`）与
   `omk_reboot_needed`（`vb_key`/`vb_hash` 由 `random` 切到 `auto` → 需要重启整机）。
   输出键比 injector 多两个：`apply_scope` 与可选的 `apply_note`。
+
+## 生效代价与预览的口径（三家共用）
+
+- `apply_scope` 是**判据**，预览也要算：曾连着它整块被 `KL_PREVIEW` 闸门住，于是预览把一次
+  「四个补丁字段整组热生效」（真写时报 `hot`）报成 `restart`，界面跟着提示要重启 keymint。
+- 真副作用只属于非预览：`restart.keymint` / `restart.injector` 的请求、`log_info` 条目、
+  以及 `apply_note=已请求重启 keymint` 这句（预览里没请求，说了就是假话）。
+  预览的影子根子进程同理——它写在影子里、随影子一起删，所以同样只报 `apply_scope`、不报这句 note。
+- 闸：`rust/parity.sh` 的 preview-* 三条臂（hot / restart / reboot），`tests/write-preview.sh`（预览不落盘、
+  不建 .bak、不走原子写），`tests/device-preview.sh`（真机逐字节 + 后端文件指纹不变）。
 

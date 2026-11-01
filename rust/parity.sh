@@ -1576,9 +1576,73 @@ printf 'db' > "$ICNONE/data/data/com.android.launcher3/databases/app_icons.db"
 chk 'icons（Rust）：SQL 行 + 缓存占位' "$(PATH="$T/icbin:$PATH" KEYLENS_MODDIR="$ICR" KEYLENS_ROOT="$ICNONE" "$B" icons 'com.a,com.b' 2>&1 | head -2 | tr '\n' '|')" "com.a	应用A	icons/com.a.png|"
 chk 'icons（Rust）：缓存含缺图占位行' "$(grep -c 'com.b' "$ICR/webroot/icons/index.tsv" 2>/dev/null)" "1"
 
+echo "── preview-*（shell 攒 diff vs Rust 影子根，逐字节）──"
+# 两侧机制完全不同：shell 在 commit_backend_file 的 KL_PREVIEW 闸门处拦下落盘、把行级差异
+# 攒进 KL_PREVIEW_DIFF；Rust 把整条命令在影子根里真跑一遍，事后 lcs_diff 比「真实 vs 影子」。
+# 这里复用上面每条命令自己的夹具与 harness（同一份真源，不手抄），只换三件事：
+#   1) commit_backend_file / kl_capture_diff 用 lib/write.sh 的真实现（原 harness 把它 cp 桩掉了）
+#   2) 末尾接上 webui.sh 的预览信封（sed 原样抽取，锚点改了要当场报错，不许静默空转）
+#   3) 打开 KL_PREVIEW=1
+# 判据四条：输出逐字节相同；changed>0（正对照——这条预览得真的看见差异）；
+#           两侧夹具跑完一个字节都没变（预览不许落盘）。
+pv_env=$(sed -n '/^# 预览收尾/,/^fi$/p' module/webui.sh)
+[ -n "$pv_env" ] || { echo "  ✗   抽不到 webui.sh 的预览信封（锚点改了？）"; fail=1; }
+
+pv_fp() { # <root> → 每个文件的 sha256（相对路径，顺序固定）
+    ( cd "$1" && find . -type f | LC_ALL=C sort | while read -r f; do
+        printf '%s  %s\n' "$(sha256sum < "$f" | cut -d' ' -f1)" "$f"
+      done )
+}
+pv_harness() { # <harness-fn> <file-tag> <root>
+    $1 "$3"
+    tail -n 1 "$T/$2.sh" > "$T/pv-call"
+    head -n -1 "$T/$2.sh" > "$T/pv-$2.sh"
+    {
+        echo 'AWK_CMD=awk'
+        # 结束锚必须严格到行尾：kl_capture_diff 里的 awk 程序有一行是 `}' "$1" "$2" ...`，
+        # 用 /,/^}/ 会在那一行截断，函数少个尾巴（症状是 shell 侧 EOF expecting "}").
+        sed -n '/^kl_capture_diff() {/,/^}$/p' module/lib/write.sh
+        sed -n '/^commit_backend_file() {/,/^}$/p' module/lib/write.sh
+        echo 'KL_PREVIEW=1'
+        echo 'KL_PREVIEW_DIFF=""'
+        cat "$T/pv-call"
+        printf '%s\n' "$pv_env"
+    } >> "$T/pv-$2.sh"
+}
+pv_case() { # <cmd> <fixture-fn> <harness-fn> <file-tag> <arg> [用例名]
+    _s="$T/pv-$4-s"; _r="$T/pv-$4-r"
+    _l="preview-$1${6:+（$6）}"
+    rm -rf "$_s" "$_r"; $2 "$_s"; $2 "$_r"
+    pv_harness "$3" "$4" "$_s"
+    _f0=$(pv_fp "$_s")
+    _a=$(sh "$T/pv-$4.sh" "$5" 2>&1 | sed -e "s|$_s||g")
+    chk "$_l：夹具没被 shell 侧落盘" "$(pv_fp "$_s")" "$_f0"
+    _g0=$(pv_fp "$_r")
+    _b=$(KEYLENS_ROOT="$_r" "$B" "preview-$1" "$5" 2>&1)
+    chk "$_l：夹具没被 Rust 侧落盘" "$(pv_fp "$_r")" "$_g0"
+    chk "$_l：输出逐字节一致" "$_a" "$_b"
+    chk "$_l：正对照 changed>0" \
+        "$(printf '%s\n' "$_b" | sed -n 's/^changed=\([0-9]*\)$/\1/p' | awk '{print ($1 > 0) ? "yes" : "no"}')" "yes"
+}
+pv_case keybox-save           mk_kb_fixture mk_kb_harness   kb  "$KBPL"
+pv_case tricky-save-patch     mk_sp_fixture mk_save_harness sv  "$PL"
+pv_case tricky-drop-patch     mk_dp_fixture mk_drop_harness dp  com.example.a
+pv_case teesim-save           mk_ts_fixture mk_ts_harness   ts  "$PLTS"
+pv_case teesim-save-overrides mk_ov_fixture mk_ov_harness   ovs "$PLOV"
+pv_case teesim-profile-new    mk_pn_fixture mk_pn_harness   pn  work
+pv_case teesim-profile-del    mk_pd_fixture mk_pd_harness   pd  work
+pv_case omk-save-injector     mk_oi_fixture mk_oi_harness   oi  "$PLOI"
+pv_case omk-save-config       mk_oc_fixture mk_oc_harness   oc  "$PLOC"
+# 「生效代价」有三臂（hot / restart / reboot），预览与真写必须同一口径：
+# 只验 hot 那一臂的话，restart 臂里 Rust 会替用户请求重启并谎称「已请求」，reboot 臂没人验过。
+PLCLOG=$(printf 'cfg_log_level=%s' "$(printf 'debug' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+pv_case omk-save-config mk_oc_fixture mk_oc_harness oc "$PLCLOG" 'restart 臂'
+pv_case omk-save-config mk_oc_fixture mk_oc_harness oc "$PLOC2"  'reboot 臂'
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 129 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 129），疑似用例被删"; fail=1
+# 129 → 173：新增 preview-* 的 11 个用例 ×4 条断言（逐字节 / 两侧夹具不落盘 / changed>0 正对照）
+if [ "$oks" -lt 173 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 173），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

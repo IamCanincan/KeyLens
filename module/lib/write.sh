@@ -427,11 +427,17 @@ cmd_omk_save_config() {
     rm -rf "$dir" 2>/dev/null
     scope=restart
     note=""
-    if [ "$saved" = 1 ] && [ "${KL_PREVIEW:-0}" != "1" ]; then
+    if [ "$saved" = 1 ]; then
+        # 「生效代价」是判据不是副作用，预览也要算给用户看：以前整块留在非预览闸门后，
+        # 于是预览里把一次「四个补丁字段整组热生效」报成 apply_scope=restart（界面据此
+        # 提示要重启 keymint），与同一条命令真写时的答复相反。
+        # 留在闸门后的是副作用：重启请求、日志条目（还没真写，不能留假条目）。
         scope=$(omk_apply_scope $keys)
         if [ "$scope" = hot ]; then
             # 四个补丁字段整组热生效：不重启，TA 原地更新，在途操作与 per-boot 计数不丢
             note="四个补丁字段整组热生效，没有重启 keymint"
+        elif [ "${KL_PREVIEW:-0}" = "1" ]; then
+            note=""          # 预览不请求重启，也就不能谎称「已请求」
         else
             omk_restart keymint
             note="已请求重启 keymint"
@@ -440,7 +446,7 @@ cmd_omk_save_config() {
             scope=reboot
             note="vb_key/vb_hash 从 random 切到 auto：要重启【整机】才读得到启动元数据，重启 keymint 不够"
         fi
-        log_info "🧩 WebUI 更新 OMK config.toml（$n 项，生效代价 $scope）"
+        [ "${KL_PREVIEW:-0}" = "1" ] || log_info "🧩 WebUI 更新 OMK config.toml（$n 项，生效代价 $scope）"
     fi
     kv saved "$saved"
     kv fields "$n"

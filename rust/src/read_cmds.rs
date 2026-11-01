@@ -4333,6 +4333,10 @@ pub fn omk_save_config(payload: &str) {
         scope = omk_apply_scope(&keys);
         if scope == "hot" {
             note = "四个补丁字段整组热生效，没有重启 keymint".to_string();
+        } else if preview_child() {
+            // 影子根里的子进程：重启请求写进影子、随影子一起删，所以不能对用户说「已请求」。
+            // apply_scope 照常报（那是判据，不是副作用），只是不写 note。
+            note = String::new();
         } else {
             let _ = std::fs::File::create(p.omk_state_dir.join("restart.keymint"));
             note = "已请求重启 keymint".to_string();
@@ -4453,8 +4457,10 @@ mod tricky_info_tests {
 /// 按行做 LCS 动态规划，回溯产出 "- 旧行" / "+ 新行"，输出为正向顺序。
 /// 前缀是 "- " / "+ "（带空格），与 awk 版逐字节一致。
 pub fn lcs_diff(old: &str, new: &str) -> Vec<String> {
-    let a: Vec<&str> = old.split('\n').collect();
-    let b: Vec<&str> = new.split('\n').collect();
+    // 按 awk 的记录语义切：尾换行不算一行（"a\n" 是一条记录，不是两条）。
+    // 早先用 split('\n') 会给旧文多造一条空记录，预览的差异里就凭空多出一行 "- "。
+    let a: Vec<&str> = old.lines().collect();
+    let b: Vec<&str> = new.lines().collect();
     let n = a.len();
     let m = b.len();
     let mut l = vec![vec![0u32; m + 1]; n + 1];
@@ -4519,6 +4525,13 @@ mod diff_tests {
     fn removed_line() {
         assert_eq!(lcs_diff("a\nb\n", "a\n"), vec!["- b"]);
     }
+
+    #[test]
+    fn trailing_newline_is_not_a_record() {
+        // 夹具里的旧文件带尾换行、payload 出来的新内容不带：awk 两边都是一条记录，
+        // 按 split('\n') 切会凭空多出一行 "- "（预览的 changed 就多 1）。
+        assert!(lcs_diff("a\n", "a").is_empty());
+    }
 }
 
 /// 写前预览状态（对应 shell 的 KL_PREVIEW / KL_PREVIEW_DIFF）。
@@ -4527,6 +4540,12 @@ pub static PREVIEW_DIFF: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(V
 
 pub fn preview_on() -> bool {
     PREVIEW.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+/// 影子根预览的子进程标志（main.rs 起子进程时带上，防止再递归）。
+/// 子进程照常写文件（写进影子根），但不能替用户做「请求重启」这类看起来已经发生的动作。
+pub fn preview_child() -> bool {
+    std::env::var("KL_PREVIEW_CHILD").is_ok()
 }
 
 pub fn set_preview(on: bool) {
