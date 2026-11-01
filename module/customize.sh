@@ -65,7 +65,7 @@ chmod 0755 "$MODPATH/action.sh" 2>/dev/null
 # 而 webui.sh 由管理器按 sh 调用、backends/*.sh 会被 source、部署脚本还要核对模式 ——
 # 不点名就会留一堆 644，看着能跑，一核对就红（2026-10-30 装 KeyLens 时实测如此）。
 chmod 0755 "$MODPATH/webui.sh" "$MODPATH/uninstall.sh" 2>/dev/null
-chmod 0755 "$MODPATH"/backends/*.sh "$MODPATH"/backends/*.awk 2>/dev/null
+chmod 0755 "$MODPATH"/backends/*.sh "$MODPATH"/bin/keylens 2>/dev/null
 
 # ---------- [4/5] 清理旧版残留 ----------
 ui_print " "

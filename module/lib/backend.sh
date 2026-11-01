@@ -51,7 +51,14 @@ KL_CONFLICT_MSG="检测到多个密钥库后端同时启用（Tricky Store / TEE
 use_backend() {
     local mdir="$2"
 
-    KL_PATCH="$mdir/backends/teesim.awk"
+    # 仓库里 awk 参照实现放在 tests/fixtures/backends（模块已不发布 awk）；
+    # 真机上不存在这个目录，KL_PATCH_DIR 保持默认，行为不变。
+    if [ -z "${KL_PATCH_DIR:-}" ] && [ -z "$(ls "$mdir"/backends/*.awk 2>/dev/null)" ] \
+       && [ -d "$mdir/../tests/fixtures/backends" ]; then
+        KL_PATCH_DIR="$mdir/../tests/fixtures/backends"
+    fi
+
+    KL_PATCH="${KL_PATCH_DIR:-$mdir/backends}/teesim.awk"
 
     if [ "$1" = "teesim" ]; then
         KL_BACKEND="teesim"
@@ -63,7 +70,7 @@ use_backend() {
         # 状态寄生在 OMK 自己的状态目录（.kl_* 前缀不会和它的 pid/restart 撞名）
         KL_DIR="$OMK_STATE_DIR"
         TARGET_FILE="$OMK_INJECTOR"
-        KL_PATCH="$mdir/backends/omk.awk"
+        KL_PATCH="${KL_PATCH_DIR:-$mdir/backends}/omk.awk"
         AWK_CMD=$(find_awk)
         mkdir -p "$KL_DIR" 2>/dev/null
     else
@@ -645,6 +652,16 @@ mark_module_stopped() {
 run_sync() {
     local prop_file="$1" tmp="$2"
     local rc=2
+
+    # 模块已不发布 awk：优先把同步交给 bin/keylens（真机上就是它）。
+    # 只有二进制不在时（仓库里跑测试）才走下面的 shell 实现。
+    _kl_bin="${KL_BIN:-${MODDIR:-}/bin/keylens}"
+    if [ -x "$_kl_bin" ]; then
+        _out=$("$_kl_bin" sync 2>/dev/null)
+        KL_COUNT=$(printf '%s\n' "$_out" | sed -n 's/^count=//p')
+        _rc=$(printf '%s\n' "$_out" | sed -n 's/^rc=//p')
+        return "${_rc:-2}"
+    fi
 
     if [ "$KL_BACKEND" = "teesim" ]; then
         sync_teesim_config "$TARGET_FILE" "$tmp"

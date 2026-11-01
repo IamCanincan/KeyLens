@@ -18,7 +18,7 @@ T=$(mktemp -d)
 trap 'rm -rf "$T"' EXIT
 KL_DIR="$T"
 AWK_CMD="awk"
-KL_PATCH="$ROOT/module/backends/teesim.awk"
+KL_PATCH="$ROOT/tests/fixtures/backends/teesim.awk"
 
 chk() { if [ "$2" = "$3" ]; then printf '  ok   %s\n' "$1"; else printf '  ✗    %s\n        期望 [%s]，实得 [%s]\n' "$1" "$2" "$3"; fail=1; fi; }
 chk_rc() { if [ "$2" = "$3" ]; then printf '  ok   %-34s rc=%s\n' "$1" "$3"; else printf '  ✗    %-34s 期望 rc=%s，实得 %s\n' "$1" "$2" "$3"; fail=1; fi; }
