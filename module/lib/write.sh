@@ -174,7 +174,12 @@ cmd_remove_apps() {
     0)
       # 以命令层实际移出的 token 数为准：同名条目可能只留一个有效项，
       # 用 before-after 在重复行/模式合并时会算成 0。
-      removed=$(printf '%s' "$KL_REMOVED_LIST" | tr ',' '\n' | sed '/^$/d' | wc -l | tr -d ' ')
+      # 注意不能用 `tr ',' '\n' | wc -l`：KL_REMOVED_LIST 是逗号拼接、**没有尾换行**，
+      # 单项时 wc -l 得 0、多项时少 1 —— 界面会显示「移出 0 个」但实际删掉了。
+      case "$KL_REMOVED_LIST" in
+        '') removed=0 ;;
+        *)  removed=$(( $(printf '%s' "$KL_REMOVED_LIST" | tr -cd ',' | wc -c) + 1 )) ;;
+      esac
       update_module_desc "$PROP_FILE" "${after:-0}"
       log_info "🧩 WebUI 从目标名单移出 $removed 个应用"
       kv removed "$removed"

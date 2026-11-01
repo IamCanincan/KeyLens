@@ -1225,10 +1225,9 @@ mk_rm_fixture() {
 }
 mk_rm_fixture "$RMS"; mk_rm_fixture "$RMR"
 mk_rm_harness "$RMS"
-chk 'remove-apps：removed_list 逐字一致' "$(sh "$T/rm.sh" 'com.b' 2>&1 | grep removed_list)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.b' 2>&1 | grep removed_list)"
-# shell 版把 KL_REMOVED_LIST（逗号拼接、无尾换行）直接喂 wc -l：单项时得 0、多项时少 1。
-# Rust 版按条目数如实计数，所以这一条单独断言，不与 shell 比对。
-chk 'remove-apps：removed 计数如实（shell 会少 1）' "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.zzz' 2>/dev/null | grep -c '^removed=0$')" "1"
+# shell 侧的 removed 计数曾用 `tr ',' '\n' | wc -l`（无尾换行 → 单项得 0、多项少 1），
+# 已在 module/lib/write.sh 修成按逗号数 +1；两边现在应当逐字一致。
+chk 'remove-apps：移出一条（输出，含 removed 计数）' "$(sh "$T/rm.sh" 'com.b' 2>&1)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.b' 2>&1)"
 chk 'remove-apps：目标文件逐字节一致' "$(cat "$RMS/data/adb/tricky_store/target.txt")" "$(cat "$RMR/data/adb/tricky_store/target.txt")"
 chk 'remove-apps：注释与空行保留' "$(sed -n '1p' "$RMR/data/adb/tricky_store/target.txt")" "# 注释"
 chk 'remove-apps：不能移出全部' "$(sh "$T/rm.sh" 'com.a,com.c' 2>&1)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.a,com.c' 2>&1)"
@@ -1288,7 +1287,7 @@ chk 'teesim-save：harvested 拒绝' "$(sh "$T/ts.sh" "$BADTS" 2>&1)" "$(KEYLENS
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 114 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 114），疑似用例被删"; fail=1
+if [ "$oks" -lt 113 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 113），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
