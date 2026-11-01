@@ -45,6 +45,14 @@ restore_backend() {
         [ -f "$b" ] && cp -a "$b" "$f"
     done
 }
+# 写命令只看 stdout 不够：真正的契约是**文件内容**。这里把后端文件一起做指纹对比。
+snapshot_backend() {
+    for f in /data/adb/tricky_store/target.txt /data/adb/tricky_store/security_patch.txt \
+             /data/adb/teesim/config.json /data/adb/teesim/overrides.json \
+             /data/misc/keystore/omk/injector.toml /data/misc/keystore/omk/config.toml; do
+        [ -f "$f" ] && sha256sum "$f" 2>/dev/null
+    done
+}
 
 READ_CMDS="status env targets target-meta apps icons log props tricky-patches teesim-overrides teesim-profiles backups boot-hash tee-status backend-info doctor excluded"
 WRITE_CMDS="set-mode props-on props-off props-boot-hash props-apply omk-restart clear-log tricky-drop-patch tricky-save-patch teesim-save teesim-save-overrides teesim-profile-new teesim-profile-del keybox-save backup-restore restore-app restore-apps remove-apps sync omk-save-injector omk-save-config"
@@ -56,16 +64,27 @@ for c in $LIST; do
     n=$((n + 1))
     backup_backend
     a=$(KL_USE_RUST=0 sh "$MODDIR/webui.sh" "$c" 2>&1 | norm)
+    fa=$(snapshot_backend)
     restore_backend
     b=$(KL_USE_RUST=1 sh "$MODDIR/webui.sh" "$c" 2>&1 | norm)
+    fb=$(snapshot_backend)
     restore_backend
-    if [ "$a" = "$b" ]; then
+    if [ "$a" = "$b" ] && [ "$fa" = "$fb" ]; then
         echo "  ok   $c"
     else
-        echo "  ✗    $c 输出不一致"
-        printf '%s\n' "$a" > "$T/a.txt"
-        printf '%s\n' "$b" > "$T/b.txt"
-        diff "$T/a.txt" "$T/b.txt" | head -n 8
+        echo "  ✗    $c 不一致"
+        if [ "$a" != "$b" ]; then
+            echo "       （stdout 不同）"
+            printf '%s\n' "$a" > "$T/a.txt"
+            printf '%s\n' "$b" > "$T/b.txt"
+            diff "$T/a.txt" "$T/b.txt" | head -n 8
+        fi
+        if [ "$fa" != "$fb" ]; then
+            echo "       （写回的文件不同）"
+            printf '%s\n' "$fa" > "$T/fa.txt"
+            printf '%s\n' "$fb" > "$T/fb.txt"
+            diff "$T/fa.txt" "$T/fb.txt" | head -n 8
+        fi
         fail=1
     fi
 done
