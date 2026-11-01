@@ -20,7 +20,8 @@
   `git config` 的代理，要显式给 `HTTPS_PROXY`。`static.rust-lang.org`（rustup target）本来就可达。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
-  模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）。测试用的临时副本在 `/data/adb/keylens-ab`。
+  模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）。测试用的临时副本 `/data/adb/keylens-ab`
+  **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（一条 deploy + 六条 push）。
 
 ## 1. 现在完成到哪
 
@@ -145,7 +146,7 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - `preview-omk-save-config` 在生产树跑：信封恰好一份、`config.toml` 一字未变 —— 5.3 那个洞
   在装完的模块上确认关闭。
 - 回滚件都在：设备上 `/data/adb/keylens-install-bak`（旧树 4.8 MB / 172 文件 / 19 份 awk）、
-  本机 `KeyLens-v3.0.1.zip.bak-2026-11-01`。
+  本机 `KeyLens-v3.0.1.zip.bak-2026-11-01`。（**这一条记录的是当时状态**，三处都已在 §3.8 清掉。）
 
 ### 3.7 热替换二进制复核过（2026-11-01 18:46，env 探针缓存那一版）
 
@@ -156,6 +157,7 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - 生产 `/data/adb/modules/keylens/bin/keylens` → 644176 字节、sha256 `d03ef5ae…`（19:57 为修 `module.prop` 权限漂移又换过一次：644648 字节、`c9f4049d…`），
   与仓库里 `rust/target/aarch64-unknown-linux-musl/release/keylens` 逐字节相同；
   被换下的那份留在 `/data/local/tmp/keylens.prodbak`（636712 字节），要回滚就是 `cp -a` 回去 + `chmod 755`。
+  （那份 .prodbak 也已删，见 §3.8 —— 现在回滚 = 从 git 重新交叉编译，本机 6 秒。）
 - 生产实测（同机交替、各 5 次取最快）：经界面入口 `env` **冷 204ms / 热 70ms**（上一轮同机 334ms）；
   直调二进制热跑 69ms，壳层地板 `sh -c true` 23ms ⇒ 剩下的是"每次现取"那两条（`dumpsys uimode` + `settings get`）。
 - `/data/adb/keylens.env.cache` 由新二进制重写：19 行、`-rw-------`、首行
@@ -170,6 +172,21 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
 - **CI 第一次跑到这两条新闸**：`Build CI Module` **Run 76** 与 `Rust CLI` **Run 6** 都落在 `2aedde5` 上、
   全绿（一次推 8 个提交只各起一轮，GitHub 按最新提交合并触发）。
   `rust/parity.sh` 末尾那条 `oks < 205` 的下限闸就是"新节真的跑了"的证据：作业绿 ⇒ CI 上至少数到 205 项 chk。
+
+### 3.8 回滚件已清空（2026-11-01 20:3x，主人点头删的）
+
+| 删掉的东西 | 原本是什么 | 现在靠什么 |
+|---|---|---|
+| 设备 `/data/adb/keylens-install-bak`（4.7 MB，172 文件 / 19 份 awk） | 17:11 刷入前的旧模块树，唯一含 awk 的现场参照 | awk 参照在仓库 `tests/fixtures/backends/`（阶段 5.4 移进去的，没删）；旧实现整棵树在 git 里 |
+| 设备 `/data/adb/keylens-ab`（1.9 MB） | 真机台子的 A/B 树（含推上去的 5 个 `device-*.sh` 与 `parity.sh`） | §3 那一整段就是重建流程：`sh tools/deploy-webui.sh --shell`（把 MODDIR 指过去）+ 六条 `adb push` |
+| 设备 `/data/local/tmp/keylens.prodbak`（624 KB） | 18:46 换下来的上一版二进制 | `RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' cargo build --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml`（本机 6 秒，不用 NDK） |
+| 本机 `KeyLens-v3.0.1.zip.bak-2026-11-01` | 13:56 那次打包的 zip | `node tools/build-zip.mjs` 重打；现在的包是 711.6 KB / 34 条目（内含 `c9f4049d…` 的二进制） |
+| 本机 `../keylens-unpushed-*.bundle` 共 8 只 | 代理不通时的离线兜底 | 提交已全部推到 `origin/main`，bundle 失去意义 |
+
+**代价要说清**：设备上现在没有 A/B 树，也没有参照 awk ⇒ 五个真机台子（`device-ab` / `device-preview` /
+`device-run-sync` / `device-env-cache` / `device-six`）**跑之前都要先照 §3 重建**，否则它们各自的前置检查会
+报「设备上找不到参照 awk」而拒绝开跑（这是设计，不是坏了）。已装的 `/data/adb/modules/keylens` 一个文件没动，
+删完当场复核：`bin/keylens` 仍是 `c9f4049d…`、`status` 正常、`doctor` 11 项 bad=0 warn=0。
 
 ## 4. preview 的实现方式（重要）
 
@@ -394,7 +411,15 @@ adb shell "sed -i 's/\r\$//' /data/adb/keylens-ab/{parity.sh,device-six.sh} && \
 
 ## 8. 最近提交（倒序）
 
+（本轮 CI：`59fdcfe` 上 `Build CI Module` Run 77 / `Rust CLI` Run 7 全绿；纯 docs 的提交按
+`on.push.paths` 白名单不会触发 CI，这是设计。）
+
 ```
+59fdcfe 新增 tests/device-six.sh：把 teesim/tricky 那六条的写与预览搬到手机上真跑 A/B（83 项全过）
+17f8a37 修 module.prop 权限漂移，并补上"闸只量 shell 那份"的盲区
+7574469 文档：§3.7 的"推不动"改成实况——8 个提交已上 main，Run 76 / Run 6 全绿
+2aedde5 文档：§3.7 记下生产模块热替换二进制的复核（env 冷 204ms / 热 70ms、缓存键带生产模块目录、 zip 重打 711.2 KB）与"代理仍不通"的实测读数 + 离线包判据
+66449de 性能③(后半)：env 探针缓存落到二进制，真机 334ms → 93ms
 bf54d4a 文档：§5.9 启动开销实测（壳层 69→27、props 366→91、env 410→338）与还没收的 env 缓存一半
 fa62b95 性能③(前半)：env 页也改吃一次 getprop 快照，真机 410ms → 310ms
 13a77b7 性能②：props 页从 17 次 getprop 改成一次全量 dump，真机 311ms → 59ms
