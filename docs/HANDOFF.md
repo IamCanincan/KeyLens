@@ -8,7 +8,8 @@
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
 - 未推送提交：写作时 129 个，每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
-- 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01.bundle`（只覆盖到生成时刻）
+- 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01-1305.bundle`（到 `8c01f42`，全历史，3.3 MB，
+  已 `git bundle verify`）；更早那份 `keylens-unpushed-2026-11-01.bundle`（只到交接文档那次）留着没删
   - 恢复：`git fetch <bundle> main:recovered`
 - 网络现状：**github.com DNS 解析失败**；`static.rust-lang.org` / `baidu` 可达。所以 `rustup target add` 能用，`git push` 不能。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
@@ -200,6 +201,10 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 ## 8. 最近提交（倒序）
 
 ```
+8c01f42 阶段 5.3：预览交给二进制，并修掉"点预览却真写"这个发布包级的洞
+6eb58c5 阶段 5.2：run_sync 优先走二进制，后台同步链路从此不吃 awk；补锁接力 KL_LOCK_HELD
+4f6b8f2 阶段 5.1：preview-* 全九条对拍落地，影子根修出三处口径
+f3c61f3 文档：交接说明（状态/验证方式/剩余工作/踩过的坑），供其他 agent 接手
 7eeb941 preview 走影子根，真机与 shell 逐字节相同
 a961f8e preview 基础设施（PREVIEW/commit_target/preview_tail），keybox-save 接入
 19cb0dd lcs_diff（与 kl_capture_diff 一致，含 awk 怪癖），4 单测
