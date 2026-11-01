@@ -8,7 +8,7 @@
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
 - 未推送提交：写作时 129 个，每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
-- 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01-1305.bundle`（到 `8c01f42`，全历史，3.3 MB，
+- 离线兜底：`D:\Github Repositories\keylens-unpushed-2026-11-01-1415.bundle`（到 `4c39bb8`，全历史，3.4 MB，
   已 `git bundle verify`）；更早那份 `keylens-unpushed-2026-11-01.bundle`（只到交接文档那次）留着没删
   - 恢复：`git fetch <bundle> main:recovered`
 - 网络现状：**github.com DNS 解析失败**；`static.rust-lang.org` / `baidu` 可达。所以 `rustup target add` 能用，`git push` 不能。
@@ -166,7 +166,16 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
      报出来的差异看着像实现坏了（实测 device-ab 17 条里红 6 条）。三个真机台子都加了这条前置，
      `sh tools/deploy-webui.sh --shell` 会把参照一起推进 `backends/`。
    - 对拍网**没有**被拆掉：`rust/parity.sh` 175 项照旧全绿（它抽的 shell 参照还在仓库里，只是不在发布包了）。
-5. 清理无用的 shell 函数（`grep` 确认零引用再删）——**还没做**，下一步就是这个。
+5. ~~清理无用的 shell 函数~~ **实测没有可删的**（2026-11-01，别为了交差造工作量）：
+   用脚本把 `module/**/*.sh` 里 133 个 `^[a-z_]*() {` 定义逐个数非定义、非注释的引用，
+   **零 module 引用的 = 0 个**；引用最少的 18 个都是一次调用的真用户
+   （`cmd_*` 被 webui.sh 的分派表调、`kl_capture_diff` 被 `commit_backend_file` 调、
+   `next_backoff` 被 service.sh 的退避循环调……）。复测方法：临时写一个 `.cjs`
+   按 `\b名\b` 逐行数（跳过定义行与 `#` 开头的行），要同时打印"引用次数最少的 N 个"，
+   只报"0 个"不报分布就是没自证仪器。
+   真正还悬着的是**另一件事**：`use_backend` 的 `KL_PATCH_DIR` 那条"仓库布局兜底"
+   让 module 代码在设备上找不到参照时会往 `../tests/fixtures` 看——那是"参照只装在仓库里"的
+   必然代价，不是死代码。
 6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
 
 ## 6. 坑（都踩过）
@@ -210,6 +219,9 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 ## 8. 最近提交（倒序）
 
 ```
+4c39bb8 阶段 5.4：awk 参照实现移出发布包，命令层实现只剩 bin/keylens
+21c04e6 文档：AWK-REMOVAL 第 1 步实测作废
+199ba6d 文档：HANDOFF 记下本轮三个提交与新的离线 bundle
 8c01f42 阶段 5.3：预览交给二进制，并修掉"点预览却真写"这个发布包级的洞
 6eb58c5 阶段 5.2：run_sync 优先走二进制，后台同步链路从此不吃 awk；补锁接力 KL_LOCK_HELD
 4f6b8f2 阶段 5.1：preview-* 全九条对拍落地，影子根修出三处口径
