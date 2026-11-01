@@ -52,14 +52,17 @@
 - ✅ 阶段 1（只读）已完成 15 条：contract / help / log / backups / status / targets（三家）/ target-meta / apps / excluded / boot-hash / tee-status / props / tricky-patches / teesim-overrides / teesim-profiles。
 - ✅ 阶段 2 已开始：并发锁（lock.rs，4 单测）、set-mode、props-on/off、props-boot-hash、omk-restart、clear-log。
 - 对拍：70 项（rust/parity.sh，CI 内跑）+ 单测 16 项。
-- 已迁移 **36/40**：只读 15 条 + 写侧 21 条（set-mode / props-on / props-off / props-apply / props-boot-hash /
-  omk-restart / omk-save-injector / omk-save-config / clear-log / tricky-drop-patch / tricky-save-patch /
-  teesim-save / teesim-save-overrides / teesim-profile-new / teesim-profile-del / keybox-save / backup-restore /
-  restore-app / restore-apps / remove-apps / doctor）。
-- ⏳ 余项 4 条：`sync`（`run_sync` 快照差分）、`env`（工具探测 + 缓存 + FRRO）、
-  `backend-info`（`tricky_info` 43 / `teesim_info` 157 / `omk_info` 136 三份只读 awk）、
-  `icons`（sqlite3 + app_process + 图标缓存）。
-- 对拍：**119 项 chk**（`rust/parity.sh`，CI 内跑）+ 单测 **58 项**；另有两道闸：
+- 已迁移 **40/40**：只读 15 条 + 写侧 25 条，命令层全部在 Rust 里（`rust/src/read_cmds.rs` 约 5.4k 行）。
+  - 只读：contract / help / log / backups / status / targets / target-meta / apps / excluded / boot-hash /
+    tee-status / props / tricky-patches / teesim-overrides / teesim-profiles / doctor / env / backend-info / icons
+  - 写侧：set-mode / props-on / props-off / props-apply / props-boot-hash / omk-restart / omk-save-injector /
+    omk-save-config / clear-log / tricky-drop-patch / tricky-save-patch / teesim-save / teesim-save-overrides /
+    teesim-profile-new / teesim-profile-del / keybox-save / backup-restore / restore-app / restore-apps /
+    remove-apps / sync
+- 未迁移清单 `LEFT` 已清空（漂移闸由分发表反推，空清单代表"没有未迁移命令"）。
+- 体积（本机实测，release + strip 前）：x86_64 glibc **633 KB** / x86_64 静态 musl **730 KB**；
+  aarch64 静态由 CI 的 `rust-build.yml` 产出并上传 artifact。
+- 对拍：**128 项 chk**（`rust/parity.sh`，CI 内跑）+ 单测 **66 项**；另有两道闸：
   未迁移清单漂移闸（由分发表反推）与迁移覆盖率闸（`tests/rust-parity-coverage.sh`）。
 
 ## json_flat_set.awk 的规格（下一步实现用）
