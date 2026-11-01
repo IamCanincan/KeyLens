@@ -337,9 +337,4 @@ fn main() {
             exit(1);
         }
     }
-
-    // 预览收尾：差异交给界面（base64，免得换行破坏 kv 的逐行解析）
-    if read_cmds::preview_on() {
-        read_cmds::preview_tail();
-    }
 }
