@@ -3949,3 +3949,220 @@ mod omk_keymap_tests {
         assert_eq!(omk_key_type("trust_security_patch"), "str");
     }
 }
+
+/// omk_set.awk 的等价：按 pairs 在 TOML 文本里定位并改值，返回 (新文本, 状态 ok/same/missing)。
+/// `target` 为 "injector" 或 "config"（决定键映射表）。
+pub fn omk_set(text: &str, pairs: &[(String, String)], target: &str) -> (String, &'static str) {
+    // 待写项：(段, 键, 值, 类型)
+    let mut items: Vec<(String, String, String, &'static str)> = Vec::new();
+    for (k, v) in pairs {
+        let mapped = if target == "injector" { inj_key(k) } else { cfg_key(k) };
+        let Some((sec, key)) = mapped else { continue };
+        items.push((sec.to_string(), key.to_string(), v.clone(), omk_key_type(k)));
+    }
+    let lines: Vec<&str> = {
+        let mut v: Vec<&str> = text.split('\n').collect();
+        if text.ends_with('\n') { v.pop(); }
+        v
+    };
+    if lines.is_empty() {
+        return (text.to_string(), "missing");
+    }
+    let want_type = |sec: &str, key: &str| -> Option<&'static str> {
+        items.iter().find(|(s, k, _, _)| s == sec && k == key).map(|(_, _, _, ty)| *ty)
+    };
+    let wval_for = |sec: &str, key: &str| -> Option<String> {
+        items.iter().find(|(s, k, _, _)| s == sec && k == key).map(|(_, _, v, _)| v.clone())
+    };
+    let mut out = String::new();
+    let mut handled: std::collections::HashSet<(String, String)> = std::collections::HashSet::new();
+    let mut seen_sec: std::collections::HashSet<String> = std::collections::HashSet::new();
+    seen_sec.insert(String::new());
+    let mut sec = String::new();
+    let mut flush_missing = |out: &mut String, sec: &str, handled: &mut std::collections::HashSet<(String, String)>| {
+        for (s, k, v, ty) in &items {
+            if s != sec {
+                continue;
+            }
+            if handled.contains(&(s.clone(), k.clone())) {
+                continue;
+            }
+            out.push_str(&format!("{} = {}\n", k, fmt_val(v, ty)));
+            handled.insert((s.clone(), k.clone()));
+        }
+    };
+    let mut i = 0usize;
+    while i < lines.len() {
+        let line = lines[i];
+        let trimmed = line.trim_start_matches([' ', '\t']);
+        // 段头
+        if trimmed.starts_with('[') {
+            flush_missing(&mut out, &sec, &mut handled);
+            if let (Some(ob), Some(cb)) = (line.find('['), line.find(']')) {
+                if cb > ob {
+                    sec = line[ob + 1..cb].to_string();
+                    seen_sec.insert(sec.clone());
+                }
+            }
+            out.push_str(line);
+            out.push('\n');
+            i += 1;
+            continue;
+        }
+        // filter 段的 deny_packages 可能是多行数组
+        if sec == "filter" && trimmed.starts_with("deny_packages") && trimmed.contains('[') {
+            let indent: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+            let mut j = i;
+            let mut combined = line.to_string();
+            while !combined.contains(']') && j + 1 < lines.len() {
+                j += 1;
+                combined.push(' ');
+                combined.push_str(lines[j]);
+            }
+            if combined.contains(']') {
+                if let Some(v) = wval_for(&sec, "deny_packages") {
+                    out.push_str(&format!("{}{} = {}\n", indent, "deny_packages", fmt_val(&v, "array")));
+                    handled.insert((sec.clone(), "deny_packages".to_string()));
+                    i = j + 1;
+                    continue;
+                }
+            }
+        }
+        // 普通 key = value
+        let first = trimmed.chars().next().unwrap_or(' ');
+        if (first.is_ascii_alphanumeric() || first == '_') && trimmed.contains('=') {
+            let (body, comment) = split_comment(line);
+            let key = body.split('=').next().unwrap_or("").trim_matches([' ', '\t']).to_string();
+            if want_type(&sec, &key).is_some() && !handled.contains(&(sec.clone(), key.clone())) {
+                let indent: String = line.chars().take_while(|c| *c == ' ' || *c == '\t').collect();
+                if let Some(v) = wval_for(&sec, &key) {
+                    let ty = want_type(&sec, &key).unwrap();
+                    out.push_str(&format!(
+                        "{}{} = {}{}\n",
+                        indent,
+                        key,
+                        fmt_val(&v, ty),
+                        if comment.is_empty() { String::new() } else { format!(" {}", comment) }
+                    ));
+                    handled.insert((sec.clone(), key.clone()));
+                    i += 1;
+                    continue;
+                }
+            }
+        }
+        out.push_str(line);
+        out.push('\n');
+        i += 1;
+    }
+    flush_missing(&mut out, &sec, &mut handled);
+    // 文件里没有的段：末尾新建
+    for (s, k, v, ty) in &items {
+        if seen_sec.contains(s) {
+            continue;
+        }
+        seen_sec.insert(s.clone());
+        out.push_str(&format!("\n[{}]\n", s));
+        for (s2, k2, v2, ty2) in &items {
+            if s2 != s || handled.contains(&(s2.clone(), k2.clone())) {
+                continue;
+            }
+            out.push_str(&format!("{} = {}\n", k2, fmt_val(v2, ty2)));
+            handled.insert((s2.clone(), k2.clone()));
+        }
+    }
+    let status = if out == text { "same" } else { "ok" };
+    (out, status)
+}
+
+/// cmd_omk_save_injector：写 injector.toml（布尔开关 / 日志级别 / deny 列表）。
+pub fn omk_save_injector(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Omk {
+        eprintln!("当前后端不是 OhMyKeymint");
+        std::process::exit(1);
+    }
+    if !p.omk_injector.is_file() {
+        eprintln!("injector.toml 不存在");
+        std::process::exit(1);
+    }
+    let fields = match crate::payload::parse(payload) {
+        Ok(v) => v,
+        Err(msg) => { eprintln!("{}", msg); std::process::exit(1); }
+    };
+    let mut norm: Vec<(String, String)> = Vec::new();
+    for (k, v) in &fields {
+        match k.as_str() {
+            "inj_main_enabled" | "filter_enabled" | "filter_block_android" | "filter_allow_unknown" => {
+                if !valid_bool(v) { eprintln!("字段只能是 true/false：{}", k); std::process::exit(1); }
+            }
+            _ if k.starts_with("intercept_") => {
+                if !valid_bool(v) { eprintln!("字段只能是 true/false：{}", k); std::process::exit(1); }
+            }
+            "inj_log_level" => {
+                if !valid_inj_log_level(v) {
+                    eprintln!("日志级别不合法（injector 认 off/error/warn/warning/info/debug/trace）");
+                    std::process::exit(1);
+                }
+            }
+            "filter_deny" => {
+                let Some(list) = valid_deny_list(v) else {
+                    eprintln!("拒绝包名列表不合法");
+                    std::process::exit(1);
+                };
+                norm.push((k.clone(), list));
+                continue;
+            }
+            other => { eprintln!("未知字段：{}", other); std::process::exit(1); }
+        }
+        norm.push((k.clone(), v.clone()));
+    }
+    let n = norm.len();
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read_to_string(&p.omk_injector).unwrap_or_default();
+    let (new_text, status) = omk_set(&old, &norm, "injector");
+    let mut saved = 0;
+    match status {
+        "ok" => {
+            if new_text != old {
+                let bak = b.dir.join("injector.toml.bak");
+                let _ = std::fs::copy(&p.omk_injector, &bak);
+                let tmp = b.dir.join(format!(".injector.toml.keylens.{}", std::process::id()));
+                let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+                    && std::fs::rename(&tmp, &p.omk_injector).is_ok();
+                if !ok {
+                    let _ = std::fs::remove_file(&tmp);
+                    crate::lock::release(&lockdir);
+                    eprintln!("写入失败：{}", p.omk_injector.display());
+                    std::process::exit(1);
+                }
+                saved = 1;
+            }
+        }
+        "same" => {}
+        _ => {
+            crate::lock::release(&lockdir);
+            eprintln!("配置定位失败：{}", p.omk_injector.display());
+            std::process::exit(1);
+        }
+    }
+    crate::lock::release(&lockdir);
+    if saved == 1 {
+        let _ = std::fs::File::create(p.omk_state_dir.join("restart.injector"));
+        log_line(&p, &format!("🧩 WebUI 更新 OMK injector.toml（{} 项）", n));
+    }
+    println_ok!("saved={}", saved);
+    println_ok!("fields={}", n);
+}

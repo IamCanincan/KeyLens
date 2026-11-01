@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info omk-save-injector omk-save-config sync"
+LEFT="env icons backend-info omk-save-config sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1285,9 +1285,60 @@ chk 'teesim-save：备份已生成' "$([ -f "$TSR/data/adb/teesim/config.json.ba
 BADTS=$(printf 'patch_system=%s' "$(printf 'harvested' | base64 | tr -d '\n')" | base64 | tr -d '\n')
 chk 'teesim-save：harvested 拒绝' "$(sh "$T/ts.sh" "$BADTS" 2>&1)" "$(KEYLENS_ROOT="$TSR" "$B" teesim-save "$BADTS" 2>&1)"
 
+echo "── omk-save-injector（TOML 定值写入）──"
+mk_oi_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/applist.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/omk.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/none-teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/oh_my_keymint'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/oi.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/oi.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/oi.sh"
+  for fn in parse_payload valid_bool valid_inj_log_level valid_deny_list; do
+    sed -n "/^$fn() {/,/^}/p" module/webui.sh >> "$T/oi.sh"
+  done
+  sed -n '/^cmd_omk_save_injector() {/,/^}/p' module/lib/write.sh >> "$T/oi.sh"
+  sed -n '/^omk_restart() {/,/^}/p' module/webui.sh >> "$T/oi.sh"
+  echo 'detect_backend "$MODDIR"; cmd_omk_save_injector "$1"' >> "$T/oi.sh"
+}
+OIS="$T/oi-root-s"; OIR="$T/oi-root-r"
+mk_oi_fixture() {
+  mkdir -p "$1/data/adb/modules/oh_my_keymint" "$1/data/misc/keystore/omk" "$1/data/adb/omk"
+  printf '[main]\nenabled = true\nlog_level = "info"\n\n[filter]\nenabled = true\ndeny_packages = ["com.x"]\n' > "$1/data/misc/keystore/omk/injector.toml"
+}
+mk_oi_fixture "$OIS"; mk_oi_fixture "$OIR"
+mk_oi_harness "$OIS"
+PLOI=$(printf 'inj_main_enabled=%s\nfilter_deny=%s\ninj_log_level=%s' \
+  "$(printf 'false' | base64 | tr -d '\n')" \
+  "$(printf 'com.a, com.b' | base64 | tr -d '\n')" \
+  "$(printf 'debug' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'omk-save-injector：输出' "$(sh "$T/oi.sh" "$PLOI" 2>&1)" "$(KEYLENS_ROOT="$OIR" "$B" omk-save-injector "$PLOI" 2>&1)"
+chk 'omk-save-injector：两侧 injector 逐字节一致' "$(cat "$OIS/data/misc/keystore/omk/injector.toml")" "$(cat "$OIR/data/misc/keystore/omk/injector.toml")"
+chk 'omk-save-injector：备份已生成' "$([ -f "$OIR/data/adb/omk/injector.toml.bak" ] && echo yes)" "yes"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 113 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 113），疑似用例被删"; fail=1
+if [ "$oks" -lt 116 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 116），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }
