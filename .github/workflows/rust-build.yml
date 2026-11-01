@@ -43,7 +43,21 @@ jobs:
 
       - name: Contract parity（Rust 输出 == webui.sh 的 KL_COMMANDS）
         run: |
-          EXPECTED=$(awk '/^KL_COMMANDS="/{f=1} f{ gsub(/^KL_COMMANDS="/,""); gsub(/"$/,""); gsub(/\\$/,""); print }' module/webui.sh | tr '\n' ' ' | tr -s ' ' | sed 's/ $//')
+          # 提取器必须"看见收尾引号就收手"。以前这里写的是 gsub 三连 + 没有 exit，
+          # 于是 KL_COMMANDS 之后的整份 webui.sh 都被当成命令清单（CI 第一次真跑就是被它红的，
+          # 报"契约不一致"，expected 里全是注释和函数体）。
+          # tests/module-bin.sh 与 rust/parity.sh 用的是同一份带 exit 的版本，这里对齐它们。
+          EXPECTED=$(awk '
+          /^KL_COMMANDS="/{f=1; sub(/^KL_COMMANDS="/,"")}
+          f {
+            had = /"$/
+            sub(/\\$/,""); sub(/"$/,"")
+            printf "%s ", $0
+            if (had) exit
+          }' module/webui.sh | tr -s ' ' | sed 's/ $//')
+          case "$EXPECTED" in
+            *'#'*) echo "✗ 提取没在收尾引号处停下（把注释吞进命令清单了）"; exit 1 ;;
+          esac
           ACTUAL=$(rust/target/x86_64-unknown-linux-musl/release/keylens contract | sed -n 's/^commands=//p')
           test "$EXPECTED" = "$ACTUAL" || { echo "契约不一致"; echo "expected: $EXPECTED"; echo "actual:   $ACTUAL"; exit 1; }
           echo "契约一致（$(printf '%s' "$ACTUAL" | wc -w) 条命令）"
