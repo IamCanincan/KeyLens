@@ -62,7 +62,22 @@ impl Paths {
             teesim_module: root.join("/data/adb/modules/teesim"),
             omk_module: root.join("/data/adb/modules/oh_my_keymint"),
             log: root.join("/data/adb/keylens.log"),
-            module_prop: root.join("/data/adb/modules/keylens/module.prop"),
+            module_prop: {
+                // 模块目录：KEYLENS_MODDIR 优先，其次「二进制在 bin/ 下」推导（非默认安装位置也对）
+                let md = std::env::var("KEYLENS_MODDIR").ok().or_else(|| {
+                    let exe = std::env::current_exe().ok()?;
+                    let bin = exe.parent()?;
+                    if bin.file_name().map(|n| n == "bin").unwrap_or(false) {
+                        Some(bin.parent()?.to_string_lossy().into_owned())
+                    } else {
+                        None
+                    }
+                });
+                match md {
+                    Some(d) => std::path::PathBuf::from(d).join("module.prop"),
+                    None => root.join("/data/adb/modules/keylens/module.prop"),
+                }
+            },
             props_off: root.join("/data/adb/keylens.props_off"),
             boot_hash: root.join("/data/adb/keylens.boot_hash"),
         }

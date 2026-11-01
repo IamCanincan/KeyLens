@@ -2467,9 +2467,13 @@ pub fn doctor() {
 
     if has_backend {
         let marks: Vec<String> = {
-            let mut v = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
-                p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
-            })];
+            // 与 shell 的 KL_OUR_MARKS 完全一致：判定"是不是本模块的进程"只看这几个标记，
+            // 不看模块安装路径（换目录/换名字安装时仍能认出自己）。
+            let mut v: Vec<String> = vec![
+                "keylens".to_string(),
+                "ts-auto-add".to_string(),
+                "ts_auto".to_string(),
+            ];
             if let Ok(extra) = std::env::var("KL_OUR_MARKS") {
                 v.extend(extra.split_whitespace().map(|s| s.to_string()));
             }
@@ -4927,11 +4931,25 @@ pub fn backend_info() {
 }
 
 /// cmd_env：环境能力与设备信息（顺序见 docs/ENV-SPEC.md）。
+/// 模块目录：优先 KEYLENS_MODDIR，其次「二进制自己在 bin/ 下」推导，最后回落到默认路径。
+/// 这样 env/webui_sh 与 icons/webroot 在非默认安装位置也正确。
+fn module_dir(root: &Root) -> String {
+    if let Ok(v) = std::env::var("KEYLENS_MODDIR") {
+        return v;
+    }
+    if let Ok(exe) = std::env::current_exe() {
+        if let (Some(bin), Some(md)) = (exe.parent(), exe.parent().and_then(|p| p.parent())) {
+            if bin.file_name().map(|n| n == "bin").unwrap_or(false) {
+                return md.to_string_lossy().into_owned();
+            }
+        }
+    }
+    root.join("/data/adb/modules/keylens").to_string_lossy().into_owned()
+}
 pub fn env_cmd() {
     let root = Root::from_env();
     let p = Paths::new(&root);
-    let moddir = std::env::var("KEYLENS_MODDIR")
-        .unwrap_or_else(|_| root.join("/data/adb/modules/keylens").to_string_lossy().into_owned());
+    let moddir = module_dir(&root);
     let cache = std::env::var("KL_ENV_CACHE")
         .map(std::path::PathBuf::from)
         .unwrap_or_else(|_| root.join("/data/adb/keylens.env.cache"));
@@ -5318,8 +5336,7 @@ pub fn icons(arg: &str) {
         return;
     }
     let root = Root::from_env();
-    let moddir = std::env::var("KEYLENS_MODDIR")
-        .unwrap_or_else(|_| root.join("/data/adb/modules/keylens").to_string_lossy().into_owned());
+    let moddir = module_dir(&root);
     let mut db = String::new();
     for p in [
         "/data/data/com.android.launcher3/databases/app_icons.db",

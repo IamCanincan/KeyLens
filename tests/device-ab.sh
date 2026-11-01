@@ -41,8 +41,8 @@ restore_backend() {
     for f in /data/adb/tricky_store/target.txt /data/adb/tricky_store/security_patch.txt \
              /data/adb/teesim/config.json /data/adb/teesim/overrides.json \
              /data/misc/keystore/omk/injector.toml /data/misc/keystore/omk/config.toml; do
-        b="$T/bak/$(echo "$f" | tr / _)"
-        [ -f "$b" ] && cp -a "$b" "$f"
+        bk="$T/bak/$(echo "$f" | tr / _)"
+        [ -f "$bk" ] && cp -a "$bk" "$f"
     done
 }
 # 写命令只看 stdout 不够：真正的契约是**文件内容**。这里把后端文件一起做指纹对比。
