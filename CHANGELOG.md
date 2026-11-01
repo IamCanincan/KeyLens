@@ -51,11 +51,12 @@
   改名前记下原 mode、改名后补回；tmp 名也带上 pid（原来是固定名，两个进程会踩同一个临时文件）。
 * **发布链自洽**：`build-zip` 必须打进 `bin/keylens` 否则拒绝出包；安装脚本缺二进制就中止；
   CI 的产物换成 `aarch64-unknown-linux-musl`（`NEEDED=0` 的静态判据对它才成立）。
-* **`versionCode` 超出 32 位范围，管理器永远不显示「更新」按钮**：KernelSU 的管理器把 `versionCode`
-  按 `Int` 解析（v3.3.1 的 `Module.versionCode: Int` + `obj.optInt`），12 位日期码（`202611012340`）
-  会溢出，更新检查的 `versionCode <= module.versionCode` 于是判成"没有新版" —— 别的 10 位码模块都正常。
-  改成 10 位 `YYYYMMDDHH`（`2026110123`，到 2147 年都不越界），并在 `tests/module-desc.sh` 加了一条
-  范围闸（附带"12 位码必须被判红"的反面样本）。
+* **`versionCode` 用 12 位日期码会被 KernelSU 整个丢掉**：`ksud module list` 里 keylens 那条
+  **没有 `versionCode` 字段**（同目录 nomount 有 `"versionCode": "605"`）—— 12 位码超出它解析用的
+  32 位范围。管理器的更新检查按 `Int` 比较（v3.3.1 的 `Module.versionCode: Int` + `obj.optInt`），
+  且只在 `ModuleUpdateSignature(updateJson, versionCode, …)` 变化时才重取。改成 10 位 `YYYYMMDDHH`
+  （`2026110123`，到 2147 年都不越界）后 ksud 能正常读出；`tests/module-desc.sh` 加了范围闸
+  和"12 位码必须被判红"的反面样本。
 
 #### 性能（同机交替、各取 5~6 次最快）
 
