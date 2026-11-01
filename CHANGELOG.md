@@ -2,7 +2,11 @@
 
 ---
 
-### 3.0.1 - 2026-11-01
+### 3.0.2 - 2026-11-01
+
+> 这一版才是「命令层只剩二进制」的发布包。已发布的 **v3.0.1 资产仍是纯 shell/awk 那份**（396 KB、
+> 19 份 `backends/*.awk`、没有 `bin/keylens`），与本文档当时写的阶段 5 内容并不一致 —— 阶段 5 的
+> 成果是从这一版开始真正进包的。
 
 #### 变更
 
@@ -34,12 +38,6 @@
   当成无需确认直接写。现在按 `TMPDIR → /data/local/tmp → temp_dir` 依次找落脚点，
   全都建不出来就退 2 交给 shell 算预览（宁可退化，不可谎报"没变化"）。
 
-* **安装即接管旧名模块**：从 TS-AUTO-ADD（id `ts-auto-add`）升级不再需要"先卸载再刷"——
-  安装脚本先跑 `migrate_legacy_paths` 把 `ts_auto.*` 与后端目录里的 `.ts_*` 搬到新名字，
-  随后自动移除旧模块目录。旧目录留着会是两套 `service.sh` 同跑（两份守护进程各写同一份
-  后端配置），这是改名后唯一需要人工规避的坑，现在安装器自己处理。
-  迁移目录表补上旧版 OMK 状态目录 `/data/adb/ts_auto.omk`（只装过旧版的 OMK 机器上
-  基线/ever/pid 原样躺在那里，漏扫等于一个都不搬）。闸 `tests/legacy-migrate.sh` 加三条断言。
 * **写前预览不再谎报生效代价**：OhMyKeymint 的 `[trust]` 保存整块代价判定（`apply_scope`）原本连同"重启请求 + 日志条目"
   一起留在 `KL_PREVIEW != 1` 的闸门后，于是预览把一次「四个补丁字段整组热生效」（同一条命令真写时报 `hot`）
   报成 `apply_scope=restart`，界面据此提示"要重启 keymint"。代价是判据不是副作用，现在预览照常算；
@@ -47,6 +45,41 @@
   命令层的影子根预览同步对齐：预览时不再写 `restart.keymint`、也不打 `apply_note=已请求重启 keymint`（那句在预览里是假话）。
   闸：`rust/parity.sh` 新增 preview-* 11 例（逐字节 / 夹具不落盘 / `changed>0` 正对照，含 hot·restart·reboot 三条臂），
   真机侧新增 `tests/device-preview.sh`。
+* **`module.prop` 的权限会跟着调用者的 umask 漂**：命令层改描述走"写 tmp + 改名"，
+  而改名会把 tmp 的权限带过去。shell 那份一直有显式补 chmod，移植到二进制时漏了 ——
+  真机上实测漂成过 `-rw-rw-rw-`（整棵模块目录里唯一世界可写的文件）。现在两边同口径：
+  改名前记下原 mode、改名后补回；tmp 名也带上 pid（原来是固定名，两个进程会踩同一个临时文件）。
+* **发布链自洽**：`build-zip` 必须打进 `bin/keylens` 否则拒绝出包；安装脚本缺二进制就中止；
+  CI 的产物换成 `aarch64-unknown-linux-musl`（`NEEDED=0` 的静态判据对它才成立）。
+
+#### 性能（同机交替、各取 5~6 次最快）
+
+* **命令层壳的固定开销**：把 `webui.sh` 的二进制接管点从第 1273 行挪到第 54 行（在 `umask 077`、
+  PATH 导出之后，在脚本自己的 70 KB 函数体之前 —— mksh 是边读边解析的），每条命令 **69~89ms → 25~37ms**。
+* **props 页**：17 次单键 `getprop` 改成一次全量 dump 查表，**311~366ms → 59~91ms**。
+* **env 页**：同样吃快照，并把 shell 那套 19 键探针缓存落到二进制（两边共用 `/data/adb/keylens.env.cache`，
+  键 = `v1|模块目录|module.prop 的 version|/system/build.prop 的 mtime`，FRRO 强调色按 路径+mtime 判重编），
+  经界面入口 **410 → 334 → 热 70~98ms**。
+
+#### 测试
+
+* `rust/parity.sh` **205 项**逐字节对拍（含 preview 11 例、env 缓存 24 条）、`cargo test` **72 项**、
+  `tests/*.sh` **50 套**（WSL 与 Git Bash 各一遍）、11 条 node 静态闸，全部进 CI。
+* 真机台子：`device-ab`（只读 17 + 写 21）、`device-preview`（16）、`device-run-sync`（14）、
+  `device-env-cache`（28）、`device-six`（83，teesim/tricky 六条的写与预览）、
+  `device-omk-write`（20，OMK 写路径的夹具真写）。
+
+### 3.0.1 - 2026-11-01
+
+#### 修复
+
+* **安装即接管旧名模块**：从 TS-AUTO-ADD（id `ts-auto-add`）升级不再需要"先卸载再刷"——
+  安装脚本先跑 `migrate_legacy_paths` 把 `ts_auto.*` 与后端目录里的 `.ts_*` 搬到新名字，
+  随后自动移除旧模块目录。旧目录留着会是两套 `service.sh` 同跑（两份守护进程各写同一份
+  后端配置），这是改名后唯一需要人工规避的坑，现在安装器自己处理。
+  迁移目录表补上旧版 OMK 状态目录 `/data/adb/ts_auto.omk`（只装过旧版的 OMK 机器上
+  基线/ever/pid 原样躺在那里，漏扫等于一个都不搬）。闸 `tests/legacy-migrate.sh` 加三条断言。
+
 ### 3.0.0 - 2026-11-01
 
 #### 新增

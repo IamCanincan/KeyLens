@@ -20,7 +20,7 @@
   `git config` 的代理，要显式给 `HTTPS_PROXY`。`static.rust-lang.org`（rustup target）本来就可达。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
-  模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）。测试用的临时副本 `/data/adb/keylens-ab`
+  模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）—— **发布的 v3.0.2 见 §3.11**，机上要变成 v3.0.2 得刷一次包。测试用的临时副本 `/data/adb/keylens-ab`
   **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（先 mkdir，再一条 deploy + 六条 push）。
 
 ## 1. 现在完成到哪
@@ -126,8 +126,8 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab AWKSRC=\$PWD/b
 
 ```sh
 node tools/build-zip.mjs && node tools/build-zip.mjs --check      # 本机就能出包（musl 产物，不用 NDK）
-adb push KeyLens-v3.0.1.zip /data/local/tmp/
-adb shell "/data/adb/ksud module install /data/local/tmp/KeyLens-v3.0.1.zip"
+adb push KeyLens-v3.0.2.zip /data/local/tmp/
+adb shell "/data/adb/ksud module install /data/local/tmp/KeyLens-v3.0.2.zip"
 # KernelSU 把新包解到 /data/adb/modules_update/keylens，重启才落地 —— 下面这条就是趁这个窗口跑的：
 adb push tests/device-install-check.sh /data/local/tmp/
 adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
@@ -260,6 +260,37 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 
 **顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——
 `service.adb.root: 1`（`adb unroot` 后下次重启自然消失）与 `persist.sys.usb.config: adb`（要关掉 USB 调试）。
+
+### 3.11 发版 v3.0.2（2026-11-01 23:4x）
+
+**为什么发**：查仓库时发现**已发布的 v3.0.1 资产和仓库里的包不是一回事** —— 把那份资源下下来量：
+**396,854 字节、19 份 `backends/*.awk`、没有 `bin/keyelens`**（= 阶段 5 之前的纯 shell 实现）；
+而 `CHANGELOG.md` 的 3.0.1 段在 `4c39bb8`（阶段 5.4）已经被改写成"命令层只剩二进制"，
+`update.json` 却还停在 `cc12931`。**文档在描述一份从没上传过的包。**
+
+改动（都在这一个提交里）：
+- `module/module.prop`：`version=v3.0.2`、`versionCode=202611012340`。
+- `update.json`：三处跟着走（version / versionCode / `zipUrl` → `.../v3.0.2/KeyLens-v3.0.2.zip`）。
+- `CHANGELOG.md`：拆成 **3.0.2**（阶段 5 收尾 + 三笔性能 + 四条修复 + 测试网）与**修正后的 3.0.1**
+  （只留真正发布过的那条"安装即接管旧名模块"，文字逐字取自 `v3.0.1` 那个 tag）。
+- `README.md`：版本行 → v3.0.2。
+- `.gitignore`：第 39 行原来是一行 **GBK 乱码注释**（`# Rust 锟斤拷…`），换成正常中文。
+  顺带全仓扫了一遍编码：跟踪文件里只剩 `module/lib/icondump.dex` 与 `webui/src/logo.png`
+  两个二进制不是 UTF-8，其余全部合法。
+
+包：`node tools/build-zip.mjs` → **`KeyLens-v3.0.2.zip` 711.6 KB / 34 条目**，
+内含 `bin/keylens`（`c9f4049d…`，与真机同字节）、**0 份 awk**、`module.prop` 里是 v3.0.2。
+
+**还差一步（要 GitHub 凭据，本机没有）**：把资产传上去，否则 `update.json` 指向的是 404：
+
+```sh
+# 需要已登录的 gh（本机未登录）；没有 gh 就在网页上新建 release v3.0.2 并附上这个 zip
+gh release create v3.0.2 KeyLens-v3.0.2.zip --repo IamCanincan/KeyLens \
+   --title "KeyLens v3.0.2" --notes-file <把 CHANGELOG 的 3.0.2 段贴进去>
+```
+
+上传后要注意两点：① 机上装的仍是 v3.0.1，所以管理器会一直提示更新，刷一次包才变 v3.0.2；
+② 刷完 env 探针缓存的键会跟着变成 `…|v3.0.2|…`，第一次打开 `env` 会冷一次（~200ms），之后就回到 70~100ms。
 
 ## 4. preview 的实现方式（重要）
 
