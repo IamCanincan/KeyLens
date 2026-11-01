@@ -4453,6 +4453,78 @@ mod tricky_info_tests {
     }
 }
 
+/// 写前预览用的行级 diff（等价于 shell 的 kl_capture_diff）：
+/// 按行做 LCS 动态规划，回溯产出 "- 旧行" / "+ 新行"，输出为正向顺序。
+/// 前缀是 "- " / "+ "（带空格），与 awk 版逐字节一致。
+pub fn lcs_diff(old: &str, new: &str) -> Vec<String> {
+    let a: Vec<&str> = old.split('\n').collect();
+    let b: Vec<&str> = new.split('\n').collect();
+    let n = a.len();
+    let m = b.len();
+    let mut l = vec![vec![0u32; m + 1]; n + 1];
+    for i in 1..=n {
+        for j in 1..=m {
+            l[i][j] = if a[i - 1] == b[j - 1] {
+                l[i - 1][j - 1] + 1
+            } else if l[i - 1][j] >= l[i][j - 1] {
+                l[i - 1][j]
+            } else {
+                l[i][j - 1]
+            };
+        }
+    }
+    let mut out: Vec<String> = Vec::new();
+    let (mut i, mut j) = (n, m);
+    while i > 0 && j > 0 {
+        if a[i - 1] == b[j - 1] {
+            i -= 1;
+            j -= 1;
+        } else if l[i - 1][j] >= l[i][j - 1] {
+            out.push(format!("- {}", a[i - 1]));
+            i -= 1;
+        } else {
+            out.push(format!("+ {}", b[j - 1]));
+            j -= 1;
+        }
+    }
+    while i > 0 {
+        out.push(format!("- {}", a[i - 1]));
+        i -= 1;
+    }
+    while j > 0 {
+        out.push(format!("+ {}", b[j - 1]));
+        j -= 1;
+    }
+    out.reverse();
+    out
+}
+
+#[cfg(test)]
+mod diff_tests {
+    use super::*;
+
+    #[test]
+    fn unchanged_yields_nothing() {
+        assert!(lcs_diff("a\nb\n", "a\nb\n").is_empty());
+    }
+
+    #[test]
+    fn replaced_line() {
+        // awk 版把这个替换输出成 "+ X" 在前、"- b" 在后（回溯后倒序打印），照抄
+        assert_eq!(lcs_diff("a\nb\nc\n", "a\nX\nc\n"), vec!["+ X", "- b"]);
+    }
+
+    #[test]
+    fn appended_line() {
+        assert_eq!(lcs_diff("a\n", "a\nb\n"), vec!["+ b"]);
+    }
+
+    #[test]
+    fn removed_line() {
+        assert_eq!(lcs_diff("a\nb\n", "a\n"), vec!["- b"]);
+    }
+}
+
 /// 数一个 JSON 对象里**顶层**成员个数（深度 1 的 `"键"` + `:`）。
 fn count_members(obj: &[u8]) -> usize {
     let mut depth = 0i32;
