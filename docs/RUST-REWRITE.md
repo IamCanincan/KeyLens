@@ -184,3 +184,14 @@ git merge recovered                     # 或 cherry-pick
 | — | 无后端时 | 3–11 逐条 skip 没有后端，跳过 | skip |
 
 输出：每行 类别<TAB>状态<TAB>说明<TAB>建议，末尾 kv checks 总数 / bad / warn / skip（skip 不计入 checks）。
+
+### 名单写入的真实落点（已探明，下一步先迁它）
+
+- `cmd_restore_app`（`write.sh:53`）：校验 + 加锁 + 调 `add_target_app` + 刷新描述里的条数，输出 `restored 1/0`；
+- `add_target_app`（`backend.sh:234`）：薄包装，把包名写成临时文件转给批量版；
+- **真正的 writer：`add_target_apps`（`backend.sh:152`）** —— 按后端分叉写目标文件
+  （tricky 追加行 / teesim 改 `config.json` 的 `apps` / omk 改 `scoop` 数组），并更新 ever 名单与模块描述；
+- `remove_target_apps`（`backend.sh:248`）同理，额外守「整份名单不许被清空」（返回 3），
+  并把实际移出的条目放进 `KL_REMOVED_LIST` 供界面撤销。
+
+**顺序结论**：先迁这份 writer，再一次性拿下 `restore-app` / `restore-apps` / `remove-apps` 三条。
