@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons sync"
+LEFT="icons sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1427,9 +1427,67 @@ mk_bi_fixture "$BIS"; mk_bi_fixture "$BIR"
 mk_bi_harness "$BIS"
 chk 'backend-info（tricky）：逐行一致' "$(sh "$T/bi.sh" 2>&1 | sed -e 's/bi-root-[sr]/bi-root/g' -e 's/keybox_mtime=[0-9]*/keybox_mtime=X/')" "$(KEYLENS_ROOT="$BIR" "$B" backend-info 2>&1 | sed -e 's/bi-root-[sr]/bi-root/g' -e 's/keybox_mtime=[0-9]*/keybox_mtime=X/')"
 
+echo "── env（探测 + 深浅色 + 强调色/种子）──"
+ENV_ROOT="$T/env-root"
+mkdir -p "$ENV_ROOT/data/adb/modules/keylens" "$ENV_ROOT/data/resource-cache" "$T/envbin"
+printf 'id=keylens\nversion=v3.0.1\n' > "$ENV_ROOT/data/adb/modules/keylens/module.prop"
+cat > "$T/envbin/getprop" <<'EOF'
+#!/bin/sh
+case "$1" in
+  ro.product.model) echo XQ-DQ72 ;;
+  ro.product.brand) echo Sony ;;
+  ro.build.version.release) echo 15 ;;
+  ro.build.version.sdk) echo 35 ;;
+  ro.build.type) echo user ;;
+  ro.boot.verifiedbootstate) echo green ;;
+  ro.sf.lcd_density) echo 420 ;;
+esac
+EOF
+cat > "$T/envbin/resetprop" <<'EOF'
+#!/bin/sh
+exit 0
+EOF
+cat > "$T/envbin/id" <<'EOF'
+#!/bin/sh
+echo 0
+EOF
+cat > "$T/envbin/dumpsys" <<'EOF'
+#!/bin/sh
+case "$1" in
+  uimode) echo 'mCurUiMode=0x21' ;;
+  window) echo 'type=statusBars frame=[0,0][1080,66]' ;;
+  wallpaper) echo 'colorValue0=-16777216' ;;
+esac
+EOF
+cat > "$T/envbin/wm" <<'EOF'
+#!/bin/sh
+echo 'Physical density: 420'
+EOF
+cat > "$T/envbin/settings" <<'EOF'
+#!/bin/sh
+echo null
+EOF
+chmod +x "$T/envbin"/*
+cat > "$T/env.sh" <<SH
+TAB=\$(printf "\t")
+NL=\$(printf "\nX"); NL=\${NL%X}
+. module/lib/core.sh
+. module/lib/tools.sh
+. module/lib/backend.sh
+kv() { printf "%s=%s\n" "\$1" "\$2"; }
+MODDIR="$PWD/module"
+PROP_FILE="$ENV_ROOT/data/adb/modules/keylens/module.prop"
+KL_ENV_CACHE="$ENV_ROOT/data/adb/keylens.env.cache"
+SH
+sed -n '/^mod_prop() {/,/^}/p' module/webui.sh >> "$T/env.sh"
+sed -n '/^prop_now() {/,/^}/p' module/webui.sh >> "$T/env.sh"
+sed -n '/^cmd_env() {/,/^}/p' module/webui.sh >> "$T/env.sh"
+echo 'cmd_env' >> "$T/env.sh"
+chk 'env：逐行一致' "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" sh "$T/env.sh" 2>&1 | sed -e 's|/data/resource-cache/|/data/resource-cache/|')" "$(PATH="$T/envbin:$PATH" KEYLENS_MODDIR="$PWD/module" KEYLENS_ROOT="$ENV_ROOT" "$B" env 2>&1)"
+
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）
-if [ "$oks" -lt 120 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 120），疑似用例被删"; fail=1
+if [ "$oks" -lt 121 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 121），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

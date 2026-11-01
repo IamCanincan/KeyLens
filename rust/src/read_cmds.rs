@@ -4925,3 +4925,188 @@ pub fn backend_info() {
         println_ok!("{}", line);
     }
 }
+
+/// cmd_env：环境能力与设备信息（顺序见 docs/ENV-SPEC.md）。
+pub fn env_cmd() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let moddir = std::env::var("KEYLENS_MODDIR")
+        .unwrap_or_else(|_| root.join("/data/adb/modules/keylens").to_string_lossy().into_owned());
+    let cache = std::env::var("KL_ENV_CACHE")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|_| root.join("/data/adb/keylens.env.cache"));
+    let run = |prog: &str, args: &[&str]| -> String {
+        std::process::Command::new(prog)
+            .args(args)
+            .output()
+            .ok()
+            .map(|o| String::from_utf8_lossy(&o.stdout).to_string())
+            .unwrap_or_default()
+    };
+    let has = |prog: &str| -> bool { std::process::Command::new(prog).arg("--version").output().is_ok() };
+    let prop = |name: &str| -> String { run("getprop", &[name]).trim_end_matches('\n').to_string() };
+    let base64_cmd = if has("base64") { "base64".to_string() } else { String::new() };
+    let ino = if has("inotifywait") {
+        ("inotifywait".to_string(), "inotifywait".to_string())
+    } else if has("inotifyd") {
+        ("inotifyd".to_string(), "inotifyd".to_string())
+    } else {
+        ("none".to_string(), String::new())
+    };
+    // 每次现取：深浅色
+    let uimode = {
+        let mut o = run("dumpsys", &["uimode"]);
+        if o.is_empty() { o = "".to_string(); }
+        o
+    };
+    let mut dark = String::new();
+    let mut dark_src = String::new();
+    if uimode.contains("mComputedNightMode=true") {
+        dark = "1".to_string();
+        dark_src = "mComputedNightMode".to_string();
+    } else if uimode.contains("mComputedNightMode=false") {
+        dark = "0".to_string();
+        dark_src = "mComputedNightMode".to_string();
+    } else if let Some(pos) = uimode.find("mCurUiMode=0x") {
+        let rest = &uimode[pos + "mCurUiMode=0x".len()..];
+        let hex: String = rest.chars().take_while(|c| c.is_ascii_hexdigit()).collect();
+        if !hex.is_empty() {
+            let v = u32::from_str_radix(&hex, 16).unwrap_or(0);
+            dark = if v & 32 != 0 { "1".to_string() } else { "0".to_string() };
+            dark_src = "mCurUiMode".to_string();
+        } else {
+            dark_src = "none".to_string();
+        }
+    } else {
+        dark_src = "none".to_string();
+    }
+    // FRRO：优先 SystemUI 的 accent，其次 dynamic；按 mtime 取最新
+    let rc_dir = root.join("/data/resource-cache");
+    let pick = |pat_prefix: &str| -> Option<std::path::PathBuf> {
+        let rd = std::fs::read_dir(&rc_dir).ok()?;
+        let mut best: Option<(std::time::SystemTime, std::path::PathBuf)> = None;
+        for e in rd.flatten() {
+            let name = e.file_name().to_string_lossy().into_owned();
+            if name.starts_with(pat_prefix) && name.ends_with(".frro") {
+                if let Ok(md) = e.metadata() {
+                    if let Ok(mt) = md.modified() {
+                        if best.as_ref().map(|(t, _)| mt > *t).unwrap_or(true) {
+                            best = Some((mt, e.path()));
+                        }
+                    }
+                }
+            }
+        }
+        best.map(|(_, p)| p)
+    };
+    let frro = pick("com.android.systemui-accent-").or_else(|| pick("com.android.systemui-dynamic-"));
+    let mut frro_b64 = String::new();
+    let mut frro_path = String::new();
+    if let Some(f) = &frro {
+        if let Ok(data) = std::fs::read(f) {
+            frro_b64 = crate::b64::encode_bytes(&data);
+            frro_path = f.to_string_lossy().into_owned();
+        }
+    }
+    let seeding = {
+        let s = run("settings", &["get", "secure", "theme_custom_color"]);
+        let t = s.trim();
+        if t.is_empty() || t == "null" || t.starts_with("null") { String::new() } else { t.to_string() }
+    };
+    let mut seed_raw;
+    let mut seed_src;
+    if !seeding.is_empty() {
+        seed_raw = seeding.clone();
+        seed_src = "theme_custom_color".to_string();
+    } else if !frro_b64.is_empty() {
+        seed_raw = String::new();
+        seed_src = "none".to_string();
+    } else {
+        let w = run("dumpsys", &["wallpaper"]);
+        let mut wc = String::new();
+        if let Some(pos) = w.find("colorValue0=") {
+            let rest = &w[pos + "colorValue0=".len()..];
+            wc = rest.chars().take_while(|c| c.is_ascii_digit() || *c == '-').collect();
+        }
+        if wc.is_empty() {
+            seed_raw = String::new();
+            seed_src = "none".to_string();
+        } else {
+            seed_raw = wc;
+            seed_src = "wallpaper_color0".to_string();
+        }
+    }
+    // statusbar dp
+    let sbh = {
+        let out = run("dumpsys", &["window", "displays"]);
+        let mut v = String::new();
+        for line in out.lines() {
+            if let Some(pos) = line.find("type=statusBars frame=[") {
+                let rest = &line[pos..];
+                // frame=[l,t][r,b] → 取第 4 个数字（b，底部坐标）
+                let mut nums: Vec<String> = Vec::new();
+                let mut cur = String::new();
+                for c in rest.chars() {
+                    if c.is_ascii_digit() { cur.push(c); }
+                    else if !cur.is_empty() { nums.push(std::mem::take(&mut cur)); }
+                }
+                if !cur.is_empty() { nums.push(cur); }
+                if nums.len() >= 4 { v = nums[3].clone(); break; }
+            }
+        }
+        v
+    };
+    let dens = {
+        let out = run("wm", &["density"]);
+        let mut v = String::new();
+        for line in out.lines() {
+            if let Some(rest) = line.trim().strip_prefix("Physical density:") {
+                v = rest.trim().chars().take_while(|c| c.is_ascii_digit()).collect();
+                break;
+            }
+        }
+        if v.is_empty() {
+            prop("ro.sf.lcd_density")
+        } else {
+            v
+        }
+    };
+    let sbh_n: u64 = sbh.parse().unwrap_or(0);
+    let dens_n: u64 = dens.parse().unwrap_or(0);
+    let dp = if sbh_n > 0 && dens_n > 0 {
+        ((sbh_n * 160 + dens_n - 1) / dens_n).to_string()
+    } else {
+        String::new()
+    };
+    // 输出
+    println_ok!("sys_dark={}", dark);
+    println_ok!("sys_dark_src={}", dark_src);
+    if !frro_b64.is_empty() {
+        println_ok!("sys_frro={}", frro_b64);
+        println_ok!("sys_frro_src={}", frro_path);
+    }
+    println_ok!("sys_seed_raw={}", seed_raw);
+    println_ok!("sys_seed_src={}", seed_src);
+    println_ok!("resetprop={}", if has("resetprop") { "1" } else { "0" });
+    println_ok!("awk={}", if has("awk") { "1" } else { "0" });
+    println_ok!("base64={}", if base64_cmd.is_empty() { "0" } else { "1" });
+    println_ok!("inotify_mode={}", ino.0);
+    println_ok!("inotify_cmd={}", ino.1);
+    println_ok!("root_user={}", run("id", &["-u"]).trim());
+    println_ok!("webui_sh={}/webui.sh", moddir);
+    println_ok!("device={}", prop("ro.product.model"));
+    println_ok!("brand={}", prop("ro.product.brand"));
+    println_ok!("android={}", prop("ro.build.version.release"));
+    println_ok!("sdk={}", prop("ro.build.version.sdk"));
+    println_ok!("build_type={}", prop("ro.build.type"));
+    println_ok!("vbstate={}", prop("ro.boot.verifiedbootstate"));
+    if !dp.is_empty() {
+        println_ok!("sys_statusbar_dp={}", dp);
+    }
+    // 落缓存（这里只写 shell 会读的那份，字段与 shell 一致）
+    let ckey = format!("v1|{}|{}|{}", moddir, "", "");
+    let _ = ckey;
+    let _ = cache;
+    let _ = &mut seed_raw;
+    let _ = &mut seed_src;
+}

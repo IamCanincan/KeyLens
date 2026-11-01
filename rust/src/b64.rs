@@ -42,11 +42,9 @@ pub fn decode_text(input: &str) -> Option<String> {
     decode(input).and_then(|v| String::from_utf8(v).ok())
 }
 
-/// 测试用的编码（生产代码只解码）。
-#[cfg(test)]
-pub fn encode(s: &str) -> String {
+/// 编码（生产用：把 FRRO 文件内容转成 base64 交给界面；测试也用它）。
+pub fn encode_bytes(bytes: &[u8]) -> String {
     const T: &[u8] = b"ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
-    let bytes = s.as_bytes();
     let mut out = String::new();
     for chunk in bytes.chunks(3) {
         let b = [chunk[0], *chunk.get(1).unwrap_or(&0), *chunk.get(2).unwrap_or(&0)];
@@ -57,6 +55,12 @@ pub fn encode(s: &str) -> String {
         out.push(if chunk.len() > 2 { T[(n & 63) as usize] as char } else { '=' });
     }
     out
+}
+
+/// 测试用的编码（只接受 &str）。
+#[cfg(test)]
+pub fn encode(s: &str) -> String {
+    encode_bytes(s.as_bytes())
 }
 
 #[cfg(test)]

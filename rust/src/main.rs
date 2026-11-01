@@ -120,6 +120,7 @@ fn main() {
         "omk-save-injector" => read_cmds::omk_save_injector(arg),
         "omk-save-config" => read_cmds::omk_save_config(arg),
         "backend-info" => read_cmds::backend_info(),
+        "env" => read_cmds::env_cmd(),
         "teesim-profiles" => read_cmds::teesim_profiles(),
         "backups" => read_cmds::backups(),
         "help" => print!("{}", USAGE),
