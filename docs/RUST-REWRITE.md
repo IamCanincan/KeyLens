@@ -211,3 +211,19 @@ git merge recovered                     # 或 cherry-pick
 
 所以正确的下一步不是直接写 `restore-app`，而是先补 **`teesim.awk` 的 listfile 模式** 与 **`omk_write_list`** 这两个列表写入器
 （各自都要能对拍：给定新旧列表，写回的 `config.json` / `injector.toml` 与 shell 版逐字节一致）。
+
+**再往下读一层（`omk_write_list`，`backend.sh:460`）**：它本身也只是个外壳——真正重写 `scoop` 的是
+`$KL_PATCH`（即 `omk.awk`，196 行）；`teesim` 那条同理落在 `teesim.awk`（178 行，listfile 模式）。
+
+所以完整依赖链是：
+
+```
+omk.awk / teesim.awk（各 ~180-200 行，TOML / 嵌套 JSON 写入）
+        ↓
+add_target_apps / remove_target_apps（去重 + 分叉 + ever/描述）  ← 去重部分已完成（new_target_entries + 4 单测）
+        ↓
+restore-app / restore-apps / remove-apps（三条命令）
+```
+
+`omk_write_list` 还额外负责保存目标文件的 **uid:gid / mode / SELinux 上下文**（`stat -c %u/%g/%a`、`ls -Zd`），
+写回前 `chown`/`chmod`/`chcon`，并先 `cp -p` 到 `injector.toml.bak`；内容不变时返回 1（不写、不备份）。
