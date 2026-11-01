@@ -4595,3 +4595,158 @@ mod teesim_info_tests {
         assert!(got.contains(&"default_mode=".to_string()));
     }
 }
+
+/// omk_info.awk 的等价：injector + config 的摘要行（顺序与 awk 一致）。
+pub fn omk_info_lines(injector: &str, config: &str) -> Vec<String> {
+    let mut out: Vec<String> = Vec::new();
+    let unquote = |s: &str| {
+        let t = s.trim_matches([' ', '\t']).trim();
+        if t.len() >= 2 && t.starts_with('"') && t.ends_with('"') {
+            t[1..t.len() - 1].to_string()
+        } else {
+            t.to_string()
+        }
+    };
+    // injector
+    let mut sec = String::new();
+    let mut intercept_true = 0usize;
+    for raw in injector.split('\n') {
+        let line = raw.trim_end_matches('\r');
+        let t = line.trim_matches([' ', '\t']);
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with('[') && t.ends_with(']') {
+            sec = t[1..t.len() - 1].to_string();
+            continue;
+        }
+        let (body, _) = split_comment(t);
+        let Some(e) = body.find('=') else { continue };
+        let k = body[..e].trim_matches([' ', '\t']).to_string();
+        let v = unquote(&body[e + 1..]);
+        match (sec.as_str(), k.as_str()) {
+            ("", "version") => out.push(format!("injector_version={}", v)),
+            ("main", "enabled") => out.push(format!("injector_main_enabled={}", v)),
+            ("main", "log_level") => out.push(format!("injector_log_level={}", v)),
+            ("filter", "enabled") => out.push(format!("filter_enabled={}", v)),
+            ("filter", "block_android_package") => out.push(format!("filter_block_android={}", v)),
+            ("filter", "allow_unknown_package") => out.push(format!("filter_allow_unknown={}", v)),
+            ("intercept", _) => {
+                out.push(format!("intercept_{}={}", k, v));
+                if v == "true" {
+                    intercept_true += 1;
+                }
+            }
+            _ => {}
+        }
+    }
+    // config
+    let mut sec2 = String::new();
+    for raw in config.split('\n') {
+        let line = raw.trim_end_matches('\r');
+        let t = line.trim_matches([' ', '\t']);
+        if t.is_empty() || t.starts_with('#') {
+            continue;
+        }
+        if t.starts_with('[') && t.ends_with(']') {
+            sec2 = t[1..t.len() - 1].to_string();
+            continue;
+        }
+        let (body, _) = split_comment(t);
+        let Some(e) = body.find('=') else { continue };
+        let k = body[..e].trim_matches([' ', '\t']).to_string();
+        let v = unquote(&body[e + 1..]);
+        match (sec2.as_str(), k.as_str()) {
+            ("", "version") => out.push(format!("config_version={}", v)),
+            ("main", "backend") => out.push(format!("omk_backend={}", v)),
+            ("main", "log_level") => out.push(format!("config_log_level={}", v)),
+            ("main", "force_skip_system_biometric_hat_verification") => {
+                out.push(format!("cfg_force_skip_biometric={}", v))
+            }
+            ("main", "retire_stale_keybox_bound_keys") => out.push(format!("cfg_retire_stale_keys={}", v)),
+            ("device", "brand") => out.push(format!("dev_brand={}", v)),
+            ("device", "device") => out.push(format!("dev_device={}", v)),
+            ("device", "product") => out.push(format!("dev_product={}", v)),
+            ("device", "manufacturer") => out.push(format!("dev_manufacturer={}", v)),
+            ("device", "model") => out.push(format!("dev_model={}", v)),
+            ("device", "serial") => out.push(format!("dev_serial={}", v)),
+            ("device", "imei") => out.push(format!("dev_imei={}", v)),
+            ("device", "imei2") => out.push(format!("dev_imei2={}", v)),
+            ("device", "meid") => out.push(format!("dev_meid={}", v)),
+            ("device", "overrideTelephonyProperties") => out.push(format!("dev_override_telephony={}", v)),
+            ("trust", "os_version") => out.push(format!("trust_os_version={}", v)),
+            ("trust", "security_patch") => out.push(format!("trust_security_patch={}", v)),
+            ("trust", "os_patchlevel") => out.push(format!("trust_os_patchlevel={}", v)),
+            ("trust", "vendor_patchlevel") => out.push(format!("trust_vendor_patchlevel={}", v)),
+            ("trust", "boot_patchlevel") => out.push(format!("trust_boot_patchlevel={}", v)),
+            ("trust", "vb_key") => out.push(format!("trust_vb_key={}", v)),
+            ("trust", "vb_hash") => out.push(format!("trust_vb_hash={}", v)),
+            ("trust", "verified_boot_state") => out.push(format!("trust_verified_boot={}", v)),
+            ("trust", "device_locked") => out.push(format!("trust_device_locked={}", v)),
+            _ => {}
+        }
+    }
+    // deny 列表：从 injector 里定位 deny_packages 数组，按引号取条目
+    let mut deny_items: Vec<String> = Vec::new();
+    let ib = injector.as_bytes();
+    if let Some(p) = find_from(ib, 0, b"deny_packages") {
+        if let Some(bracket) = find_from(ib, p, b"[") {
+            let mut end = bracket;
+            while end < ib.len() && ib[end] != b']' {
+                end += 1;
+            }
+            if end < ib.len() {
+                let arr = &ib[bracket..=end];
+                let mut i = 0usize;
+                while i < arr.len() {
+                    if arr[i] == b'"' {
+                        let start = i + 1;
+                        let mut j = start;
+                        while j < arr.len() && arr[j] != b'"' {
+                            j += 1;
+                        }
+                        if j < arr.len() {
+                            deny_items.push(String::from_utf8_lossy(&arr[start..j]).into_owned());
+                            i = j + 1;
+                            continue;
+                        }
+                        break;
+                    }
+                    i += 1;
+                }
+            }
+        }
+    }
+    out.push(format!("intercept_true={}", intercept_true));
+    out.push(format!("filter_deny={}", deny_items.len()));
+    out.push(format!("filter_deny_list={}", deny_items.join(",")));
+    out
+}
+
+#[cfg(test)]
+mod omk_info_tests {
+    use super::*;
+
+    #[test]
+    fn injector_and_config_summary() {
+        let inj = "[main]\nenabled = true\nlog_level = \"info\"\n\n[filter]\nenabled = false\ndeny_packages = [\n  \"com.x\",\n  \"com.y\",\n]\n\n[intercept]\ngrant = true\nungrant = false\n";
+        let cfg = "[main]\nbackend = \"keymint\"\nlog_level = \"warn\"\nretire_stale_keybox_bound_keys = true\n\n[trust]\nsecurity_patch = \"2026-10-01\"\nvb_key = \"random\"\n";
+        let got = omk_info_lines(inj, cfg);
+        assert!(got.contains(&"injector_main_enabled=true".to_string()));
+        assert!(got.contains(&"filter_enabled=false".to_string()));
+        assert!(got.contains(&"intercept_grant=true".to_string()));
+        assert!(got.contains(&"intercept_ungrant=false".to_string()));
+        assert!(got.contains(&"omk_backend=keymint".to_string()));
+        assert!(got.contains(&"trust_security_patch=2026-10-01".to_string()));
+        assert!(got.contains(&"cfg_retire_stale_keys=true".to_string()));
+        assert_eq!(got[got.len() - 3], "intercept_true=1");
+        assert_eq!(got[got.len() - 2], "filter_deny=2");
+        assert_eq!(got[got.len() - 1], "filter_deny_list=com.x,com.y");
+    }
+
+    #[test]
+    fn empty_files_yield_counts_only() {
+        let got = omk_info_lines("", "");
+        assert_eq!(got, vec!["intercept_true=0".to_string(), "filter_deny=0".to_string(), "filter_deny_list=".to_string()]);
+    }
+}
