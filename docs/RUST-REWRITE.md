@@ -52,8 +52,15 @@
 - ✅ 阶段 1（只读）已完成 15 条：contract / help / log / backups / status / targets（三家）/ target-meta / apps / excluded / boot-hash / tee-status / props / tricky-patches / teesim-overrides / teesim-profiles。
 - ✅ 阶段 2 已开始：并发锁（lock.rs，4 单测）、set-mode、props-on/off、props-boot-hash、omk-restart、clear-log。
 - 对拍：70 项（rust/parity.sh，CI 内跑）+ 单测 16 项。
-- 已迁移 29/40：只读 15 条 + 写侧 14 条（set-mode / props-on/off / props-apply / props-boot-hash / omk-restart / clear-log / tricky-drop-patch / tricky-save-patch / teesim-save-overrides / keybox-save / backup-restore / teesim-profile-new / teesim-profile-del）。
-- ⏳ 余项：只读 env / backend-info / icons / doctor；写 props-apply / restore-app(s) / remove-apps / 四条 *-save / keybox-save / backup-restore / sync；KL_PREVIEW 预览。
+- 已迁移 **36/40**：只读 15 条 + 写侧 21 条（set-mode / props-on / props-off / props-apply / props-boot-hash /
+  omk-restart / omk-save-injector / omk-save-config / clear-log / tricky-drop-patch / tricky-save-patch /
+  teesim-save / teesim-save-overrides / teesim-profile-new / teesim-profile-del / keybox-save / backup-restore /
+  restore-app / restore-apps / remove-apps / doctor）。
+- ⏳ 余项 4 条：`sync`（`run_sync` 快照差分）、`env`（工具探测 + 缓存 + FRRO）、
+  `backend-info`（`tricky_info` 43 / `teesim_info` 157 / `omk_info` 136 三份只读 awk）、
+  `icons`（sqlite3 + app_process + 图标缓存）。
+- 对拍：**119 项 chk**（`rust/parity.sh`，CI 内跑）+ 单测 **58 项**；另有两道闸：
+  未迁移清单漂移闸（由分发表反推）与迁移覆盖率闸（`tests/rust-parity-coverage.sh`）。
 
 ## json_flat_set.awk 的规格（下一步实现用）
 
