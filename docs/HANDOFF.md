@@ -62,7 +62,7 @@
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release
 # aarch64 静态（本机没 NDK，用 musl + rust-lld；真机上可直接跑）
 RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
-# 对拍（173 项 chk；CI 用 musl 产物，本机直接 sh rust/parity.sh 走 glibc 产物）
+# 对拍（205 项 chk；CI 用 musl 产物，本机直接 sh rust/parity.sh 走 glibc 产物）
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
@@ -70,14 +70,14 @@ shell 测试套 **49 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
-| WSL | 46/46 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
-| Windows Git Bash（有 node） | 46/46 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑 |
+| WSL | 49/49 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
+| Windows Git Bash（有 node） | 49/49 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
 
 > `tests/rust-dispatch.sh` 以前在 Git Bash 恒红，是台子自己用了 `env VAR=x sh -c …`：
 > 这台的 `env` 会把 `env sh 脚本` 跑成**空输出且退 0**，与被测代码无关。已改成在一个 shell 里赋值。
 > 教训：`env` 在这台 Windows 上不能用来给 `sh` 传变量。
 
-Git Bash 侧逐套跑（PowerShell）与两份 node 闸：
+Git Bash 侧逐套跑（PowerShell）与 node 闸（CI 里一共 11 条，清单见 `.github/workflows/build_ci.yml`）：
 
 ```powershell
 $fail=0; foreach ($t in (Get-ChildItem tests\*.sh).Name) { & "D:\Git\bin\bash.exe" "tests/$t" *> $null; if ($LASTEXITCODE -ne 0) { $fail++; Write-Host "FAIL $t" } }; "failures=$fail"
