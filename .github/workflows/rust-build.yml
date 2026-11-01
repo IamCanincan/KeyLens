@@ -55,6 +55,17 @@ jobs:
         run: |
           KEYLENS_BIN=rust/target/x86_64-unknown-linux-musl/release/keylens sh tests/rust-golden.sh
 
+      - name: Verify static（aarch64 产物不得依赖任何动态库）
+        run: |
+          BIN=rust/target/aarch64-linux-android/release/keylens
+          echo "file: $(file -b "$BIN" | cut -c1-100)"
+          needed=$(readelf -d "$BIN" 2>/dev/null | grep -c NEEDED || true)
+          interp=$(readelf -l "$BIN" 2>/dev/null | grep -c INTERP || true)
+          echo "NEEDED=$needed INTERP=$interp size=$(stat -c %s "$BIN")"
+          test "$needed" = "0" || { echo "✗ 仍有动态库依赖（NEEDED=$needed）"; readelf -d "$BIN" | grep NEEDED; exit 1; }
+          test "$interp" = "0" || { echo "✗ 仍有 ELF 解释器（不是静态可执行）"; exit 1; }
+          echo "✓ aarch64 静态链接（$(stat -c %s "$BIN") 字节）"
+
       - name: Module binary handshake（包内二进制 contract == KL_COMMANDS）
         run: |
           # ARM 产物在 x86 runner 上跑不了，这里用同源码的 musl 产物做契约检查：
