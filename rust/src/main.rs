@@ -79,6 +79,21 @@ fn main() {
     let cmd = args.get(1).map(|s| s.as_str()).unwrap_or("help");
     let arg = args.get(2).map(|s| s.as_str()).unwrap_or("");
 
+    // 写前预览：preview-<写命令> 走同一条实现，但只出 diff 不落盘
+    let mut cmd = cmd;
+    if let Some(base) = cmd.strip_prefix("preview-") {
+        const PREVIEWABLE: &[&str] = &[
+            "teesim-save", "teesim-save-overrides", "teesim-profile-new", "teesim-profile-del",
+            "omk-save-injector", "omk-save-config", "tricky-save-patch", "tricky-drop-patch", "keybox-save",
+        ];
+        if PREVIEWABLE.contains(&base) {
+            read_cmds::set_preview(true);
+            cmd = base;
+        } else {
+            eprintln!("未知命令：preview-{}", base);
+            std::process::exit(1);
+        }
+    }
     match cmd {
         "contract" => {
             // 用 write_all 而不是 println!：Rust 默认忽略 SIGPIPE，管道被下游关掉时
@@ -135,5 +150,10 @@ fn main() {
             eprintln!("未知命令：{}（可用：keylens help）", other);
             exit(1);
         }
+    }
+
+    // 预览收尾：差异交给界面（base64，免得换行破坏 kv 的逐行解析）
+    if read_cmds::preview_on() {
+        read_cmds::preview_tail();
     }
 }

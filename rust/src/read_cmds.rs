@@ -2068,17 +2068,13 @@ pub fn keybox_save(payload: &str) {
         std::process::exit(1);
     }
     let bak = b.dir.join("keybox.xml.bak");
-    if target.is_file() { let _ = std::fs::copy(&target, &bak); }
-    let tmp = b.dir.join(format!(".keybox.{}", std::process::id()));
-    let ok = std::fs::write(&tmp, &data).is_ok() && std::fs::rename(&tmp, &target).is_ok();
-    if ok {
+    let ok = commit_target(&target, &data, Some(&bak));
+    if ok && !preview_on() {
         #[cfg(unix)]
         {
             use std::os::unix::fs::PermissionsExt;
             let _ = std::fs::set_permissions(&target, std::fs::Permissions::from_mode(0o600));
         }
-    } else {
-        let _ = std::fs::remove_file(&tmp);
     }
     crate::lock::release(&lockdir);
     if !ok {
@@ -4523,6 +4519,60 @@ mod diff_tests {
     fn removed_line() {
         assert_eq!(lcs_diff("a\nb\n", "a\n"), vec!["- b"]);
     }
+}
+
+/// 写前预览状态（对应 shell 的 KL_PREVIEW / KL_PREVIEW_DIFF）。
+pub static PREVIEW: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+pub static PREVIEW_DIFF: std::sync::Mutex<Vec<String>> = std::sync::Mutex::new(Vec::new());
+
+pub fn preview_on() -> bool {
+    PREVIEW.load(std::sync::atomic::Ordering::Relaxed)
+}
+
+pub fn set_preview(on: bool) {
+    PREVIEW.store(on, std::sync::atomic::Ordering::Relaxed);
+}
+
+fn preview_push(lines: Vec<String>) {
+    if let Ok(mut g) = PREVIEW_DIFF.lock() {
+        g.extend(lines);
+    }
+}
+
+/// 统一写回入口：预览模式只累积 diff，正常模式备份后原子替换。
+/// 返回 true 表示"已生效"（预览模式下也算成功，与 shell 的 commit_backend_file 一致）。
+pub fn commit_target(target: &std::path::Path, new: &[u8], bak: Option<&std::path::Path>) -> bool {
+    if preview_on() {
+        if target.is_file() {
+            let old = std::fs::read(target).unwrap_or_default();
+            let old_s = String::from_utf8_lossy(&old).into_owned();
+            let new_s = String::from_utf8_lossy(new).into_owned();
+            preview_push(lcs_diff(&old_s, &new_s));
+        }
+        return true;
+    }
+    if let Some(b) = bak {
+        if target.is_file() {
+            let _ = std::fs::copy(target, b);
+        }
+    }
+    let dir = target.parent().unwrap_or_else(|| std::path::Path::new("."));
+    let tmp = dir.join(format!(".kl_commit.{}", std::process::id()));
+    if std::fs::write(&tmp, new).is_err() || std::fs::rename(&tmp, target).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        return false;
+    }
+    true
+}
+
+/// 预览收尾：与 shell 一致地打 preview / changed / diff(base64)。
+pub fn preview_tail() {
+    let lines = PREVIEW_DIFF.lock().map(|g| g.clone()).unwrap_or_default();
+    let changed = lines.iter().filter(|l| l.starts_with('+') || l.starts_with('-')).count();
+    let body = if lines.is_empty() { String::new() } else { lines.join("\n") + "\n" };
+    println_ok!("preview=1");
+    println_ok!("changed={}", changed);
+    println_ok!("diff={}", crate::b64::encode_bytes(body.as_bytes()));
 }
 
 /// 数一个 JSON 对象里**顶层**成员个数（深度 1 的 `"键"` + `:`）。
