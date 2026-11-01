@@ -3370,3 +3370,79 @@ mod teesim_valid_tests {
         assert!(!valid_os_version("v15"));
     }
 }
+
+/// valid_patch 的三种结果（harvested 要单独给文案，不能混进"不合法"）。
+#[derive(Debug, PartialEq, Eq)]
+pub enum PatchCheck {
+    Ok,
+    Harvested,
+    Invalid,
+}
+
+/// valid_patch（webui.sh:228）：TEESim 的补丁值语法。
+///
+/// - `harvested` 上游根本没实现（写进去等于省略该标签），明确拒绝并提示留空；
+/// - 关键字 `""` / `today` / `no`（报告 0，与 Tricky 相反）/ `system_property` 放行；
+/// - 裸 `YYYY`/`MM`/`DD` 会被替换成"今天"后过不了上游判据 → 拒绝；
+/// - 4/6/8 位纯数字，或 `YYYY-MM[-DD]`（含字面 `YYYY`/`MM`/`DD` 占位）。
+pub fn valid_patch(v: &str) -> PatchCheck {
+    let low = v.to_ascii_lowercase();
+    if low == "harvested" {
+        return PatchCheck::Harvested;
+    }
+    if matches!(low.as_str(), "" | "today" | "no" | "system_property") {
+        return PatchCheck::Ok;
+    }
+    if matches!(v, "YYYY" | "MM" | "DD" | "yyyy" | "mm" | "dd") {
+        return PatchCheck::Invalid;
+    }
+    let digits = |s: &str| s.bytes().all(|c| c.is_ascii_digit());
+    if matches!(v.len(), 4 | 6 | 8) && digits(v) {
+        return PatchCheck::Ok;
+    }
+    let parts: Vec<&str> = v.split('-').collect();
+    let year_ok = |y: &str| y == "YYYY" || (y.len() == 4 && digits(y));
+    let month_ok = |m: &str| {
+        m == "MM" || (m.len() == 2 && digits(m) && (1..=12).contains(&m.parse::<u32>().unwrap_or(0)))
+    };
+    let day_ok = |d: &str| {
+        d == "DD" || (d.len() == 2 && digits(d) && (1..=31).contains(&d.parse::<u32>().unwrap_or(0)))
+    };
+    let ok = match parts.len() {
+        2 => year_ok(parts[0]) && month_ok(parts[1]),
+        3 => year_ok(parts[0]) && month_ok(parts[1]) && day_ok(parts[2]),
+        _ => false,
+    };
+    if ok { PatchCheck::Ok } else { PatchCheck::Invalid }
+}
+
+#[cfg(test)]
+mod valid_patch_tests {
+    use super::*;
+
+    #[test]
+    fn keywords_pass_and_harvested_is_special() {
+        for v in ["", "today", "no", "system_property", "TODAY", "No"] {
+            assert_eq!(valid_patch(v), PatchCheck::Ok, "{}", v);
+        }
+        assert_eq!(valid_patch("harvested"), PatchCheck::Harvested);
+        assert_eq!(valid_patch("HARVESTED"), PatchCheck::Harvested);
+    }
+
+    #[test]
+    fn bare_placeholders_are_rejected() {
+        for v in ["YYYY", "MM", "DD", "yyyy", "mm", "dd"] {
+            assert_eq!(valid_patch(v), PatchCheck::Invalid, "{}", v);
+        }
+    }
+
+    #[test]
+    fn numeric_and_dated_forms_pass() {
+        for v in ["2026", "202610", "20261005", "2026-10", "2026-10-05", "YYYY-MM", "YYYY-MM-DD"] {
+            assert_eq!(valid_patch(v), PatchCheck::Ok, "{}", v);
+        }
+        for v in ["2026-13", "2026-00", "2026-10-32", "2026-1", "26-10", "202x10"] {
+            assert_eq!(valid_patch(v), PatchCheck::Invalid, "{}", v);
+        }
+    }
+}
