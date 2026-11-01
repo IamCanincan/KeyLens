@@ -35,7 +35,7 @@ run_case() { # <名字> <命令> [参数]
     KEYLENS_ROOT="$R" "$BIN" "$@" 2>&1 | sed -e "s|$R|<root>|g" -e 's/keybox_mtime=[0-9]*/keybox_mtime=X/'
 }
 
-cases="contract help targets tricky-patches"
+cases="contract help targets target-meta excluded backups props tricky-patches teesim-profiles teesim-overrides"
 fail=0
 for c in $cases; do
     out=$(run_case "$c" "$c")

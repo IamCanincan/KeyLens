@@ -1,0 +1,3 @@
+com.a	com.a	auto	
+com.b?	com.b	leaf	
+com.c!	com.c	generate	

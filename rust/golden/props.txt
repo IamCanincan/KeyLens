@@ -1,0 +1,17 @@
+ro.boot.vbmeta.device_state		locked	missing
+ro.boot.verifiedbootstate		green	missing
+ro.boot.flash.locked		1	missing
+ro.boot.veritymode		enforcing	missing
+ro.boot.warranty_bit		0	missing
+ro.warranty_bit		0	missing
+ro.debuggable		0	missing
+ro.force.debuggable		0	missing
+ro.secure		1	missing
+ro.adb.secure		1	missing
+ro.build.type		user	missing
+ro.build.tags		release-keys	missing
+ro.vendor.boot.warranty_bit		0	missing
+ro.vendor.warranty_bit		0	missing
+vendor.boot.warranty_bit		0	missing
+ro.bootloader		不含 engineering（则改写为 release）	missing
+ro.build.description		不含 test-keys（则改写为 release-keys）	missing
