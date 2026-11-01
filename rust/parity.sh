@@ -1708,7 +1708,8 @@ pv_fp() { # <root> → 每个文件的 sha256（相对路径，顺序固定）
 pv_harness() { # <harness-fn> <file-tag> <root>
     $1 "$3"
     tail -n 1 "$T/$2.sh" > "$T/pv-call"
-    head -n -1 "$T/$2.sh" > "$T/pv-$2.sh"
+    # 去掉最后一行用 sed 不用 `head -n -1`：toybox 的 head 不收负数（这台子要在真机上原样跑，见 §5.10）
+    sed '$d' "$T/$2.sh" > "$T/pv-$2.sh"
     {
         echo 'AWK_CMD=awk'
         # 结束锚必须严格到行尾：kl_capture_diff 里的 awk 程序有一行是 `}' "$1" "$2" ...`，

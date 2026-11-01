@@ -30,11 +30,12 @@
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | **205 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条） | `sh rust/parity.sh` |
-| shell 测试套 | **48 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell 测试套 | **49 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
 | 真机 env 探针缓存 | **28 条全过**：冷=热、两边互读、热跑不起 getprop/dumpsys/wm/id、FRRO 的 mtime 与路径各一条变异 | `sh tests/device-env-cache.sh`，见 §5.9 |
+| 真机 teesim/tricky 六条（写 + 预览） | **83 条全过**：夹具与 harness 抽自 `parity.sh`，参照实现在设备的 toybox awk + mksh 下跑；带"改坏 shell 侧一处键名"的变异 | `sh tests/device-six.sh`，见 §5.10 |
 | 装机核对（重启前） | **28 条全过**：新树无 awk、旧树 shell vs 新树二进制 17 条逐字节、预览不落盘 | 见 §3.5 |
 | 黄金快照 | 10 条只读命令 | `sh tests/rust-golden.sh` |
 | 静态链接判据 | NEEDED=0 / 无 INTERP | `sh tests/static-check.sh` |
@@ -64,7 +65,7 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **46 套**，两边都得跑，各有盲区：
+shell 测试套 **49 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
@@ -108,6 +109,10 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-run-
 # env 探针缓存（FRRO 那一段夹具机测不到，只有真机算数；见 §5.9）
 adb push tests/device-env-cache.sh /data/adb/keylens-ab/device-env-cache.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-env-cache.sh"
+# teesim/tricky 那六条：夹具与 harness 从 parity.sh 抽，所以要把它一起推上去（见 §5.10）
+adb push rust/parity.sh /data/adb/keylens-ab/parity.sh
+adb push tests/device-six.sh /data/adb/keylens-ab/device-six.sh
+adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-six.sh"
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -199,8 +204,9 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 - 真机：`adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-preview.sh"` → 11 次调用逐字节相同，
   其中 `preview-omk-save-config`（hot 臂 `changed=4` / restart 臂 `changed=2`）、`preview-omk-save-injector`（`changed=2`）、
   `preview-keybox-save`（`changed=92`，`keybox_sha` 与真实文件 `sha256sum` 逐位对上）真有差异；
-  其余 7 次是 teesim/tricky 那六条——**这台机只装了 OhMyKeymint**，两边都只走到「当前后端不是 X」的错误路径，
-  差异覆盖由夹具根那半边负责（补装另两家才能在这里验，不要为了好看往 `/data/adb/` 里塞假目录：`detect_backend` 会当场改口）。
+  其余 7 次是 teesim/tricky 那六条——**这台机只装了 OhMyKeymint**，走真实入口时两边都只走到「当前后端不是 X」的错误路径，
+  差异覆盖由 §5.10 那台 `tests/device-six.sh` 负责（夹具根 + 设备的 toybox awk）；
+  不要为了好看往 `/data/adb/` 里塞假目录：`detect_backend` 会当场改口。
   keybox 一条的 diff 全文含设备真实密钥材料，台子默认只比全文、打印时折掉 `diff=` 行。
 
 ## 5. 剩余工作（按顺序）
@@ -301,7 +307,43 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 走脚本时那些壳根本不参与，会量出"0 次"的假象（我踩过一次）。设备台子里同理，
 `cnt()` 先证明冷跑确实记了 4 笔，再拿"热跑 0 笔"当结论。
 
+## 5.10 把对拍搬到手机上跑（`tests/device-six.sh`，真机 83 项全过）
+
+这台只装 OhMyKeymint，所以 teesim/tricky 那六条写命令（`teesim-save`、`teesim-save-overrides`、
+`teesim-profile-new`、`teesim-profile-del`、`tricky-save-patch`、`tricky-drop-patch`）走真实入口时
+两边都只到「当前后端不是 X」的错误路径 —— 差异一行没量到。而它们原本的覆盖只在 `rust/parity.sh`，
+那是 **WSL 的 GNU awk + dash**；参照实现（19 份 awk）在设备的 **toybox awk + mksh** 下行为是否一致，
+以前没人量过。这一层补的就是那个。
+
+要点三条（都是这台子能不能信的关键）：
+- **夹具与 harness 从 `rust/parity.sh` 里 `sed` 原样抽出来 eval**，不在设备台子里手抄第二份 ——
+  抄的那份改了不会响。每个抽出来的生成器都要先造出一只该存在的文件，造不出来当场报错。
+  payload（`PL` / `PLTS` / `PLOV`）同样按行从 parity.sh 取。
+- **A/B 比的是「目标文件的字节」，不是「整棵树」**：harness 在 shell 那侧把 `commit_backend_file`
+  桩成了 `cp`（parity 原样），于是 shell 侧不生成 `.bak`、留着一个 `.<file>.keylens.<pid>` 临时文件、
+  drop 那条还多造一个 `.pre`；Rust 侧则会写 `data/adb/keylens.log`。这些是**桩的形状**，不是实现的差异
+  —— 我第一版拿整棵树比，四条红全是这个。白名单滤掉的每一类都要有一格点名验回来
+  （这里就补了两条"Rust 侧确实生成了 .bak"）。
+- 每条命令都带**正对照**：目标文件必须真被动过、输出里不许出现「当前后端不是」，
+  最后还有一条拿真实入口跑同一条命令、断言它**只**得到那句错误 —— 记下"不建夹具就是零差异"这个事实。
+
+变异验证（把 shell 侧的 `patch_boot` 改成 `patch_b00t`，二进制不动）：
+`tricky-save-patch` 的输出一致、目标文件一致、shell 侧被写了、以及它的 preview 输出一致 **四条当场红**，
+其余不动；还原后 `write.sh` 的 sha 与仓库逐字节相同，复跑 83 项全绿。
+
+跑法（要先推两件东西上去）：
+```sh
+adb push rust/parity.sh   /data/adb/keylens-ab/parity.sh
+adb push tests/device-six.sh /data/adb/keylens-ab/device-six.sh
+adb shell "sed -i 's/\r\$//' /data/adb/keylens-ab/{parity.sh,device-six.sh} && \
+           MODDIR=/data/adb/keylens-ab sh /data/adb/keylens-ab/device-six.sh"
+```
+顺带一处可移植性改动：`rust/parity.sh` 里 `head -n -1` 换成 `sed '$d'` —— toybox 的 `head` 不收负数，
+不换的话预览 harness 在设备上直接坏掉（11 例 preview 全红，看着像实现坏了）。
+
 ## 6. 坑（都踩过）
+
+
 
 - **PowerShell 写文件/内联脚本**会带 BOM/CRLF、`$` 会被解析：Rust/sh 源码一律用编辑工具写，或用 `node <文件>.cjs` 脚本改；写完 `\r` 要清掉（否则 `sh` 报 `EOF unexpected`）。
 - **设备上那台 shell 的两种"静默"**（本轮加 env 缓存台子时各撞一次，症状都是"实现看着坏了"）：
@@ -323,6 +365,8 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 - **`adb push` 批量推多个文件时，别拿"命令没报错"当"文件已更新"**：这一轮一批推送里有 `backend.sh` 没落地、退出码却是 0。推到真机的每一步都要在远端 `grep -c` 一遍新代码里才有的字面量（本轮是 `KL_USE_RUST`），只看 size/mtime 不够。
 - **台子只 eval shell 那份函数，就等于在给没在跑的实现盖章**：`tests/module-desc.sh` 从 `backend.sh` 里抽出 `set_module_desc` 验"改名后把原 mode 补回去"，一直绿；而命令层默认走 `bin/keylens`，Rust 的同名函数**只 write tmp + rename、没补 mode** —— 真机上 `module.prop` 于是跟着调用者的 umask 漂（实测漂成 666，是整棵模块目录里唯一世界可写的文件）。同一族还有一条：Rust 的 tmp 名不带 pid（`module.prop.tmp` 固定名），而 `ls module.prop.tmp.*` 那种残留判据压根看不见它。现在两边都钉：行为在 cargo 单测（`set_module_desc_keeps_mode_and_other_lines`，删掉补权限那行它当场红），形状在 `tests/module-desc.sh`。
 - **写"保住原权限"的测试，原权限要写得和这台机 umask 造出来的不一样**：第一版写死 644，而 WSL 的 umask 就是 022（`fs::write` 造出来也是 644）⇒ 把补权限那行删掉测试照样绿。现在先用一个 probe 文件探出"这里造出来是几"，再取一个与之不同的 mode 当原权限；探到 chmod 不生效的平台（drvfs/MSYS）就明说"没测到"并跳过，不许当通过。
+- **带桩的 harness 里不要拿"整棵树一致"当 A/B 判据**：`tests/device-six.sh` 第一版比的是夹具根的文件清单，四条红 —— 全是桩的形状：shell 侧 `commit_backend_file` 被 parity 桩成 `cp`（于是不生成 `.bak`、留下 `.<file>.keylens.<pid>` 临时文件、drop 那条还多一个 `.pre`），Rust 侧则会写 `data/adb/keylens.log`。判据要收口到**目标文件的字节**，白名单滤掉的每一类都得另有一格点名验回来。
+- **adb 那个 root shell 的 umask 是 000**（`touch` 出来就是 666），而 `webui.sh`/`service.sh` 里都是 `umask 077`：凡"从 adb 直接调命令层"的测试，落盘形状会与守护进程/界面那条路不一样 —— 前面那条 module.prop 权限漂成 666 就是这么来的（不是守护进程写的）。
 - **接管段的顺序就是功能正确性**：`webui.sh` 里「剥 `preview-` 前缀」和「二进制接管」的先后，决定预览是预览还是真写（本轮 §5.3 修的就是这个）。动这两段之前先跑 `sh tests/rust-dispatch.sh`，它的 6 条 preview 判据就是钉这个顺序的。
 - **影子根的落脚点不能只认 `temp_dir()`**：Android 上没有 `/tmp`。只认它时 TMPDIR 一坏，影子根建不出来、子进程什么都读不到，父进程照样打 `changed=0`，界面把"没有差异"当成无需确认**直接真写**。现在按 `TMPDIR → /data/local/tmp → temp_dir` 找落脚点，全建不出来退 2 交给 shell（`rust/parity.sh` 与 `tests/device-preview.sh` 各钉一条）。复现这种"建不出来"要把 `TMPDIR` 的父路径做成一个**普通文件**——指到一个不存在的目录会被 `create_dir_all` 顺手建出来，测不出失败。
 - **台子调了没定义的函数，mksh 只报一句 command not found、不置 fail**：`tests/device-preview.sh` 上一版就这么在 5 条断言没跑的情况下打了「全部通过」。现在它自带 `chk` 与断言计数，条数低于下限直接红。写台子时"末尾那句结论"必须来自计数器，不能来自"没看见 ✗"。
@@ -340,6 +384,7 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
 | `tests/device-ab.sh` | 真机 A/B（含写回文件指纹） |
 | `tests/device-preview.sh` | 真机 preview-* 逐字节 A/B（含「预览不许落盘」的后端文件指纹与覆盖口径） |
 | `tests/device-env-cache.sh` | 真机验 env 探针缓存：冷=热、两边互读、热跑不起进程、FRRO 的 mtime/路径各一条变异（夹具机测不到 FRRO） |
+| `tests/device-six.sh` | 真机跑 teesim/tricky 那六条的写与预览 A/B（夹具+harness 抽自 `parity.sh`，参照实现走设备的 toybox awk） |
 | `tests/run-sync-bin.sh` | `run_sync` 二进制分支的三条判据 + 三条变异（CI 跑，桩掉 awk 实现） |
 | `tests/device-run-sync.sh` | 真机验锁接力：持锁不自抢、不持锁自取自放、两条分支结果一致、拿掉接力条的变异 |
 | `tests/rust-golden.sh` + `rust/golden/` | 黄金快照（删 awk 后的回归网） |
