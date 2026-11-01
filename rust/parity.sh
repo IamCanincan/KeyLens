@@ -1002,7 +1002,7 @@ chk 'profile-new：已存在' "$(sh "$T/pn.sh" work 2>&1)" "$(KEYLENS_ROOT="$PNR
 chk 'profile-new：拒绝 default' "$(sh "$T/pn.sh" default 2>&1)" "$(KEYLENS_ROOT="$PNR" "$B" teesim-profile-new default 2>&1)"
 
 echo "── 未迁移命令的契约（必须返回 2，不许假装成功）──"
-LEFT="env icons backend-info teesim-save omk-save-injector omk-save-config sync"
+LEFT="env icons backend-info omk-save-injector omk-save-config sync"
 for c in $LEFT; do
   out=$($B "$c" 2>&1) ; rc=$?
   if [ "$rc" = 2 ] && printf '%s' "$out" | grep -q '尚未迁移'; then
@@ -1235,6 +1235,56 @@ chk 'remove-apps：不能移出全部' "$(sh "$T/rm.sh" 'com.a,com.c' 2>&1)" "$(
 # 这一条只比 stdout：shell 版在"本来就不在"分支会漏一句 stderr（wc: 文件不存在），
 # 那是它的瑕疵，Rust 版不复制，所以两边 stderr 不做逐字节比较。
 chk 'remove-apps：本来就不在（removed=0）' "$(sh "$T/rm.sh" 'com.zzz' 2>/dev/null)" "$(KEYLENS_ROOT="$RMR" "$B" remove-apps 'com.zzz' 2>/dev/null)"
+
+echo "── teesim-save（嵌套 profiles.<name> 写入）──"
+mk_ts_harness() { # <root>
+  {
+    echo 'TAB=$(printf "\t")'
+    echo 'CR=$(printf "\r")'
+    echo 'NL=$(printf "\nX"); NL=${NL%X}'
+    echo '. module/lib/core.sh'
+    echo '. module/lib/tools.sh'
+    echo '. module/lib/backend.sh'
+    echo '. module/lib/lock.sh'
+    echo 'kv() { printf "%s=%s\n" "$1" "$2"; }'
+    echo 'log_info() { :; }'
+    echo 'lower() { printf "%s" "$1" | tr "A-Z" "a-z"; }'
+    echo 'commit_backend_file() { [ -f "$1" ] && cp "$1" "$1.bak"; cp "$2" "$1"; }'
+    echo "MODDIR='$PWD/module'"
+    echo "KL_PATCH='$PWD/module/backends/teesim.awk'"
+    echo "TSTORE_DIR='$1/data/adb/tricky_store'"
+    echo "TEESIM_DIR='$1/data/adb/teesim'"
+    echo "TEESIM_CONFIG='$1/data/adb/teesim/config.json'"
+    echo "OMK_DIR='$1/data/misc/keystore/omk'"
+    echo "OMK_INJECTOR='$1/data/misc/keystore/omk/injector.toml'"
+    echo "OMK_STATE_DIR='$1/data/adb/omk'"
+    echo "TRICKY_MODULE='$1/data/adb/modules/none-tricky'"
+    echo "TEESIM_MODULE='$1/data/adb/modules/teesim'"
+    echo "OMK_MODULE='$1/data/adb/modules/none-omk'"
+    echo "LOCK_TIMEOUT=2"
+  } > "$T/ts.sh"
+  sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/ts.sh"
+  sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/ts.sh"
+  for fn in parse_payload valid_patch valid_os_version valid_bool valid_keybox_name valid_text; do
+    sed -n "/^$fn() {/,/^}/p" module/webui.sh >> "$T/ts.sh"
+  done
+  sed -n '/^cmd_teesim_save() {/,/^}/p' module/lib/write.sh >> "$T/ts.sh"
+  echo 'detect_backend "$MODDIR"; cmd_teesim_save "$1"' >> "$T/ts.sh"
+}
+TSS="$T/ts-root-s"; TSR="$T/ts-root-r"
+mk_ts_fixture() {
+  mkdir -p "$1/data/adb/modules/teesim" "$1/data/adb/teesim"
+  printf '{\n    "profiles": {\n        "default": {\n            "mode": "patch",\n            "keybox": "keybox.xml",\n            "apps": ["com.a"]\n        }\n    }\n}\n' > "$1/data/adb/teesim/config.json"
+  printf '<k/>\n' > "$1/data/adb/teesim/keybox.xml"
+}
+mk_ts_fixture "$TSS"; mk_ts_fixture "$TSR"
+mk_ts_harness "$TSS"
+PLTS=$(printf 'mode=%s\npatch_system=%s\nauto_include=%s' "$(printf 'generation' | base64 | tr -d '\n')" "$(printf '2026-10-01' | base64 | tr -d '\n')" "$(printf 'true' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'teesim-save：输出' "$(sh "$T/ts.sh" "$PLTS" 2>&1)" "$(KEYLENS_ROOT="$TSR" "$B" teesim-save "$PLTS" 2>&1)"
+chk 'teesim-save：两侧 config 逐字节一致' "$(cat "$TSS/data/adb/teesim/config.json")" "$(cat "$TSR/data/adb/teesim/config.json")"
+chk 'teesim-save：备份已生成' "$([ -f "$TSR/data/adb/teesim/config.json.bak" ] && echo yes)" "yes"
+BADTS=$(printf 'patch_system=%s' "$(printf 'harvested' | base64 | tr -d '\n')" | base64 | tr -d '\n')
+chk 'teesim-save：harvested 拒绝' "$(sh "$T/ts.sh" "$BADTS" 2>&1)" "$(KEYLENS_ROOT="$TSR" "$B" teesim-save "$BADTS" 2>&1)"
 
 echo
 # 下限保护：对拍只许增加、不许被悄悄删掉（新命令迁移时同步抬高这个数）

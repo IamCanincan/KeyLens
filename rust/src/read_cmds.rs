@@ -3446,3 +3446,271 @@ mod valid_patch_tests {
         }
     }
 }
+
+/// JSON 字符串字面量（转义规则与 json_flat 一致）。
+fn jlit(s: &str) -> String {
+    crate::json_flat::render(s)
+}
+
+/// 在对象文本里求某个值的区间（用于 replace_scalar）：跳过空白后取字符串/嵌套/裸值。
+fn value_span(obj: &[u8], at: usize) -> Option<(usize, usize)> {
+    let mut i = at;
+    while i < obj.len() && matches!(obj[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+    if i >= obj.len() { return None; }
+    if obj[i] == b'"' {
+        let mut j = i + 1;
+        let mut esc = false;
+        while j < obj.len() {
+            if esc { esc = false; } else if obj[j] == b'\\' { esc = true; } else if obj[j] == b'"' { return Some((i, j)); }
+            j += 1;
+        }
+        return None;
+    }
+    if obj[i] == b'{' || obj[i] == b'[' {
+        let e = match_close(obj, i)?;
+        return Some((i, e));
+    }
+    let mut e = i;
+    while e < obj.len() && !matches!(obj[e], b',' | b'}' | b'\n') { e += 1; }
+    while e > i && matches!(obj[e - 1], b' ' | b'\t' | b'\r') { e -= 1; }
+    Some((i, e.saturating_sub(1)))
+}
+
+/// replace_scalar：命中返回 (新对象, 是否真的变了)；不命中返回 None。
+fn replace_scalar(obj: &str, key: &str, lit: &str) -> Option<(String, bool)> {
+    let bytes = obj.as_bytes();
+    let needle = format!("\"{}\"", key);
+    let p = find_from(bytes, 0, needle.as_bytes())?;
+    let mut i = p + needle.len();
+    while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+    if bytes.get(i) != Some(&b':') { return None; }
+    let (ks, ke) = value_span(bytes, i + 1)?;
+    let changed = &obj[ks..=ke] != lit;
+    Some((format!("{}{}{}", &obj[..ks], lit, &obj[ke + 1..]), changed))
+}
+
+/// insert_member：在对象末尾 `}` 之前插入 `"key": lit`。
+fn insert_member(obj: &str, key: &str, lit: &str) -> String {
+    let bytes = obj.as_bytes();
+    let mut cend = bytes.len();
+    while cend > 1 && bytes[cend - 1] != b'}' { cend -= 1; }
+    // 收尾缩进：`}` 前连续空格/制表符；前一个字符不是换行时退化成两空格
+    let mut i = cend - 1;
+    let mut closeind = String::new();
+    while i >= 1 && matches!(bytes[i - 1], b' ' | b'\t') { closeind.insert(0, bytes[i - 1] as char); i -= 1; }
+    if i >= 1 && bytes[i - 1] != b'\n' { closeind = "  ".to_string(); }
+    let ind = format!("{}  ", closeind);
+    let mut before = obj[..cend - 1].to_string();
+    while before.ends_with([' ', '\t', '\r', '\n']) { before.pop(); }
+    if !(before.ends_with('{') || before.ends_with(',')) { before.push(','); }
+    format!("{}\n{}{}: {}\n{}}}{}", before, ind, format!("\"{}\"", key), lit, closeind, &obj[cend..])
+}
+
+/// 定位 `profiles.<name>` 的对象区间：名字必须是键（后面是 `:` 再是 `{`），不能是字符串值。
+fn find_profile_object(text: &[u8], name: &str) -> Option<(usize, usize)> {
+    let pp = find_from(text, 0, b"\"profiles\"")?;
+    let pkey = format!("\"{}\"", name);
+    let mut from = pp + 10;
+    loop {
+        let q = find_from(text, from, pkey.as_bytes())?;
+        let mut m = q + pkey.len();
+        while m < text.len() && matches!(text[m], b' ' | b'\t' | b'\r' | b'\n') { m += 1; }
+        if text.get(m) == Some(&b':') {
+            let mut o = m + 1;
+            while o < text.len() && matches!(text[o], b' ' | b'\t' | b'\r' | b'\n') { o += 1; }
+            if text.get(o) == Some(&b'{') {
+                let e = match_close(text, o)?;
+                return Some((o, e));
+            }
+        }
+        from = q + pkey.len();
+    }
+}
+
+/// cmd_teesim_save：写 profiles.<profile> 的字段（patchLevel 是嵌套对象）。
+pub fn teesim_save(payload: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln!("{}", CONFLICT_MSG);
+        std::process::exit(1);
+    }
+    let b = backend::detect(&p);
+    if b.id != BackendId::Teesim {
+        eprintln!("当前后端不是 TEE Simulator");
+        std::process::exit(1);
+    }
+    if !p.teesim_config.is_file() {
+        eprintln!("配置不存在：{}", p.teesim_config.display());
+        std::process::exit(1);
+    }
+    let mut fields = match crate::payload::parse(payload) {
+        Ok(v) => v,
+        Err(msg) => { eprintln!("{}", msg); std::process::exit(1); }
+    };
+    let mut profile = "default".to_string();
+    if let Some(pos) = fields.iter().position(|(k, _)| k == "profile") {
+        let (_, v) = fields.remove(pos);
+        if !v.is_empty() { profile = v; }
+    }
+    if !profile.bytes().all(|c| c.is_ascii_alphanumeric() || matches!(c, b'.' | b'_' | b'-')) {
+        eprintln!("profile 名字不合法：{}", profile);
+        std::process::exit(1);
+    }
+    if fields.is_empty() {
+        eprintln!("没有可写字段");
+        std::process::exit(1);
+    }
+    for (k, v) in &fields {
+        match k.as_str() {
+            "mode" => {
+                if v != "patch" && v != "generation" {
+                    eprintln!("模式只能是 patch / generation");
+                    std::process::exit(1);
+                }
+            }
+            "keybox" => {
+                if !valid_keybox_name(v) || !p.teesim_dir.join(v).is_file() {
+                    eprintln!("keybox 文件不存在：{}", v);
+                    std::process::exit(1);
+                }
+            }
+            "patch_system" | "patch_vendor" | "patch_boot" => match valid_patch(v) {
+                PatchCheck::Ok => {}
+                PatchCheck::Harvested => {
+                    // 与 shell 版一致：valid_patch 先给专门提示，调用方接着再打一条通用拒绝
+                    eprintln!("harvested 这个写法上游守护进程并没有实现（写进去等于省略该标签）；要用采集值请留空");
+                    eprintln!("补丁值不合法：{} = {}（留空=用采集值 / today / no=报 0 / system_property / YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD；关键字不分大小写，日期里的 YYYY、MM、DD 必须大写且不能单独出现）", k, v);
+                    std::process::exit(1);
+                }
+                PatchCheck::Invalid => {
+                    eprintln!("补丁值不合法：{} = {}（留空=用采集值 / today / no=报 0 / system_property / YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD；关键字不分大小写，日期里的 YYYY、MM、DD 必须大写且不能单独出现）", k, v);
+                    std::process::exit(1);
+                }
+            },
+            "os_version" => {
+                if !valid_os_version(v) {
+                    eprintln!("OS 版本不合法");
+                    std::process::exit(1);
+                }
+            }
+            "auto_include" => {
+                if !valid_bool(v) {
+                    eprintln!("auto_include 只能是 true/false");
+                    std::process::exit(1);
+                }
+            }
+            "brand" | "device" | "product" | "manufacturer" | "model" | "serial" | "imei" | "meid" | "imei2" => {
+                if !valid_text(v, 256) {
+                    eprintln!("字段不合法：{}", k);
+                    std::process::exit(1);
+                }
+            }
+            _ => {
+                eprintln!("未知字段：{}", k);
+                std::process::exit(1);
+            }
+        }
+    }
+    let n = fields.len();
+    let marks: Vec<String> = vec![std::env::var("KL_LOCK_MARK").unwrap_or_else(|_| {
+        p.module_prop.parent().and_then(|m| m.file_name()).map(|s| s.to_string_lossy().into_owned()).unwrap_or_else(|| "keylens".to_string())
+    })];
+    let lockdir = b.dir.join(".kl_lock");
+    if !crate::lock::acquire(&lockdir, 6, &marks) {
+        eprintln!("守护进程正在写入，请几秒后再试");
+        std::process::exit(1);
+    }
+    let old = std::fs::read_to_string(&p.teesim_config).unwrap_or_default();
+    let found = find_profile_object(old.as_bytes(), &profile);
+    let Some((db, dc)) = found else {
+        crate::lock::release(&lockdir);
+        eprintln!("配置定位失败：{}", p.teesim_config.display());
+        std::process::exit(1);
+    };
+    let mut dobj = old[db..=dc].to_string();
+    let mut changed = false;
+    // patchLevel
+    let ps = fields.iter().find(|(k, _)| k == "patch_system").map(|(_, v)| v.clone());
+    let pv = fields.iter().find(|(k, _)| k == "patch_vendor").map(|(_, v)| v.clone());
+    let pb = fields.iter().find(|(k, _)| k == "patch_boot").map(|(_, v)| v.clone());
+    if ps.is_some() || pv.is_some() || pb.is_some() {
+        let lit_for = |s: &Option<String>| jlit(s.as_deref().unwrap_or(""));
+        let existing = {
+            let bytes = dobj.as_bytes();
+            let needle = b"\"patchLevel\"";
+            find_from(bytes, 0, needle).and_then(|p| {
+                let mut i = p + needle.len();
+                while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+                if bytes.get(i) != Some(&b':') { return None; }
+                i += 1;
+                while i < bytes.len() && matches!(bytes[i], b' ' | b'\t' | b'\r' | b'\n') { i += 1; }
+                if bytes.get(i) != Some(&b'{') { return None; }
+                let e = match_close(bytes, i)?;
+                Some((i, e))
+            })
+        };
+        if let Some((ob, oe)) = existing {
+            let mut pobj = dobj[ob..=oe].to_string();
+            for (key, val) in [("system", &ps), ("vendor", &pv), ("boot", &pb)] {
+                let Some(v) = val else { continue };
+                let lit = jlit(v);
+                match replace_scalar(&pobj, key, &lit) {
+                    Some((newobj, ch)) => { pobj = newobj; if ch { changed = true; } }
+                    None => { pobj = insert_member(&pobj, key, &lit); changed = true; }
+                }
+            }
+            dobj = format!("{}{}{}", &dobj[..ob], pobj, &dobj[oe + 1..]);
+        } else {
+            let mut lit = String::from("{");
+            let mut sep = "";
+            for (key, val) in [("system", &ps), ("vendor", &pv), ("boot", &pb)] {
+                let Some(v) = val else { continue };
+                lit.push_str(&format!("{}\"{}\": {}", sep, key, jlit(v)));
+                sep = ", ";
+            }
+            lit.push('}');
+            let _ = lit_for(&None);
+            dobj = insert_member(&dobj, "patchLevel", &lit);
+            changed = true;
+        }
+    }
+    // 顶层字段
+    for (k, v) in &fields {
+        if matches!(k.as_str(), "patch_system" | "patch_vendor" | "patch_boot") { continue; }
+        let (jk, lit) = if k == "os_version" {
+            ("osVersion".to_string(), jlit(v))
+        } else if k == "auto_include" {
+            ("autoIncludeNewApps".to_string(), if v == "true" { "true".to_string() } else { "false".to_string() })
+        } else {
+            (k.clone(), jlit(v))
+        };
+        match replace_scalar(&dobj, &jk, &lit) {
+            Some((newobj, ch)) => { dobj = newobj; if ch { changed = true; } }
+            None => { dobj = insert_member(&dobj, &jk, &lit); changed = true; }
+        }
+    }
+    let new_text = format!("{}{}{}", &old[..db], dobj, &old[dc + 1..]);
+    let mut saved = 0;
+    if changed && new_text != old {
+        let bak = b.dir.join("config.json.bak");
+        let _ = std::fs::copy(&p.teesim_config, &bak);
+        let tmp = b.dir.join(format!(".config.json.keylens.{}", std::process::id()));
+        let ok = std::fs::write(&tmp, new_text.as_bytes()).is_ok()
+            && std::fs::rename(&tmp, &p.teesim_config).is_ok();
+        if !ok {
+            let _ = std::fs::remove_file(&tmp);
+            crate::lock::release(&lockdir);
+            eprintln!("写入失败：{}", p.teesim_config.display());
+            std::process::exit(1);
+        }
+        saved = 1;
+    }
+    crate::lock::release(&lockdir);
+    if saved == 1 {
+        log_line(&p, &format!("🧩 WebUI 更新 TEE Simulator 配置（profile={}，{} 项）", profile, n));
+    }
+    println_ok!("saved={}", saved);
+    println_ok!("fields={}", n);
+    println_ok!("profile={}", profile);
+}
