@@ -86,5 +86,20 @@ else
 fi
 
 rm -rf "$W"
+
+# ── module.prop 的 versionCode 必须在 32 位有符号范围内 ──────────────────
+# KernelSU 的管理器用 Int 解析它（Module.versionCode: Int / obj.optInt，源码 v3.3.1），
+# 12 位的日期码（如 202611012340）会溢出：更新检查的 `versionCode <= module.versionCode`
+# 于是判成"没有新版"，模块列表里永远不出现更新按钮（其它模块的 10 位码都正常）。
+# 约定：10 位 YYYYMMDDHH（2026-11-01 23 点 = 2026110123），上限到 2147 年都安全。
+VC=$(sed -n 's/^versionCode=//p' module/module.prop | head -n 1)
+case "$VC" in ''|*[!0-9]*) bad "module.prop 的 versionCode 不是纯数字：[$VC]" ;; esac
+[ "$VC" -lt 2147483647 ] \
+    && ok "versionCode=$VC 在 Int 范围内（更新检查才认得出" \
+    || bad "versionCode=$VC 超过 2^31-1 —— KernelSU 按 Int 解析会溢出，更新按钮永远不出现"
+# 反面样本：拿一个 12 位码过同一条判据，必须被判红（否则这条闸是瞎的）
+[ 202611012340 -lt 2147483647 ] \
+    && bad "闸是瞎的：12 位码居然被放过" \
+    || ok "反面样本：12 位码 $((202611012340)) 会被判红"
 [ "$fail" = 0 ] && echo '全部通过' || echo '有断言失败'
 exit "$fail"

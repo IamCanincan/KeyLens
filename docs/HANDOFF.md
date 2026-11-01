@@ -299,6 +299,20 @@ GH_TOKEN="$tok" HTTPS_PROXY=http://127.0.0.1:7890 \
 刷完之后要注意：机上版本会变成 v3.0.2，env 探针缓存的键跟着变成 `…|v3.0.2|…`，
 第一次打开 `env` 会冷一次（~200ms），之后就回到 70~100ms。
 
+**同日追加的修复：管理器里不显示「更新」按钮**
+KernelSU v3.3.1 的管理器把 `versionCode` 按 **`Int`** 解析（`Module.versionCode: Int` + `obj.optInt`，
+源码 `manager/app/src/main/java/me/weishu/kernelsu/data/{model/Module.kt,repository/ModuleRepositoryImpl.kt}`），
+而我们原来的 12 位日期码 `202611012340` 超出 32 位 —— 更新检查的
+`versionCode <= module.versionCode` 于是恒判"没有新版"，按钮永远不出现；别的模块都是 10 位码所以正常。
+现场证据：管理器自己的 OkHttp 缓存里，23:26 那次**确实取到了 v3.0.2 的 update.json**（我把缓存体解压核过内容），
+数据是对的、就是不显示 —— 问题在比较而不是在取数。
+现在 `module.prop` / `update.json` 都改成 10 位 `2026110123`（`< 2^31-1`，到 2147 年都安全），
+`tests/module-desc.sh` 加了范围闸，外加"12 位码必须被判红"的反面样本。
+资产已 `--clobber` 重传：**728,684 字节 / sha256 `489af9f5…`**（旧的那份 728,686 / `6fadef49…` 被覆盖）。
+
+⚠ **机上那份的 versionCode 还是 `202611010540`**：若 KSU 原生侧把它钳成 `INT_MAX`，那"远程 > 本地"
+永远不成立 ⇒ **要看到更新按钮，得先手动刷一次 v3.0.2**（刷完之后每次发版都能正常提示）。
+
 ## 4. preview 的实现方式（重要）
 
 `preview-<cmd>` 白名单 9 条：`teesim-save`、`teesim-save-overrides`、`teesim-profile-new`、`teesim-profile-del`、
