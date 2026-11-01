@@ -67,7 +67,7 @@ const SOURCED = sourcedLibs();
    装上就是一个跑不动的命令层，装机脚本现在会直接 abort。这里在**做包的时候**就拦掉，
    不等它装到手机上才红。 */
 const BIN_REL = 'bin/keylens';
-const BIN_SRC = path.join(repo, 'rust', 'target', 'aarch64-linux-android', 'release', 'keylens');
+const BIN_SRC = path.join(repo, 'rust', 'target', 'aarch64-unknown-linux-musl', 'release', 'keylens');   // 与 CI 的发布产物同族（静态，NEEDED=0）
 const REQUIRED_ALL = [...REQUIRED, BIN_REL];
 const MISSING_FROM_LIST = SOURCED.filter(s => !REQUIRED.includes(s));
 
@@ -179,7 +179,7 @@ if (CHECK) {
 if (!fs.existsSync(BIN_SRC)) {
   console.error(`✗ 找不到命令层二进制 ${path.relative(repo, BIN_SRC)}
   自阶段 5 起 awk 参照实现不随包发布：没有 bin/keylens 的包装上就跑不动（装机脚本会 abort）。
-  先交叉编译再打包：cargo build --release --target aarch64-linux-android --manifest-path rust/Cargo.toml`);
+  交叉编译（本机不用 NDK）：RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' cargo build --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml`);
   process.exit(1);
 }
 const entries = walk(MOD, '', []);

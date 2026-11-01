@@ -10,8 +10,10 @@
    重构后它们只是薄壳：`exec "$MODDIR/bin/keylens" <子命令>`。
 2. **契约不变**：同命令名、同 `kv`/`tsv` 输出（逐字节对拍）、同 `KL_API=4`。
    `webui.sh` 保留为转发壳（`exec bin/keylens "$@"`），界面不用改一行。
-3. **ABI**：至少 `aarch64-linux-android`（静态 musl），体积目标 < 2 MB；
-   armeabi-v7a / x86_64 按需再加（CI 交叉编译，不依赖本机工具链）。
+3. **ABI**：发布产物用 `aarch64-unknown-linux-musl`（自带 `crt-static`，产物 `NEEDED=0` / 无 INTERP），
+   **不用** `aarch64-linux-android` —— 那个 target 默认动态链 bionic，与"静态、不依赖动态库"这条判据互相矛盾
+   （CI 第一次真跑就是被这个红的，2026-11-01）。本机不用 NDK 就能交叉编译（rust-lld + link-self-contained），
+   armeabi-v7a / x86_64 按需再加。
 4. **SELinux / 权限**：写回要复刻 `write_atomic_preserve` 的 chown/chmod/chcon 与
    `.bak` 语义；不能只换实现不换约束。
 

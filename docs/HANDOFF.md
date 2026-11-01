@@ -178,12 +178,21 @@ Rust 侧**没有**改 17 处写回点，而是走「影子根」（`rust/src/mai
    真正还悬着的是**另一件事**：`use_backend` 的 `KL_PATCH_DIR` 那条"仓库布局兜底"
    让 module 代码在设备上找不到参照时会往 `../tests/fixtures` 看——那是"参照只装在仓库里"的
    必然代价，不是死代码。
-6. 推送 + 看 CI：`rust-build.yml` 里有三道新闸门（`Verify static`、`Module binary handshake`、`Golden snapshots`），**它们的首次真实运行还没发生过**。
-   - **发布流程这次多了一步**：`node tools/build-zip.mjs` 现在**要求** `rust/target/aarch64-linux-android/release/keylens`，
-     没有就拒绝打包（`--check` 也会报缺 `bin/keylens`）。本机没有 NDK，所以那个产物只能从 CI 的
-     `keylens-module-aarch64` artifact 里取 —— 或者干脆改用 CI 打的包。
-     以前在本地 `node tools/build-zip.mjs` 直接出一个能用的 zip 这条路已经不存在了：
-     awk 参照不再随包发布，没二进制的 zip 装上就是死的（装机脚本会 abort 并说清原因）。
+6. ~~推送 + 看 CI~~ **推送做了（139 个提交已上 main），CI 真跑了，而且当场抓到两处"闸门自己坏"**：
+   - `Build CI` 红在静态闸：批量重指 awk 路径的脚本后缀过滤写的是 `.sh|.mjs|.js|.yml`，
+     `.cjs` 不以 `.js` 结尾整类被跳过 ⇒ `tools/json-flat-set-check.cjs` 还找搬走的老路径。
+     已跟指到 `tests/fixtures/backends` 并加"参照文件不在就一句话报清"的前置（原来红成 19 条各自崩）。
+   - `Rust CLI` 红两道：① Contract parity 的 awk 没有"见收尾引号就 exit"，把 `KL_COMMANDS` 之后的
+     整份 webui.sh（59KB 源码）当命令清单比 ⇒ 换成 `module-bin.sh`/`parity.sh` 那份带 exit 的提取器，
+     外加"提取结果含 `#` 就是越界"的结构自检；② 产物选错 target（下面这条）。
+   - **发布产物已从 `aarch64-linux-android` 换成 `aarch64-unknown-linux-musl`**：
+     `rustc --print cfg --target aarch64-linux-android` 里**没有** `target_feature="crt-static"`，
+     Android target 默认动态链 bionic ⇒ CI 那道 `NEEDED=0` 判据对它永远不成立，闸门与产物互相不认识。
+     musl target 默认带 crt-static，而且**本机不用 NDK 就能造**
+     （`RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes'`，见 §2）；真机全部证据
+     （device-ab 38、device-preview 16、device-run-sync 14）跑的正是这份产物。
+     已本机真出一只包：705 KB / 34 条目，`--check` 全绿，包里 `bin/keylens` 的 sha256
+     与手机上那份逐字节相同（`c3d6f41dcd5a7c03…`）。**上一版文档里"要配 NDK / 只能从 CI artifact 取"那句作废。**
 
 ## 6. 坑（都踩过）
 

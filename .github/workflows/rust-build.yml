@@ -23,20 +23,24 @@ jobs:
       - name: Install Rust targets
         uses: dtolnay/rust-toolchain@stable
         with:
-          targets: aarch64-linux-android,x86_64-unknown-linux-musl
+          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
 
-      - name: Configure NDK linker
-        run: |
-          NDK="${ANDROID_NDK_HOME:-$(ls -d /usr/local/lib/android/sdk/ndk/* 2>/dev/null | tail -1)}"
-          echo "NDK=$NDK"
-          mkdir -p .cargo
-          printf '[target.aarch64-linux-android]\nlinker = "%s/toolchains/llvm/prebuilt/linux-x86_64/bin/aarch64-linux-android21-clang"\n' "$NDK" > .cargo/config.toml
+      # 产物选 aarch64-unknown-linux-musl，不选 aarch64-linux-android。理由实测过两条：
+      #   1) `rustc --print cfg --target aarch64-linux-android` 里没有 target_feature="crt-static"，
+      #      也就是 Android target 默认动态链 bionic —— 下面「Verify static」那道闸（NEEDED=0）
+      #      对它永远不可能成立（CI 第一次真跑就是被这个红的：闸门前提与产物互相不认识）。
+      #      musl target 默认带 crt-static，产物 NEEDED=0 / 无 INTERP，闸门说的就是产物本来的样子。
+      #   2) 真机上跑通的全部证据用的都是这份 musl 产物（device-ab 38 条、device-preview 16 条、
+      #      device-run-sync 14 条），换成 android target 反而是把一个没在设备上验过的 flavor 发出去。
+      # 所以也不需要 NDK：musl 交叉编译走自带的 rust-lld + link-self-contained。
 
       - name: Unit tests（b64 / payload / json_flat / keybox / ov_valid / lock / backend）
         run: cargo test --manifest-path rust/Cargo.toml --release
 
-      - name: Build (aarch64 Android, static)
-        run: cargo build --manifest-path rust/Cargo.toml --release --target aarch64-linux-android
+      - name: Build (aarch64 musl, static — 发布用产物)
+        env:
+          RUSTFLAGS: '-C linker=rust-lld -C link-self-contained=yes'
+        run: cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
 
       - name: Build (x86_64 musl, for parity test)
         run: cargo build --manifest-path rust/Cargo.toml --release --target x86_64-unknown-linux-musl
@@ -71,7 +75,7 @@ jobs:
 
       - name: Verify static（aarch64 产物不得依赖任何动态库）
         run: |
-          BIN=rust/target/aarch64-linux-android/release/keylens
+          BIN=rust/target/aarch64-unknown-linux-musl/release/keylens
           echo "file: $(file -b "$BIN" | cut -c1-100)"
           needed=$(readelf -d "$BIN" 2>/dev/null | grep -c NEEDED || true)
           interp=$(readelf -l "$BIN" 2>/dev/null | grep -c INTERP || true)
@@ -96,7 +100,7 @@ jobs:
           mkdir -p stage
           cp -r module stage/module
           mkdir -p stage/module/bin
-          cp rust/target/aarch64-linux-android/release/keylens stage/module/bin/keylens
+          cp rust/target/aarch64-unknown-linux-musl/release/keylens stage/module/bin/keylens
           chmod +x stage/module/bin/keylens
           # 记录二进制指纹，便于装到机器上后核对（比大小更可靠）
           sha256sum stage/module/bin/keylens | awk '{print $1}' > stage/module/bin/keylens.sha256
@@ -113,5 +117,5 @@ jobs:
         uses: actions/upload-artifact@v4
         with:
           name: keylens-aarch64
-          path: rust/target/aarch64-linux-android/release/keylens
+          path: rust/target/aarch64-unknown-linux-musl/release/keylens
           if-no-files-found: error
