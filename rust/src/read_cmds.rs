@@ -5328,6 +5328,13 @@ pub fn sync() {
     }
     println_ok!("rc={}", rc);
     println_ok!("count={}", count);
+    // 同步后的新描述：模块详情页与界面共用同一份状态（shell 版也打这一行）
+    let desc = std::fs::read_to_string(&p.module_prop)
+        .unwrap_or_default()
+        .lines()
+        .find_map(|l| l.strip_prefix("description=").map(|v| v.to_string()))
+        .unwrap_or_default();
+    println_ok!("description={}", desc);
 }
 
 /// cmd_icons：从桌面图标缓存导出 PNG + 显示名（`包名<TAB>显示名<TAB>相对路径`）。
