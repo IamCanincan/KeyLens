@@ -51,6 +51,35 @@ kl_is_root || { echo "需要 root 权限" >&2; exit 1; }
 
 CMD="${1:-help}"
 ARG="${2:-}"
+# ---------- 命令层二进制接管 ----------
+# 说明：位置有三条硬要求，少一条就会出事或白付钱：
+#   ① 必须在 `umask 077` 与 PATH 导出之后 —— 二进制会把 keybox 私钥解到临时文件（继承 umask），
+#      而且它 spawn 的 sha256sum/dumpsys/toybox 全靠这条 PATH，WebView 里继承不到 /system/bin；
+#   ② 必须在「剥 preview- 前缀」之前。先剥再接管，二进制收到的就是不带前缀的写命令，
+#      预览会变成真写（真机抓到过一次：preview-omk-save-config 把 security_patch 从 auto 写成 2026-10-01）；
+#   ③ 必须在 webui.sh 自己的函数体之前。这台 mksh 读文件是边读边解析，走到哪才 lex 到哪：
+#      接管点原本排在 1273 行，等于每条命令都先把前面 70KB 函数定义建一遍才 exec 二进制。
+#      真机实测（同机交替、各取 5 次最快）：status 走完整脚本 80ms，而"umask+PATH 后立刻 exec"
+#      只要 19ms；六个 lib 全加载一共才 ~7ms —— 那 60ms 全是这里省的。
+# preview-* 由二进制走影子根：它自己打印 preview=/changed=/diff=，所以成功要 exit 0，
+# 否则下面 shell 的信封会再补一份。非 0 退码（老命令层不认识 preview-*，或它自己失败）
+# 一律回落到 shell 原地预览 —— 升级顺序里命令层可能比界面旧。
+# 普通命令维持原样：退码 2 = 「这条还没迁移」→ 回落 shell 分派；其余退码直接透传。
+# 默认开：发布包带 bin/keylens；没有二进制的场景（clone 仓库跑测试）自然走 shell。KL_USE_RUST=0 强制回 shell。
+# >>> rust-dispatch
+if [ "${KL_USE_RUST:-1}" = "1" ]; then
+    _kl_rust="${KL_RUST_BIN:-$MODDIR/bin/keylens}"
+    if [ -x "$_kl_rust" ]; then
+        "$_kl_rust" "$CMD" ${ARG:+"$ARG"}
+        _kl_rc=$?
+        if [ "${CMD#preview-}" != "$CMD" ]; then
+            [ "$_kl_rc" = 0 ] && exit 0
+        elif [ "$_kl_rc" != 2 ]; then
+            exit "$_kl_rc"
+        fi
+    fi
+fi
+# <<< rust-dispatch
 
 # 图标缓存落在 webroot 下的这个子目录里（界面按相对路径引用）
 ICONS_SUBDIR="icons"
@@ -1270,31 +1299,6 @@ cmd_help() {
 EOF
 }
 
-# ---------- 命令层二进制接管 ----------
-# 说明：命令层 Rust 化的接管点，**必须排在下面「剥 preview- 前缀」之前**。
-#   先剥前缀再接管的话，二进制收到的是一条不带 preview 的写命令 —— 预览会变成真写
-#   （本轮真机抓到过一次：preview-omk-save-config 把 security_patch 从 auto 写成 2026-10-01，
-#   界面拿到的还是 saved=1，连 diff 都没有）。
-#   preview-* 交给二进制的影子根：它自己打印 preview=/changed=/diff=，所以成功要 exit 0，
-#   否则下面 shell 的信封会再补一份同样的三行。非 0 退码（老命令层不认识 preview-*，
-#   或它自己失败）一律回落到 shell 原地预览 —— 升级顺序里命令层可能比界面旧。
-#   普通命令维持原样：退码 2 = 「这条还没迁移」→ 回落 shell 分派；其余退码直接透传。
-#   默认开：发布包带 bin/keylens（见 CI 的 keylens-module-aarch64）；没有二进制的场景
-#   （直接 clone 仓库跑测试）自然走 shell，行为与以前一致。KL_USE_RUST=0 可强制回 shell。
-# >>> rust-dispatch
-if [ "${KL_USE_RUST:-1}" = "1" ]; then
-    _kl_rust="${KL_RUST_BIN:-$MODDIR/bin/keylens}"
-    if [ -x "$_kl_rust" ]; then
-        "$_kl_rust" "$CMD" ${ARG:+"$ARG"}
-        _kl_rc=$?
-        if [ "${CMD#preview-}" != "$CMD" ]; then
-            [ "$_kl_rc" = 0 ] && exit 0
-        elif [ "$_kl_rc" != 2 ]; then
-            exit "$_kl_rc"
-        fi
-    fi
-fi
-# <<< rust-dispatch
 
 # ---------- 写命令的实现按需加载 ----------
 # 说明：写命令的实现有 949 行 / 42.8KB，原来占这份脚本的四成。界面读 status / env /
