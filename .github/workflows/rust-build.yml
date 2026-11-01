@@ -61,6 +61,25 @@ jobs:
           sh tests/module-bin.sh
           rm -rf module/bin
 
+      - name: Stage module with binary（module/ + bin/keylens，发布用）
+        run: |
+          rm -rf stage
+          mkdir -p stage
+          cp -r module stage/module
+          mkdir -p stage/module/bin
+          cp rust/target/aarch64-linux-android/release/keylens stage/module/bin/keylens
+          chmod +x stage/module/bin/keylens
+          # 记录二进制指纹，便于装到机器上后核对（比大小更可靠）
+          sha256sum stage/module/bin/keylens | awk '{print $1}' > stage/module/bin/keylens.sha256
+          du -sh stage/module stage/module/bin/keylens
+
+      - name: Upload module with binary
+        uses: actions/upload-artifact@v4
+        with:
+          name: keylens-module-aarch64
+          path: stage/module/
+          retention-days: 30
+
       - name: Upload binary
         uses: actions/upload-artifact@v4
         with:

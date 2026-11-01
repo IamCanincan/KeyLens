@@ -248,3 +248,16 @@ restore-app / restore-apps / remove-apps（三条命令）
 - 真机验收：`KL_USE_RUST=1 sh webui.sh <cmd>` 与 `sh webui.sh <cmd>` 输出逐字节比对；
 - `tests/rust-dispatch.sh` 用「按标记抽取 + 假二进制」的方式测这条通路（不需要 root，也不需要真机）。
 
+
+## 阶段 5：发布包怎么带二进制
+
+ust-build.yml 现在产出两个 artifact：
+
+- keylens-aarch64：裸二进制（调试/替换用）；
+- keylens-module-aarch64：module/ 全量 + in/keylens + in/keylens.sha256，**装机的发布包用这个**。
+
+上机后先核对指纹：sha256sum /data/adb/modules/keylens/bin/keylens（应与包内 .sha256 一致），
+再逐条 A/B：KL_USE_RUST=1 sh webui.sh <cmd> 与 sh webui.sh <cmd> 输出 diff 为空。
+
+全部通过后再把 module/webui.sh 里的 ${KL_USE_RUST:-0} 改成 :-1（一行），
+shell 分派保留一个版本作为回退；之后才动 ackends/*.awk 的删除。
