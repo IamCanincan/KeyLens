@@ -261,3 +261,14 @@ ust-build.yml 现在产出两个 artifact：
 
 全部通过后再把 module/webui.sh 里的 ${KL_USE_RUST:-0} 改成 :-1（一行），
 shell 分派保留一个版本作为回退；之后才动 ackends/*.awk 的删除。
+
+## 真机 A/B 一键脚本
+
+	ests/device-ab.sh（手机上以 root 跑）：
+
+- 逐条对比 KL_USE_RUST=0 sh webui.sh <cmd> 与 KL_USE_RUST=1 ...，输出必须逐字节一致；
+- 易变字段先归一化（更新: HH:MM、keybox_mtime、uptime、pid、N 字节）；
+- 默认只跑 20 条只读命令；加 --write 会把写命令也跑一遍，并在每轮前后自动备份/还原后端文件；
+- 非 root 或没有 in/keylens 时明确 skip（不制造假绿灯）。
+
+全绿之后再改 KL_USE_RUST 的默认值 → 再删 awk（顺序见 docs/AWK-REMOVAL.md）。
