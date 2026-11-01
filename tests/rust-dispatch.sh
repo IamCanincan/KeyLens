@@ -36,6 +36,8 @@ chk "带参数的命令也传参" "$(run "$tmp/stub0" log 30 1)" "rust:log:30"
 chk "Rust 返回 2 → 回落 shell" "$(run "$tmp/stub2" sync "" 1)" "rust:sync
 shell-fallback"
 chk "开关关闭 → 不接管" "$(run "$tmp/stub0" status "" 0)" "shell-fallback"
+chk "默认（不设开关）→ 有二进制就用 Rust" "$(run "$tmp/stub0" status "" "")" "rust:status:"
+chk "默认但二进制不存在 → 回落 shell" "$(run "$tmp/nope" status "" "")" "shell-fallback"
 chk "预览命令不接管" "$(run "$tmp/stub0" preview-keybox-save "" 1)" "shell-fallback"
 
 rm -f /tmp/kl_dispatch.sh

@@ -1464,12 +1464,13 @@ PAIRS
 }
 
 # >>> rust-dispatch
-# 阶段 5 预置：命令层 Rust 化开关（默认关，不影响任何现有行为）。
-#   开启条件：KL_USE_RUST=1 且 $KL_RUST_BIN（默认 $MODDIR/bin/keylens）可执行；
+# 命令层 Rust 化（默认开启，但只在二进制真的存在时才接管）。
+#   条件：$KL_RUST_BIN（默认 $MODDIR/bin/keylens）可执行；KL_USE_RUST=0 可强制回到 shell；
 #   preview-* 不接管（预览要在 shell 侧原地态算 diff）；
 #   Rust 返回 2 表示「这条还没迁移」→ 不接管，回落下面的 shell 分派。
-# 这样真机可以逐条 A/B：`KL_USE_RUST=1 sh webui.sh status` 与 `sh webui.sh status` 输出应逐字节一致。
-if [ "${KL_USE_RUST:-0}" = "1" ] && [ "${CMD#preview-}" = "$CMD" ]; then
+# 为什么默认改成 1：发布包里带 bin/keylens（见 CI 的 keylens-module-aarch64），
+# 没有二进制的场景（比如直接 clone 仓库跑测试）自然走 shell，行为与以前一致。
+if [ "${KL_USE_RUST:-1}" = "1" ] && [ "${CMD#preview-}" = "$CMD" ]; then
     _kl_rust="${KL_RUST_BIN:-$MODDIR/bin/keylens}"
     if [ -x "$_kl_rust" ]; then
         "$_kl_rust" "$CMD" ${ARG:+"$ARG"}
