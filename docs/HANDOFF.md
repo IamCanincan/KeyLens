@@ -65,7 +65,9 @@
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release
 # aarch64 静态（本机没 NDK，用 musl + rust-lld；真机上可直接跑）
 RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
-# 对拍（205 项 chk；CI 用 musl 产物，本机直接 sh rust/parity.sh 走 glibc 产物）
+# 对拍（216 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
+# 是在 WSL Debian 里跑同一份 x86_64-musl 产物 —— 那边 awk 是 mawk，与 Git Bash 的 gawk
+# 会给出不同结果，见 §5.12 的方言差）
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
@@ -191,7 +193,8 @@ adb shell "sh /data/local/tmp/device-install-check.sh"           # 28 条断言
   别拿"代理软件开着"当"端口在听"（18:53 那次 `git push` 明确报 `connect to 127.0.0.1 port 7890 … Connection refused`）。
 - **CI 第一次跑到这两条新闸**：`Build CI Module` **Run 76** 与 `Rust CLI` **Run 6** 都落在 `2aedde5` 上、
   全绿（一次推 8 个提交只各起一轮，GitHub 按最新提交合并触发）。
-  `rust/parity.sh` 末尾那条 `oks < 205` 的下限闸就是"新节真的跑了"的证据：作业绿 ⇒ CI 上至少数到 205 项 chk。
+  `rust/parity.sh` 末尾那条 `oks` 下限闸就是"新节真的跑了"的证据：作业绿 ⇒ CI 上至少数到当时
+  的下限（写这一段时是 205，本轮补完属性表已抬到 **216**）。
 
 ### 3.8 回滚件已清空（2026-11-01 20:3x，主人点头删的）
 
@@ -267,9 +270,16 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 
 **两条被证伪的猜测（别再当成待办）：**
 - 「属性伪装会被"原始 vs 运行期"抓到」——**不会**：`/proc/bootconfig` 在这台是 `-r--r----- root system`，
-  以 `u:r:untrusted_app` 读直接 `Permission denied`，应用拿不到原始侧；而 17 条被伪装的属性里只有
+  以 `u:r:untrusted_app` 读直接 `Permission denied`，应用拿不到原始侧；而旧那 17 条被伪装的属性里只有
   `verifiedbootstate` 在 bootconfig 里有对应键，其余（flash.locked / veritymode / warranty_bit / build.tags…）
   根本没有原始源。报告里这 13 条全是 "Cross-checked across 3 sources"（三源一致）。
+  **本轮新加的 26 个属性名同样没有原始源**——2026-11-02 以 root 读 `/proc/bootconfig` 列了全部
+  `androidboot.*` 键（babe / baseband / boot_devices / dtb_idx / force_normal_boot / fstab_suffix /
+  hardware / keymaster / memcg / serialno / slot_suffix / usbcontroller / **verifiedbootstate**），
+  新增的这些都是 `*.build.type` / `*.build.tags` / `*.build.fingerprint` / `ro.build.flavor` /
+  `ro.build.description`，来源只有 build.prop 与属性区，boot 参数里压根没有对应键。
+  ⚠ 但这一条只对**这一个检测器**成立：它拿不到原始侧；换一台 `/proc/cmdline` 可读的设备或
+  带 root 的检查器，掩过的属性就是可比的差异（见 §5.12 的 raw boot params 判据）。
 - 「SELinux 那张是因为我开着 adb root」——**不是**，见上。
 
 **顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——

@@ -370,7 +370,7 @@ chk 'tee-status：四行含无尾换行' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky
 rm -f "$TS3/data/adb/tricky_store/tee_status"
 chk 'tee-status：文件缺失 present=0' "$(sh "$T/tee.sh" "$TS3/data/adb/tricky_store")" "$(KEYLENS_ROOT="$TS3" "$B" tee-status)"
 
-echo "── props（15 固定 + 2 特征替换）──"
+echo "── props（15 固定 + 38 特征就地替换 = 53 行）──"
 # 表驱动的桩：同一份值既服务单键查询（shell 参照走的）也服务全量 dump（Rust 的 props 页走的）。
 # 值只有一个来源，否则两侧会各自漂；GETPROP_LOG 记每次调用，用来钉"到底起了几个进程"。
 TBL_PROPS='ro.boot.vbmeta.device_state|locked
