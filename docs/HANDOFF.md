@@ -318,6 +318,16 @@ sha256 `1afc7c3806d6378b5cee77baf3a20ee2b86ab1133db1694a5d844f058c60a523`；
 真机 `device-boot-hash` 20 条与 `device-props-mask --write` 17 条（跑完现场逐字节还原）、
 机上 smoke（`contract` 40 条 / `props` 53 项全 ok / `boot-hash` auto·ok / `doctor` 11·0·0）。
 
+**资产已上传（2026-11-03 00:21 本地）** —— `https://github.com/IamCanincan/KeyLens/releases/tag/v3.0.3`
+（tag 指向 `37a73bd`，非 draft / 非 prerelease；资产 `KeyLens-v3.0.3.zip` 533,142 字节）。
+上传方式与 §3.11 同一套（`git credential fill` 取 token，只在命令里用一次）。
+
+**上传后把资产下回来逐项核过**（`gh release download`）：
+sha256 `1afc7c38…` 与本地那份**逐字节相同**（GitHub 自己算的 digest 也是它）；
+31 个条目、0 个 `webroot/icons/`、`bin/keylens` 恰好一条且 sha 前 16 位 `0905d3b7`；
+包内 `module.prop` 是 `v3.0.3` / `2026110300`；文件权限全对（脚本与二进制 755、其余 644，
+目录 755）。
+
 ### 3.11 发版 v3.0.2（2026-11-01 23:4x）
 
 **为什么发**：查仓库时发现**已发布的 v3.0.1 资产和仓库里的包不是一回事** —— 把那份资源下下来量：
