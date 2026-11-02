@@ -541,6 +541,19 @@ function propsCards() {
   const bt = S.boot;
   const c2 = card();
   const s2 = section('Verified Boot 哈希', ICON.tee);
+  /* 三态要各说各的话，不能都写成"未设置"：
+       auto（默认）—— 从当前后端自己的配置派生，取不到就不写
+       manual      —— 用户填的值
+       off         —— 明确不写
+     命令层的 boot-hash 现在给 mode/source/effective，界面照它说。 */
+  const mode = (bt && bt.mode) || 'auto';
+  const srcName = bt && bt.source === 'teesim' ? 'TEE Simulator 的 verifiedBootHash'
+    : bt && bt.source === 'omk' ? 'OhMyKeymint 的 [trust] vb_hash' : '当前后端';
+  const effText = mode === 'off' ? '按你的设置不写 digest'
+    : mode === 'invalid' ? '配置里的值不是 64/128 位十六进制，模块不写它'
+      : mode === 'manual' ? String(bt.configured || '')
+        : bt && bt.effective ? '自动 · 取自' + srcName + '\n' + bt.effective
+          : '自动 · 当前后端没有可取的固定值（比如 vb_hash=random，或没装后端），所以不写';
   s2.appendChild(list([
     (function () {
       const it = item({ headline: '当前 ro.boot.vbmeta.digest', supporting: (bt && bt.current) || '读不到',
@@ -548,24 +561,41 @@ function propsCards() {
       it.appendChild(dot(bt && bt.current ? 'ok' : 'warn'));
       return it;
     })(),
-    item({ headline: '模块应用值', supporting: (bt && bt.configured) || '未设置（不写 vbmeta.digest）',
-      tone: bt && bt.configured ? 'ok' : 'warn', mono: !!(bt && bt.configured) }),
+    (function () {
+      const it = item({ headline: '模块应用值', supporting: bt ? effText : '读不到',
+        tone: !bt ? '' : (mode === 'invalid' || (mode === 'auto' && !(bt && bt.effective))) ? 'warn' : 'ok',
+        /* 不给 mono：这一行是"人话 + 值"混排，等宽会把中文也拉成字距很开的方块；
+           纯值那一行（上面「当前 ro.boot.vbmeta.digest」）才值得等宽。 */
+        mono: false });
+      it.appendChild(dot(!bt ? 'none' : (bt.status === 'ok' ? 'ok'
+        : bt.status === 'off' ? 'none' : bt.status === 'invalid' ? 'bad'
+          : bt.status === 'mismatch' ? 'bad' : 'warn')));
+      return it;
+    })(),
   ]));
   /* 这个值要能改：旧版有 props-boot-hash 这条写命令，新版不给入口就是退步。
-     校验按十六进制 64 位来，与命令层一致；清空 = 不应用。 */
+     校验按 64 或 128 位十六进制来，与命令层一致（旧版界面只收 64，会把合法的
+     sha512 值挡在外面）；留空 = 改回自动，不再是"取消应用"——取消现在是 off。 */
   const tf = h('md-text-field');
   tf.setAttribute('variant', 'filled');
   tf.setAttribute('single-line', '');
-  tf.setAttribute('label', '要应用的 digest（64 位十六进制，留空 = 不应用）');
-  tf.value = (bt && bt.configured) || '';
+  tf.setAttribute('label', '要应用的 digest（64 或 128 位十六进制；留空 = 改回自动）');
+  tf.value = mode === 'manual' ? String(bt.configured || '') : '';
   s2.appendChild(tf);
   const acts2 = h('div', 'acts');
   acts2.appendChild(button('保存并应用', { variant: 'filled', icon: ICON.save, on: function () {
     const v = String(tf.value || '').trim();
-    if (v && !/^[0-9a-fA-F]{64}$/.test(v)) { toastFn('digest 必须是 64 位十六进制（或留空取消）', true); return; }
-    /* 这条命令收的是明文十六进制或 '-'，不是 base64 —— 以前从 keybox 那条抄了
+    if (v && !/^(0x)?[0-9a-fA-F]+$/.test(v)) { toastFn('digest 只能是十六进制', true); return; }
+    if (v.length !== 64 && v.length !== 128) { toastFn('digest 必须是 64 或 128 位十六进制（留空 = 改回自动）', true); return; }
+    /* 这条命令收的是明文十六进制或 auto/off，不是 base64 —— 以前从 keybox 那条抄了
        编码，真机上点保存只会得到"必须是 64 或 128 位十六进制"。契约闸门把它钉住。 */
-    write('props-boot-hash', v, v ? '已写入并立即应用' : '已取消应用 vbmeta.digest');
+    write('props-boot-hash', v, v ? '已写入并立即应用' : '已改回自动档');
+  } }));
+  acts2.appendChild(button('改为自动', { variant: 'tonal', on: function () {
+    write('props-boot-hash', 'auto', '已改回自动：开机与本次都从当前后端的配置取');
+  } }));
+  acts2.appendChild(button('不写 digest', { variant: 'text', on: function () {
+    write('props-boot-hash', 'off', '已设为不写 digest（本次运行已写入的值要重启才回原值）');
   } }));
   s2.appendChild(acts2);
   c2.appendChild(s2);

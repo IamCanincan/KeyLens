@@ -700,6 +700,123 @@ chk 'props-boot-hash：非法哈希' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "
 chk 'props-boot-hash：清除' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" - 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash - 2>&1)"
 chk 'props-boot-hash：清除后文件消失' "$([ -e "$BH/data/adb/keylens.boot_hash" ] && echo exists || echo gone)" "gone"
 
+# ── 自动档（默认）：从当前后端自己的配置派生 digest ────────────────────────
+# 三态：文件不在=auto / 文件里是 hex=manual / 文件里是 off=不写。
+# 这一节钉的是"新用户一个字都不用填也能对齐"，以及**取不到就一个字节都不写**：
+# OMK 允许 vb_hash="random"（每次 keymint 启动重新生成），那种情况下镜像过来的值
+# 下一开机就过期，而过期值与空值在检测器里同为 Danger —— 所以 random 必须熄火。
+# 两侧读同一份夹具：shell 侧把 OMK_DIR/TEESIM_DIR 指到根下，Rust 侧靠 KEYLENS_ROOT。
+echo "── boot-hash 自动档（派生 / random 熄火 / 手动优先 / 不缓存）──"
+BA="$T/ba-root"
+H64BA="$T/h64a"
+H64BC="$T/h64c"
+# 常量用 printf 现造，不手数（这一版一开始把 'aaaa…1234' 当成 64 位，实际 66 位，
+# 于是两侧都正确地拒了，断言反倒像"实现不一致"）
+printf 'a%.0s' $(seq 1 64) > "$H64BA"
+printf 'c%.0s' $(seq 1 64) > "$H64BC"
+H64A=$(cat "$H64BA")
+H64C=$(cat "$H64BC")
+[ "${#H64A}" = 64 ] && [ "${#H64C}" = 64 ] || { echo "  ✗   夹具常量不是 64 位（${#H64A}/${#H64C}），这条台子不算证据"; fail=1; }
+rm -rf "$BA"; mkdir -p "$BA/data/adb" "$BA/data/adb/modules/oh_my_keymint" \
+    "$BA/data/misc/keystore/omk" "$BA/data/adb/teesim"
+cat > "$T/pba.sh" <<'EOF'
+. module/lib/core.sh
+. module/lib/backend.sh
+. module/lib/props.sh
+kv() { printf '%s=%s\n' "$1" "$2"; }
+log_info() { :; }
+log_warn() { :; }
+prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+ROOT="$1"; ACT="$2"; ARG="$3"
+KL_BOOT_HASH="$ROOT/data/adb/keylens.boot_hash"
+OMK_MODULE="$ROOT/data/adb/modules/oh_my_keymint"
+TEESIM_MODULE="$ROOT/data/adb/modules/teesim"
+TRICKY_MODULE="$ROOT/data/adb/modules/tricky_store"
+OMK_DIR="$ROOT/data/misc/keystore/omk"
+TEESIM_DIR="$ROOT/data/adb/teesim"
+EOF
+sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pba.sh"
+sed -n '/^cmd_boot_hash() {/,/^}/p' module/webui.sh >> "$T/pba.sh"
+sed -n '/^cmd_set_boot_hash() {/,/^}/p' module/lib/write.sh >> "$T/pba.sh"
+echo 'case "$ACT" in show) cmd_boot_hash ;; set) cmd_set_boot_hash "$ARG" ;; esac' >> "$T/pba.sh"
+
+ba_shell() { PATH="$T/bin:$PATH" RP_DB="$1" sh "$T/pba.sh" "$2" "$3" "${4:-}" 2>&1; }
+ba_rust()  { PATH="$T/bin:$PATH" RP_DB="$1" KEYLENS_ROOT="$2" "$B" "$3" ${4:+"$4"} 2>&1; }
+
+# 1) OMK 配置里是合法 hex ⇒ auto 直接派生，两侧逐字节
+printf '[trust]\nvb_hash = "%s"\n' "$H64A" > "$BA/data/misc/keystore/omk/config.toml"
+chk 'auto：OMK 的 vb_hash 是 hex → 两侧 boot-hash 逐字节相同' \
+    "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
+chk 'auto：派生出的值就是后端配置里那串（绝对判据）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "$H64A"
+chk 'auto：来源标成 omk' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^source=//p')" "omk"
+chk 'auto：模式标成 auto 且没写过文件' \
+    "$([ -e "$BA/data/adb/keylens.boot_hash" ] && echo exists || echo gone)/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^mode=//p')" "gone/auto"
+# 正对照：auto 档下按「立即应用」真的会把 digest 写下去（不是只算出来好看）
+rm -rf "$T/rpdb"; mkdir -p "$T/rpdb"
+chk 'auto：props-boot-hash auto 两侧输出相同' \
+    "$(ba_shell "$T/rpdb" "$BA" set auto)" "$(ba_rust "$T/rpdb" "$BA" props-boot-hash auto)"
+chk 'auto：digest 真被写成派生值（正对照）' \
+    "$(cat "$T/rpdb/ro.boot.vbmeta.digest")" "$H64A"
+chk 'auto：hash_alg 按长度补成 sha256' "$(cat "$T/rpdb/ro.boot.vbmeta.hash_alg")" "sha256"
+
+# 2) random ⇒ 一个字节都不写（过期值比空着更糟）
+printf '[trust]\nvb_hash = "random"\n' > "$BA/data/misc/keystore/omk/config.toml"
+rm -rf "$T/rpdb"; mkdir -p "$T/rpdb"
+chk 'random：两侧 boot-hash 逐字节相同' \
+    "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
+chk 'random：effective 必须是空（不写）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" ""
+chk 'random：status 报 unset，不报 mismatch' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^status=//p')" "unset"
+chk 'random：props-boot-hash auto 之后 digest 仍是空的（正对照：不许写随机串）' \
+    "$(ba_shell "$T/rpdb" "$BA" set auto >/dev/null; ls "$T/rpdb" | grep -ac 'vbmeta.digest')" "0"
+
+# 3) 后端配置变了 ⇒ 下次读就跟着变（绝不缓存）
+printf '[trust]\nvb_hash = "%s"\n' "$H64C" > "$BA/data/misc/keystore/omk/config.toml"
+chk '不缓存：改了后端配置，effective 立刻跟着变' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "$H64C"
+
+# 4) 手动优先于自动
+printf '[trust]\nvb_hash = "%s"\n' "$H64A" > "$BA/data/misc/keystore/omk/config.toml"
+rm -rf "$T/rpdb"; mkdir -p "$T/rpdb"
+printf '%s\n' "$H64C" > "$BA/data/adb/keylens.boot_hash"
+chk '手动优先：effective 用文件里的值而不是后端配置' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "$H64C"
+chk '手动优先：模式=manual、两侧逐字节相同' \
+    "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
+
+# 5) off = 明确不写（旧版「清除」的语义现在搬到这里）
+rm -rf "$T/rpdb"; mkdir -p "$T/rpdb"
+chk 'off：两侧 props-boot-hash off 输出相同' \
+    "$(ba_shell "$T/rpdb" "$BA" set off)" "$(ba_rust "$T/rpdb" "$BA" props-boot-hash off)"
+chk 'off：文件里是哨兵 off，模式也是 off' \
+    "$(tr -d '[:space:]' < "$BA/data/adb/keylens.boot_hash")/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^mode=//p')" "off/off"
+chk 'off：digest 一个字节都没写（正对照）' "$(ls "$T/rpdb" | grep -ac 'vbmeta')" "0"
+chk 'off：status=off（界面据此说"不写 digest"）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^status=//p')" "off"
+# 从 off 回到 auto：删文件即可
+rm -f "$BA/data/adb/keylens.boot_hash"
+chk 'off→auto：删掉哨兵就回到自动档' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^mode=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "auto/$H64A"
+
+# 6) TEESim 那一家：overrides.json 里的 verifiedBootHash
+rm -rf "$BA/data/adb/modules/oh_my_keymint"
+printf '{"verifiedBootKey":"aa","verifiedBootHash":"%s"}\n' "$H64C" > "$BA/data/adb/teesim/overrides.json"
+mkdir -p "$BA/data/adb/modules/teesim"
+chk 'auto(teesim)：两侧 boot-hash 逐字节相同' \
+    "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
+chk 'auto(teesim)：来源与值都取自 overrides.json' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^source=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "teesim/$H64C"
+printf '{"verifiedBootKey":"aa","verifiedBootHash":null}\n' > "$BA/data/adb/teesim/overrides.json"
+chk 'auto(teesim)：null 不算值（JSON 里没引号那条模式自然匹配不上）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" ""
+# 7) 三家都没启用 ⇒ 不派生（不镜像卸载后残留的配置）
+rm -rf "$BA/data/adb/modules/teesim"
+chk '无后端：不派生任何值（卸载残留的配置不算）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^source=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "none/"
+
 echo "── props-apply（写一次 + 复核）──"
 PA="$T/pa-root"
 mkdir -p "$PA/data/adb" "$T/rpdb2"
@@ -1871,7 +1988,9 @@ echo
 # 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
 # 205 → 209：属性判定改成一次 dump（shell 侧不再逐键 17 次）+ getprop 全废的降级 3 条
 # 209 → 216：判定换成一次 awk 出计划 + 期望表补满"构建身份"那一族（状态 A_B、链式只落一次、absent 不凭空创建）
-if [ "$oks" -lt 216 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 216），疑似用例被删"; fail=1
+# 216 → 239：启动哈希三态（auto 从当前后端配置派生 / random 与 null 必须熄火 /
+#             手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生）
+if [ "$oks" -lt 239 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 239），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

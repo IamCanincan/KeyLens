@@ -45,7 +45,7 @@ export const KV_REQUIRED = {
   status: 'state backend mod_version target_file target_exists daemon_alive',
   env: 'resetprop awk base64 inotify_mode root_user',
   contract: 'api commands',
-  'boot-hash': 'configured current status',
+  'boot-hash': 'mode configured source effective current status',
   sync: 'rc count description',
   'restore-app': 'restored',
   'restore-apps': 'restored',
@@ -64,7 +64,7 @@ export const KV_REQUIRED = {
   'props-apply': 'applied mismatch',
   'props-on': 'props_masking',
   'props-off': 'props_masking',
-  'props-boot-hash': 'saved applied current',
+  'props-boot-hash': 'saved mode applied current',
   'clear-log': 'cleared',
   'tee-status': 'present',
   'omk-restart': 'restarted trigger',
@@ -628,7 +628,18 @@ function demoResult(cmd, arg) {
       'ro.vendor_dlkm.build.fingerprint\t\t不含 userdebug（则改写为 user）\tabsent',
       'ro.vendor_dlkm.build.fingerprint\t\t不含 test-keys（则改写为 release-keys）\tabsent'
     ].join('\n'),
-    'boot-hash': 'configured=\ncurrent=9f2c4d8e7a1b3c5d\nstatus=unset',
+    /* ?bh=<auto|random|manual|off|invalid>：启动哈希那一格要能画出三态。
+       默认走 auto（新用户装完就是这个形状：一个字没填、digest 已从后端配置派生）。
+       旧版这里只给 configured/current/status 三行，界面也就只认"填了/没填"两态。 */
+    'boot-hash': (function () {
+      const H = '11223344556677889900aabbccddeeff0123456789abcdef0123456789abcdef';
+      const bh = QUERY.get('bh') || 'auto';
+      if (bh === 'random') return 'mode=auto\nconfigured=\nsource=none\neffective=\ncurrent=\nstatus=unset';
+      if (bh === 'manual') return 'mode=manual\nconfigured=' + H + '\nsource=omk\neffective=' + H + '\ncurrent=' + H + '\nstatus=ok';
+      if (bh === 'off') return 'mode=off\nconfigured=off\nsource=omk\neffective=\ncurrent=\nstatus=off';
+      if (bh === 'invalid') return 'mode=invalid\nconfigured=zz\nsource=omk\neffective=\ncurrent=\nstatus=invalid';
+      return 'mode=auto\nconfigured=\nsource=omk\neffective=' + H + '\ncurrent=' + H + '\nstatus=ok';
+    })(),
     excluded: 'io.legado.app',
     'teesim-profiles': ['default' + T + 'keybox.xml' + T + 'patch' + T + '10' + T + '1',
       'alt' + T + 'test.xml' + T + 'generation' + T + '3' + T + '0'].join('\n'),

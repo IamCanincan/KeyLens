@@ -30,11 +30,12 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **216 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B） | `sh rust/parity.sh` |
+| shell↔Rust 逐字节对拍 | **239 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
-| 真机属性伪装 | **15 条断言全过**：臂 A 实测改写 10 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
+| 真机属性伪装 | **16 条断言全过**：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
-| shell 测试套 | **52 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| 启动哈希三态（auto/manual/off） | 单元 **22 条**（含变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop）；对拍 **23 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生）；真机 **17 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场 | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
+| shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
@@ -72,7 +73,7 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **52 套**，两边都得跑，各有盲区：
+shell 测试套 **53 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
@@ -128,6 +129,9 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab AWKSRC=\$PWD/b
 # 属性伪装（**会改运行期属性**，跑完自己逐个还原；不加 --write 就 skip，见 §5.13）
 adb push tests/device-props-mask.sh /data/adb/keylens-ab/device-props-mask.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-props-mask.sh --write"
+# 启动哈希三态（全程只读：夹具里只放真实 config.toml，不碰主人的 boot_hash 文件，见 §5.14）
+adb push tests/device-boot-hash.sh /data/adb/keylens-ab/device-boot-hash.sh
+adb shell "MODDIR=/data/adb/modules/keylens sh /data/adb/keylens-ab/device-boot-hash.sh"
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -607,13 +611,49 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
 - **本机没有的分区报 `absent`**：不计入「写入并复核」的不符项，也绝不凭空写出来 ——
   凭空多一个 `ro.system_dlkm.build.type` 本身就是破绽（stock 不会给不存在的分区留属性）。
   固定表那 15 项保留"缺失就补"的原语义，没动。
-- 真机证据（`tests/device-props-mask.sh --write`，15 条断言全过）：臂 A 实测改写
-  **10 个**属性（正对照）；跑完 shell 与 `bin/keylens` 两臂 43 个键逐字节相同；
+- 真机证据（`tests/device-props-mask.sh --write`，16 条断言全过）：台子**自己种出待改状态**
+  （这台机很可能已经被上次开机掩好了，指望现场泄漏会让正对照变成"没测到"），
+  臂 A 实测改写 **11 个**属性；两臂从同一起点出发、跑完 43 个键逐字节相同；
   属性区**没有新增键**；`applied=1 / mismatch=0`；toybox 与 busybox 两种 awk 同结果；
-  最后把 43 个键逐个还原并逐字节比对。
+  最后把 43 个键逐个还原到**原始现场**（不是还原到种下去的状态）。
 - `device-ab` 这轮也补了自己的短板：它原来只快照开关与 boot_hash，
   `props-apply` 把分区属性掩上之后**现场没还原** —— 是它自己的"差项数相同"不变量
   报出来的（跑前 10、跑后 0）。现在逐个键快照 + 还原 + 逐字节比，38 条全过。
+
+## 5.14 启动哈希改成三态，默认「自动」（新用户不必再抄那串字符）
+
+**动机**：属性伪装那 43 项默认就开，唯独 `ro.boot.vbmeta.digest` 要人手填。而这台机的
+ROM **根本不给这个属性**（实测：清掉配置 + 重启后 digest 为空）——于是"有 TEE 在证明、
+prop 却是空的"正好是检测器 `vbmetaDigestMissingWhileAttestedHashPresent` 的判据，
+Danger 4 → 2 的差就是这一格（§3.10）。
+
+**三态怎么存**（不另开配置文件，就看 `$KL_BOOT_HASH` 文件）：
+
+| 文件 | 模式 | 行为 |
+|---|---|---|
+| 不存在 | `auto`（默认） | 从**当前启用的那一家后端**自己的配置取：OMK 的 `[trust] vb_hash`、TEESim 的 `overrides.json verifiedBootHash`；是合法 hex 才写 |
+| 64/128 位 hex | `manual` | 用用户的值，优先于 auto（升级前填过的机器行为不变） |
+| `off` | `off` | 明确不写 digest（旧版「清除」的语义搬到这里） |
+| 别的 | `invalid` | 不写，界面直说配置坏了 |
+
+**为什么 random 必须熄火**：OMK 允许 `vb_hash = "random"`（每次 keymint 启动重新生成）。
+那种情况下镜像过来的值下一开机就过期，而检测器对"过期值"（`vbmetaDigestMismatch`）
+与"空值"给的是**同一级 Danger** —— 写了反而更糟。所以派生只认 64/128 位 hex，
+`random` / `null` / 缺文件 / 注释行一律当取不到；而且**绝不缓存**，每次开机与每次应用
+都重读后端配置（对拍里"改了配置 effective 立刻跟着变"那条钉的就是它）。
+另一条边界：只问启用的后端（`KL_BACKEND` 或 `omk_active`/`teesim_active` 探针），
+不去读卸载后残留的配置目录——那会把一个不再被证明的 hash 写进 prop。
+
+**真机上的决定性正对照**（`tests/device-boot-hash.sh`，17 条，全程只读）：夹具根里
+只放真实的 `config.toml`、**不放 boot_hash 文件**，auto 档算出的 effective 与主人手抄
+那串 `0561fff0…` **逐字节相同** ⇒ 新用户装完重启就能拿到今天这个状态。
+
+**闸**：单元 22 条（含变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值写进 prop）、
+对拍 23 条（两侧逐字节 + random/off/invalid/手动优先/不缓存/无后端不派生）、真机 17 条。
+命令契约变了：`boot-hash` 现在出 `mode/configured/source/effective/current/status`，
+`props-boot-hash` 多回一个 `mode=`，`help` 里那行用法也改了（shell 与 `main.rs` 两处必须同文，
+对拍比的是逐字节）。界面那一格从两态改成三态（`?bh=auto|random|manual|off|invalid`
+五种形状各画一遍，`mutate-verify.mjs` 第 ⑥ 个变异把 auto 说回「未设置」必须响）。
 
 ## 6. 坑（都踩过）
 
@@ -635,6 +675,14 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
   的措辞从「这台机没有…（期望 …）」改成「这台机没有这项属性，模块不写它」之后，
   计数当场从 53 掉到 49 —— 这条红得算幸运，但同一类问题也可以**不红**（少数的正好是
   不参与的行）。现在认两种行首，并配变异⑤（让 absent 整族不上屏 → rows=49 必须响）。
+- **夹具里的"64 位十六进制"不要手数**：本轮手打的 `'aaaa…1234'` 实际是 **66 位**，
+  于是 shell 与 Rust 都**正确地**拒绝派生，断言反倒报"两侧不一致"。改成
+  `printf 'a%.0s' $(seq 1 64)` 现造，并加一条 `[ "${#H64A}" = 64 ] || fail=1` 自证。
+  凡是"用长度/数量下结论"的夹具常量，都要让台子自己数一遍。
+- **`MSYS2_ARG_CONV_EXCL='*'` 不跨命令调用**：上一条命令里 export 过，下一条
+  `adb shell 'MODDIR=/data/adb/...'` 又会被 Git Bash 改写成 `D:/Git/data/adb/...`，
+  设备台子于是打印 `skip 找不到 …` 并**退 0**——看着像"通过"，其实是仪器瞎了。
+  要么每条 adb 命令都带这个变量，要么在同一条命令里 export。
 - **PowerShell 写文件/内联脚本**会带 BOM/CRLF、`$` 会被解析：Rust/sh 源码一律用编辑工具写，或用 `node <文件>.cjs` 脚本改；写完 `\r` 要清掉（否则 `sh` 报 `EOF unexpected`）。
 - **设备上那台 shell 的两种"静默"**（本轮加 env 缓存台子时各撞一次，症状都是"实现看着坏了"）：
   - mksh 的 `${v%|*}` **不生效**（`a|b|c` 原样出来）。剥缓存键的末段要走 `sed 's/|[^|]*$//'`；

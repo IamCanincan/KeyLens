@@ -118,5 +118,73 @@ echo "── 5 resetprop 不可用时明确失败 ──"
 set_boot_hash "$H64"
 ( unset -f resetprop; apply_boot_hash ); chk_rc "无 resetprop 时返回失败" 1 "$?"
 
+echo "── 6 三态与自动档（默认从当前后端的配置派生，取不到就一个字节都不写）──"
+mkdir -p "$T/omk"
+KL_BACKEND=omk
+OMK_DIR="$T/omk"
+rm -f "$KL_BOOT_HASH"
+printf '[trust]\nvb_hash = "%s"\n' "$H64" > "$T/omk/config.toml"
+chk "文件不在 = auto 档" auto "$(boot_hash_mode)"
+chk "auto：派生值 = 后端配置里那串" "$H64" "$(boot_hash_get)"
+chk "auto：来源标 omk" omk "$(boot_hash_source | cut -f1)"
+rp_reset
+apply_boot_hash; chk_ok "auto：应用成功" "$?"
+chk "auto：digest 真写下去（免抄的落点）" "$H64" "$(cat "$RP.ro.boot.vbmeta.digest" 2>/dev/null)"
+
+# random：OMK 允许每次启动重新生成 ⇒ 镜像过来下一开机就过期，而过期值与空值在检测器里
+# 同为 Danger，所以这里必须熄火，而不是"先写上再说"
+printf '[trust]\nvb_hash = "random"\n' > "$T/omk/config.toml"
+chk "random：不派生" "" "$(boot_hash_get)"
+rp_reset
+apply_boot_hash; chk_ok "random：返回 0（不算失败）" "$?"
+chk "random：一个字节都不写" 0 "$(rp_writes)"
+
+# 解析的边界：注释行、同前缀的别的键、没有引号
+printf '# vb_hash = "%s"\nother_vb_hash = "%s"\n' "$H64" "$H128" > "$T/omk/config.toml"
+chk "注释行不算值" "" "$(boot_hash_get)"
+printf 'vb_hash=%s\n' "$H64" > "$T/omk/config.toml"
+chk "不带引号也认（与 lib/write.sh 那条 sed 同形）" "$H64" "$(boot_hash_get)"
+
+# 不缓存：后端配置改了，下一次读立刻跟着变
+printf '[trust]\nvb_hash = "%s"\n' "$H128" > "$T/omk/config.toml"
+chk "不缓存：改配置后 effective 立刻是新的" "$H128" "$(boot_hash_get)"
+
+# 手动优先
+set_boot_hash "$H64"
+chk "手动：模式=manual" manual "$(boot_hash_mode)"
+chk "手动优先于后端配置" "$H64" "$(boot_hash_get)"
+
+# off：明确不写（旧版"清除"的语义搬到这里）
+set_boot_hash off
+chk "off：模式=off" off "$(boot_hash_mode)"
+chk "off：不派生" "" "$(boot_hash_get)"
+rp_reset
+apply_boot_hash; chk "off：一个字节都不写" 0 "$(rp_writes)"
+set_boot_hash auto
+[ ! -f "$KL_BOOT_HASH" ] && printf '  ok   auto 就是"没有文件"（不留哨兵）\n' || { printf '  ✗   auto 之后文件还在\n'; fail=1; }
+
+# 没启用任何后端 ⇒ 不派生（卸载残留的配置不算）
+KL_BACKEND=""
+printf '[trust]\nvb_hash = "%s"\n' "$H64" > "$T/omk/config.toml"
+chk "无后端可判时不派生" "" "$(boot_hash_get)"
+KL_BACKEND=omk
+
+echo "── 7 变异：把「只认 hex」的守卫摘掉，random 就会被写进 prop ──"
+sed -n '/^boot_hash_source() {/,/^}$/p' "$ROOT/module/lib/props.sh" > "$T/src.orig"
+if [ -s "$T/src.orig" ]; then
+    sed -e '/boot_hash_valid "\$v"/s/.*/    :/' "$T/src.orig" > "$T/src.mut"
+    if cmp -s "$T/src.orig" "$T/src.mut"; then
+        printf '  ✗   变异没落地（与真源逐字节相同，这条不算证据）\n'; fail=1
+    else
+        printf '[trust]\nvb_hash = "random"\n' > "$T/omk/config.toml"
+        eval "$(cat "$T/src.mut")"
+        chk "变异后 random 被当成值（守卫确实在拦它）" "random" "$(boot_hash_get)"
+        . "$ROOT/module/lib/props.sh"      # 换回真源
+        chk "换回真源后 random 又不写了" "" "$(boot_hash_get)"
+    fi
+else
+    printf '  ✗   抽不到 boot_hash_source（锚点改了？）\n'; fail=1
+fi
+
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

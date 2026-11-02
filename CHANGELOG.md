@@ -6,6 +6,22 @@
 
 #### 变更
 
+* **「启动哈希」改成三态，默认是「自动」——新用户一个字都不用填**。以前这一格只有
+  「填了 / 没填」两态，而多数 ROM（本机是 LineageOS）根本不给 `ro.boot.vbmeta.digest`，
+  于是"钥匙盒在证明一个启动哈希、系统属性里那格却是空的"正好踩中检测器的
+  `vbmetaDigestMissingWhileAttestedHashPresent`（这台机实测 Danger 4 → 2 的差就是它）。
+  现在：文件不存在 = **auto**，开机时从当前后端自己的配置取（OMK 的 `[trust] vb_hash`、
+  TEESim 的 `overrides.json verifiedBootHash`），拿到合法 hex 才写；文件里是 hex =
+  **manual**（优先，升级前填过的机器行为不变）；文件里是 `off` = 明确不写（旧版
+  「清除」的语义搬到这里）。界面那一格跟着改成三态，并给出「保存并应用 / 改为自动 /
+  不写 digest」三个动作。
+  **为什么 random 必须熄火**：OMK 允许 `vb_hash = "random"`（每次 keymint 启动重新生成），
+  镜像过来的值下一开机就过期，而检测器对"过期值"和"空值"给的是同一级 Danger——
+  写了反而更糟。所以派生只认 64/128 位十六进制，`random`/`null`/缺文件/注释行一律当
+  取不到，且**绝不缓存**：每次开机、每次应用都重读后端配置。只问启用的那一家后端，
+  不读卸载后残留的配置目录（那会把一个不再被证明的 hash 写进 prop）。
+  真机正对照：夹具里只放真实的 `config.toml`、不放 boot_hash 文件，auto 算出的值与
+  手抄那串 `0561fff0…` **逐字节相同**。
 * **属性伪装补齐「构建身份」这一族：期望表从 17 项涨到 43 个属性名**。以前只钉顶层
   `ro.build.type` / `ro.build.tags`，而每个分区还有一套自己的
   `*.build.type`（本机现量 8 个还是 `userdebug`）、`*.build.tags`、`*.build.fingerprint`
@@ -53,14 +69,23 @@
 * 新增 `tests/props-plan.sh`（30 条）：表形状、四列与状态、坑值（值里有 `]`、以 `[` 开头、
   带空格、中文、空值）、链式改只落一次盘、absent 不进计划、**awk 路与逐键回落路落到同一个
   属性区**；三处变异各自自证。
-* 新增 `tests/device-props-mask.sh --write`（真机 15 条）：臂 A 实测改写 10 个属性（正对照）、
-  shell 与二进制两臂跑完 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、
+* 新增 `tests/device-props-mask.sh --write`（真机 16 条）：台子**自己种出待改状态**再测
+  （不能指望现场正好在泄漏，否则"改对了"这条正对照其实是"没测到"），臂 A 实测改写
+  11 个属性、shell 与二进制两臂从同一起点跑完 43 个键逐字节相同、属性区无新增键、
+  `applied=1 / mismatch=0`、
   **toybox awk 与 busybox awk 结果逐字节相同**（本轮在 mawk 上撞到一个方言差：
   赋值语句里的 `(k in goal)` 会被 mawk 提前创建元素，链式改写整条变成写空值，gawk 却不这样）、
-  跑完逐个还原。不加 `--write` 直接 skip，不在 CI 上改现场。
+  跑完还原到**原始现场**。不加 `--write` 直接 skip，不在 CI 上改现场。
 * 对拍 205 → 216 项：两侧写完的**属性区**逐字节相同（状态 A/B，不只比 stdout）、
   链式改只落一次盘、absent 不凭空创建、`getprop` 全废的降级三条。
-* 台子覆盖：真机 A/B 38 条全过，shell 测试套 52 套在 WSL(mawk) 与 Git Bash(gawk) 两边全绿。
+* 新增 `tests/device-boot-hash.sh`（真机 17 条，**全程只读**）：夹具里只放真实
+  `config.toml`、不放 boot_hash 文件，断言 auto 算出的 effective 与手抄那串逐字节相同；
+  random/off/invalid/无后端四种形状各自熄火；跑完核对现场没被动过。
+* `tests/props-boot-hash.sh` 从 20 条扩到 **22 条**（三态 + 派生 + random/注释行/不带引号/
+  不缓存 + 变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值）。对拍 216 → **239 项**
+  （启动哈希三态 23 条）。`mutate-verify.mjs` 从 5 个变异加到 **6 个**（第 ⑥ 个把界面
+  auto 档说回「未设置」，必须响）。
+* 台子覆盖：真机 A/B 38 条全过，shell 测试套 53 套在 WSL(mawk) 与 Git Bash(gawk) 两边全绿。
 * 界面这一层：`tools/md3e-build/verify.mjs` 加 4 条属性页断言（53 行逐行上屏、absent 画
   「本机无」、标题只数 9 项、absent 不挂 warn 色），`mutate-verify.mjs` 从 2 个变异加到
   **5 个且全部会响**；尾部截图 `new-props-tail.png` 进台架产物。

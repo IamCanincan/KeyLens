@@ -491,29 +491,113 @@ fn boot_hash_valid(s: &str) -> bool {
     matches!(s.len(), 64 | 128) && s.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
-/// cmd_boot_hash：configured（去空白→小写）/ current（getprop）/ status。
+/// boot_hash 文件里的原始内容（去空白→小写）。文件不在就是空串。
+fn boot_hash_raw(p: &Paths) -> String {
+    std::fs::read_to_string(&p.boot_hash)
+        .map(|t| t.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase())
+        .unwrap_or_default()
+}
+
+/// 三态：文件不在=auto，合法 hex=manual，"off"=off，别的=invalid。
+/// 与 lib/props.sh 的 boot_hash_mode 同语义。
+fn boot_hash_mode(p: &Paths) -> &'static str {
+    let raw = boot_hash_raw(p);
+    if raw.is_empty() {
+        "auto"
+    } else if boot_hash_valid(&raw) {
+        "manual"
+    } else if raw == "off" {
+        "off"
+    } else {
+        "invalid"
+    }
+}
+
+/// 取 TOML 里某个键的值（与 lib/props.sh 那条 sed 同形：行首允许空白、引号可有可无、
+/// 取到下一个引号为止）。注释行以 # 开头 ⇒ 天然不匹配。
+fn toml_line_value(text: &str, key: &str) -> String {
+    for line in text.lines() {
+        let t = line.trim_start();
+        let Some(rest) = t.strip_prefix(key) else { continue };
+        let Some(rest) = rest.trim_start().strip_prefix('=') else { continue };
+        let rest = rest.trim_start();
+        let rest = rest.strip_prefix('"').unwrap_or(rest);
+        return rest.split('"').next().unwrap_or("").trim().to_string();
+    }
+    String::new()
+}
+
+/// 取 JSON 里某个字符串键的值（`"key":"value"`；null 不带引号 ⇒ 取不到，正是要的行为）。
+fn json_string_value(text: &str, key: &str) -> String {
+    let pat = format!("\"{key}\"");
+    let Some(at) = text.rfind(&pat) else { return String::new() };
+    let rest = &text[at + pat.len()..];
+    let Some(colon) = rest.find(':') else { return String::new() };
+    let after = rest[colon + 1..].trim_start();
+    let Some(after) = after.strip_prefix('"') else { return String::new() };
+    after.split('"').next().unwrap_or("").trim().to_string()
+}
+
+/// auto 档的取值：只问**当前启用的那一家后端**自己的配置。
+/// 返回 (来源, 值)；值不合法（random / null / 缺文件 / 缺字段）时返回 ("none", "")——
+/// 过期值比空着更糟（检测器的 mismatch 与 missing 同为 Danger），所以这里宁可不写。
+/// 绝不缓存：每次调用都重读文件。
+fn boot_hash_source(p: &Paths) -> (String, String) {
+    let mut v = String::new();
+    if backend::active(&p.teesim_module) {
+        let text = std::fs::read_to_string(p.teesim_dir.join("overrides.json")).unwrap_or_default();
+        v = json_string_value(&text, "verifiedBootHash");
+        if v.is_empty() || !boot_hash_valid(&v) {
+            return ("none".into(), String::new());
+        }
+        return ("teesim".into(), v.to_ascii_lowercase());
+    }
+    if backend::active(&p.omk_module) {
+        let text = std::fs::read_to_string(p.omk_dir.join("config.toml")).unwrap_or_default();
+        v = toml_line_value(&text, "vb_hash");
+        if v.is_empty() || !boot_hash_valid(&v) {
+            return ("none".into(), String::new());
+        }
+        return ("omk".into(), v.to_ascii_lowercase());
+    }
+    ("none".into(), String::new())
+}
+
+/// 生效值：手动优先；auto 才派生；off / invalid 一个字节都不写。
+/// 与 lib/props.sh 的 boot_hash_get 同语义。
+fn boot_hash_effective(p: &Paths) -> String {
+    match boot_hash_mode(p) {
+        "manual" => boot_hash_raw(p),
+        "auto" => boot_hash_source(p).1,
+        _ => String::new(),
+    }
+}
+
+/// cmd_boot_hash：mode / configured / source / effective / current / status。
 pub fn boot_hash() {
     let root = Root::from_env();
     let p = Paths::new(&root);
-    let raw: String = std::fs::read_to_string(&p.boot_hash)
-        .map(|t| t.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase())
-        .unwrap_or_default();
+    let raw = boot_hash_raw(&p);
+    let mode = boot_hash_mode(&p).to_string();
+    let (src, _) = boot_hash_source(&p);
+    let eff = boot_hash_effective(&p);
     let current = std::process::Command::new("getprop")
         .arg("ro.boot.vbmeta.digest")
         .output()
         .ok()
         .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
         .unwrap_or_default();
-    let status = if raw.is_empty() {
-        "unset"
-    } else if !boot_hash_valid(&raw) {
-        "invalid"
-    } else if current == raw {
-        "ok"
-    } else {
-        "mismatch"
+    let status = match mode.as_str() {
+        "off" => "off",
+        "invalid" => "invalid",
+        _ if eff.is_empty() => "unset",
+        _ if current == eff => "ok",
+        _ => "mismatch",
     };
+    println_ok!("mode={}", mode);
     println_ok!("configured={}", raw);
+    println_ok!("source={}", src);
+    println_ok!("effective={}", eff);
     println_ok!("current={}", current);
     println_ok!("status={}", status);
 }
@@ -1179,33 +1263,10 @@ fn resetprop(args: &[&str]) -> String {
 }
 
 /// cmd_props_boot_hash：保存/清除 verifiedBootHash 并立即应用（resetprop -n）。
-pub fn props_boot_hash(arg: &str) {
-    let root = Root::from_env();
-    let p = Paths::new(&root);
-    if backends_conflict(&p) {
-        eprintln_ok!("{}", CONFLICT_MSG);
-        std::process::exit(1);
-    }
-    if arg.is_empty() || arg == "-" {
-        let _ = std::fs::remove_file(&p.boot_hash);
-        if p.boot_hash.exists() {
-            eprintln_ok!("清除失败：{}", p.boot_hash.display());
-            std::process::exit(1);
-        }
-        log_line(&p, "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）");
-        let cur = resetprop(&["ro.boot.vbmeta.digest"]);
-        println_ok!("saved=0");
-        println_ok!("applied=0");
-        println_ok!("current={}", cur);
-        return;
-    }
-    let v: String = arg.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
-    if !boot_hash_valid(&v) {
-        eprintln_ok!("哈希必须是 64 或 128 位十六进制");
-        std::process::exit(1);
-    }
+/// 原子写 boot_hash（600），返回是否落盘成功。
+fn write_boot_hash(p: &Paths, content: &str) -> bool {
     let tmp = format!("{}.tmp.{}", p.boot_hash.display(), std::process::id());
-    let wrote = std::fs::write(&tmp, format!("{}\n", v)).is_ok();
+    let wrote = std::fs::write(&tmp, format!("{content}\n")).is_ok();
     if wrote {
         #[cfg(unix)]
         {
@@ -1216,33 +1277,87 @@ pub fn props_boot_hash(arg: &str) {
     let ok = wrote && std::fs::rename(&tmp, &p.boot_hash).is_ok() && p.boot_hash.is_file();
     if !ok {
         let _ = std::fs::remove_file(&tmp);
-        eprintln_ok!("写入失败：{}", p.boot_hash.display());
-        std::process::exit(1);
     }
-    // apply_boot_hash：写 digest（不同才写）、hash_alg 为空时按长度补，最后读回比对
-    let mut applied = 0;
+    ok
+}
+
+/// apply_boot_hash：把 h 写进 digest（不同才写）、hash_alg 为空时按长度补、读回比对。
+/// h 为空 = 无需处理，按成功返回（与 lib/props.sh 同一条：没值可写不算失败）。
+fn apply_digest(h: &str) -> bool {
+    if h.is_empty() {
+        return true;
+    }
     let cur = resetprop(&["ro.boot.vbmeta.digest"]);
-    if cur != v {
-        let _ = resetprop(&["-n", "ro.boot.vbmeta.digest", &v]);
+    if cur != h {
+        let _ = resetprop(&["-n", "ro.boot.vbmeta.digest", h]);
     }
     let alg = resetprop(&["ro.boot.vbmeta.hash_alg"]);
     if alg.is_empty() {
-        let want = if v.len() == 128 { "sha512" } else { "sha256" };
+        let want = if h.len() == 128 { "sha512" } else { "sha256" };
         let _ = resetprop(&["-n", "ro.boot.vbmeta.hash_alg", want]);
     }
-    let now = resetprop(&["ro.boot.vbmeta.digest"]);
-    if now == v {
-        applied = 1;
+    resetprop(&["ro.boot.vbmeta.digest"]) == h
+}
+
+/// props-boot-hash：三态写入（hex=手动 / auto·-·空=回到自动 / off=明确不写）。
+/// 输出键与顺序必须与 lib/write.sh 的 cmd_set_boot_hash 逐字节相同。
+pub fn props_boot_hash(arg: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    if backends_conflict(&p) {
+        eprintln_ok!("{}", CONFLICT_MSG);
+        std::process::exit(1);
     }
-    if applied == 1 {
+    let v: String = arg.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
+
+    if v.is_empty() || v == "-" || v == "auto" {
+        let _ = std::fs::remove_file(&p.boot_hash);
+        if p.boot_hash.exists() {
+            eprintln_ok!("清除失败：{}", p.boot_hash.display());
+            std::process::exit(1);
+        }
+        // 删掉文件不等于"不写"：自动档会当场从当前后端的配置派生并应用
+        let applied = if apply_digest(&boot_hash_effective(&p)) { 1 } else { 0 };
+        log_line(&p, "🔄 WebUI 把 Verified Boot 哈希改回自动档（开机与本次都从当前后端的配置取；取不到就不写）");
+        println_ok!("saved=0");
+        println_ok!("mode={}", boot_hash_mode(&p));
+        println_ok!("applied={applied}");
+        println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
+        return;
+    }
+
+    if v == "off" {
+        if !write_boot_hash(&p, "off") {
+            eprintln_ok!("写入失败：{}", p.boot_hash.display());
+            std::process::exit(1);
+        }
+        log_line(&p, "🚫 WebUI 设置 Verified Boot 哈希为「不写 digest」（本次运行已写进去的值要重启才回原值）");
+        println_ok!("saved=1");
+        println_ok!("mode=off");
+        println_ok!("applied=0");
+        println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
+        return;
+    }
+
+    if !boot_hash_valid(&v) {
+        eprintln_ok!("哈希必须是 64 或 128 位十六进制（或 auto / off）");
+        std::process::exit(1);
+    }
+    if !write_boot_hash(&p, &v) {
+        eprintln_ok!("写入失败：{}", p.boot_hash.display());
+        std::process::exit(1);
+    }
+    let applied = apply_digest(&v);
+    if applied {
         log_line(&p, &format!("🧩 WebUI 设置 Verified Boot 哈希（{} 位）并已应用", v.len()));
     } else {
         log_line(&p, "⚠️ WebUI 保存 Verified Boot 哈希，但写入后读回不一致");
         println_ok!("apply_note=已保存到配置，但立即应用失败（写入后读回不一致）；下次开机仍会再写一次");
     }
     println_ok!("saved=1");
-    println_ok!("applied={}", applied);
-    println_ok!("current={}", now);
+    println_ok!("mode=manual");
+    println_ok!("applied={}", if applied { 1 } else { 0 });
+    println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
 }
 
 /// cmd_props_apply：按期望表写一次（缺/不符才写），复核后输出 applied / mismatch。
@@ -1308,21 +1423,9 @@ pub fn props_apply() {
 }
 
 /// apply_boot_hash 的非致命版本（失败只在调用方提示）。
+/// 用**生效值**：手动档是文件里的 hex，自动档现读当前后端的配置（不缓存）。
 fn apply_boot_hash_quiet(p: &Paths) {
-    let Ok(text) = std::fs::read_to_string(&p.boot_hash) else { return };
-    let h: String = text.chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
-    if h.is_empty() || !boot_hash_valid(&h) {
-        return;
-    }
-    let cur = resetprop(&["ro.boot.vbmeta.digest"]);
-    if cur != h {
-        let _ = resetprop(&["-n", "ro.boot.vbmeta.digest", &h]);
-    }
-    let alg = resetprop(&["ro.boot.vbmeta.hash_alg"]);
-    if alg.is_empty() {
-        let want = if h.len() == 128 { "sha512" } else { "sha256" };
-        let _ = resetprop(&["-n", "ro.boot.vbmeta.hash_alg", want]);
-    }
+    let _ = apply_digest(&boot_hash_effective(p));
 }
 
 /// cmd_props_switch：props-on / props-off（开关文件即关闭标记）。

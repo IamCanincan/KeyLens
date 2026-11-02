@@ -622,6 +622,49 @@ async function main() {
         pv.absentToned === 0, 'absentToned=' + pv.absentToned);
       chk('标题只数 diff/missing（9 项不符），不把 absent 算进去',
         /^9 项不符/.test(pv.title), 'title=' + pv.title);
+      /* 启动哈希那一格的三态必须各画各的：auto（新用户默认形状）、random（取不到）、
+         manual（用户填过）、off（明确不写）、invalid（配置坏了）。
+         旧版界面只有"填了/没填"两态，命令层改成三态后如果界面不动，新用户会看到
+         "未设置（不写 vbmeta.digest）"——而实际上 digest 已经写进去了。 */
+      const openProps = async (q) => {
+        await send('Page.navigate', { url: URL0 + q });
+        await sleep(1400);
+        await ev(`(function(){ var n=document.getElementById('nav');
+          n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+        await sleep(450);
+        await tapEntry('属性伪装');
+        await sleep(1100);
+        return ev(`(function(){
+          var out = [];
+          document.querySelectorAll('#view md-list-item').forEach(function(i){
+            out.push(((i.getAttribute('headline')||'') + '|' + (i.getAttribute('supporting-text')||'')));
+          });
+          var btns = [];
+          document.querySelectorAll('#view md-button').forEach(function(b){ btns.push((b.getAttribute('label')||b.textContent||'').trim()); });
+          var tf = document.querySelector('#view md-text-field');
+          return { rows: out.join('\\n'), buttons: btns.join(','), tfv: tf ? String(tf.value) : null };
+        })()`);
+      };
+      const bhAuto = await openProps('&bh=auto');
+      chk('auto 档界面说"自动 · 取自 OhMyKeymint"并印出派生值',
+        /自动 · 取自OhMyKeymint/.test(bhAuto.rows) && /1122334455667788/.test(bhAuto.rows), bhAuto.rows.split('\n').filter(l => /模块应用值/.test(l)).join(''));
+      chk('界面给出三个动作：保存并应用 / 改为自动 / 不写 digest',
+        /保存并应用/.test(bhAuto.buttons) && /改为自动/.test(bhAuto.buttons) && /不写 digest/.test(bhAuto.buttons), bhAuto.buttons);
+      const bhRandom = await openProps('&bh=random');
+      chk('random（取不到）说清"没有可取的固定值，所以不写"，不谎报已应用',
+        /没有可取的固定值/.test(bhRandom.rows) && !/1122334455667788/.test(bhRandom.rows), '');
+      const bhManual = await openProps('&bh=manual');
+      chk('manual 档把用户填的值显示出来，输入框也带着它',
+        /1122334455667788/.test(bhManual.rows) && /^11223344/.test(bhManual.tfv || ''), 'tf=' + bhManual.tfv);
+      const bhOff = await openProps('&bh=off');
+      chk('off 档说"按你的设置不写 digest"，不是"未设置"',
+        /按你的设置不写 digest/.test(bhOff.rows), '');
+      const bhBad = await openProps('&bh=invalid');
+      chk('invalid 档直说配置坏了（不是 64/128 位十六进制）',
+        /不是 64\/128 位十六进制/.test(bhBad.rows), '');
+      await openProps('');
+      const pv2 = await ev(`(function(){ return { rows: document.querySelectorAll('#view md-list-item').length }; })()`);
+      chk('回到默认（auto）后属性页仍是完整一屏（切档不吞行）', pv2.rows > 50, 'rows=' + pv2.rows);
       const shotP = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-props.png'), Buffer.from(shotP.data, 'base64'));
       /* 再存一张尾部图：53 行的头几行永远是 ok，absent / diff 那几行在中间与尾部。

@@ -930,18 +930,34 @@ cmd_set_boot_hash() {
     local v="$1" applied=0
 
     require_runnable || return 1
-    if [ -z "$v" ] || [ "$v" = "-" ]; then
+    v=$(printf '%s' "${v:-}" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+
+    # 空 / - / auto 都回到默认档：删掉文件，由 boot_hash_source 从当前后端的配置派生
+    if [ -z "$v" ] || [ "$v" = "-" ] || [ "$v" = auto ]; then
         set_boot_hash "" || { echo "清除失败：$KL_BOOT_HASH" >&2; return 1; }
-        log_info "🧹 WebUI 清除 Verified Boot 哈希（下次开机不再写 digest；本次运行回原值需重启）"
+        apply_boot_hash && applied=1
         prop_now ro.boot.vbmeta.digest
+        log_info "🔄 WebUI 把 Verified Boot 哈希改回自动档（开机与本次都从当前后端的配置取；取不到就不写）"
         kv saved 0
+        kv mode "$(boot_hash_mode)"
+        kv applied "$applied"
+        kv current "$PROP_NOW"
+        return 0
+    fi
+
+    # off = 明确不写 digest（旧版「清除」的语义现在在这里）
+    if [ "$v" = off ]; then
+        set_boot_hash off || { echo "写入失败：$KL_BOOT_HASH" >&2; return 1; }
+        prop_now ro.boot.vbmeta.digest
+        log_info "🚫 WebUI 设置 Verified Boot 哈希为「不写 digest」（本次运行已写进去的值要重启才回原值）"
+        kv saved 1
+        kv mode off
         kv applied 0
         kv current "$PROP_NOW"
         return 0
     fi
 
-    v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
-    boot_hash_valid "$v" || { echo "哈希必须是 64 或 128 位十六进制" >&2; return 1; }
+    boot_hash_valid "$v" || { echo "哈希必须是 64 或 128 位十六进制（或 auto / off）" >&2; return 1; }
     set_boot_hash "$v" || { echo "写入失败：$KL_BOOT_HASH" >&2; return 1; }
     apply_boot_hash && applied=1
     if [ "$applied" = 1 ]; then
@@ -953,6 +969,7 @@ cmd_set_boot_hash() {
     fi
     prop_now ro.boot.vbmeta.digest
     kv saved 1
+    kv mode manual
     kv applied "$applied"
     kv current "$PROP_NOW"
 }

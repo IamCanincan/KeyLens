@@ -96,6 +96,16 @@ try {
   f5.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
   if (m5.code === 0) ok = false;
   fs.writeFileSync(SRC, orig);
+  /* ⑥ 界面把 auto 档说回"未设置"（= 修之前的两态形状）—— auto 那条断言必须变红。
+     这一条守的是本轮的实质承诺：新用户一个字不填，界面也要说清"已自动派生并写入"。 */
+  swap("'自动 · 取自' + srcName", "'未设置'", 1);
+  sh([path.join(here, 'build.mjs')]);
+  const m6 = runVerify();
+  const f6 = failed(m6.out);
+  console.log(`${m6.code !== 0 ? '✓' : '✗ 不响'}  变异「auto 档界面退回未设置」→ 退码 ${m6.code}`);
+  f6.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
+  if (m6.code === 0) ok = false;
+  fs.writeFileSync(SRC, orig);
 } finally {
   fs.writeFileSync(SRC, orig);
   if (fs.readFileSync(SRC, 'utf8') !== orig) { console.log('✗ 还原失败，工作区还带着变异'); ok = false; }

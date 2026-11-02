@@ -1095,20 +1095,26 @@ RULES
 #       值由用户从 KeyAttestation 等可信来源取到后填进来；只接受 64/128 位
 #       十六进制（sha256/sha512），避免把错串写进属性。
 cmd_boot_hash() {
-    local raw="" current status
+    local raw="" current status mode src eff line
 
     [ -f "$KL_BOOT_HASH" ] && raw=$(tr -d '[:space:]' < "$KL_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
+    mode=$(boot_hash_mode)
+    line=$(boot_hash_source)          # 「来源<TAB>值」；手动/off 档也会读，界面要说清"自动会取到什么"
+    src=${line%%	*}
+    eff=$(boot_hash_get)
     prop_now ro.boot.vbmeta.digest; current="$PROP_NOW"
-    if [ -z "$raw" ]; then
-        status=unset
-    elif ! boot_hash_valid "$raw"; then
-        status=invalid
-    elif [ "$current" = "$raw" ]; then
-        status=ok
-    else
-        status=mismatch
-    fi
+    case "$mode" in
+        off)     status=off ;;
+        invalid) status=invalid ;;
+        '')      status=unset ;;
+        *)       if [ -z "$eff" ]; then status=unset
+                 elif [ "$current" = "$eff" ]; then status=ok
+                 else status=mismatch; fi ;;
+    esac
+    kv mode "$mode"
     kv configured "$raw"
+    kv source "$src"
+    kv effective "$eff"
     kv current "$current"
     kv status "$status"
 }
@@ -1282,7 +1288,7 @@ cmd_help() {
   props-apply            立刻按期望表写一次属性
   props-on|props-off     开关开机属性伪装
   boot-hash              读取 Verified Boot 哈希配置与当前 digest
-  props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
+  props-boot-hash <值|auto|off> 保存并立即应用 verifiedBootHash（auto=从当前后端的配置取，off=不写 digest）
   restore-app <包名>     把未纳入或已排除的应用加入目标名单
   restore-apps <包名,...> 批量加入（逗号分隔；只写一次目标文件）
   remove-apps <包名,...> 批量移出（逗号分隔；只写一次；至少保留一条）

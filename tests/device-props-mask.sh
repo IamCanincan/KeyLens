@@ -65,7 +65,8 @@ else
 fi
 
 snap_keys > "$T/keys.before"
-snap_vals > "$T/vals.before"
+snap_vals > "$T/vals.orig"        # 主人现场的原样：最终还原以它为准
+cp "$T/vals.orig" "$T/vals.before"
 
 # 无论走到哪一步炸了，现场先还原再说（这台机是主人的日常机）
 restore_all() {
@@ -75,12 +76,12 @@ restore_all() {
         v=${v#\[}; v=${v%]}
         cur=$(getprop "$k")
         [ "$cur" = "$v" ] || resetprop -n "$k" "$v" 2>/dev/null
-    done < "$T/vals.before"
+    done < "$T/vals.orig"
     snap_vals > "$T/vals.after"
-    if cmp -s "$T/vals.before" "$T/vals.after"; then
+    if cmp -s "$T/vals.orig" "$T/vals.after"; then
         ok "现场已还原（$nkeys 个属性逐字节回到跑前）"
     else
-        bad "还原后仍与跑前不同 —— 立即人工核对：$(diff "$T/vals.before" "$T/vals.after" | head -4 | tr '\n' ' ')"
+        bad "还原后仍与跑前不同 —— 立即人工核对：$(diff "$T/vals.orig" "$T/vals.after" | head -4 | tr '\n' ' ')"
     fi
 }
 trap 'restore_all; rm -rf "$T"' EXIT
@@ -91,10 +92,29 @@ chk '本机存在的表内属性 > 0（一个都没有就是桩没接上）' \
     "$([ "$present" -gt 0 ] && printf yes || printf no)" "yes"
 printf '  ·   本机存在 %s / 表内 %s 个（差的就是 absent 那一组）\n' "$present" "$nkeys"
 
-printf '── 应用前：userdebug 还在哪些地方（正对照的底数）──\n'
-leak_before=$(getprop | grep -a userdebug | grep -ac .)
-printf '  ·   属性区里含 userdebug 的行数 = %s\n' "$leak_before"
-[ "$leak_before" -gt 0 ] || bad '这台机压根没有 userdebug 泄漏 —— 这轮验不出"改对了"，换台机或先刷个 userdebug 分区属性'
+printf '── 应用前：自己造出"待改状态"（不能指望现场正好在泄漏）──\n'
+# 这台机很可能已经被上一次开机或上一次 --write 掩好了；那时臂 A 无从改变任何东西，
+# "changed>0" 那条正对照就是空的 —— 报"没测到"是对的，但那样整台子就退化成只比两侧一致。
+# 所以这里主动把几个特征塞回去，跑完 restore_all 会逐个退回 vals.before（含这几行）。
+seed_leaks() {
+    for p in bootimage odm product system system_dlkm system_ext vendor vendor_dlkm; do
+        [ -n "$(getprop "ro.$p.build.type")" ] && resetprop -n "ro.$p.build.type" userdebug 2>/dev/null
+    done
+    [ -n "$(getprop ro.build.flavor)" ] && resetprop -n ro.build.flavor "$(getprop ro.build.flavor)-userdebug" 2>/dev/null
+    fp=$(getprop ro.system.build.fingerprint)
+    [ -n "$fp" ] && resetprop -n ro.system.build.fingerprint "$(printf '%s' "$fp" | sed 's/:user\//:userdebug\//')" 2>/dev/null
+    [ -n "$(getprop ro.system.build.tags)" ] && resetprop -n ro.system.build.tags test-keys 2>/dev/null
+}
+seed_leaks
+# 种完之后重新取"起点"：两臂必须从**同一个状态**出发（否则臂 A 从已种状态开始、
+# 臂 B 从种之前开始，两臂末尾差的就是我自己种下去的那一行，不是实现差）
+snap_vals > "$T/vals.before"
+leak_before=$(getprop | grep -a -c userdebug)
+leak_testkeys=$(getprop | grep -a -c test-keys)
+printf '  ·   造完之后：含 userdebug 的行数 = %s，含 test-keys 的行数 = %s\n' "$leak_before" "$leak_testkeys"
+if [ "$leak_before" -le 0 ] || [ "$leak_testkeys" -le 0 ]; then
+    bad "造不出待改状态（userdebug=$leak_before test-keys=$leak_testkeys）—— 这台子的正对照不成立"
+fi
 
 printf '── 臂 A：shell + 设备 awk 走一遍 ──\n'
 ta0=$(toybox date +%s%3N)
@@ -111,6 +131,8 @@ chk 'flavor 尾巴不再是 userdebug' \
     "$(getprop ro.build.flavor | grep -ac userdebug)" "0"
 chk '系统分区指纹尾巴不再是 userdebug' \
     "$(getprop ro.system.build.fingerprint | grep -ac userdebug)" "0"
+chk '分区 tags 里的 test-keys 被就地换成 release-keys（正对照）' \
+    "$(getprop | grep -a -e '\.build\.tags.*test-keys' | grep -ac .)" "0"
 chk '顶层 ro.build.type 仍是 user（没被顺手改坏）' "$(getprop ro.build.type)" "user"
 
 printf '── 臂 B：bin/keylens 走同一张表 ──\n'

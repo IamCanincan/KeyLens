@@ -123,10 +123,23 @@ set_props_masking() {
 }
 
 # ---------- Verified Boot 哈希 ----------
-# 说明：用户从 KeyAttestation 等可信来源取到本机的 verifiedBootHash 后填进来，
-#       我们把它写进 ro.boot.vbmeta.digest。这是修复项，不属于伪装开关：
-#       只要配置了，开关关着也应用（digest 错的时候，其它属性全对也没用）。
-#       只接受 64/128 位十六进制（sha256/sha512），写错比不写更糟。
+# 说明：这一格有三种模式，状态就存成"$KL_BOOT_HASH 文件的样子"，不另开配置文件：
+#   文件不存在          auto     —— **默认**。开机时从当前后端自己的配置里取它正在证明的
+#                                    verifiedBootHash（OMK：[trust] vb_hash；
+#                                    TEESim：overrides.json 的 verifiedBootHash），
+#                                    只有拿到合法 hex 才写进 ro.boot.vbmeta.digest。
+#   文件里是 64/128 hex  manual    —— 用户自己填的值，优先于 auto（升级前就填过的机器
+#                                    行为完全不变）。
+#   文件里是 "off"       off      —— 明确不写 digest。旧版「清除」的语义搬到这里。
+#   文件里是别的          invalid  —— 不写，界面上照实说"配置里的值不合法"。
+#
+#   为什么 auto 只认 hex、且绝不缓存：OMK 的 vb_hash 允许写 "random"（每次 keymint 启动
+#   重新生成）。那种情况下镜像过来的值下一开机就过期，而**过期值比空着更糟**——检测器的
+#   判据是"证明里的 hash 与 prop 不一致"= Danger，与"prop 为空"同级。所以每次开机、每次
+#   应用都重新读一遍后端配置，非 hex（random / null / 缺文件 / 缺字段）一律当"取不到"，
+#   退回不写。
+#   为什么仍然算"修复项"而不是伪装开关：digest 错的时候其它属性全对也没用，
+#   所以开关关着也应用（与旧版一致）。
 # 用法：boot_hash_valid <值>
 boot_hash_valid() {
     case "${1:-}" in
@@ -138,9 +151,10 @@ boot_hash_valid() {
     esac
 }
 
-# 说明：读配置（去空白、转小写）；文件不存在或内容非法时输出空。
-# 用法：boot_hash_get
-boot_hash_get() {
+# 说明：读文件里的手动值（去空白、转小写）；不是合法 hex 就输出空。
+#       文件内容是哨兵 "off" 时输出空，由 boot_hash_mode 去区分 off 与 auto。
+# 用法：boot_hash_manual
+boot_hash_manual() {
     local v
 
     [ -f "$KL_BOOT_HASH" ] || return 0
@@ -149,20 +163,90 @@ boot_hash_get() {
     printf '%s\n' "$v"
 }
 
-# 说明：保存或清除配置（空值 / - 表示清除）；原子写，权限 600。
-# 用法：set_boot_hash <值|->
+# 用法：boot_hash_mode → auto | manual | off | invalid
+boot_hash_mode() {
+    local v
+
+    [ -f "$KL_BOOT_HASH" ] || { printf 'auto\n'; return 0; }
+    v=$(tr -d '[:space:]' < "$KL_BOOT_HASH" 2>/dev/null | tr 'A-F' 'a-f')
+    if boot_hash_valid "$v"; then printf 'manual\n'
+    elif [ "$v" = off ]; then printf 'off\n'
+    else printf 'invalid\n'; fi
+}
+
+# 说明：auto 档的取值 —— 只问**当前启用的那一家后端**，不去猜没启用的后端留下的旧配置
+#       （OMK 卸载后 /data/misc/keystore/omk 可能还在，镜像那种残留值等于把一个不再被
+#       证明的 hash 写进 prop）。KL_BACKEND 已探测过就直接用；没探测过时用 active 探针；
+#       两样都没有（被单独 source 的台子）就当取不到，不写。
+# 用法：boot_hash_source → 输出「来源<TAB>值」；取不到时输出「none<TAB>」
+boot_hash_source() {
+    local be="" cfg="" v=""
+
+    if [ -n "${KL_BACKEND:-}" ]; then
+        be="$KL_BACKEND"
+    elif command -v omk_active >/dev/null 2>&1 && command -v teesim_active >/dev/null 2>&1; then
+        # 与 detect_backend 同序（teesim → … → omk）；tricky 没有这个字段，不参与
+        if teesim_active; then be=teesim
+        elif omk_active; then be=omk
+        else be=tricky; fi
+    fi
+
+    case "$be" in
+        omk)
+            cfg="${OMK_DIR:-/data/misc/keystore/omk}/config.toml"
+            [ -f "$cfg" ] || { printf 'none\t\n'; return 0; }
+            # 与 lib/write.sh 取旧值同一条 sed：引号可有可无，值取到行尾或引号为止
+            v=$(sed -n 's/^[[:space:]]*vb_hash[[:space:]]*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' "$cfg" 2>/dev/null | head -n 1)
+            ;;
+        teesim)
+            cfg="${TEESIM_DIR:-/data/adb/teesim}/overrides.json"
+            [ -f "$cfg" ] || { printf 'none\t\n'; return 0; }
+            # null 不带引号，这条模式匹配不上 ⇒ 自然当"取不到"
+            v=$(sed -n 's/.*"verifiedBootHash"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$cfg" 2>/dev/null | head -n 1)
+            ;;
+        *) printf 'none\t\n'; return 0 ;;
+    esac
+
+    v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+    boot_hash_valid "$v" || { printf 'none\t\n'; return 0; }
+    printf '%s\t%s\n' "$be" "$v"
+}
+
+# 说明：这一格**实际要写进 prop 的值**（生效值）。手动优先；auto 才去派生；off/invalid 不写。
+#       名字沿用旧版（boot_hash_get），post-fs-data / service / apply_boot_hash 的调用点
+#       不用改——但语义从"配置里的值"变成"生效值"，这是本轮的实质改动。
+# 用法：boot_hash_get
+boot_hash_get() {
+    local m v
+
+    m=$(boot_hash_mode)
+    case "$m" in
+        manual) boot_hash_manual; return 0 ;;
+        auto)   ;;
+        *) return 0 ;;          # off / invalid：一个字节都不写
+    esac
+    v=$(boot_hash_source)
+    printf '%s\n' "${v#*	}"
+}
+
+# 说明：保存配置。参数：64/128 位 hex = 手动；auto / 空 / - = 删文件回到自动（默认）；
+#       off = 写哨兵，明确不写 digest。原子写，权限 600。
+# 用法：set_boot_hash <值|auto|off>
 # 返回：0=成功 1=值非法或写入失败
 set_boot_hash() {
     local v="${1:-}" tmp
 
-    if [ -z "$v" ] || [ "$v" = "-" ]; then
+    v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+
+    # 空值 / - / auto 都回到"没有文件"= 默认自动档
+    if [ -z "$v" ] || [ "$v" = "-" ] || [ "$v" = auto ]; then
         rm -f "$KL_BOOT_HASH" 2>/dev/null
         [ ! -f "$KL_BOOT_HASH" ]
         return
     fi
 
-    v=$(printf '%s' "$v" | tr -d '[:space:]' | tr 'A-F' 'a-f')
-    boot_hash_valid "$v" || return 1
+    if [ "$v" != off ] && ! boot_hash_valid "$v"; then return 1; fi
+
     tmp="${KL_BOOT_HASH}.tmp.$$"
     printf '%s\n' "$v" > "$tmp" 2>/dev/null || return 1
     chmod 600 "$tmp" 2>/dev/null
