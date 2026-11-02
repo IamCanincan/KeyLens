@@ -1,5 +1,5 @@
-ro.boot.vbmeta.device_state		locked	missing
-ro.boot.verifiedbootstate		green	missing
+ro.boot.vbmeta.device_state	unlocked	locked	diff
+ro.boot.verifiedbootstate	orange	green	diff
 ro.boot.flash.locked		1	missing
 ro.boot.veritymode		enforcing	missing
 ro.boot.warranty_bit		0	missing
@@ -8,10 +8,46 @@ ro.debuggable		0	missing
 ro.force.debuggable		0	missing
 ro.secure		1	missing
 ro.adb.secure		1	missing
-ro.build.type		user	missing
-ro.build.tags		release-keys	missing
+ro.build.type	userdebug	user	diff
+ro.build.tags	test-keys	release-keys	diff
 ro.vendor.boot.warranty_bit		0	missing
 ro.vendor.warranty_bit		0	missing
 vendor.boot.warranty_bit		0	missing
-ro.bootloader		不含 engineering（则改写为 release）	missing
-ro.build.description		不含 test-keys（则改写为 release-keys）	missing
+ro.bootloader	engineering-x	不含 engineering（则改写为 release）	diff
+ro.build.flavor	lineage_pdx234-userdebug	不含 userdebug（则改写为 user）	diff
+ro.build.description	pdx234-user 16 BP2A.250605.031 userdebug/test-keys-1234 release-keys	不含 userdebug（则改写为 user）	diff
+ro.build.description	pdx234-user 16 BP2A.250605.031 userdebug/test-keys-1234 release-keys	不含 test-keys（则改写为 release-keys）	diff
+ro.bootimage.build.type		不含 userdebug（则改写为 user）	absent
+ro.odm.build.type		不含 userdebug（则改写为 user）	absent
+ro.product.build.type	userdebug	不含 userdebug（则改写为 user）	diff
+ro.system.build.type		不含 userdebug（则改写为 user）	absent
+ro.system_dlkm.build.type		不含 userdebug（则改写为 user）	absent
+ro.system_ext.build.type		不含 userdebug（则改写为 user）	absent
+ro.vendor.build.type		不含 userdebug（则改写为 user）	absent
+ro.vendor_dlkm.build.type		不含 userdebug（则改写为 user）	absent
+ro.bootimage.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.odm.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.product.build.tags	test-keys	不含 test-keys（则改写为 release-keys）	diff
+ro.system.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.system_dlkm.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.system_ext.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.vendor.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.vendor_dlkm.build.tags		不含 test-keys（则改写为 release-keys）	absent
+ro.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.bootimage.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.bootimage.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.odm.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.odm.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.product.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.product.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.system.build.fingerprint	Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:userdebug/test-keys	不含 userdebug（则改写为 user）	diff
+ro.system.build.fingerprint	Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:userdebug/test-keys	不含 test-keys（则改写为 release-keys）	diff
+ro.system_dlkm.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.system_dlkm.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.system_ext.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.system_ext.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.vendor.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.vendor.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent
+ro.vendor_dlkm.build.fingerprint		不含 userdebug（则改写为 user）	absent
+ro.vendor_dlkm.build.fingerprint		不含 test-keys（则改写为 release-keys）	absent

@@ -805,6 +805,12 @@ hex ⇒ 两侧逐字节相同、`source=daemon`、生效值 = 属性里那串、
   （`实得=teesim / 期望=daemon`）。红得对，不是实现写坏了 —— 但改 shell 侧之后要么
   `sh tools/deploy-webui.sh --shell`，要么单独推那一个文件，再跑台子。
   顺带说明这台子上"装的是哪版"必须逐文件核：只比二进制 sha 不够。
+- **`tests/rust-golden.sh` 在 Windows 上会 skip，而它印的是「全部通过」**（2026-11-03 CI 当场抓住）：
+  Git Bash 的 `-x` 看不见 WSL 编出来的 ELF 的执行位，两个候选二进制都被判不可执行 ⇒ 整个
+  黄金快照闸跳过，本地那轮「53 套全绿」里它其实没跑。而 CI（Rust CLI）跑它时 `props` 红了 ——
+  黄金还停在 17 行那张旧表。要跑就进 WSL：`KEYLENS_BIN=rust/target/x86_64-unknown-linux-musl/release/keylens sh tests/rust-golden.sh`。
+  同一轮还修了它的一处不可复现：`props` 读的是**宿主的** `getprop`（CI 上没有这个命令、全 absent；
+  开发机接了手机就变成真机的 53 行），现在台子自带桩 `getprop`，快照与机器无关。
 - **两臂共用同一个属性桩时，前一臂会把后一臂的前提抹掉**：给"teesim 属性为空才补"数写次数，
   shell 臂先跑并**真的把 digest 写上了**，Rust 臂随后看到的是"属性已有值"⇒ 走 daemon 支、
   写 0 次。报出来的 `1/0` 看着像 Rust 漏写一次，实际是台架自己改了现场。现在两臂之间

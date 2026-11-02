@@ -27,6 +27,30 @@ printf 'com.a\ncom.b?\ncom.c!\ncom.d@10\n' > "$R/data/adb/tricky_store/target.tx
 printf '2026-10-05\nsystem=2026-10-01\n\n[com.a]\nvendor=2026-09-01\n' > "$R/data/adb/tricky_store/security_patch.txt"
 printf 'id=keylens\nname=KeyLens\nversion=v3.0.1\ndescription=ok\n' > "$R/data/adb/modules/keylens/module.prop"
 
+# 桩 getprop：props 那一例读的是**宿主的** getprop，CI 上没有这个命令（全 absent）、
+# 开发机接了手机时又会读到真机的 53 行 —— 同一份快照在两种机器上必然对不上。
+# 2026-11-03 CI 红在这里（黄金还是 17 行那张旧表）。所以给一份固定的 dump：
+# 10 个键有值（userdebug / test-keys / engineering 都在），其余按本机没有处理成 absent。
+mkdir -p "$T/bin"
+cat > "$T/bin/getprop" <<'STUB'
+#!/bin/sh
+if [ $# -gt 0 ]; then exit 0; fi
+cat <<'EOF'
+[ro.build.type]: [userdebug]
+[ro.build.tags]: [test-keys]
+[ro.build.flavor]: [lineage_pdx234-userdebug]
+[ro.build.description]: [pdx234-user 16 BP2A.250605.031 userdebug/test-keys-1234 release-keys]
+[ro.bootloader]: [engineering-x]
+[ro.product.build.type]: [userdebug]
+[ro.product.build.tags]: [test-keys]
+[ro.system.build.fingerprint]: [Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:userdebug/test-keys]
+[ro.boot.vbmeta.device_state]: [unlocked]
+[ro.boot.verifiedbootstate]: [orange]
+EOF
+STUB
+chmod +x "$T/bin/getprop"
+PATH="$T/bin:$PATH"; export PATH
+
 GOLD=rust/golden
 mkdir -p "$GOLD"
 

@@ -11,7 +11,7 @@
   props-apply            立刻按期望表写一次属性
   props-on|props-off     开关开机属性伪装
   boot-hash              读取 Verified Boot 哈希配置与当前 digest
-  props-boot-hash <值|-> 保存并立即应用 verifiedBootHash（- 清除）
+  props-boot-hash <值|auto|off> 保存并立即应用 verifiedBootHash（auto=从当前后端的配置取，off=不写 digest）
   restore-app <包名>     把未纳入或已排除的应用加入目标名单
   restore-apps <包名,...> 批量加入（逗号分隔；只写一次目标文件）
   remove-apps <包名,...> 批量移出（逗号分隔；只写一次；至少保留一条）
