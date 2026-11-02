@@ -1089,6 +1089,41 @@ async function main() {
   chk('备份列表：点刷新出两行 .bak（未点回滚时没有"再点确认"）',
     !!bbtn && bks.n >= 2 && bks.names.indexOf('injector.toml.bak') >= 0 && !bks.confirm, JSON.stringify(bks).slice(0, 160));
 
+  /* ── 性能基线（只报数，不拍绝对阈值）──────────────────────────────
+     量的是"这份产物在 WebView 同款引擎里解析 + 执行 + 首屏"的成本：产物是单文件、
+     资源全内联，没有网络这一项，所以脚本时长与 V8 编译时长就是主成本。
+     ⚠ 不能拿导航前后两次 getMetrics 做差：跨文档导航会把计数清零，差出来是负数
+     （第一版就这么量，`script=-2ms`）。这些计数是"当前文档自开始以来的累积值"，
+     导航完、渲染出来后读一次即可。 */
+  await send('Performance.enable');
+  const perfRuns = [];
+  for (let i = 0; i < 3; i++) {
+    const t0 = Date.now();
+    await send('Page.navigate', { url: URL0 });
+    let ready = 0;
+    for (let k = 0; k < 300; k++) {
+      const n = await ev(`document.querySelectorAll('#view md-list-item, #view .app-row').length`);
+      if (n > 0) { ready = Date.now() - t0; break; }
+      await sleep(10);
+    }
+    await sleep(250);
+    const met = (await send('Performance.getMetrics')).metrics;
+    const v = k => { const x = met.find(m => m.name === k); return x ? Math.round(x.value * 1000) : -1; };
+    const page = await ev(`(function(){ var n=performance.getEntriesByType('navigation')[0]||{};
+      var p={}; performance.getEntriesByType('paint').forEach(function(e){p[e.name]=Math.round(e.startTime);});
+      return { dcl: Math.round(n.domContentLoadedEventEnd||0), fp: p['first-paint']||0, fcp: p['first-contentful-paint']||0 }; })()`);
+    perfRuns.push({ ready: ready, dcl: page.dcl, fcp: page.fcp, fp: page.fp,
+      script: v('ScriptDuration'), compile: v('V8CompileDuration'),
+      layout: v('LayoutDuration'), task: v('TaskDuration') });
+  }
+  const med = key => { const a = perfRuns.map(r => r[key]).sort((x, y) => x - y); return a[Math.floor(a.length / 2)]; };
+  console.log('性能（本机 Chrome 无头，轮询粒度 ~10ms）：首屏可见 ' + med('ready') + 'ms · FCP '
+    + med('fcp') + 'ms · DOMContentLoaded ' + med('dcl') + 'ms · 脚本 ' + med('script')
+    + 'ms · V8 编译 ' + med('compile') + 'ms · 布局 ' + med('layout') + 'ms');
+  /* 仪器自检：三项都必须量到正数，否则这份"基线"只是没量到 */
+  chk('性能量测本身有效（首屏 / FCP / 脚本都量到正数）',
+    med('ready') > 0 && med('fcp') > 0 && med('script') > 0, JSON.stringify(perfRuns));
+
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);
 }
