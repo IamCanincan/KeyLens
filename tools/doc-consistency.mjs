@@ -31,8 +31,19 @@ const uj = JSON.parse(read('update.json'));
 chk('module.prop ↔ update.json 版本一致', vMp === uj.version && Number(cMp) === uj.versionCode,
   `${vMp}/${cMp} vs ${uj.version}/${uj.versionCode}`);
 chk('README 页脚版本一致', rd.includes(vMp));
-const clTop = (read('CHANGELOG.md').match(/^### ([^\n]+)$/m) || [])[1];
-chk('CHANGELOG 顶层条目与版本一致', !!clTop && clTop.startsWith(vMp.slice(1)), clTop);
+/* CHANGELOG 的形状：允许顶上挂**一条**「未发布」，但它下面第一个已发布条目
+   必须就是 module.prop 那个版本 —— 原来这条闸只认"顶层 = 当前版本"，于是
+   两次发版之间的工作没法进 CHANGELOG（只能等发版时才补，文档就落后于代码）。 */
+const clHeads = [...read('CHANGELOG.md').matchAll(/^### ([^\n]+)$/gm)].map(m => m[1]);
+const clTop = clHeads[0];
+const unreleased = clHeads.filter(h => /未发布/.test(h));
+const firstReleased = clHeads.find(h => !/未发布/.test(h));
+chk('CHANGELOG 最多一条「未发布」，且只能在最顶上',
+  unreleased.length <= 1 && (unreleased.length === 0 || /未发布/.test(clTop)),
+  `未发布 ${unreleased.length} 条 / 顶层=${clTop}`);
+chk('CHANGELOG 第一个已发布条目 = module.prop 的版本',
+  !!firstReleased && firstReleased.startsWith(vMp.slice(1)),
+  `首个已发布=${firstReleased} vs ${vMp}`);
 chk('update.json zipUrl 指向本仓库与当前版本',
   uj.zipUrl.includes(vMp) && uj.zipUrl.startsWith('https://github.com/IamCanincan/KeyLens/'));
 chk('module.prop updateJson 指向本仓库', /IamCanincan\/KeyLens/.test(mp));

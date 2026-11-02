@@ -587,8 +587,53 @@ async function main() {
       chk('Verified Boot 输入框与应用值列表、保存按钮都分开',
         !!pg && pg.input >= 18 && pg.save >= 12,
         pg ? '列表→输入 ' + pg.input + 'px / 输入→保存 ' + pg.save + 'px' : '没找到输入框');
+      /* 属性页的**行数与状态**必须对着真形状核。这一屏以前只喂过 5 行手写假数据
+         （ro.product.brand / ro.serialno 根本不在表里），所以命令层新增的第四种状态
+         absent 会掉进界面"不是 ok 就算不符"的 else 里 —— 画成红色「不符」，标题写
+         「13 项不符」，而命令层报的是 mismatch=0。这种错只有真画一次才现形。 */
+      const pv = await ev(`(function(){
+        /* 文字在属性里，不在 textContent 里（本文件上面第 90 行同一条读法）——
+           拿 textContent 数会得到 rows=0，看着像"界面没画"，其实是探针瞎了。 */
+        var items = [].slice.call(document.querySelectorAll('#view md-list-item'));
+        var txt = function(i){ return (i.getAttribute('headline')||'') + '|' +
+          (i.getAttribute('supporting-text')||'') + '|' + (i.getAttribute('trailing-text')||''); };
+        var rows = 0, absent = 0, bad = 0, absentToned = 0;
+        items.forEach(function(i){ var t = txt(i);
+          /* 数"属性行"要认**两种**文案（期望… / 这台机没有…）：只认"期望"的话，
+             改一次 absent 的措辞就会把 4 行数丢，看着像界面少画了行。 */
+          var sup = i.getAttribute('supporting-text') || '';
+          if (/^期望 /.test(sup) || /^这台机没有这项属性/.test(sup)) rows++;
+          if (t.indexOf('本机无') >= 0) { absent++; if (i.getAttribute('data-tone')) absentToned++; }
+          if (t.indexOf('|不符') >= 0) bad++;
+        });
+        var bar = document.getElementById('bar');
+        var title = '';
+        items.forEach(function(i){ var h = i.getAttribute('headline')||'';
+          if (/^系统属性 · /.test(h)) title = h; });
+        var t0 = (document.getElementById('view')||{}).textContent || '';
+        var m = t0.match(/系统属性 · ([^\\n]*)/);
+        if (!title && m) title = m[1];
+        return { rows: rows, absent: absent, bad: bad, absentToned: absentToned, title: title, items: items.length };
+      })()`);
+      chk('属性页把台架那 53 行对照逐行画出来（一行都不吞）', pv.rows === 53, 'rows=' + pv.rows);
+      chk('absent 标「本机无」而不是红色「不符」（命令层 mismatch=0 的口径）',
+        pv.absent === 4 && pv.bad === 9, 'absent=' + pv.absent + ' 不符行=' + pv.bad);
+      chk('absent 行不挂 warn/bad 色（"没有这个分区"不是待办也不是风险）',
+        pv.absentToned === 0, 'absentToned=' + pv.absentToned);
+      chk('标题只数 diff/missing（9 项不符），不把 absent 算进去',
+        /^9 项不符/.test(pv.title), 'title=' + pv.title);
       const shotP = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-props.png'), Buffer.from(shotP.data, 'base64'));
+      /* 再存一张尾部图：53 行的头几行永远是 ok，absent / diff 那几行在中间与尾部。
+         只看头图会把"新状态画成什么样"这件事整个漏掉 —— 本轮的 absent 标红缺陷
+         就藏在尾部，头图看着一切正常。 */
+      await ev(`(function(){ var it=[].slice.call(document.querySelectorAll('#view md-list-item'));
+        var last=it[it.length-1]; if(last) last.scrollIntoView({block:'end'}); return 1; })()`);
+      await sleep(400);
+      const shotT = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(path.join(SHOT_DIR, 'new-props-tail.png'), Buffer.from(shotT.data, 'base64'));
+      await ev('window.scrollTo(0, 0)');
+      await sleep(300);
       /* 长页阅读模式：向下滑 → 药丸下沉缩小消失；向上滑/回顶 → 回来 */
       const navState = () => ev(`(function(){ var n=document.getElementById('nav'); var s=getComputedStyle(n);
         return { hidden:n.classList.contains('nav-hidden'), op:s.opacity, pe:s.pointerEvents,

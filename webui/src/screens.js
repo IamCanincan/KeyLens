@@ -477,12 +477,24 @@ export function swapIcons() {
    stack 了，套两层 div 会让 .stack 的 flex gap 只作用在外层，卡片间距变成两级。 */
 function propsCards() {
   const frag = document.createDocumentFragment();
-  const diff = S.props.filter(function (p) { return p.st !== 'ok'; });
+  /* 状态只有四种，必须逐一对上命令层的语义，不能拿"不是 ok 就算不符"糊过去：
+       ok      一致
+       diff    当前值与期望不符（命令层会去就地改写）
+       missing 固定表要的键读不到（命令层会补写 ⇒ 真缺陷，计入不符）
+       absent  这台机压根没有这个分区/属性（命令层**不写**，也不计入 mismatch ⇒ 不是缺陷）
+     2026-11-02 期望表补了 *.build.type / *.build.tags / *.build.fingerprint 之后
+     absent 第一次真的会出现：缺 vendor_dlkm 分区的机器上，那 12 行既不能标红，
+     也不能把标题写成「12 项不符」—— 命令层报的是 mismatch=0。 */
+  const bad = S.props.filter(function (p) { return p.st === 'diff' || p.st === 'missing'; });
+  const absent = S.props.filter(function (p) { return p.st === 'absent'; });
 
   const c1 = card();
   /* 读不到时既不能说"全部一致"也不能说"0 项不符" —— 那是把"我不知道"画成
      "没问题"。写法与名单页的 S.listErr 同一条路（.read-err 一行说明）。 */
-  const s1 = section('系统属性 · ' + (S.propsErr ? '读不到' : diff.length ? diff.length + ' 项不符' : '全部一致'), ICON.tune);
+  const s1 = section('系统属性 · ' + (S.propsErr ? '读不到'
+    : bad.length ? bad.length + ' 项不符'
+      : absent.length ? '全部一致（另有 ' + absent.length + ' 项本机无此分区）'
+        : '全部一致'), ICON.tune);
   if (S.propsErr) s1.appendChild(h('p', 'read-err', '属性对照读不到：这一屏没有比对结果，"一致 / 不符"都无从判断。'));
   s1.appendChild(list([
     item({ headline: '开机重置属性', trailing: maskKnown(S.status) ? (maskOn(S.status) ? '已开启' : '已关闭') : '读不到',
@@ -501,16 +513,25 @@ function propsCards() {
   s1.appendChild(acts1);
   const l = h('md-list');
   S.props.forEach(function (p) {
+    /* 四种状态各有各的说法与颜色，absent 走中性（dot-none = outline 灰）：
+       它不是"没做到"，是"这台机没有这个分区，本来就不该有"。 */
+    const t = p.st === 'ok' ? 'ok'
+      : p.st === 'missing' ? 'missing'
+        : p.st === 'absent' ? 'absent' : 'diff';
     const it = item({
       headline: p.name,
       /* "当前"这行必须写在 supporting-text 里（组件是 white-space:pre-wrap，换行会
          正常显示、行高自己长）。以前是往 md-list 里 append 一个裸 div —— 它不在
          md-list 的白底表面里，于是第二行字漏到卡片外面、压在下一行上。 */
-      supporting: '期望 ' + (p.want || '—') + (p.st === 'diff' ? '\n当前 ' + (p.cur || '—') : ''),
-      trailing: p.st === 'ok' ? '一致' : p.st === 'missing' ? '读不到' : '不符',
-      tone: p.st === 'ok' ? '' : (p.st === 'missing' ? 'warn' : 'bad'),
+      supporting: t === 'absent'
+        ? '这台机没有这项属性，模块不写它'
+        : '期望 ' + (p.want || '—') + (t === 'diff' ? '\n当前 ' + (p.cur || '—') : ''),
+      trailing: t === 'ok' ? '一致' : t === 'missing' ? '读不到' : t === 'absent' ? '本机无' : '不符',
+      /* absent 不给 warn：琥珀色在这套界面里是"要注意"，而"这台机没有这个分区"
+         既不是风险也不是待办。灰点 + 常态文字就够了。 */
+      tone: t === 'ok' || t === 'absent' ? '' : t === 'missing' ? 'warn' : 'bad',
     });
-    it.appendChild(dot(p.st === 'ok' ? 'ok' : p.st === 'missing' ? 'warn' : 'bad'));
+    it.appendChild(dot(t === 'ok' ? 'ok' : t === 'missing' ? 'warn' : t === 'absent' ? 'none' : 'bad'));
     l.appendChild(it);
   });
   s1.appendChild(l);

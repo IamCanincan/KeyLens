@@ -33,6 +33,7 @@
 | shell↔Rust 逐字节对拍 | **216 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **15 条断言全过**：臂 A 实测改写 10 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
+| **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | shell 测试套 | **52 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
@@ -620,6 +621,20 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
 
 
 
+- **台架的假数据必须是真形状**（2026-11-02 这条值一整轮）：`webui/src/bridge.js` 里 `props`
+  的演示数据是手写的 5 行，其中 `ro.product.brand` / `ro.serialno` **根本不在期望表里**。
+  于是属性页从没按真形状渲染过一次 —— 命令层新增第四种状态 `absent` 之后，界面那句三元
+  `p.st === 'ok' ? … : p.st === 'missing' ? … : '不符'` 把 absent 画成**红色「不符」**、
+  标题写「13 项不符」，而命令层报的是 `mismatch=0`。对拍 216 项、真机 15 条全绿，
+  因为这缺陷不在命令层。现在假数据换成真机现量的 53 行（`KL_USE_RUST=0 sh webui.sh props`），
+  只有 vendor_dlkm 那一族 4 行是假造的（这台机有那个分区，给不出 absent）。
+- **只看头图会把新状态整个漏掉**：53 行的属性页头几行永远是 ok，absent/diff 在中尾部。
+  `verify.mjs` 现在把尾部也存一张（`new-props-tail.png`），并且行数/配色/标题三条断言
+  各配一个变异（`mutate-verify.mjs` 的 ③④⑤）。
+- **探针绑在文案上就会随文案一起漂**：数"属性行"最初认的是 `期望` 这个词，我把 absent 行
+  的措辞从「这台机没有…（期望 …）」改成「这台机没有这项属性，模块不写它」之后，
+  计数当场从 53 掉到 49 —— 这条红得算幸运，但同一类问题也可以**不红**（少数的正好是
+  不参与的行）。现在认两种行首，并配变异⑤（让 absent 整族不上屏 → rows=49 必须响）。
 - **PowerShell 写文件/内联脚本**会带 BOM/CRLF、`$` 会被解析：Rust/sh 源码一律用编辑工具写，或用 `node <文件>.cjs` 脚本改；写完 `\r` 要清掉（否则 `sh` 报 `EOF unexpected`）。
 - **设备上那台 shell 的两种"静默"**（本轮加 env 缓存台子时各撞一次，症状都是"实现看着坏了"）：
   - mksh 的 `${v%|*}` **不生效**（`a|b|c` 原样出来）。剥缓存键的末段要走 `sed 's/|[^|]*$//'`；

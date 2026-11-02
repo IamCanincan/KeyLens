@@ -62,6 +62,40 @@ try {
   f2.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
   if (m2.code === 0) ok = false;
   fs.writeFileSync(SRC, orig);
+  /* ③ absent 那一行退回"不是 ok 就是不符"的分派 —— 属性页那条行级断言必须变红。
+     这一类形状只有真画一次才看得见：命令层新增第四种状态时，界面里的三元 else
+     会把 absent 一起吞进"不符"，而命令层报的是 mismatch=0。 */
+  swap("p.st === 'absent' ? 'absent' : 'diff'", "p.st === 'absent' ? 'diff' : 'diff'", 1);
+  sh([path.join(here, 'build.mjs')]);
+  const m3 = runVerify();
+  const f3 = failed(m3.out);
+  console.log(`${m3.code !== 0 ? '✓' : '✗ 不响'}  变异「absent 行标成不符」→ 退码 ${m3.code}`);
+  f3.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
+  if (m3.code === 0) ok = false;
+  fs.writeFileSync(SRC, orig);
+
+  /* ④ 标题的筛选退回"不是 ok 就计数" —— 标题那条断言必须变红（13 项不符 vs 9 项）。
+     与 ③ 分开设：一个管行上的颜色，一个管卡片标题的数。 */
+  swap("const bad = S.props.filter(function (p) { return p.st === 'diff' || p.st === 'missing'; });",
+    "const bad = S.props.filter(function (p) { return p.st !== 'ok'; });", 1);
+  sh([path.join(here, 'build.mjs')]);
+  const m4 = runVerify();
+  const f4 = failed(m4.out);
+  console.log(`${m4.code !== 0 ? '✓' : '✗ 不响'}  变异「标题把 absent 算成不符」→ 退码 ${m4.code}`);
+  f4.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
+  if (m4.code === 0) ok = false;
+  fs.writeFileSync(SRC, orig);
+  /* ⑤ 属性行少画一行（这里让 absent 那族整族不上屏）—— "53 行逐行画出来"必须变红。
+     这条专门盯探针自己：行数是数文案数出来的，改一句措辞就可能少数几行而断言不响。 */
+  swap('S.props.forEach(function (p) {',
+    "S.props.filter(function (p) { return p.st !== 'absent'; }).forEach(function (p) {", 1);
+  sh([path.join(here, 'build.mjs')]);
+  const m5 = runVerify();
+  const f5 = failed(m5.out);
+  console.log(`${m5.code !== 0 ? '✓' : '✗ 不响'}  变异「absent 那族不上屏」→ 退码 ${m5.code}`);
+  f5.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
+  if (m5.code === 0) ok = false;
+  fs.writeFileSync(SRC, orig);
 } finally {
   fs.writeFileSync(SRC, orig);
   if (fs.readFileSync(SRC, 'utf8') !== orig) { console.log('✗ 还原失败，工作区还带着变异'); ok = false; }
