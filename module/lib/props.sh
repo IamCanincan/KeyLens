@@ -28,12 +28,61 @@ props_expect_pairs() {
         "vendor.boot.warranty_bit 0"
 }
 
-# 说明：特征替换表，每行「属性名 特征值 替换值」：当前值中含特征值时整体替换为该值。
+# 说明：特征替换表，每行「属性名 特征值 替换值」——**就地替换**：把值里出现的每一处
+#       特征值换成替换值，其余字符原样保留（以前是"整值替换"，那会把
+#       `XQ-DQ72-user 15 ... test-keys` 这种描述直接写成 `release-keys` 一句话，
+#       比不改更像被动过）。
+#
+#       这张表覆盖的是"构建身份"这一族：顶层 ro.build.type/tags 是固定表，
+#       而每个分区各自还有一套 *.build.type / *.build.tags / *.build.fingerprint，
+#       加上 ro.build.flavor 与 ro.build.description 的尾巴。只改顶层会留下
+#       "type=user 而 ro.system.build.type=userdebug"、"fingerprint 尾巴 userdebug"
+#       这类自相矛盾 —— 任何应用逐键读就能看见（DuckDetector 已把这些行印出来）。
+#
+#       顺序有讲究：同一个属性可以有多条规则（如 description 既可能带 userdebug
+#       也可能带 test-keys），写入时按这里的顺序**链式**改一遍、只落一次盘；
+#       见 props_plan。属性名不许同时出现在固定表与这张表里（tests/props-plan.sh 钉）。
 # 用法：props_expect_rules
 props_expect_rules() {
     printf '%s\n' \
         "ro.bootloader engineering release" \
-        "ro.build.description test-keys release-keys"
+        "ro.build.flavor userdebug user" \
+        "ro.build.description userdebug user" \
+        "ro.build.description test-keys release-keys" \
+        "ro.bootimage.build.type userdebug user" \
+        "ro.odm.build.type userdebug user" \
+        "ro.product.build.type userdebug user" \
+        "ro.system.build.type userdebug user" \
+        "ro.system_dlkm.build.type userdebug user" \
+        "ro.system_ext.build.type userdebug user" \
+        "ro.vendor.build.type userdebug user" \
+        "ro.vendor_dlkm.build.type userdebug user" \
+        "ro.bootimage.build.tags test-keys release-keys" \
+        "ro.odm.build.tags test-keys release-keys" \
+        "ro.product.build.tags test-keys release-keys" \
+        "ro.system.build.tags test-keys release-keys" \
+        "ro.system_dlkm.build.tags test-keys release-keys" \
+        "ro.system_ext.build.tags test-keys release-keys" \
+        "ro.vendor.build.tags test-keys release-keys" \
+        "ro.vendor_dlkm.build.tags test-keys release-keys" \
+        "ro.build.fingerprint userdebug user" \
+        "ro.build.fingerprint test-keys release-keys" \
+        "ro.bootimage.build.fingerprint userdebug user" \
+        "ro.bootimage.build.fingerprint test-keys release-keys" \
+        "ro.odm.build.fingerprint userdebug user" \
+        "ro.odm.build.fingerprint test-keys release-keys" \
+        "ro.product.build.fingerprint userdebug user" \
+        "ro.product.build.fingerprint test-keys release-keys" \
+        "ro.system.build.fingerprint userdebug user" \
+        "ro.system.build.fingerprint test-keys release-keys" \
+        "ro.system_dlkm.build.fingerprint userdebug user" \
+        "ro.system_dlkm.build.fingerprint test-keys release-keys" \
+        "ro.system_ext.build.fingerprint userdebug user" \
+        "ro.system_ext.build.fingerprint test-keys release-keys" \
+        "ro.vendor.build.fingerprint userdebug user" \
+        "ro.vendor.build.fingerprint test-keys release-keys" \
+        "ro.vendor_dlkm.build.fingerprint userdebug user" \
+        "ro.vendor_dlkm.build.fingerprint test-keys release-keys"
 }
 
 # ---------- 伪装开关 ----------
@@ -136,107 +185,217 @@ apply_boot_hash() {
     [ "$now" = "$h" ]
 }
 
-# ---------- 属性快照 ----------
-# 说明：这台机 fork 很贵（真机现量：单键 getprop 15.7ms、单键 resetprop 读 32ms、
-#       一次全量 dump 56ms），而期望表是几十行，逐键读会把开机伪装与界面「写入并
-#       复核」拖进秒级。所以判定用的当前值改成"取一次快照，之后不起进程查表"。
+# ---------- 属性判定：一次 awk 出计划 ----------
+# 说明：判定要读"表里每一个属性的当前值"。两条老路都上机量过，都不合用：
+#   · 逐键起进程 —— 单键 getprop 15.7ms、单键 resetprop 读 32ms；这张表 52 行，
+#     开机伪装与界面「写入并复核」都会进秒级（现量 old 净 433ms）。
+#   · dump 进 shell 变量再参数展开查表 —— mksh 的字面匹配随字符串长度**平方级**
+#     增长：66897 字节 ×15 个键 = 160307ms；先拿 grep -F 裁到 2725 字节（52 键），
+#     再查 53 次仍然要 1841ms。裁小只是缓药，不是解。
+# 所以现在是一次 getprop + 一次 awk：awk 吃"两张表 + 全量 dump"，吐出行数与决策，
+# shell 只把该写的写下去。awk 是单遍扫描，表加多少行都不改变成本形状。
 #
-#       为什么快照要先用 grep -F 裁一刀，而不是直接对整份 dump 做参数展开：
-#       真机现量，mksh 在 66897 字节的变量上做**一次** `*"[key]: "*` 匹配就是十秒级
-#       ——15 个键实测 160307ms（最短匹配 ${var#*…} 更差，205267ms），照那样写开机
-#       要按分钟算。先拿表里的键名把 dump 裁成 429 字节（grep 一次 39ms），同样
-#       15 次查表只要 34ms。整条路 ~100ms，仍然好过逐键的 253ms。
-#
-#       两条限制写在这里，别后面误用：
-#         1) 写完的复核必须重新取快照（shell 侧由 props_readback 新起进程，
-#            Rust 侧写完再调一次）——拿写前那份自证等于什么都没复核。
-#         2) 快照拿不到（没有 getprop/grep、或一条都没裁中）时逐键回落，宁可慢，
-#            不可把"读不到"当成"属性不存在"而凭空写出一堆 stock 没有的键。
-# 用法：props_dump_prepare（成功返回 0，把裁过的 dump 装进 KL_PROP_DUMP）
-KL_NL='
-'
-KL_PROP_DUMP=""
+# 三条不许破的规矩：
+#   1) 复核必须重新取一次快照（shell 侧 props_readback 新起进程；Rust 写完重新
+#      prop_snapshot）——拿写前那份自证等于什么都没复核。
+#   2) awk 不在，或属性区一条都没读到（ndump==0）时退 2，调用方逐键回落。
+#      宁可慢，不可把"读不到"当成"属性不存在"而凭空写出一堆 stock 没有的键。
+#   3) 同一个属性名不许同时出现在固定表与特征表里（两处各写各的，说不清谁赢）；
+#      由 tests/props-plan.sh 钉住。
 PROP_NOW=""
+PROP_REWRITTEN=""
 
-props_dump_prepare() {
-    local name="" tail="" dump=""
+# 用法：props_substr_replace <值> <特征> <替换>；结果放在 PROP_REWRITTEN（不起进程）
+# 说明：与 awk 里的 rewrite() 同语义 —— 值里每一处特征都换，其余字符原样保留。
+props_substr_replace() {
+    local v="$1" needle="$2" rep="$3" out=""
 
-    # -e 参数现造：键名只有两张表这一个来源，给表加一行就自动进快照
-    set --
-    while read -r name tail; do
-        [ -n "$name" ] || continue
-        set -- "$@" -e "[$name]: "
-    done <<PAIRS
-$(props_expect_pairs)
-PAIRS
-    while read -r name tail; do
-        [ -n "$name" ] || continue
-        set -- "$@" -e "[$name]: "
-    done <<RULES
-$(props_expect_rules)
-RULES
-    [ "$#" -gt 0 ] || return 1
-
-    dump=$(getprop 2>/dev/null | grep -aF "$@" 2>/dev/null) || dump=""
-    case "$dump" in
-        *"]: "*) KL_PROP_DUMP="$KL_NL$dump" ;;   # 前面补一个换行，让第一行也能按行锚定
-        *)      KL_PROP_DUMP=""; return 1 ;;
-    esac
-    return 0
+    while [ -n "$v" ]; do
+        case "$v" in
+            *"$needle"*)
+                out="$out${v%%"$needle"*}$rep"
+                v=${v#*"$needle"}
+                ;;
+            *) out="$out$v"; v="" ;;
+        esac
+    done
+    PROP_REWRITTEN="$out"
 }
 
-# 用法：props_dump_get <属性名>；结果放在 PROP_NOW（不起进程）
-# 返回：0=查过了（值可能为空，表示该键不存在或值为空） 1=快照不可用，调用方应逐键回落
-props_dump_get() {
-    local rest=""
+# 用法：props_plan <display|write>
+#   display：每行「属性名	当前值	期望值(或特征描述)	状态」，顺序 = 固定表 + 特征表
+#            状态取 ok / diff / missing（固定表缺值，要凭空补出来）/ absent（特征表
+#            这台机压根没有这个分区，不算缺陷、不计入 mismatch）
+#   write  ：每行「属性名	应当写入的值」，只列真需要动的；同一个属性的多条特征
+#            按表序链式改完，合起来只出一条
+# 退 2 = 这次判定不可用（没有 awk / 属性区没读到 / 表行读不出列），调用方必须逐键回落。
+#
+# 说明：两张表**原样**喂给 awk，只在前面各加一行 P/R 模式标记 —— 全程 3 次 printf。
+#       以前这里是 shell 逐行 printf 拼 spec：设备上 mksh 的 printf **不是内置**，
+#       每一行都要 fork（真机现量 rules 38 行 = 582ms、pairs 15 行 = 269ms ≈ 850ms），
+#       比 awk 本身（40ms）+ getprop（65ms）贵一个数量级。表加行就贵 15ms，
+#       正是这张表要走的路。
+#       按"第一个空白切出属性名，其余整段留给值"解析，所以值里带空格也不会丢列；
+#       切不出值的行（没有空白）算表读不出 → 退 2 走逐键回落，不静默少掩一项。
+props_plan() {
+    local mode="${1:-display}" _awk="${AWK_CMD:-awk}"
 
-    [ -n "$KL_PROP_DUMP" ] || return 1
-    case "$KL_PROP_DUMP" in
-        *"$KL_NL[$1]: "*)
-            rest=${KL_PROP_DUMP##*"$KL_NL[$1]: "}
-            rest=${rest#\[}
-            rest=${rest%%"$KL_NL"*}          # 先按行切断，再剥行尾的那个 ]
-            PROP_NOW=${rest%]}
-            ;;
-        *) PROP_NOW="" ;;
-    esac
-    return 0
+    # 先把 awk 认准，再开管道。不能靠"管道右边 exec 失败"把错传出来：Git Bash 的 bash
+    # 会让左边写进一条没人读的管道**永久阻塞**（实测整个台子卡死），dash 与 mksh 却立刻返回。
+    # 判定这一步在开机路径上，任何"看 shell 心情"的失败模式都不许留。
+    # AWK_CMD 可能是「busybox awk」两个词，所以只查第一个词。
+    command -v "${_awk%% *}" >/dev/null 2>&1 || return 2
+
+    {
+        printf 'P\n'
+        props_expect_pairs
+        printf 'R\n'
+        props_expect_rules
+        printf -- '--\n'
+        getprop 2>/dev/null
+    } | ${_awk} -v MODE="$mode" '
+        BEGIN { FS = "\t"; OFS = "\t" }
+        function rewrite(v, needle, rep,   out, i) {
+            out = ""
+            while ((i = index(v, needle)) > 0) {
+                out = out substr(v, 1, i - 1) rep
+                v = substr(v, i + length(needle))
+            }
+            return out v
+        }
+        function head(rest,   i) {                # 取第一个空白前的那段
+            i = index(rest, " ")
+            if (i == 0) i = index(rest, "\t")
+            if (i == 0) return rest
+            return substr(rest, 1, i - 1)
+        }
+        function tail(rest,   i) {                # 去掉第一段与紧随的空白
+            i = index(rest, " ")
+            if (i == 0) i = index(rest, "\t")
+            if (i == 0) return ""
+            return substr(rest, i + 1)
+        }
+        sep == 0 {
+            if ($0 == "--") { sep = 1; next }
+            if ($0 == "P" || $0 == "R") { specmode = $0; next }
+            if (specmode == "") next              # 标记之前的杂行丢掉
+            name = head($0); rest = tail($0)
+            sub(/^[ \t]+/, "", rest)
+            if (name == "" || rest == "") { badspec = 1; next }
+            np++
+            if (specmode == "P") {
+                t[np] = "P"; key[np] = name; expv[np] = rest
+            } else {
+                t[np] = "R"; key[np] = name; ndl[np] = head(rest); rpl[np] = tail(rest)
+                sub(/^[ \t]+/, "", rpl[np])
+                if (ndl[np] == "" || rpl[np] == "") { badspec = 1; next }
+            }
+            want[name] = 1
+            next
+        }
+        {
+            line = $0
+            if (substr(line, 1, 1) != "[") next
+            i = index(line, "]: [")
+            if (i < 3) next
+            k = substr(line, 2, i - 2)
+            v = substr(line, i + 4)
+            sub(/\]$/, "", v)                     # 只剥行尾那一个 ]，值里的 ] 留着
+            if (k in want) { cur[k] = v; seen[k] = 1 }
+            ndump++
+            next
+        }
+        END {
+            if (badspec) { print "props_plan: 表里有读不出列的行" > "/dev/stderr"; exit 2 }
+            if (ndump == 0) { print "props_plan: 属性区一条都没读到" > "/dev/stderr"; exit 2 }
+            for (n = 1; n <= np; n++) {
+                k = key[n]
+                # 注意：不要写成 c = (k in seen) ? cur[k] : "" 之后又往 cur[k] 里放东西，
+                # 也不要把 `k in 数组` 塞进"同一个数组的赋值语句"的参数里 —— mawk 会先把
+                # 左边的元素创建出来，于是 (k in goal) 恒真、底数取到空串，链式改写整条
+                # 变成写空值（真机/WSL 的 mawk 上实测复现，Git Bash 的 gawk 却不会）。
+                # 一律用"先取标量、再判存在"的写法，两个方言都吃得下。
+                c = ""
+                if (k in seen) c = cur[k]
+                if (t[n] == "P") {
+                    e = expv[n]
+                    st = (c == "") ? "missing" : ((c == e) ? "ok" : "diff")
+                    if (MODE == "display") { print k, c, e, st; continue }
+                    goal[k] = e
+                } else {
+                    hit = 0
+                    if (c != "" && index(c, ndl[n]) > 0) hit = 1
+                    st = "ok"
+                    if (c == "") st = "absent"
+                    else if (hit) st = "diff"
+                    if (MODE == "display") {
+                        print k, c, "不含 " ndl[n] "（则改写为 " rpl[n] "）", st
+                        continue
+                    }
+                    if (hit) {
+                        base = c
+                        if (k in goal) base = goal[k]
+                        goal[k] = rewrite(base, ndl[n], rpl[n])
+                    }
+                }
+                if (!(k in touched)) { touched[k] = 1; ord[++no] = k }
+            }
+            if (MODE != "write") exit 0
+            for (n = 1; n <= no; n++) {
+                k = ord[n]
+                if (!(k in goal)) continue
+                c = ""
+                if (k in seen) c = cur[k]
+                if (goal[k] != c) print k, goal[k]
+            }
+        }'
 }
 
 # ---------- 应用伪装 ----------
-# 说明：逐项比对后写入期望值，已符合则不重复调用 resetprop；
-#       另外对含特定特征值的属性做替换。供 post-fs-data.sh 在 Zygote 前调用。
+# 说明：判定交给 props_plan（一次 getprop + 一次 awk），这里只负责落盘。
+#       供 post-fs-data.sh 在 Zygote 前调用。
 # 用法：apply_resetprop
 apply_resetprop() {
-    local name="" expected="" value="" use_dump=1
+    local plan="" name="" value="" tab="" rc=0
 
     command -v resetprop >/dev/null 2>&1 || return 0
-    props_dump_prepare || use_dump=0
 
-    # 每行形如「属性名 期望值」：当前值缺失或不同才写入
+    plan=$(props_plan write 2>/dev/null); rc=$?
+    if [ "$rc" != 0 ]; then
+        apply_resetprop_fallback
+        return 0
+    fi
+    tab=$(printf '\t')
+    while IFS="$tab" read -r name value; do
+        [ -n "$name" ] || continue
+        resetprop -n "$name" "$value" 2>/dev/null
+    done <<PLAN
+$plan
+PLAN
+    return 0
+}
+
+# 说明：awk 不在（或属性区读空）时的慢路 —— 逐键读写。
+#       特征行的链式改在这里靠"写一条读一次"天然成立：后一条规则读到的就是前一条
+#       刚写进去的值，与 props_plan 里一次性串完的结果同序同值。
+apply_resetprop_fallback() {
+    local name="" expected="" needle="" replacement="" value=""
+
     props_expect_pairs | while read -r name expected; do
         [ -n "$name" ] && [ -n "$expected" ] || continue
-        if [ "$use_dump" = 1 ]; then
-            props_dump_get "$name"; value="$PROP_NOW"
-        else
-            value=$(resetprop "$name" 2>/dev/null)
-        fi
+        value=$(resetprop "$name" 2>/dev/null)
         if [ -z "$value" ] || [ "$value" != "$expected" ]; then
             resetprop -n "$name" "$expected" 2>/dev/null
         fi
     done
 
-    # 值中含特定特征时整体替换
-    # 这一圈也必须用快照：特征表后面要比固定表长，逐键读等于把省下的 fork 又加回去。
     props_expect_rules | while read -r name needle replacement; do
         [ -n "$name" ] && [ -n "$needle" ] || continue
-        if [ "$use_dump" = 1 ]; then
-            props_dump_get "$name"; value="$PROP_NOW"
-        else
-            value=$(resetprop "$name" 2>/dev/null)
-        fi
+        value=$(resetprop "$name" 2>/dev/null)
         case "$value" in
-            *"$needle"*) resetprop -n "$name" "$replacement" 2>/dev/null ;;
+            *"$needle"*)
+                props_substr_replace "$value" "$needle" "$replacement"
+                resetprop -n "$name" "$PROP_REWRITTEN" 2>/dev/null ;;
         esac
     done
 }

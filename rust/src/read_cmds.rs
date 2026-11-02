@@ -537,10 +537,156 @@ const PROPS_PAIRS: &[(&str, &str)] = &[
     ("vendor.boot.warranty_bit", "0"),
 ];
 
+/// 特征替换表：**就地**替换 —— 把值里出现的每一处 needle 换成 replacement，其余原样。
+/// 与 lib/props.sh 的 props_expect_rules 同内容同顺序，由对拍守着。
+/// 覆盖的是"构建身份"这一族：只改顶层 ro.build.type/tags 会留下
+/// `ro.system.build.type=userdebug`、fingerprint 尾巴 `userdebug`、`ro.build.flavor`
+/// 带 userdebug 这类自相矛盾 —— 应用逐键读就能看见。
+/// 顺序有讲究：同一个属性的多条规则按这里的顺序链式改完、只落一次盘（见 props_write_plan）。
 const PROPS_RULES: &[(&str, &str, &str)] = &[
     ("ro.bootloader", "engineering", "release"),
+    ("ro.build.flavor", "userdebug", "user"),
+    ("ro.build.description", "userdebug", "user"),
     ("ro.build.description", "test-keys", "release-keys"),
+    ("ro.bootimage.build.type", "userdebug", "user"),
+    ("ro.odm.build.type", "userdebug", "user"),
+    ("ro.product.build.type", "userdebug", "user"),
+    ("ro.system.build.type", "userdebug", "user"),
+    ("ro.system_dlkm.build.type", "userdebug", "user"),
+    ("ro.system_ext.build.type", "userdebug", "user"),
+    ("ro.vendor.build.type", "userdebug", "user"),
+    ("ro.vendor_dlkm.build.type", "userdebug", "user"),
+    ("ro.bootimage.build.tags", "test-keys", "release-keys"),
+    ("ro.odm.build.tags", "test-keys", "release-keys"),
+    ("ro.product.build.tags", "test-keys", "release-keys"),
+    ("ro.system.build.tags", "test-keys", "release-keys"),
+    ("ro.system_dlkm.build.tags", "test-keys", "release-keys"),
+    ("ro.system_ext.build.tags", "test-keys", "release-keys"),
+    ("ro.vendor.build.tags", "test-keys", "release-keys"),
+    ("ro.vendor_dlkm.build.tags", "test-keys", "release-keys"),
+    ("ro.build.fingerprint", "userdebug", "user"),
+    ("ro.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.bootimage.build.fingerprint", "userdebug", "user"),
+    ("ro.bootimage.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.odm.build.fingerprint", "userdebug", "user"),
+    ("ro.odm.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.product.build.fingerprint", "userdebug", "user"),
+    ("ro.product.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.system.build.fingerprint", "userdebug", "user"),
+    ("ro.system.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.system_dlkm.build.fingerprint", "userdebug", "user"),
+    ("ro.system_dlkm.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.system_ext.build.fingerprint", "userdebug", "user"),
+    ("ro.system_ext.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.vendor.build.fingerprint", "userdebug", "user"),
+    ("ro.vendor.build.fingerprint", "test-keys", "release-keys"),
+    ("ro.vendor_dlkm.build.fingerprint", "userdebug", "user"),
+    ("ro.vendor_dlkm.build.fingerprint", "test-keys", "release-keys"),
 ];
+
+/// 两张表摊平成一个判定序列（awk 里是 spec 流，这里同构）。
+enum SpecRow {
+    Pair(&'static str, &'static str),
+    Rule(&'static str, &'static str, &'static str),
+}
+
+fn props_spec() -> Vec<SpecRow> {
+    let mut v = Vec::with_capacity(PROPS_PAIRS.len() + PROPS_RULES.len());
+    for (name, expected) in PROPS_PAIRS {
+        v.push(SpecRow::Pair(name, expected));
+    }
+    for (name, needle, replacement) in PROPS_RULES {
+        v.push(SpecRow::Rule(name, needle, replacement));
+    }
+    v
+}
+
+/// 展示四列，与 lib/props.sh 的 `props_plan display` 逐字节同形。
+/// 状态：固定表用 missing（缺了要凭空补出来），特征表用 absent
+/// —— 这台机压根没有那个分区不是缺陷，不能计入「写入并复核」的不符项。
+fn props_display_rows(snapshot: &std::collections::HashMap<String, String>) -> Vec<[String; 4]> {
+    let cur_of = |name: &str| -> String { snapshot.get(name).cloned().unwrap_or_default() };
+    let mut out = Vec::new();
+    for row in props_spec() {
+        match row {
+            SpecRow::Pair(name, expected) => {
+                let cur = cur_of(name);
+                let st = if cur.is_empty() {
+                    "missing"
+                } else if cur == expected {
+                    "ok"
+                } else {
+                    "diff"
+                };
+                out.push([name.to_string(), cur, expected.to_string(), st.to_string()]);
+            }
+            SpecRow::Rule(name, needle, replacement) => {
+                let cur = cur_of(name);
+                let st = if cur.is_empty() {
+                    "absent"
+                } else if cur.contains(needle) {
+                    "diff"
+                } else {
+                    "ok"
+                };
+                out.push([
+                    name.to_string(),
+                    cur,
+                    format!("不含 {needle}（则改写为 {replacement}）"),
+                    st.to_string(),
+                ]);
+            }
+        }
+    }
+    out
+}
+
+/// 写入计划，与 awk 的 `props_plan write` 同语义：固定表缺/不同就写期望值；
+/// 特征行命中就就地改写，同一个属性的多条规则按表序链式串完，合起来只出一条。
+fn props_write_plan(snapshot: &std::collections::HashMap<String, String>) -> Vec<(String, String)> {
+    let mut goal: std::collections::HashMap<String, String> = std::collections::HashMap::new();
+    let mut order: Vec<String> = Vec::new();
+    for row in props_spec() {
+        let (name, is_rule, needle, replacement, expected) = match row {
+            SpecRow::Pair(n, e) => (n, false, "", "", Some(e)),
+            SpecRow::Rule(n, nd, rp) => (n, true, nd, rp, None),
+        };
+        let touch = |order: &mut Vec<String>, name: &str| {
+            if !order.iter().any(|k| k == name) {
+                order.push(name.to_string());
+            }
+        };
+        if !is_rule {
+            goal.insert(name.to_string(), expected.unwrap_or_default().to_string());
+            touch(&mut order, name);
+            continue;
+        }
+        let cur = snapshot.get(name).cloned().unwrap_or_default();
+        if cur.is_empty() || !cur.contains(needle) {
+            continue;
+        }
+        let base = goal.get(name).cloned().unwrap_or_else(|| cur.clone());
+        goal.insert(name.to_string(), base.replace(needle, replacement));
+        touch(&mut order, name);
+    }
+    let mut plan = Vec::new();
+    for k in order {
+        let Some(g) = goal.get(&k) else { continue };
+        let c = snapshot.get(&k).cloned().unwrap_or_default();
+        if g != &c {
+            plan.push((k, g.clone()));
+        }
+    }
+    plan
+}
+
+/// cmd_props：name<TAB>当前<TAB>期望<TAB>状态（先固定表，再特征替换表）。
+pub fn props() {
+    let snap = prop_snapshot();
+    for row in props_display_rows(&snap) {
+        println_ok!("{}\t{}\t{}\t{}", row[0], row[1], row[2], row[3]);
+    }
+}
 
 fn getprop(name: &str) -> String {
     std::process::Command::new("getprop")
@@ -568,34 +714,6 @@ fn prop_snapshot() -> std::collections::HashMap<String, String> {
         }
     }
     m
-}
-
-/// cmd_props：name<TAB>当前<TAB>期望<TAB>状态（先固定表，再特征替换表）。
-pub fn props() {
-    let snap = prop_snapshot();
-    let cur_of = |name: &str| -> String { snap.get(name).cloned().unwrap_or_default() };
-    for (name, expected) in PROPS_PAIRS {
-        let cur = cur_of(name);
-        let st = if cur.is_empty() {
-            "missing"
-        } else if &cur == expected {
-            "ok"
-        } else {
-            "diff"
-        };
-        println_ok!("{}\t{}\t{}\t{}", name, cur, expected, st);
-    }
-    for (name, needle, replacement) in PROPS_RULES {
-        let cur = cur_of(name);
-        let st = if cur.is_empty() {
-            "missing"
-        } else if cur.contains(needle) {
-            "diff"
-        } else {
-            "ok"
-        };
-        println_ok!("{}\t{}\t不含 {}（则改写为 {}）\t{}", name, cur, needle, replacement, st);
-    }
 }
 
 /// tricky_patches.awk 的等价：global + `[包名]` 段，system/vendor/boot/all，
@@ -1143,29 +1261,28 @@ pub fn props_apply() {
         eprintln_ok!("属性伪装已关闭，请先在界面上重新开启");
         std::process::exit(1);
     }
-    // apply_resetprop：缺或不同才写；特征值整体替换
-    // 判定用的当前值来自一次全量 dump（真机现量：单键读 32ms × 几十行 = 秒级，
-    // 而 dump 一次 56ms）。dump 空了说明 getprop 没跑成，逐键回落 ——
-    // 不能把"读不到"当成"属性不存在"，那会凭空写出一堆 stock 没有的键。
+    // apply_resetprop：一次全量 dump 出计划，再按计划落盘（与 lib/props.sh 同语义）。
+    // dump 空了说明 getprop 没跑成，逐键回落 —— 不能把"读不到"当成"属性不存在"，
+    // 那会凭空写出一堆 stock 没有的键。
     let pre = prop_snapshot();
-    let use_pre = !pre.is_empty();
-    let cur_of = |name: &str| -> String {
-        if use_pre {
-            pre.get(name).cloned().unwrap_or_default()
-        } else {
-            resetprop(&[name])
+    if pre.is_empty() {
+        for (name, expected) in PROPS_PAIRS {
+            let cur = resetprop(&[name]);
+            if cur.is_empty() || cur != *expected {
+                let _ = resetprop(&["-n", name, expected]);
+            }
         }
-    };
-    for (name, expected) in PROPS_PAIRS {
-        let cur = cur_of(name);
-        if cur.is_empty() || cur != *expected {
-            let _ = resetprop(&["-n", name, expected]);
+        for (name, needle, replacement) in PROPS_RULES {
+            let cur = resetprop(&[name]);
+            if !cur.is_empty() && cur.contains(needle) {
+                // 就地替换每一处命中；同名多条规则会各自重读一次，天然链式
+                let v = cur.replace(needle, replacement);
+                let _ = resetprop(&["-n", name, &v]);
+            }
         }
-    }
-    for (name, needle, replacement) in PROPS_RULES {
-        let cur = cur_of(name);
-        if !cur.is_empty() && cur.contains(needle) {
-            let _ = resetprop(&["-n", name, replacement]);
+    } else {
+        for (name, value) in props_write_plan(&pre) {
+            let _ = resetprop(&["-n", &name, &value]);
         }
     }
     apply_boot_hash_quiet(&p);
@@ -1173,32 +1290,9 @@ pub fn props_apply() {
 
     // 复核：写完之后**重新取一次**快照，不复用写前那份。shell 侧的复核是新起
     // 一个进程跑 props（同样只用 getprop），所以这里也不给复核留 resetprop 回落：
-    // getprop 废掉时两侧都得报"全都读不到"，宁可红，不能一边靠另一边的工具兜住。
+    // getprop 废掉时两侧都得照实报读不到，宁可红，不能一边靠另一边的工具兜住。
     let post = prop_snapshot();
-    let now_of = |name: &str| -> String { post.get(name).cloned().unwrap_or_default() };
-    let mut rows: Vec<(String, String)> = Vec::new();
-    for (name, expected) in PROPS_PAIRS {
-        let cur = now_of(name);
-        let st = if cur.is_empty() {
-            "missing"
-        } else if &cur == expected {
-            "ok"
-        } else {
-            "diff"
-        };
-        rows.push((name.to_string(), st.to_string()));
-    }
-    for (name, needle, _replacement) in PROPS_RULES {
-        let cur = now_of(name);
-        let st = if cur.is_empty() {
-            "missing"
-        } else if cur.contains(needle) {
-            "diff"
-        } else {
-            "ok"
-        };
-        rows.push((name.to_string(), st.to_string()));
-    }
+    let rows = props_display_rows(&post);
     let want = PROPS_PAIRS.len();
     let got = rows.len();
     if got < want {
@@ -1207,7 +1301,8 @@ pub fn props_apply() {
         println_ok!("mismatch=-1");
         std::process::exit(1);
     }
-    let bad = rows.iter().filter(|(_, st)| st == "diff" || st == "missing").count();
+    // 只数 diff / missing：特征表那侧的 absent（这台机没那个分区）不是缺陷。
+    let bad = rows.iter().filter(|r| r[3] == "diff" || r[3] == "missing").count();
     println_ok!("applied=1");
     println_ok!("mismatch={}", bad);
 }

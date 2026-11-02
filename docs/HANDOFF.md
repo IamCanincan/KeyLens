@@ -30,9 +30,10 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **209 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性快照改造后的降级 3 条） | `sh rust/parity.sh` |
-| 属性快照（判定读数的一次 dump 化） | **17 条断言全过**：解析层逐键等于"一键一个文件"的 db、准备层钉住"快照行数=表里不同键数"（忘了 grep 就红）、getprop/grep 两种失效都回落；两处变异分别打中表里 16 行 / 让行数从 17 涨到 22 | `sh tests/props-snapshot.sh` |
-| shell 测试套 | **51 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell↔Rust 逐字节对拍 | **216 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B） | `sh rust/parity.sh` |
+| 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
+| 真机属性伪装 | **15 条断言全过**：臂 A 实测改写 10 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
+| shell 测试套 | **52 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
@@ -68,7 +69,7 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **51 套**，两边都得跑，各有盲区：
+shell 测试套 **52 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
@@ -121,6 +122,9 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-six.
 # OMK 的写路径（真写，夹具根，不碰正在用的配置；见 §5.11）
 adb push tests/device-omk-write.sh /data/adb/keylens-ab/device-omk-write.sh
 adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab AWKSRC=\$PWD/backends sh device-omk-write.sh"
+# 属性伪装（**会改运行期属性**，跑完自己逐个还原；不加 --write 就 skip，见 §5.13）
+adb push tests/device-props-mask.sh /data/adb/keylens-ab/device-props-mask.sh
+adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-props-mask.sh --write"
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -522,40 +526,83 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
    拿它做变异，改完两侧输出仍然一样，等于没变异；换成动 shell 侧 `write.sh` 的校验分支才真的响。
    记这条是因为"变异没落地"和"变异落了但没用"在输出上长得一模一样。
 
-## 5.12 属性伪装改读一次快照（开机侧 433→190ms，配对现量）
+## 5.12 属性判定改成"一次 getprop + 一次 awk 出计划"（为了把表补满）
 
-**动机不是"想优化"，是扩表扩不动**：期望表要从 17 行补到几十行，而 `apply_resetprop`
-以前每行起一次 `resetprop` 读当前值（真机现量单键 32ms）。照那个形状，光是把
-「构建身份」那一族补进去，开机就要多花 1 秒以上，界面「写入并复核」按两遍就是 2 秒。
+**动机不是"想优化"，是扩表扩不动**：`apply_resetprop` 以前每行起一次 `resetprop`
+读当前值（真机现量单键 32ms），而期望表要从 17 行补到 43 个属性名（见 §5.13）。
+照那个形状，开机与界面「写入并复核」都会进秒级。
 
-改成取一次快照后在 shell 内部查表。中间撞了一堵没预料到的墙：
+### 三条路都上机量过（mksh，同机同会话）
 
-| 做法 | 真机现量（mksh，同机同会话） |
+| 做法 | 现量 |
 |---|---|
-| 逐键 `resetprop` 读 17 次 | 253~433ms（视负载） |
-| 一次全量 `getprop` dump | 61ms（66897 字节 / 1561 键） |
-| 之后对这份 66KB 变量做 15 次 `*"[key]: "*` 最长匹配 | **160307ms** |
-| 同上但用最短匹配 `${var#*…}` | 205267ms |
-| 先用一次 `grep -F` 按表里的键名裁到 429 字节，再查 15 次 | grep 39ms + 查表 **34ms** |
+| 逐键 `resetprop` 读（旧路，17 行 / 43 行） | 253~433ms / 1484ms |
+| 一次全量 `getprop` dump | 61~94ms（66897 字节 / 1561 键） |
+| dump 进 shell 变量，15 次 `*"[key]: "*` 最长匹配 | **160307ms** |
+| 同上改最短匹配 `${var#*…}` | 205267ms |
+| 先 `grep -F` 裁到 2725 字节（52 键），再查 53 次 | **1841ms** |
+| 一次 `getprop` + 一次 awk 出计划 | **208ms**（awk 本体 40~82ms） |
 
-**mksh 的字符串匹配对长变量是灾难**，不是"慢一点"：66KB 上一次匹配就要十秒级，
-照"dump 进变量 + 参数展开查表"写，开机按分钟算。所以快照必须先裁一刀再查表 ——
-`tests/props-snapshot.sh` 里那条"快照行数 = 表里不同键数"就是专门盯这一刀的
-（变异②把 `grep -aF` 换成 `cat`，行数从 17 涨到 22，当场红）。
+**两条反直觉的结论**，都是量出来才看见的：
 
-配对计时（同机交替、各取三轮最快、扣掉同形状空调用的 baseline 46ms）：
-**old 433ms → new 190ms**，外部进程数 17 → 1（`grep` 不在计数桩里）。三轮的
-new/old 比值稳在 0.48~0.53。跑前后表内 17 个属性逐字节未变（`0967f9c6cc62`），
-现场指纹 `fb09038877b5acd8 / 1564 行` 也是前后一致。
+1. **mksh 的字面匹配随字符串长度平方级增长**，不是"慢一点"。66KB 上一次匹配就十秒级；
+   把 dump 裁到 2.7KB 之后 53 次查表仍要 1.8 秒 —— 裁小只是缓药。所以"读一次快照
+   再在 shell 里查表"这个看着最自然的方案**根本不成立**（198f59f 那一版就是这么写的，
+   量完发现不对，本轮换掉）。
+2. **设备上 `printf` 不是内置**（memory 里记过，这轮又踩）：在 shell 里逐行 `printf`
+   拼 spec，53 行 = 53 次 fork ≈ 850ms，比 awk 本体贵一个数量级。改成把两张表**原样**
+   喂给 awk（只加 P/R 模式标记，全程 3 次 printf），由 awk 按"第一个空白切属性名、
+   其余整段留给值"解析。这一改把 `props_plan` 从 942ms 压到 **208ms**。
 
-两侧读法对齐的两条硬要求（都是这轮定下的，别后面拆）：
+最终形状：awk 吃「两张表 + 全量 dump」，吐 `display`（四列，界面直接用）或
+`write`（该写的行）；shell 只负责逐行 `resetprop -n`。表的行数不再改变成本形状。
+
+配对计时（同机、同一张 43 键表、各取三轮最快）：**awk 路 485ms vs 逐键回落 1484ms**。
+`tests/device-props-mask.sh` 里那条判据钉的就是"awk 路必须真比回落快"，不然这通折腾没意义。
+
+两侧读法对齐的四条硬要求（本轮定下，别后面拆）：
 - **复核不许复用写前的快照**。shell 侧 `props_readback` 本来就新起进程（等于重取一次
   dump）；Rust 侧改成写完后重新 `prop_snapshot()`，并且**不给它留 resetprop 回落** ——
   留着就会出现"getprop 废了 Rust 还读得到、shell 读不到"，那是桩造出来的假差异
   （真机上 `getprop NAME` 与 `resetprop NAME` 读的是同一个属性区）。
+  parity 的"getprop 全废"降级三条钉的就是这个。
 - **对拍的桩只能有一份存储**。parity 的 `getprop` 桩现在认 `RP_DB`（写完读得回），
-  `resetprop` 桩读不到自己那份就转给 `getprop` 桩；以前 resetprop 桩只读 RP_DB、
-  getprop 桩只读固定表，改完快照后两侧决策来源不同，`mismatch` 差 16 项。
+  `resetprop` 桩读不到自己那份就转给 `getprop` 桩；以前两个桩各拿一份来源，
+  两侧决策来源不同，`mismatch` 差 16 项。
+- **awk 只在确认存在之后才开管道**。`AWK_CMD` 指向不存在的程序时，Git Bash 的 bash
+  会让左边写进一条没人读的管道**永久阻塞**（整个台子卡死 300 秒），dash 与 mksh 却
+  立刻返回。现在先 `command -v "${_awk%% *}"` 再走管道 —— 判定在开机路径上，
+  不能留"看 shell 心情"的失败模式。
+- **判定层必须过两种 awk**。本轮在 mawk 上撞到一个方言差：
+  `goal[k] = rewrite((k in goal) ? goal[k] : c, …)` 里 mawk 会先把左边那个元素创建出来，
+  于是 `(k in goal)` 恒真、底数取到空串，链式改写整条变成**写空值**；gawk 却不这样。
+  一律改成"先取标量、再判存在"。真机侧 `device-props-mask` 拿 toybox awk 与
+  busybox awk 各跑一遍比逐字节，防的就是这一类。
+
+## 5.13 期望表补满"构建身份"那一族（17 → 43 个属性名）
+
+起因是 DuckDetector 那份报告的 `[Build]` 区直接印着
+`ro.build.flavor: lineage_pdx234-userdebug`，设备上现量（`getprop | grep -a userdebug`）
+还有 8 个 `*.build.type=userdebug` 和 `ro.system.build.fingerprint` 的
+`:userdebug/release-keys` 尾巴，共 10 行。检测器今天只把这些放在 `[Info]` 不判级，
+但**任何应用逐键读得到**；而"顶层说 user、分区说 userdebug"是自相矛盾，
+比统一的 userdebug 更难看。
+
+- 特征表从 2 行补到 38 行：8 个分区 `build.type`、8 个分区 `build.tags`、
+  9 个指纹（顶层 + 8 分区）、`ro.build.flavor`、`ro.build.description` 的两个尾巴。
+- **特征行从"整值替换"改成"就地替换每一处命中"**。旧语义会把 `engineering-x`
+  压成 `release`、把整条 description 压成 `release-keys` —— 那比不改更像被动过。
+  同名多条规则（description、每个指纹）**链式串完只落一次盘**。
+- **本机没有的分区报 `absent`**：不计入「写入并复核」的不符项，也绝不凭空写出来 ——
+  凭空多一个 `ro.system_dlkm.build.type` 本身就是破绽（stock 不会给不存在的分区留属性）。
+  固定表那 15 项保留"缺失就补"的原语义，没动。
+- 真机证据（`tests/device-props-mask.sh --write`，15 条断言全过）：臂 A 实测改写
+  **10 个**属性（正对照）；跑完 shell 与 `bin/keylens` 两臂 43 个键逐字节相同；
+  属性区**没有新增键**；`applied=1 / mismatch=0`；toybox 与 busybox 两种 awk 同结果；
+  最后把 43 个键逐个还原并逐字节比对。
+- `device-ab` 这轮也补了自己的短板：它原来只快照开关与 boot_hash，
+  `props-apply` 把分区属性掩上之后**现场没还原** —— 是它自己的"差项数相同"不变量
+  报出来的（跑前 10、跑后 0）。现在逐个键快照 + 还原 + 逐字节比，38 条全过。
 
 ## 6. 坑（都踩过）
 
@@ -571,12 +618,32 @@ new/old 比值稳在 0.48~0.53。跑前后表内 17 个属性逐字节未变（`
   - 新增第三条（§5.12）：mksh 对**长变量**做字面量匹配是灾难而不是慢 —— 66897 字节的
     变量上 15 次 `##*"[key]: "*` 实测 160 秒（最短匹配 `#*` 更差，205 秒）。
     "dump 进变量再参数展开查表"这种写法在 WSL/dash 上完全测不出来（那边是微秒级），
-    只有真机会把它变成开机几分钟。要查表就先 `grep -F` 裁一刀。
+    只有真机会把它变成开机几分钟。就算先用 `grep -F` 裁到 2.7KB，53 次查表仍要 1841ms ——
+    裁小只是缓药，判长得交给 awk。
+  - 第四条（本轮最贵的一条）：**设备上 mksh 的 `printf` 不是内置**，每次 `printf` 都是一次
+    fork（现量 ~15ms）。在 shell 里逐行 `printf` 拼 53 行数据 ≈ 850ms，比 awk 本体贵一个
+    数量级；这类成本在 WSL/Git Bash 上**完全看不见**（那边 printf 是内置）。
+    逐行输出要么交给 awk，要么用内置 `print -r --`（但那不是 POSIX，dash 台子里不能用）。
 - **Android 没有 `/tmp`**：量测脚本里 `printf ... > /tmp/x.sh` 会失败，而后面的
   `sh /tmp/x.sh` 只报一句 no such file，计时照样给出 26~50ms 的"像样数字"——
   我差点把这份**一次都没跑成**的读数当结论。设备上临时文件一律 `/data/local/tmp`，
   并且子脚本要 `printf MARK` 让调用方证明它真跑了。
-    凡"用 0 命中下结论"的场合，先拿一个已知会命中的样本验它能数到非零。
+  凡"用 0 命中下结论"的场合，先拿一个已知会命中的样本验它能数到非零。
+- **设备上的 `diff` 不输出 `^>` 那种行**：`diff a b | grep -c '^>'` 在真机恒 0
+  （toybox diff 的默认格式与 Linux 不同，`cat -A` 也不支持）。台子里"数一数改了几行"
+  一律换成 `awk 'NR==FNR{a[FNR]=$0;n=FNR;next} FNR<=n && a[FNR]!=$0 {c++} END{print c+0}'`
+  这种单遍比较，并且**当场自证它能数出 1、也能数出 0**，否则等于没装仪表。
+- **awk 方言差会让同一段程序一边绿一边红**（本轮撞到，详见 §5.12）：mawk 里
+  `goal[k] = f((k in goal) ? goal[k] : c, …)` 会先创建左边元素，`(k in goal)` 恒真、
+  底数取到空串 ⇒ 链式改写变成**写空值**；gawk 不这样。WSL 是 mawk、Git Bash 是 gawk、
+  真机是 toybox/busybox awk ⇒ 判定层必须**两种 awk 各跑一遍比逐字节**
+  （`tests/device-props-mask.sh` 里那两条就是这个）。
+- **管道右边 exec 失败，左边在 Git Bash 会被写死**：`${AWK_CMD:-awk}` 指向不存在的程序时，
+  bash 让左边持续写一条没人读的管道 ⇒ 整段卡死；dash/mksh 立刻返回。凡是"先试某个外部
+  程序、失败就走慢路"的地方，都要 `command -v` 前置确认，别把成败交给管道。
+- **台子的 skip 顺序**：`device-props-mask.sh` 第一版先要求 `--write` 再判断在不在真机上，
+  于是 `for t in tests/*.sh` 的 CI 全跑恒红。规矩是**先判环境（不在设备上就 skip 退 0），
+  再判危险开关**。
 - **从源码抽函数当台子时，sed 的结束锚要写 `^}$` 而不是 `^}`**：`kl_capture_diff` 里那句 awk 程序以 `}' "$1" "$2" 2>/dev/null` 收尾，`^}` 会在那一行截断，抽出来的函数少个尾巴，症状是 shell 侧整条命令报 `Syntax error: end of file unexpected (expecting "}")`（对拍里表现为"输出不一致"，很容易被误读成实现有问题）。
 - **文档自己会撞改名残留闸**：上一轮的 `docs/HANDOFF.md` 把仓库绝对路径与三个守护进程标记原样写进去，`tools/name-residue-check.mjs` 当场报 6 处 → `tests/legacy-migrate.sh` 红。这条闸只在**有 node 的环境**里才真的响（WSL 没 node，走 skip 分支），所以两套环境都得跑。
 - **`tests/rust-dispatch.sh` 在 Windows Git Bash 下恒红**（`run` 取到空串），WSL 下全绿；HEAD 干净工作树里同样红，别把它当成新改动引入的失败。

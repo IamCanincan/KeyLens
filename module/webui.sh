@@ -1052,17 +1052,21 @@ cmd_log() {
 
 
 # ---------- 属性 ----------
-# 说明：期望值表来自 lib/props.sh，与 apply_resetprop 同源；当前值取自属性快照。
+# 说明：期望值表来自 lib/props.sh，与 apply_resetprop 同源；当前值交给 props_plan
+#       （一次 getprop + 一次 awk）。awk 不在或属性区读空时逐键回落，两条路输出
+#       逐字节同形 —— 界面这一屏必须两边都好看，不然老设备上会空一格。
 cmd_props() {
-    local name expected needle replacement cur st use_dump=1
+    local name expected needle replacement cur st out="" rc=0
 
-    # 一次全量 dump 供整屏查表；拿不到就逐键回落（与 apply_resetprop 同一条规矩）
-    props_dump_prepare || use_dump=0
+    out=$(props_plan display 2>/dev/null); rc=$?
+    if [ "$rc" = 0 ] && [ -n "$out" ]; then
+        printf '%s\n' "$out"
+        return 0
+    fi
 
     while read -r name expected; do
         [ -n "$name" ] || continue
-        if [ "$use_dump" = 1 ]; then props_dump_get "$name"; cur="$PROP_NOW"
-        else prop_now "$name"; cur="$PROP_NOW"; fi
+        prop_now "$name"; cur="$PROP_NOW"
         if [ -z "$cur" ]; then st=missing
         elif [ "$cur" = "$expected" ]; then st=ok
         else st=diff
@@ -1074,10 +1078,9 @@ PAIRS
 
     while read -r name needle replacement; do
         [ -n "$name" ] || continue
-        if [ "$use_dump" = 1 ]; then props_dump_get "$name"; cur="$PROP_NOW"
-        else prop_now "$name"; cur="$PROP_NOW"; fi
+        prop_now "$name"; cur="$PROP_NOW"
         case "$cur" in
-            '')          st=missing ;;
+            '')          st=absent ;;
             *"$needle"*) st=diff ;;
             *)           st=ok ;;
         esac

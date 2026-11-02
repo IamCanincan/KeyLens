@@ -389,7 +389,20 @@ ro.vendor.boot.warranty_bit|0
 ro.vendor.warranty_bit|0
 vendor.boot.warranty_bit|0
 ro.bootloader|engineering
-ro.build.description|test-keys'
+ro.build.description|test-keys
+ro.build.flavor|lineage_pdx234-userdebug
+ro.system.build.type|userdebug
+ro.vendor.build.type|userdebug
+ro.product.build.type|userdebug
+ro.system_ext.build.type|userdebug
+ro.odm.build.type|userdebug
+ro.bootimage.build.type|userdebug
+ro.system.build.tags|test-keys
+ro.build.fingerprint|Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:userdebug/test-keys
+ro.system.build.fingerprint|Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:userdebug/release-keys
+ro.vendor.build.fingerprint|Sony/XQ-DQ72/XQ-DQ72:15/67.2.A.3.178/067002A003017800521143226:user/release-keys'
+# 注意：ro.system_dlkm.* 与 ro.vendor_dlkm.* 故意不给 —— 那两条规则必须报 absent
+# （这台机没这个分区），既不能计入「写入并复核」的不符项，也不能凭空把属性写出来。
 {
   printf '#!/bin/sh\nTBL=%s\n' "'$TBL_PROPS'"
   cat <<'EOF'
@@ -444,6 +457,14 @@ GETPROP_LOG="$T/gp.shell" PATH="$T/bin:$PATH" sh "$T/pr.sh" >/dev/null 2>&1
 chk 'props：Rust 侧只起一次 getprop（快照）' "1" "$(wc -l < "$T/gp.rust" | tr -d ' ')"
 chk 'props：shell 侧同样只起一次（不再逐键 17 次）' "1" "$(wc -l < "$T/gp.shell" | tr -d ' ')"
 chk 'props：shell 那一次是无参数 dump' "$(cat "$T/gp.shell")" "<dump>"
+# absent（这台机压根没这个分区）必须存在且不为 0，否则"absent 不计入不符"那条是空转。
+# 写成一条 chk 是为了让它也进 oks 计数（parity 里只有 chk 会数）。
+_pab_tab=$(printf '\t')
+_pa_shell=$(PATH="$T/bin:$PATH" sh "$T/pr.sh" | grep -ac "${_pab_tab}absent$")
+_pa_rust=$(PATH="$T/bin:$PATH" "$B" props | grep -ac "${_pab_tab}absent$")
+chk 'props：absent 行数两侧相同且 > 0（夹具故意不给 dlkm 分区）' \
+    "$([ "$_pa_shell" -gt 0 ] && printf yes || printf no)/$_pa_shell/$_pa_rust" \
+    "yes/$_pa_shell/$_pa_shell"
 
 echo "── tricky-patches（global + 包段 + all=）──"
 TP="$T/tproot"
@@ -705,11 +726,14 @@ sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pa.sh"
 sed -n '/^cmd_props_apply() {/,/^}/p' module/lib/write.sh >> "$T/pa.sh"
 echo 'props_readback() { cmd_props; }' >> "$T/pa.sh"
 echo 'cmd_props_apply' >> "$T/pa.sh"
-# 期望表里故意留两项错的、一项缺的
+# 期望表里故意留几项错的；dlkm 两个分区故意不给（absent 那条路必须走）
 cat > "$T/bin/resetprop" <<'EOF'
 #!/bin/sh
 db="${RP_DB:?}"
-if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
+if [ "$1" = "-n" ]; then
+    [ -n "${RP_LOG:-}" ] && printf '%s\n' "$2" >> "$RP_LOG"
+    mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0
+fi
 if [ "$1" = "--version" ]; then echo fake; exit 0; fi
 [ -f "$db/$1" ] && { cat "$db/$1"; exit 0; }
 # 读不到自己那份就转给 getprop 桩：真机上这两个工具读的是同一个属性区，
@@ -722,7 +746,35 @@ printf '0' > "$T/rpdb2/ro.debuggable"
 printf 'user' > "$T/rpdb2/ro.build.type"
 printf 'engineering-x' > "$T/rpdb2/ro.bootloader"
 chk 'props-apply：写一次后复核（输出）' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
-chk 'props-apply：写入后的值' "$(cat "$T/rpdb2/ro.debuggable")/$(cat "$T/rpdb2/ro.bootloader")" "0/release"
+# 就地替换：值里命中的那一段换掉，其余原样留着（以前的整值替换会把 engineering-x 压成 release）
+chk 'props-apply：写入后的值（就地替换）' "$(cat "$T/rpdb2/ro.debuggable")/$(cat "$T/rpdb2/ro.bootloader")" "0/release-x"
+
+# ── 状态 A/B：两侧各拿一份全新的属性区跑完，逐字节比"跑完之后长什么样" ──
+# 输出相同只证明说话一样，属性区相同才证明动手一样：少写、多写、把 absent
+# 的分区凭空写出来，都只在这条上现形。
+rm -rf "$T/rpdb4" "$T/rpdb5" "$T/rpw4" "$T/rpw5"; mkdir -p "$T/rpdb4" "$T/rpdb5"
+for d in "$T/rpdb4" "$T/rpdb5"; do
+    printf '0' > "$d/ro.debuggable"
+    printf 'user' > "$d/ro.build.type"
+    printf 'engineering-x' > "$d/ro.bootloader"
+done
+PATH="$T/bin:$PATH" RP_LOG="$T/rpw4" RP_DB="$T/rpdb4" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" >/dev/null 2>&1
+PATH="$T/bin:$PATH" RP_LOG="$T/rpw5" RP_DB="$T/rpdb5" KEYLENS_ROOT="$PA" "$B" props-apply >/dev/null 2>&1
+store_of() { ( cd "$1" && for f in *; do printf '%s=[%s]\n' "$f" "$(cat "$f")"; done ); }
+chk 'props-apply：两侧写完的属性区逐字节相同' "$(store_of "$T/rpdb4")" "$(store_of "$T/rpdb5")"
+chk 'props-apply：链式改只落一次盘（ro.build.fingerprint 两条规则合成一次写）' \
+    "$(grep -ac '^ro.build.fingerprint$' "$T/rpw4")/$(grep -ac '^ro.build.fingerprint$' "$T/rpw5")" "1/1"
+chk 'props-apply：链式改的最终值两处特征都没了（绝对判据，不是互读）' \
+    "$(cat "$T/rpdb4/ro.build.fingerprint")/$(cat "$T/rpdb5/ro.build.fingerprint")" \
+    "Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:user/release-keys/Sony/XQ-DQ72/XQ-DQ72:17/CP2A.260605.016/a3e55c6845:user/release-keys"
+chk 'props-apply：absent 的分区没被凭空创建（dlkm 一个都不许出现）' \
+    "$(ls "$T/rpdb4" "$T/rpdb5" | grep -ac dlkm)/$(ls "$T/rpdb4" "$T/rpdb5" | grep -ac dlkm)" "0/0"
+chk 'props-apply：分区 type 真的被改写（正对照）' \
+    "$(cat "$T/rpdb4/ro.system.build.type")/$(cat "$T/rpdb5/ro.system.build.type")" "user/user"
+# 再点一次：一切都已到位，absent 的那批分区不许被算成不符
+chk 'props-apply：跑完再点一次 = applied 1 / mismatch 0（absent 不扣分）' \
+    "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb4" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1 | tr '\n' '|')" \
+    "applied=1|mismatch=0|"
 mkdir -p "$PA/data/adb"; : > "$PA/data/adb/keylens.props_off"
 chk 'props-apply：开关关闭时拒绝' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
 rm -f "$PA/data/adb/keylens.props_off"
@@ -739,9 +791,9 @@ chk '降级：输出逐字节一致' \
     "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" \
     "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
 chk '降级：复核读不到 → mismatch 必须非 0（不许报 0 项不符）' \
-    "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1 | sed -n 's/^mismatch=//p')" "17"
-chk '降级：写入仍发生（resetprop 回落在用）' \
-    "$(cat "$T/rpdb3/ro.debuggable")/$(cat "$T/rpdb3/ro.bootloader")" "0/release"
+    "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1 | sed -n 's/^mismatch=//p')" "15"
+chk '降级：写入仍发生（就地替换后的值）' \
+    "$(cat "$T/rpdb3/ro.debuggable")/$(cat "$T/rpdb3/ro.bootloader")" "0/release-x"
 
 echo "── tricky-drop-patch（删 [scope] 段）──"
 mk_drop_harness() { # <root>
@@ -1818,7 +1870,8 @@ echo
 # 181 → 205：env 探针缓存一节（冷=热 / 互读 / 热跑不起 getprop·dumpsys·wm·id / 键名逐个点名 / 换版本重探）
 # 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
 # 205 → 209：属性判定改成一次 dump（shell 侧不再逐键 17 次）+ getprop 全废的降级 3 条
-if [ "$oks" -lt 209 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 209），疑似用例被删"; fail=1
+# 209 → 216：判定换成一次 awk 出计划 + 期望表补满"构建身份"那一族（状态 A_B、链式只落一次、absent 不凭空创建）
+if [ "$oks" -lt 216 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 216），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

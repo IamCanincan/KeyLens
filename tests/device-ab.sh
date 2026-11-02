@@ -75,10 +75,22 @@ snapshot_flags() {
     _po=no; [ -f /data/adb/keylens.props_off ] && _po=yes
     _bh=""; [ -f /data/adb/keylens.boot_hash ] && _bh=$(tr -d '[:space:]' < /data/adb/keylens.boot_hash)
     _pc=$(sh "$MODDIR/webui.sh" props 2>/dev/null | awk -F'\t' 'NF>1 && $4!="ok" {c++} END{print c+0}')
+    # 运行期属性值本身也要快照：props-apply 的"正确结果"就是改它们。2026-11-02 期望表
+    # 补了分区 type/flavor/fingerprint 之后，第一次 --write 就报"跑前 10、跑后 0"——
+    # 那条不变量是对的，缺的是还原。键名取自表本身（props 页的第一列），不写死清单。
+    sh "$MODDIR/webui.sh" props 2>/dev/null | cut -f1 | LC_ALL=C sort -u > "$T/props.keys"
+    while read -r k; do
+        [ -n "$k" ] || continue
+        printf '%s\t%s\n' "$k" "$(getprop "$k")"
+    done < "$T/props.keys" > "$T/props.vals"
+    _nkeys=$(grep -ac . "$T/props.vals")
 }
 restore_flags() {
-    if [ "$_po" = yes ]; then : > /data/adb/keylens.props_off; chmod 600 /data/adb/keylens.props_off 2>/dev/null
-    else rm -f /data/adb/keylens.props_off; fi
+    if [ "$_po" = yes ]; then
+        : > /data/adb/keylens.props_off; chmod 600 /data/adb/keylens.props_off 2>/dev/null
+    else
+        rm -f /data/adb/keylens.props_off
+    fi
     if [ -n "$_bh" ]; then
         sh "$MODDIR/webui.sh" props-boot-hash "$_bh" >/dev/null 2>&1
     else
@@ -86,6 +98,11 @@ restore_flags() {
     fi
     # props-off 不回滚运行期值、props-boot-hash - 会清 digest ⇒ 跑完再应用一次
     sh "$MODDIR/webui.sh" props-apply >/dev/null 2>&1
+    # 再把运行期属性逐个退回快照值（resetprop -n 只改内存，重启回系统原值）
+    while IFS='	' read -r k v; do
+        [ -n "$k" ] || continue
+        [ "$(getprop "$k")" = "$v" ] || resetprop -n "$k" "$v" 2>/dev/null
+    done < "$T/props.vals"
 }
 
 fail=0; n=0
@@ -124,10 +141,21 @@ if [ "$WITH_WRITE" = 1 ]; then
     _po2=no; [ -f /data/adb/keylens.props_off ] && _po2=yes
     _bh2=""; [ -f /data/adb/keylens.boot_hash ] && _bh2=$(tr -d '[:space:]' < /data/adb/keylens.boot_hash)
     _pc2=$(sh "$MODDIR/webui.sh" props 2>/dev/null | awk -F'\t' 'NF>1 && $4!="ok" {c++} END{print c+0}')
+    # 逐个属性值再比一次（比"差项数相同"强：数一样但值被换过，这条会抓）
+    while read -r k; do
+        [ -n "$k" ] || continue
+        printf '%s\t%s\n' "$k" "$(getprop "$k")"
+    done < "$T/props.keys" > "$T/props.vals2"
     [ "$_po" = "$_po2" ] && echo "  ok   属性伪装开关已还原（props_off=$_po）" \
         || { echo "  ✗   属性伪装开关没还原：跑前 $_po、跑后 $_po2"; fail=1; }
     [ "$_bh" = "$_bh2" ] && echo "  ok   boot_hash 已还原（${_bh:-未配置}）" \
         || { echo "  ✗   boot_hash 没还原：跑前 [${_bh}]、跑后 [${_bh2}]"; fail=1; }
+    if cmp -s "$T/props.vals" "$T/props.vals2"; then
+        echo "  ok   运行期属性逐个回到跑前（$_nkeys 个键逐字节相同）"
+    else
+        echo "  ✗   运行期属性没回到跑前，差异：$(awk 'NR==FNR{a[FNR]=$0;n=FNR;next} FNR<=n && a[FNR]!=$0 {print; exit}' "$T/props.vals" "$T/props.vals2")"
+        fail=1
+    fi
     [ "$_pc" = "$_pc2" ] && echo "  ok   属性差项数与跑前相同（非 ok = $_pc）" \
         || { echo "  ✗   属性差项数变了：跑前 $_pc、跑后 $_pc2"; fail=1; }
 fi
