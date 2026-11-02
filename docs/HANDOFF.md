@@ -67,10 +67,12 @@
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release
 # aarch64 静态（本机没 NDK，用 musl + rust-lld；真机上可直接跑）
 RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
-# 对拍（216 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
+# 对拍（242 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
 # 是在 WSL Debian 里跑同一份 x86_64-musl 产物 —— 那边 awk 是 mawk，与 Git Bash 的 gawk
 # 会给出不同结果，见 §5.12 的方言差）
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
+# 从 Windows 这边跑并读到**真退码**（内联 echo $? 会被本地 shell 吞掉，见 §6）：
+wsl -d Debian sh /mnt/d/<仓库路径>/tools/wsl-parity.sh   # 末行 = parity exit=N｜结论
 ```
 
 shell 测试套 **53 套**，两边都得跑，各有盲区：
@@ -687,7 +689,10 @@ effective=0561fff0… / status=ok`，`getprop ro.boot.vbmeta.digest` 一字未�
 - **从 Git Bash 内联问 WSL 的退码会恒 0**：`wsl -d Debian bash -c 'sh rust/parity.sh; echo exit=$?'`
   里那个 `$?` 在本地就被展开掉了，量到的 `exit=0` 与对拍真实成败无关（`wsl -d Debian bash -c 'exit 7'`
   的退码倒是正常传播的）。本轮差点据此宣布"parity.sh 的退码逻辑坏了、CI 那道闸形同虚设"。
-  要看退码就让它落进文件再读（`_harness/run-parity.sh` → `_harness/parity-wsl.exit`）。
+  要看退码就让它落进文件再读：`sh tools/wsl-parity.sh`（WSL 侧跑）会把结论与自己的退码
+  写在 `rust/parity-wsl.log` 的最后一行，形如 `parity exit=0｜全部通过（chk 用例 242 项）`。
+  这条 runner 顺带被对拍自己的陈旧守卫救了一次：改完注释没重编，它直接退 1 说
+  「二进制比源码旧」——Windows 那边读到 `exit=1` 才看得见这件事。
 - **台架的假数据必须是真形状**（2026-11-02 这条值一整轮）：`webui/src/bridge.js` 里 `props`
   的演示数据是手写的 5 行，其中 `ro.product.brand` / `ro.serialno` **根本不在期望表里**。
   于是属性页从没按真形状渲染过一次 —— 命令层新增第四种状态 `absent` 之后，界面那句三元

@@ -93,6 +93,11 @@
   统一走 `getprop`（写完的复核仍走 `resetprop`，两边同），并补 `RP_READ_DEAD=1` 这条控制与
   「那种情况下 `current=` 必须等于真值」的绝对判据：只加"两侧相同"不够，那版两侧一起报空照样过。
   两个变异各自自证（夹具退回手抄版 → 两侧相同那条响；Rust 退回 resetprop → 绝对判据那条响）。
+* 新增 `tools/wsl-parity.sh`：在 WSL 侧跑对拍并把**结论和自己的退码写在同一行**
+  （`parity exit=0｜全部通过（chk 用例 242 项）`）。理由是本坑：从 Git Bash 内联
+  `wsl bash -c '…; echo $?'` 里的 `$?` 会被本地 shell 提前展开，量到的永远是 0 —— 本轮
+  差点据此误报"对拍的退码逻辑坏了、CI 那道闸形同虚设"。这条 runner 自带反面对照
+  （指一个不存在的二进制 → `parity exit=1`），也顺带被对拍的陈旧守卫救了一次。
 * 台子覆盖：真机 A/B 38 条全过，shell 测试套 53 套在 WSL(mawk) 与 Git Bash(gawk) 两边全绿。
 * 界面这一层：`tools/md3e-build/verify.mjs` 加 4 条属性页断言（53 行逐行上屏、absent 画
   「本机无」、标题只数 9 项、absent 不挂 warn 色），`mutate-verify.mjs` 从 2 个变异加到
