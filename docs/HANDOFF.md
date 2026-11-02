@@ -20,7 +20,12 @@
   `git config` 的代理，要显式给 `HTTPS_PROXY`。`static.rust-lang.org`（rustup target）本来就可达。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
-  模块已装：`/data/adb/modules/keylens`（OMK 后端）。**目录里的模块版本串还写着 v3.0.2，但文件已是 3.0.3 的内容**（二进制 sha256 前 16 位 `0905d3b7bb383ea5`，props.sh / lib 都同步过）；要管理器显示 v3.0.3 得刷一次 §3.12 的包。测试用的临时副本 `/data/adb/keylens-ab`
+  模块已装：`/data/adb/modules/keylens`（OMK 后端）。**2026-11-03 00:30 主人已用管理器更新到 v3.0.3**
+  （`versionCode=2026110300`、`bin/keylens` 326,416 字节 / sha256 前 16 位 `0905d3b7bb383ea5`），
+  并与发布包逐文件比过：除 `META-INF/`+`customize.sh`（装完即删）、`module.prop` 的
+  description（运行期改成实时状态）、`webroot/icons/`（设备生成）三处外**逐字节相同**。
+  更新后重启过一次（开机日志：`🚀 开机完成（等了 14 秒）` → 属性复核 → 同步按指纹跳过），
+  重启后 `boot-hash` = auto·omk·ok、`props` 53/53、`doctor` 11·0·0。测试用的临时副本 `/data/adb/keylens-ab`
   **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（先 mkdir，再一条 deploy + 六条 push）。
 
 ## 1. 现在完成到哪
