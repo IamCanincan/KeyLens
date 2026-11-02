@@ -72,11 +72,19 @@ const REQUIRED_ALL = [...REQUIRED, BIN_REL];
 const MISSING_FROM_LIST = SOURCED.filter(s => !REQUIRED.includes(s));
 
 const execy = (rel) => /\.sh$|\.awk$|update-binary$|updater-script$/.test(rel) || /(^|\/)keylens$/.test(rel) || rel.endsWith('/');
+/* 运行时才生成、不该进包的两处：
+   - webroot/icons/：由设备上的 `webui.sh icons` 写出来（.gitignore 也把它当运行期目录），
+     打进包只是把某人机器上的旧图标带出去 —— v3.0.2 实测带了 3 张、33KB。
+   - bin/：二进制由下面显式追加（取 rust 产物）；磁盘上若有残留，walk 再走一遍就成了
+     两条同名条目（后写的那条覆盖前者，体积白涨）。 */
+const SKIP_REL = new Set(['webroot/icons', 'bin']);
+
 function walk(dir, base, out) {
   for (const name of fs.readdirSync(dir).sort()) {
     if (name === '.DS_Store' || name.endsWith('.tmp')) continue;
     const p = path.join(dir, name);
     const rel = (base ? base + '/' : '') + name;
+    if (SKIP_REL.has(rel)) continue;
     const st = fs.statSync(p);
     if (st.isDirectory()) { out.push({ rel: rel + '/', dir: true }); walk(p, rel, out); }
     else out.push({ rel, file: p, size: st.size });
@@ -173,6 +181,13 @@ if (CHECK) {
   chk('made-by 是 UNIX', list.every(e => e.madeby === 0x03), 'first=' + (list[0] || {}).madeby);
   const idx = list.find(e => e.name === 'webroot/index.html');
   chk('界面产物在包里且不是空的', !!idx && idx.uncomp > 400000, idx ? (idx.uncomp / 1024).toFixed(0) + ' KB' : '缺');
+  /* 这两条是 2026-11-02 现量出来的：v3.0.2 的包里有 3 张运行时图标（33KB），
+     以及 walk 与显式追加可能同时写 bin/keylens（同名两条，体积白涨）。 */
+  const icons = list.filter(e => /^webroot\/icons\//.test(e.name));
+  chk('包里没有运行时缓存（webroot/icons/ 由设备自己生成）', icons.length === 0,
+    icons.map(e => e.name).join(' '));
+  chk('bin/keylens 只有一条（walk 与显式追加不重复）',
+    list.filter(e => e.name === 'bin/keylens').length === 1, '');
   process.exit(bad ? 1 : 0);
 }
 
@@ -186,6 +201,13 @@ const entries = walk(MOD, '', []);
 /* bin/ 不在 module/ 里（产物目录），手动补两条条目：目录 + 文件，权限走 execy() */
 entries.push({ rel: 'bin/', dir: true });
 entries.push({ rel: BIN_REL, file: BIN_SRC, size: fs.statSync(BIN_SRC).size });
+/* 落盘前自证：跳过表没生效时这里当场退出，不把一个白涨体积的包写出去 */
+const dupBin = entries.filter(e => e.rel === BIN_REL).length;
+const leaked = entries.filter(e => /^webroot\/icons\//.test(e.rel)).map(e => e.rel);
+if (dupBin !== 1 || leaked.length) {
+  console.error(`✗ 打包清单不对：bin/keylens ${dupBin} 条；运行时缓存泄漏 ${leaked.length} 个（${leaked.slice(0, 3).join(' ')}）`);
+  process.exit(1);
+}
 const buf = build(entries);
 fs.writeFileSync(TARGET, buf);
 console.log(`已打包 ${path.relative(repo, TARGET)}：${(buf.length / 1024).toFixed(1)} KB，${entries.length} 个条目（正斜杠 + unix 权限）`);
