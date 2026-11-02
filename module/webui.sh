@@ -1054,11 +1054,15 @@ cmd_log() {
 # ---------- 属性 ----------
 # 说明：期望值表来自 lib/props.sh，与 apply_resetprop 同源；当前值取自属性快照。
 cmd_props() {
-    local name expected needle replacement cur st
+    local name expected needle replacement cur st use_dump=1
+
+    # 一次全量 dump 供整屏查表；拿不到就逐键回落（与 apply_resetprop 同一条规矩）
+    props_dump_prepare || use_dump=0
 
     while read -r name expected; do
         [ -n "$name" ] || continue
-        prop_now "$name"; cur="$PROP_NOW"
+        if [ "$use_dump" = 1 ]; then props_dump_get "$name"; cur="$PROP_NOW"
+        else prop_now "$name"; cur="$PROP_NOW"; fi
         if [ -z "$cur" ]; then st=missing
         elif [ "$cur" = "$expected" ]; then st=ok
         else st=diff
@@ -1070,7 +1074,8 @@ PAIRS
 
     while read -r name needle replacement; do
         [ -n "$name" ] || continue
-        prop_now "$name"; cur="$PROP_NOW"
+        if [ "$use_dump" = 1 ]; then props_dump_get "$name"; cur="$PROP_NOW"
+        else prop_now "$name"; cur="$PROP_NOW"; fi
         case "$cur" in
             '')          st=missing ;;
             *"$needle"*) st=diff ;;

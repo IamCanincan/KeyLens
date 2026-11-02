@@ -30,8 +30,9 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **205 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条） | `sh rust/parity.sh` |
-| shell 测试套 | **50 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell↔Rust 逐字节对拍 | **209 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性快照改造后的降级 3 条） | `sh rust/parity.sh` |
+| 属性快照（判定读数的一次 dump 化） | **17 条断言全过**：解析层逐键等于"一键一个文件"的 db、准备层钉住"快照行数=表里不同键数"（忘了 grep 就红）、getprop/grep 两种失效都回落；两处变异分别打中表里 16 行 / 让行数从 17 涨到 22 | `sh tests/props-snapshot.sh` |
+| shell 测试套 | **51 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
@@ -67,7 +68,7 @@ RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo bui
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 ```
 
-shell 测试套 **50 套**，两边都得跑，各有盲区：
+shell 测试套 **51 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
@@ -521,7 +522,44 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
    拿它做变异，改完两侧输出仍然一样，等于没变异；换成动 shell 侧 `write.sh` 的校验分支才真的响。
    记这条是因为"变异没落地"和"变异落了但没用"在输出上长得一模一样。
 
+## 5.12 属性伪装改读一次快照（开机侧 433→190ms，配对现量）
+
+**动机不是"想优化"，是扩表扩不动**：期望表要从 17 行补到几十行，而 `apply_resetprop`
+以前每行起一次 `resetprop` 读当前值（真机现量单键 32ms）。照那个形状，光是把
+「构建身份」那一族补进去，开机就要多花 1 秒以上，界面「写入并复核」按两遍就是 2 秒。
+
+改成取一次快照后在 shell 内部查表。中间撞了一堵没预料到的墙：
+
+| 做法 | 真机现量（mksh，同机同会话） |
+|---|---|
+| 逐键 `resetprop` 读 17 次 | 253~433ms（视负载） |
+| 一次全量 `getprop` dump | 61ms（66897 字节 / 1561 键） |
+| 之后对这份 66KB 变量做 15 次 `*"[key]: "*` 最长匹配 | **160307ms** |
+| 同上但用最短匹配 `${var#*…}` | 205267ms |
+| 先用一次 `grep -F` 按表里的键名裁到 429 字节，再查 15 次 | grep 39ms + 查表 **34ms** |
+
+**mksh 的字符串匹配对长变量是灾难**，不是"慢一点"：66KB 上一次匹配就要十秒级，
+照"dump 进变量 + 参数展开查表"写，开机按分钟算。所以快照必须先裁一刀再查表 ——
+`tests/props-snapshot.sh` 里那条"快照行数 = 表里不同键数"就是专门盯这一刀的
+（变异②把 `grep -aF` 换成 `cat`，行数从 17 涨到 22，当场红）。
+
+配对计时（同机交替、各取三轮最快、扣掉同形状空调用的 baseline 46ms）：
+**old 433ms → new 190ms**，外部进程数 17 → 1（`grep` 不在计数桩里）。三轮的
+new/old 比值稳在 0.48~0.53。跑前后表内 17 个属性逐字节未变（`0967f9c6cc62`），
+现场指纹 `fb09038877b5acd8 / 1564 行` 也是前后一致。
+
+两侧读法对齐的两条硬要求（都是这轮定下的，别后面拆）：
+- **复核不许复用写前的快照**。shell 侧 `props_readback` 本来就新起进程（等于重取一次
+  dump）；Rust 侧改成写完后重新 `prop_snapshot()`，并且**不给它留 resetprop 回落** ——
+  留着就会出现"getprop 废了 Rust 还读得到、shell 读不到"，那是桩造出来的假差异
+  （真机上 `getprop NAME` 与 `resetprop NAME` 读的是同一个属性区）。
+- **对拍的桩只能有一份存储**。parity 的 `getprop` 桩现在认 `RP_DB`（写完读得回），
+  `resetprop` 桩读不到自己那份就转给 `getprop` 桩；以前 resetprop 桩只读 RP_DB、
+  getprop 桩只读固定表，改完快照后两侧决策来源不同，`mismatch` 差 16 项。
+
 ## 6. 坑（都踩过）
+
+
 
 
 
@@ -530,6 +568,14 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
   - mksh 的 `${v%|*}` **不生效**（`a|b|c` 原样出来）。剥缓存键的末段要走 `sed 's/|[^|]*$//'`；
     同一条断言在 WSL 的 dash 下是正常的，所以只有上机才会看见它红。
   - toybox `grep` **不支持 BRE 的 `\|`**：`grep -c '^A\|^B'` 恒 0，两个 `-e` 或 `-E` 才对。
+  - 新增第三条（§5.12）：mksh 对**长变量**做字面量匹配是灾难而不是慢 —— 66897 字节的
+    变量上 15 次 `##*"[key]: "*` 实测 160 秒（最短匹配 `#*` 更差，205 秒）。
+    "dump 进变量再参数展开查表"这种写法在 WSL/dash 上完全测不出来（那边是微秒级），
+    只有真机会把它变成开机几分钟。要查表就先 `grep -F` 裁一刀。
+- **Android 没有 `/tmp`**：量测脚本里 `printf ... > /tmp/x.sh` 会失败，而后面的
+  `sh /tmp/x.sh` 只报一句 no such file，计时照样给出 26~50ms 的"像样数字"——
+  我差点把这份**一次都没跑成**的读数当结论。设备上临时文件一律 `/data/local/tmp`，
+  并且子脚本要 `printf MARK` 让调用方证明它真跑了。
     凡"用 0 命中下结论"的场合，先拿一个已知会命中的样本验它能数到非零。
 - **从源码抽函数当台子时，sed 的结束锚要写 `^}$` 而不是 `^}`**：`kl_capture_diff` 里那句 awk 程序以 `}' "$1" "$2" 2>/dev/null` 收尾，`^}` 会在那一行截断，抽出来的函数少个尾巴，症状是 shell 侧整条命令报 `Syntax error: end of file unexpected (expecting "}")`（对拍里表现为"输出不一致"，很容易被误读成实现有问题）。
 - **文档自己会撞改名残留闸**：上一轮的 `docs/HANDOFF.md` 把仓库绝对路径与三个守护进程标记原样写进去，`tools/name-residue-check.mjs` 当场报 6 处 → `tests/legacy-migrate.sh` 红。这条闸只在**有 node 的环境**里才真的响（WSL 没 node，走 skip 分支），所以两套环境都得跑。

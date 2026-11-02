@@ -394,11 +394,33 @@ ro.build.description|test-keys'
   printf '#!/bin/sh\nTBL=%s\n' "'$TBL_PROPS'"
   cat <<'EOF'
 if [ -n "${GETPROP_LOG:-}" ]; then printf '%s\n' "${1:-<dump>}" >> "$GETPROP_LOG"; fi
+if [ "${GETPROP_DEAD:-0}" = 1 ]; then exit 0; fi
+# 值有两个来源：RP_DB（resetprop 桩写进去的那份）优先，其次固定表。
+# 为什么：两侧现在都用同一次 getprop dump 做判定与复核，桩必须"写完读得回"，
+# 否则复核读的是没被写过的固定表 —— 那这条台子就只是在比两份一样的东西。
+val() {
+    if [ -n "${RP_DB:-}" ] && [ -f "$RP_DB/$1" ]; then cat "$RP_DB/$1"; return 0; fi
+    printf '%s\n' "$TBL" | while IFS='|' read -r k v; do
+        [ "$k" = "$1" ] && printf '%s' "$v"
+    done
+    return 0
+}
 if [ $# -eq 0 ]; then
-    printf '%s\n' "$TBL" | while IFS='|' read -r k v; do printf '[%s]: [%s]\n' "$k" "$v"; done
+    printf '%s\n' "$TBL" | while IFS='|' read -r k _v; do
+        [ -n "$k" ] || continue
+        printf '[%s]: [%s]\n' "$k" "$(val "$k")"
+    done
+    if [ -n "${RP_DB:-}" ]; then
+        for f in "$RP_DB"/*; do
+            [ -f "$f" ] || continue
+            k=${f##*/}
+            printf '%s\n' "$TBL" | grep -qa "^$k|" && continue     # 表里已有，上面那份带权威值打过了
+            printf '[%s]: [%s]\n' "$k" "$(cat "$f")"
+        done
+    fi
     exit 0
 fi
-printf '%s\n' "$TBL" | while IFS='|' read -r k v; do [ "$k" = "$1" ] && printf '%s\n' "$v"; done
+val "$1"
 exit 0
 EOF
 } > "$T/bin/getprop"
@@ -412,12 +434,16 @@ sed -n '/^cmd_props() {/,/^}/p' module/webui.sh >> "$T/pr.sh"
 echo 'cmd_props' >> "$T/pr.sh"
 chk 'props：missing/diff/ok 与规则行' "$(PATH="$T/bin:$PATH" sh "$T/pr.sh")" "$(PATH="$T/bin:$PATH" "$B" props)"
 # 输出相同不代表没白 fork：这条台子把"起了几个进程"也钉住。
-# Rust 侧读一次全量 dump（1 次），shell 参照仍是逐键取（15 固定 + 2 特征 = 17 次）。
+# 两侧现在都读一次全量 dump（各 1 次）。以前 shell 参照是逐键取（17 次），
+# 那是"第二份独立实现"的一部分；换成 dump 之后，独立性不再靠两条不同的读法，
+# 改由 tests/props-snapshot.sh 守 —— 那里真源是"一键一个文件"的 db，dump 由 db
+# 拼出来，被测的查表解析必须逐键等于 db，且期望表每一行都自动拿到含 ] 的样本。
 rm -f "$T/gp.rust" "$T/gp.shell"
 GETPROP_LOG="$T/gp.rust" PATH="$T/bin:$PATH" "$B" props >/dev/null 2>&1
 GETPROP_LOG="$T/gp.shell" PATH="$T/bin:$PATH" sh "$T/pr.sh" >/dev/null 2>&1
 chk 'props：Rust 侧只起一次 getprop（快照）' "1" "$(wc -l < "$T/gp.rust" | tr -d ' ')"
-chk 'props：shell 参照仍是逐键取（17 次）' "17" "$(wc -l < "$T/gp.shell" | tr -d ' ')"
+chk 'props：shell 侧同样只起一次（不再逐键 17 次）' "1" "$(wc -l < "$T/gp.shell" | tr -d ' ')"
+chk 'props：shell 那一次是无参数 dump' "$(cat "$T/gp.shell")" "<dump>"
 
 echo "── tricky-patches（global + 包段 + all=）──"
 TP="$T/tproot"
@@ -665,7 +691,11 @@ log_info() { :; }
 log_warn() { :; }
 tsv() { local IFS="$(printf '\t')"; printf '%s\n' "$*"; }
 TAB=$(printf '\t')
-prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
+# 回落用的单键读必须和生产同一条工具（getprop），不能拿 resetprop 桩糊：
+# 以前这里写成 resetprop，getprop 全废那条降级就变成"shell 读得到、Rust 读不到"，
+# 两侧报出来的 mismatch 差 16 项 —— 差异是桩造的，不是实现造的。
+# 复核仍然是"读得回刚写的值"：上面的 getprop 桩认 RP_DB（写完读得回）。
+prop_now() { PROP_NOW=$(getprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
 props_readback() { props; }
 KL_PROPS_OFF="$1"
 KL_BOOT_HASH="$2"
@@ -681,7 +711,10 @@ cat > "$T/bin/resetprop" <<'EOF'
 db="${RP_DB:?}"
 if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
 if [ "$1" = "--version" ]; then echo fake; exit 0; fi
-[ -f "$db/$1" ] && cat "$db/$1"
+[ -f "$db/$1" ] && { cat "$db/$1"; exit 0; }
+# 读不到自己那份就转给 getprop 桩：真机上这两个工具读的是同一个属性区，
+# 桩各拿一份来源就会让"两侧决策不同"变成桩造的假差异（本条之前就是这么红的）。
+getprop "$1"
 EOF
 chmod +x "$T/bin/resetprop"
 mkdir -p "$T/rpdb2"
@@ -693,6 +726,22 @@ chk 'props-apply：写入后的值' "$(cat "$T/rpdb2/ro.debuggable")/$(cat "$T/r
 mkdir -p "$PA/data/adb"; : > "$PA/data/adb/keylens.props_off"
 chk 'props-apply：开关关闭时拒绝' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb2" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
 rm -f "$PA/data/adb/keylens.props_off"
+
+# getprop 整个废掉（dump 空 → 判定逐键回落 resetprop，复核读不到任何东西）。
+# 这条要钉的是"不许一边靠另一边的工具装绿"：两侧都必须照实报满屏读不到，
+# 而写入本身仍要发生（回落还在用 resetprop）。
+echo "── props-apply：getprop 全废的降级 ──"
+rm -rf "$T/rpdb3"; mkdir -p "$T/rpdb3"
+printf '1' > "$T/rpdb3/ro.debuggable"
+printf 'user' > "$T/rpdb3/ro.build.type"
+printf 'engineering-x' > "$T/rpdb3/ro.bootloader"
+chk '降级：输出逐字节一致' \
+    "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1)" \
+    "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" KEYLENS_ROOT="$PA" "$B" props-apply 2>&1)"
+chk '降级：复核读不到 → mismatch 必须非 0（不许报 0 项不符）' \
+    "$(PATH="$T/bin:$PATH" GETPROP_DEAD=1 RP_DB="$T/rpdb3" sh "$T/pa.sh" "$PA/data/adb/keylens.props_off" "$PA/data/adb/keylens.boot_hash" 2>&1 | sed -n 's/^mismatch=//p')" "17"
+chk '降级：写入仍发生（resetprop 回落在用）' \
+    "$(cat "$T/rpdb3/ro.debuggable")/$(cat "$T/rpdb3/ro.bootloader")" "0/release"
 
 echo "── tricky-drop-patch（删 [scope] 段）──"
 mk_drop_harness() { # <root>
@@ -1768,7 +1817,8 @@ echo
 # 175 → 177：save-patch 的两条防空转断言（新键落在全局段内 / 注释行没被吃掉）
 # 181 → 205：env 探针缓存一节（冷=热 / 互读 / 热跑不起 getprop·dumpsys·wm·id / 键名逐个点名 / 换版本重探）
 # 177 → 179：teesim-profiles 的两条绝对断言（只列顶层 / 诱饵键不算 profile）
-if [ "$oks" -lt 205 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 205），疑似用例被删"; fail=1
+# 205 → 209：属性判定改成一次 dump（shell 侧不再逐键 17 次）+ getprop 全废的降级 3 条
+if [ "$oks" -lt 209 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 209），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

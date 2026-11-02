@@ -1144,14 +1144,26 @@ pub fn props_apply() {
         std::process::exit(1);
     }
     // apply_resetprop：缺或不同才写；特征值整体替换
+    // 判定用的当前值来自一次全量 dump（真机现量：单键读 32ms × 几十行 = 秒级，
+    // 而 dump 一次 56ms）。dump 空了说明 getprop 没跑成，逐键回落 ——
+    // 不能把"读不到"当成"属性不存在"，那会凭空写出一堆 stock 没有的键。
+    let pre = prop_snapshot();
+    let use_pre = !pre.is_empty();
+    let cur_of = |name: &str| -> String {
+        if use_pre {
+            pre.get(name).cloned().unwrap_or_default()
+        } else {
+            resetprop(&[name])
+        }
+    };
     for (name, expected) in PROPS_PAIRS {
-        let cur = resetprop(&[name]);
+        let cur = cur_of(name);
         if cur.is_empty() || cur != *expected {
             let _ = resetprop(&["-n", name, expected]);
         }
     }
     for (name, needle, replacement) in PROPS_RULES {
-        let cur = resetprop(&[name]);
+        let cur = cur_of(name);
         if !cur.is_empty() && cur.contains(needle) {
             let _ = resetprop(&["-n", name, replacement]);
         }
@@ -1159,10 +1171,14 @@ pub fn props_apply() {
     apply_boot_hash_quiet(&p);
     log_line(&p, "🛠 WebUI 触发一次属性伪装（运行期写入；已被应用读取的静态字段不会刷新）");
 
-    // 复核：重新读一遍（Rust 侧没有进程内属性快照，直接读即最新）
+    // 复核：写完之后**重新取一次**快照，不复用写前那份。shell 侧的复核是新起
+    // 一个进程跑 props（同样只用 getprop），所以这里也不给复核留 resetprop 回落：
+    // getprop 废掉时两侧都得报"全都读不到"，宁可红，不能一边靠另一边的工具兜住。
+    let post = prop_snapshot();
+    let now_of = |name: &str| -> String { post.get(name).cloned().unwrap_or_default() };
     let mut rows: Vec<(String, String)> = Vec::new();
     for (name, expected) in PROPS_PAIRS {
-        let cur = resetprop(&[name]);
+        let cur = now_of(name);
         let st = if cur.is_empty() {
             "missing"
         } else if &cur == expected {
@@ -1173,7 +1189,7 @@ pub fn props_apply() {
         rows.push((name.to_string(), st.to_string()));
     }
     for (name, needle, _replacement) in PROPS_RULES {
-        let cur = resetprop(&[name]);
+        let cur = now_of(name);
         let st = if cur.is_empty() {
             "missing"
         } else if cur.contains(needle) {
