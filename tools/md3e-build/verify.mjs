@@ -650,6 +650,13 @@ async function main() {
         /自动 · 取自OhMyKeymint/.test(bhAuto.rows) && /1122334455667788/.test(bhAuto.rows), bhAuto.rows.split('\n').filter(l => /模块应用值/.test(l)).join(''));
       chk('界面给出三个动作：保存并应用 / 改为自动 / 不写 digest',
         /保存并应用/.test(bhAuto.buttons) && /改为自动/.test(bhAuto.buttons) && /不写 digest/.test(bhAuto.buttons), bhAuto.buttons);
+      const bhDaemon = await openProps('&bh=daemon');
+      /* daemon = TEESim 那一支：属性里那串是守护进程自己强制的（App.kt:516-523），
+         模块采用它而不是覆盖。界面必须说清"取的是它正在证明的值"，不能读成"本模块写的"，
+         也不能退回成 omk 那句 —— 那会让人以为换了后端也还是同一套来源。 */
+      chk('TEESim 那一支（daemon）说"取自…正在证明的值…不覆盖"，不冒用 OMK 那句',
+        /自动 · 取自TEE Simulator 正在证明的值/.test(bhDaemon.rows) && !/取自OhMyKeymint/.test(bhDaemon.rows),
+        bhDaemon.rows.split('\n').filter(l => /模块应用值/.test(l)).join(''));
       const bhRandom = await openProps('&bh=random');
       chk('random（取不到）说清"没有可取的固定值，所以不写"，不谎报已应用',
         /没有可取的固定值/.test(bhRandom.rows) && !/1122334455667788/.test(bhRandom.rows), '');

@@ -548,6 +548,7 @@ function propsCards() {
      命令层的 boot-hash 现在给 mode/source/effective，界面照它说。 */
   const mode = (bt && bt.mode) || 'auto';
   const srcName = bt && bt.source === 'teesim' ? 'TEE Simulator 的 verifiedBootHash'
+    : bt && bt.source === 'daemon' ? 'TEE Simulator 正在证明的值（属性里已有，模块不覆盖）'
     : bt && bt.source === 'omk' ? 'OhMyKeymint 的 [trust] vb_hash' : '当前后端';
   const effText = mode === 'off' ? '按你的设置不写 digest'
     : mode === 'invalid' ? '配置里的值不是 64/128 位十六进制，模块不写它'

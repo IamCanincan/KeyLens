@@ -78,13 +78,13 @@
   跑完还原到**原始现场**。不加 `--write` 直接 skip，不在 CI 上改现场。
 * 对拍 205 → 216 项：两侧写完的**属性区**逐字节相同（状态 A/B，不只比 stdout）、
   链式改只落一次盘、absent 不凭空创建、`getprop` 全废的降级三条。
-* 新增 `tests/device-boot-hash.sh`（真机 16 条，**全程只读**）：夹具里只放真实
+* 新增 `tests/device-boot-hash.sh`（真机 20 条，**全程只读**）：夹具里只放真实
   `config.toml`、不放 boot_hash 文件，断言 auto 算出的 effective 与手抄那串逐字节相同；
   random/off/invalid/无后端四种形状各自熄火；跑完核对现场没被动过。
-* `tests/props-boot-hash.sh` 从 20 条扩到 **22 条**（三态 + 派生 + random/注释行/不带引号/
-  不缓存 + 变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值）。对拍 216 → **242 项**
-  （启动哈希三态 23 条 + `current=` 读数口径 3 条）。`mutate-verify.mjs` 从 5 个变异加到 **6 个**（第 ⑥ 个把界面
-  auto 档说回「未设置」，必须响）。
+* `tests/props-boot-hash.sh`：**20 → 52 条**（上一版文档写的「22 条」早就过期了，本轮按
+  现跑的 ok 行数改口）：三态 + 派生 + random/注释行/不带引号/不缓存 + 变异（摘掉「只认 hex」
+  的守卫 ⇒ `random` 被当成值）。对拍 216 → **239 项**（启动哈希三态 23 条）。
+  `mutate-verify.mjs` 从 5 个变异加到 **6 个**（第 ⑥ 个把界面 auto 档说回「未设置」，必须响）。
 * **修掉一处读数口径分叉**（真机现场切 auto 时抓出来的）：`props-boot-hash` 的 `current=`
   原先两侧都用 `resetprop` 读，而生产的 shell 侧 `prop_now`（`module/webui.sh`）用的是
   `getprop`。裸 shell 里 `resetprop` 不在 PATH，命令于是报 `current=`（空），属性其实有值。
@@ -93,6 +93,32 @@
   统一走 `getprop`（写完的复核仍走 `resetprop`，两边同），并补 `RP_READ_DEAD=1` 这条控制与
   「那种情况下 `current=` 必须等于真值」的绝对判据：只加"两侧相同"不够，那版两侧一起报空照样过。
   两个变异各自自证（夹具退回手抄版 → 两侧相同那条响；Rust 退回 resetprop → 绝对判据那条响）。
+  对拍 239 → **242 项**（下限同步抬）。
+* **TEESim 那一侧的 auto 不再覆盖守护进程**（读上游源码查出，`docs/HANDOFF.md` §5.15 记了行号）：
+  TEESim 每次 push 都把 `ro.boot.vbmeta.digest` 强制成它自己正在证明的值
+  （`App.kt:510-523`「the value we attest wins unconditionally」，含 bootloader 根本不填这格的
+  机器，上游 #228），而 `overrides.json` 里那串 hex **只有当它当前是合成兜底值时才被采纳**
+  （`Harvester.kt:183-189` + `applyUserOverrides:399-415` 对不可编辑字段直接 continue）。
+  所以 auto 在 teesim 下改成：**属性已有合法值 → 采用它（`source=daemon`，一个字都不写）；
+  属性为空 → 才按 override 补**（老版本 TEESim 没有那条强制）。拿 override 去覆盖已有值，
+  恰好会在上游不采纳时亲手造出 `vbmetaDigestMismatch`（与空值同级的 Danger）。
+  OMK 那一家相反：`vb_hash` 是显式 hex 时上游**不写**这条 prop（`vbmeta.rs:452-462` 的
+  `needs_sysprop_write` 不含 ExplicitHex/Property），所以 omk 分支保持"照配置写、可覆盖"。
+  对拍 242 → **247 项**（新增 5 条：属性空时两侧逐字节 + 取 override、计数器自证「该写时数得到 1」、
+  属性已有值时两侧逐字节 + `daemon/那串` + 写次数 0 + 跑完 store 仍是守护进程那串）；
+  单元 52 → **64 条**（新增 `source=daemon` 一支与变异「摘掉那一行 ⇒ override 覆盖」）；
+  界面多认一个来源（`?bh=daemon` 画出来是「TEE Simulator 正在证明的值（属性里已有，模块不覆盖）」），
+  `verify.mjs` 加 1 条断言、`mutate-verify.mjs` 6 → **7 个变异**（⑦ 把 daemon 说回 override；
+  实测 7 个全响，还原后重新构建复跑退码 0）。
+* **顺带查清并写下：TEESim 的多 profile 与这一格无关** —— 一份 profile 装的是设备身份 /
+  keybox / mode / 三档补丁级别 / `apps[]` / `autoIncludeNewApps`（`ConfigStore.kt:23-46`），
+  里面**没有 root of trust**；证明里的 verifiedBootHash 在 profile 循环**之外**一次性写进
+  `bootInfo`（`Resolver.kt:41-43`），而 overrides.json 上游明写是扁平一张表
+  （`OverrideStore.kt:6-9`）⇒ 切 profile 不会让 digest 过期，这一格不需要"选哪一份 profile"。
+  模块的多 profile 支持本来就有：`teesim-profiles` 列全部（名字/keybox/mode/apps/是否默认）、
+  `teesim-profile-new` 复制 default、`teesim-profile-del` 删（default 是兜底不许删）、
+  写路径按 payload 里的 `profile=<名字>` 决定"改哪一份"（省略仍是 default，旧界面行为不变），
+  界面先选份再编辑。
 * 新增 `tools/wsl-parity.sh`：在 WSL 侧跑对拍并把**结论和自己的退码写在同一行**
   （`parity exit=0｜全部通过（chk 用例 242 项）`）。理由是本坑：从 Git Bash 内联
   `wsl bash -c '…; echo $?'` 里的 `$?` 会被本地 shell 提前展开，量到的永远是 0 —— 本轮

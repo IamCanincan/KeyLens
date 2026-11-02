@@ -106,6 +106,18 @@ try {
   f6.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
   if (m6.code === 0) ok = false;
   fs.writeFileSync(SRC, orig);
+  /* ⑦ 界面把 daemon 这个来源说回"overrides.json 那串"（= 修之前的形状：TEESim 一律声称
+     取的是 override）—— daemon 那条断言必须变红。守的是本轮的实质承诺：TEESim 下属性里
+     那串是守护进程强制的，模块采用它、不覆盖（App.kt:516-523 / Harvester.kt:183-189）。 */
+  swap("'TEE Simulator 正在证明的值（属性里已有，模块不覆盖）'",
+    "'TEE Simulator 的 verifiedBootHash'", 1);
+  sh([path.join(here, 'build.mjs')]);
+  const m7 = runVerify();
+  const f7 = failed(m7.out);
+  console.log(`${m7.code !== 0 ? '✓' : '✗ 不响'}  变异「daemon 来源说回 override」→ 退码 ${m7.code}`);
+  f7.slice(0, 3).forEach((l) => console.log('     ' + l.trim()));
+  if (m7.code === 0) ok = false;
+  fs.writeFileSync(SRC, orig);
 } finally {
   fs.writeFileSync(SRC, orig);
   if (fs.readFileSync(SRC, 'utf8') !== orig) { console.log('✗ 还原失败，工作区还带着变异'); ok = false; }

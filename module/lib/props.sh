@@ -124,9 +124,9 @@ set_props_masking() {
 
 # ---------- Verified Boot 哈希 ----------
 # 说明：这一格有三种模式，状态就存成"$KL_BOOT_HASH 文件的样子"，不另开配置文件：
-#   文件不存在          auto     —— **默认**。开机时从当前后端自己的配置里取它正在证明的
-#                                    verifiedBootHash（OMK：[trust] vb_hash；
-#                                    TEESim：overrides.json 的 verifiedBootHash），
+#   文件不存在          auto     —— **默认**。开机时从当前后端自己正在证明的 verifiedBootHash
+#                                    取值（OMK：[trust] vb_hash；TEESim：prop 已有值就采用它，
+#                                    为空才读 overrides.json 那条 override），
 #                                    只有拿到合法 hex 才写进 ro.boot.vbmeta.digest。
 #   文件里是 64/128 hex  manual    —— 用户自己填的值，优先于 auto（升级前就填过的机器
 #                                    行为完全不变）。
@@ -180,7 +180,7 @@ boot_hash_mode() {
 #       两样都没有（被单独 source 的台子）就当取不到，不写。
 # 用法：boot_hash_source → 输出「来源<TAB>值」；取不到时输出「none<TAB>」
 boot_hash_source() {
-    local be="" cfg="" v=""
+    local be="" cfg="" v="" cur=""
 
     if [ -n "${KL_BACKEND:-}" ]; then
         be="$KL_BACKEND"
@@ -199,6 +199,15 @@ boot_hash_source() {
             v=$(sed -n 's/^[[:space:]]*vb_hash[[:space:]]*=[[:space:]]*"\{0,1\}\([^"]*\)"\{0,1\}.*/\1/p' "$cfg" 2>/dev/null | head -n 1)
             ;;
         teesim)
+            # 这一家与 OMK 不同：守护进程每次 push 都会把这条 prop 强制成它**自己正在证明**的
+            # 值，"证明的值无条件获胜"（App.kt:516-523），而 overrides.json 里那串 hex 只有
+            # 在它当前那份是合成兜底值时才被采纳（Harvester.kt:183-189、applyUserOverrides
+            # 对非 editable 字段 continue 并记日志：399-415）。所以属性已有合法值时**采用它**，
+            # 不拿 override 去覆盖 —— 覆盖恰好会在上游不采纳时造出"证明与 prop 不符"那一格。
+            # 属性为空才按 overrides.json 补（老版本 TEESim 没有 #228 那条强制）。
+            cur=$(getprop ro.boot.vbmeta.digest 2>/dev/null)
+            cur=$(printf '%s' "$cur" | tr -d '[:space:]' | tr 'A-F' 'a-f')
+            boot_hash_valid "$cur" && { printf 'daemon\t%s\n' "$cur"; return 0; }
             cfg="${TEESIM_DIR:-/data/adb/teesim}/overrides.json"
             [ -f "$cfg" ] || { printf 'none\t\n'; return 0; }
             # null 不带引号，这条模式匹配不上 ⇒ 自然当"取不到"

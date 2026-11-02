@@ -676,7 +676,10 @@ mkdir -p "$BH/data/adb" "$T/rpdb"
 cat > "$T/bin/resetprop" <<'EOF'
 #!/bin/sh
 db="${RP_DB:?}"
-if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
+if [ "$1" = "-n" ]; then
+    [ -n "${RP_LOG:-}" ] && printf '%s\n' "$2" >> "$RP_LOG"
+    mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0
+fi
 # RP_READ_DEAD=1：写仍落库，但**读**答空 —— 真机上 resetprop 不在 PATH 时就是这个形状。
 # 这条控制存在的理由：current= 曾经两侧都用 resetprop 读，属性其实有值却报成空。
 [ "${RP_READ_DEAD:-0}" = 1 ] && exit 0
@@ -820,14 +823,42 @@ rm -f "$BA/data/adb/keylens.boot_hash"
 chk 'off→auto：删掉哨兵就回到自动档' \
     "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^mode=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "auto/$H64A"
 
-# 6) TEESim 那一家：overrides.json 里的 verifiedBootHash
+# 6) TEESim 那一家：**属性已有值时必须采用它**，属性为空才按 overrides.json 补。
+#    理由在上游：守护进程每次 push 都把 ro.boot.vbmeta.digest 强制成它自己证明的值
+#    （App.kt:516-523），而 overrides.json 那条 hex 只在它当前是合成兜底值时才被采纳
+#    （Harvester.kt:183-189、applyUserOverrides:399-415 对非 editable 直接 continue）。
+#    拿 override 去覆盖一个已有值，正好会在上游不采纳时造出"证明与 prop 不符"那一格 Danger。
 rm -rf "$BA/data/adb/modules/oh_my_keymint"
 printf '{"verifiedBootKey":"aa","verifiedBootHash":"%s"}\n' "$H64C" > "$BA/data/adb/teesim/overrides.json"
 mkdir -p "$BA/data/adb/modules/teesim"
+rm -f "$T/rpdb/ro.boot.vbmeta.digest"          # 属性为空 = 老版本 TEESim（没有 #228 那条强制）
 chk 'auto(teesim)：两侧 boot-hash 逐字节相同' \
     "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
-chk 'auto(teesim)：来源与值都取自 overrides.json' \
+chk 'auto(teesim)：属性为空时来源与值都取自 overrides.json' \
     "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^source=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "teesim/$H64C"
+# 先证"计数器会数"：属性为空这一支两侧都必须各写 digest 一次，否则下面那条 0/0 是瞎的
+rm -rf "$T/rpboh1"; mkdir -p "$T/rpboh1"; : > "$T/rpboh1/log"; : > "$T/rpboh1/log2"
+PATH="$T/bin:$PATH" RP_LOG="$T/rpboh1/log" RP_DB="$T/rpdb" sh "$T/pba.sh" "$BA" set auto >/dev/null 2>&1
+c_shell=$(grep -ac 'ro.boot.vbmeta.digest' "$T/rpboh1/log")
+rm -f "$T/rpdb/ro.boot.vbmeta.digest"      # 上一臂把它写上了 ⇒ 清空，两臂才真的同源
+PATH="$T/bin:$PATH" RP_LOG="$T/rpboh1/log2" RP_DB="$T/rpdb" KEYLENS_ROOT="$BA" "$B" props-boot-hash auto >/dev/null 2>&1
+c_rust=$(grep -ac 'ro.boot.vbmeta.digest' "$T/rpboh1/log2")
+chk 'auto(teesim)：属性为空时两侧各写 digest 一次（计数器自证）' "$c_shell/$c_rust" "1/1"
+printf '%s' "$H64A" > "$T/rpdb/ro.boot.vbmeta.digest"   # 守护进程已经把它写成 H64A
+chk 'auto(teesim)：属性已有值那一支两侧逐字节相同' \
+    "$(ba_shell "$T/rpdb" "$BA" show)" "$(ba_rust "$T/rpdb" "$BA" boot-hash)"
+chk 'auto(teesim)：已有值就采用它，不拿 override 覆盖（正对照：防覆盖守护进程）' \
+    "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^source=//p')/$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" "daemon/$H64A"
+rm -rf "$T/rpboh2"; mkdir -p "$T/rpboh2"
+: > "$T/rpboh2/log"; : > "$T/rpboh2/log2"      # 先把两份日志放空：一边一次都没写时文件根本不会被创建，
+                                            # 那时 grep 报"没有这个文件"会被读成"写了一次"
+PATH="$T/bin:$PATH" RP_LOG="$T/rpboh2/log" RP_DB="$T/rpdb" sh "$T/pba.sh" "$BA" set auto >/dev/null 2>&1
+PATH="$T/bin:$PATH" RP_LOG="$T/rpboh2/log2" RP_DB="$T/rpdb" KEYLENS_ROOT="$BA" "$B" props-boot-hash auto >/dev/null 2>&1
+chk 'auto(teesim)：这一支一次都没写 digest（两侧按属性名点名，hash_alg 不算）' \
+    "$(grep -ac 'ro.boot.vbmeta.digest' "$T/rpboh2/log")/$(grep -ac 'ro.boot.vbmeta.digest' "$T/rpboh2/log2")" "0/0"
+chk 'auto(teesim)：跑完 digest 仍是守护进程那串（没被 override 换掉）' \
+    "$(cat "$T/rpdb/ro.boot.vbmeta.digest")" "$H64A"
+rm -f "$T/rpdb/ro.boot.vbmeta.digest"          # 回到"属性为空"再测 override 自己的形状
 printf '{"verifiedBootKey":"aa","verifiedBootHash":null}\n' > "$BA/data/adb/teesim/overrides.json"
 chk 'auto(teesim)：null 不算值（JSON 里没引号那条模式自然匹配不上）' \
     "$(ba_shell "$T/rpdb" "$BA" show | sed -n 's/^effective=//p')" ""
@@ -2009,9 +2040,10 @@ echo
 # 209 → 216：判定换成一次 awk 出计划 + 期望表补满"构建身份"那一族（状态 A_B、链式只落一次、absent 不凭空创建）
 # 216 → 239：启动哈希三态（auto 从当前后端配置派生 / random 与 null 必须熄火 /
 #             手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生）
+# 242 → 247：TEESim 那一侧改成"属性已有值就采用守护进程那份"（不拿 overrides.json 覆盖）
 # 239 → 242：current= 的读数口径（两侧都用生产那份 getprop，不再手抄 resetprop；
 #             外加"resetprop 读不回时仍报真值"的正对照 —— 真机上就是这么报出过一次假空）
-if [ "$oks" -lt 242 ]; then
+if [ "$oks" -lt 247 ]; then
   echo "  ✗   对拍数量低于下限（$oks < 242），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

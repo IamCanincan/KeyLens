@@ -30,11 +30,11 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **242 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条） | `sh rust/parity.sh` |
+| shell↔Rust 逐字节对拍 | **247 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **16 条断言全过**：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
-| 启动哈希三态（auto/manual/off） | 单元 **22 条**（含变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop）；对拍 **23+3 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；后 3 条钉 `current=` 的读数口径）；真机 **16 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
+| 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
 | shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
@@ -638,7 +638,7 @@ Danger 4 → 2 的差就是这一格（§3.10）。
 
 | 文件 | 模式 | 行为 |
 |---|---|---|
-| 不存在 | `auto`（默认） | 从**当前启用的那一家后端**自己的配置取：OMK 的 `[trust] vb_hash`、TEESim 的 `overrides.json verifiedBootHash`；是合法 hex 才写 |
+| 不存在 | `auto`（默认） | 从**当前启用的那一家后端**自己的配置取：OMK 的 `[trust] vb_hash`、TEESim 的 `overrides.json verifiedBootHash`；是合法 hex 才写。**teesim 那一支多一层前置**：属性里已经有合法值就采用它（`source=daemon`，一个字都不写），为空才按 override 补 —— 理由与上游行号见 §5.15 |
 | 64/128 位 hex | `manual` | 用用户的值，优先于 auto（升级前填过的机器行为不变） |
 | `off` | `off` | 明确不写 digest（旧版「清除」的语义搬到这里） |
 | 别的 | `invalid` | 不写，界面直说配置坏了 |
@@ -651,7 +651,7 @@ Danger 4 → 2 的差就是这一格（§3.10）。
 另一条边界：只问启用的后端（`KL_BACKEND` 或 `omk_active`/`teesim_active` 探针），
 不去读卸载后残留的配置目录——那会把一个不再被证明的 hash 写进 prop。
 
-**真机上的决定性正对照**（`tests/device-boot-hash.sh`，16 条，全程只读）：夹具根里
+**真机上的决定性正对照**（`tests/device-boot-hash.sh`，20 条，全程只读）：夹具根里
 只放真实的 `config.toml`、**不放 boot_hash 文件**，auto 档算出的 effective 与主人手抄
 那串 `0561fff0…` **逐字节相同** ⇒ 新用户装完重启就能拿到今天这个状态。
 
@@ -661,13 +661,55 @@ effective=0561fff0… / status=ok`，`getprop ro.boot.vbmeta.digest` 一字未�
 算得对，是真机上一个字不填也能对齐。这一趟顺手抓出了 §6 那条读数口径分叉：裸 shell 里
 `resetprop` 不在 PATH，旧版命令把 `current=` 报成空，而属性其实有值。
 
-**闸**：单元 22 条（含变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值写进 prop）、
+**闸**：单元 64 条（两处变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值写进 prop；
+摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）、
 对拍 23 条（两侧逐字节 + random/off/invalid/手动优先/不缓存/无后端不派生）+ 读数口径 3 条
-（`current=` 两侧统一走 getprop，见 §6），真机 16 条（本轮现量：16 条全 ok、0 条 skip）。
+（`current=` 两侧统一走 getprop，见 §6）+ teesim 那一支 5 条（见 §5.15），真机 20 条（本轮现量：20 条全 ok、0 条 skip）。
 命令契约变了：`boot-hash` 现在出 `mode/configured/source/effective/current/status`，
 `props-boot-hash` 多回一个 `mode=`，`help` 里那行用法也改了（shell 与 `main.rs` 两处必须同文，
-对拍比的是逐字节）。界面那一格从两态改成三态（`?bh=auto|random|manual|off|invalid`
-五种形状各画一遍，`mutate-verify.mjs` 第 ⑥ 个变异把 auto 说回「未设置」必须响）。
+对拍比的是逐字节）。界面那一格从两态改成三态（`?bh=auto|daemon|random|manual|off|invalid`
+六种形状各画一遍，`mutate-verify.mjs` 现在 7 个变异：⑥ 把 auto 说回「未设置」、
+⑦ 把 `source=daemon` 说回「overrides.json 那串」，两条都必须响）。
+
+## 5.15 TEESim 的多 profile 与 digest 是两个正交的面（查上游源码，不是推测）
+
+一条 profile 装的是：`id / keybox / mode / patchSystem / patchVendor / patchBoot /
+osVersion / brand / device / product / manufacturer / model / serial / imei / meid / imei2
+/ apps[] / autoIncludeNewApps`（`TEESimulator/app/src/main/java/org/matrix/teesim/ConfigStore.kt:23-46`）
+——**里面没有 root of trust**。证明里那个 verifiedBootHash 是在 profile 循环**之外**一次性
+塞进 `bootInfo` 的（`Resolver.kt:41-43`），而用户那一层覆盖存在 `overrides.json`，
+上游明写它是「一张扁平 `{字段: 值}` 表」（`OverrideStore.kt:6-9`）。
+
+⇒ **切换 profile 不可能让 digest 过期**，多 profile 也不需要为这一格做任何"选哪个"的判断。
+本模块这一侧的处理是：`teesim-profiles` 列出所有份（名字/keybox/mode/apps/是否默认，
+`only 顶层`与`诱饵键不算 profile`两条绝对断言钉着）、`teesim-profile-new` 复制 default、
+`teesim-profile-del` 删（default 是兜底不许删）、写路径用 payload 里的 `profile=<名字>`
+选"改哪一份"（省略仍是 default，旧界面行为不变，`module/lib/write.sh:218-228`）、
+界面先选份再编辑（`webui/src/screens.js` 的「先选哪一份，再编辑那一份」），
+并且界面上写着那条硬边界：设备标识只能在 profile 里改，安全等级/版本/启动键哈希只能改 overrides。
+
+真正与 digest 有关的是**另一件事**，也是本轮改的：TEESim 守护进程每次 push 都会把
+`ro.boot.vbmeta.digest` **强制成它自己正在证明的值**——"the value we attest wins
+unconditionally"，包括那些 bootloader 根本不填这条属性的机器（`App.kt:510-523`，上游 #228）；
+而 `overrides.json` 里那串 hex **只有当它当前那份是合成兜底值时才会被采纳**
+（`Harvester.kt:183-189` 的 `userEditable`，`applyUserOverrides:399-415` 对不可编辑字段
+直接 `continue` 并记一条日志）。所以本模块在 teesim 下的 auto 改成：
+
+| 属性现在的值 | auto 的行为 | `source=` |
+|---|---|---|
+| 已是合法 hex（守护进程强制的） | **采用它，一个字都不写** | `daemon` |
+| 空的 / 不是 hex | 才按 `overrides.json` 那条 override 补 | `teesim` |
+
+拿 override 去覆盖已有值，恰好会在上游不采纳这条 override 时**亲手造出**
+`vbmetaDigestMismatch`（与空值同级的 Danger）——这正是这一格要避免的东西。
+OMK 那一家相反：`vb_hash` 是显式 hex 时上游**不写**这条 prop（`needs_sysprop_write`
+只含 Computed/Original/Random*/RandomFallback，`OhMyKeymint/src/plat/vbmeta.rs:452-462`），
+所以那一格里模块的写入是唯一来源，omk 分支保持"照配置写、可覆盖"。
+
+**真机现量**（`tests/device-boot-hash.sh` 新增 4 条）：夹具根里放一份 teesim 模块目录，
+外加一个**诱饵** override（64 个 `e`，与本机那串不同）。本机 `ro.boot.vbmeta.digest` 是合法
+hex ⇒ 两侧逐字节相同、`source=daemon`、生效值 = 属性里那串、`status=ok`，诱饵一个字都没被采用；
+属性为空或不合法时同一台子改判"取诱饵"那一支（两条腿都留着，换机器不会假红）。
 
 ## 6. 坑（都踩过）
 
@@ -693,6 +735,17 @@ effective=0561fff0… / status=ok`，`getprop ro.boot.vbmeta.digest` 一字未�
   写在 `rust/parity-wsl.log` 的最后一行，形如 `parity exit=0｜全部通过（chk 用例 242 项）`。
   这条 runner 顺带被对拍自己的陈旧守卫救了一次：改完注释没重编，它直接退 1 说
   「二进制比源码旧」——Windows 那边读到 `exit=1` 才看得见这件事。
+- **只推二进制、没推 shell 参照，真机台子会当场报两侧分歧**（本轮 21:5x）：`boot_hash_source`
+  的新分支进了 Rust 也改了仓库里的 `module/lib/props.sh`，但设备上
+  `/data/adb/modules/keylens/lib/props.sh` 还是旧那份 ⇒ `device-boot-hash` 一上来红 4 条
+  （`实得=teesim / 期望=daemon`）。红得对，不是实现写坏了 —— 但改 shell 侧之后要么
+  `sh tools/deploy-webui.sh --shell`，要么单独推那一个文件，再跑台子。
+  顺带说明这台子上"装的是哪版"必须逐文件核：只比二进制 sha 不够。
+- **两臂共用同一个属性桩时，前一臂会把后一臂的前提抹掉**：给"teesim 属性为空才补"数写次数，
+  shell 臂先跑并**真的把 digest 写上了**，Rust 臂随后看到的是"属性已有值"⇒ 走 daemon 支、
+  写 0 次。报出来的 `1/0` 看着像 Rust 漏写一次，实际是台架自己改了现场。现在两臂之间
+  `rm -f "$T/rpdb/ro.boot.vbmeta.digest"` 复位；并且任何"写次数=0"的断言都必须先配一条
+  「同样这套仪器在应该写的场合数得到 1」——不配这条，那条 0/0 是瞎的而不是证据。
 - **台架的假数据必须是真形状**（2026-11-02 这条值一整轮）：`webui/src/bridge.js` 里 `props`
   的演示数据是手写的 5 行，其中 `ro.product.brand` / `ro.serialno` **根本不在期望表里**。
   于是属性页从没按真形状渲染过一次 —— 命令层新增第四种状态 `absent` 之后，界面那句三元

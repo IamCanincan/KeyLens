@@ -169,7 +169,39 @@ printf '[trust]\nvb_hash = "%s"\n' "$H64" > "$T/omk/config.toml"
 chk "无后端可判时不派生" "" "$(boot_hash_get)"
 KL_BACKEND=omk
 
-echo "── 7 变异：把「只认 hex」的守卫摘掉，random 就会被写进 prop ──"
+echo "── 7 TEESim 那一侧：属性已有值必须采用守护进程那份，不拿 override 覆盖 ──"
+# 上游把这条 prop 当成它自己的领地：每次 push 都强制成正在证明的值（App.kt:516-523），
+# 而 overrides.json 那条 hex 只在当前是合成兜底值时才被采纳（Harvester.kt:183-189）。
+# 所以"属性已有值 + override 是另一串"这一支必须采用属性里的值；写成 override 就是
+# 亲手造出检测器的 vbmetaDigestMismatch。getprop 在这里存根，代表"属性现在的值"。
+mkdir -p "$T/teesim"
+GP_VAL=""
+H64BL=$(printf 'b%.0s' $(seq 1 64))    # 派生值一律转小写，比较要用小写那串（H64B 是大写样本）
+getprop() { printf '%s\n' "$GP_VAL"; }
+KL_BACKEND=teesim
+TEESIM_DIR="$T/teesim"
+rm -f "$KL_BOOT_HASH"
+printf '{"verifiedBootHash":"%s"}\n' "$H64B" > "$T/teesim/overrides.json"
+chk "teesim：属性为空时来源=overrides.json" "teesim" "$(boot_hash_source | cut -f1)"
+chk "teesim：属性为空时取 override 那串（老版本 TEESim 的兜底）" "$H64BL" "$(boot_hash_get)"
+rp_reset
+apply_boot_hash; chk_ok "teesim：这一支写成功" "$?"
+chk "teesim：确实补上了 digest（正对照：为空时不是不写）" "$H64BL" "$(cat "$RP.ro.boot.vbmeta.digest" 2>/dev/null)"
+# 属性已有值（守护进程强制下去的那串）⇒ 采用它，且不许写成 override
+GP_VAL="$H64"
+chk "teesim：属性已有值时来源=daemon" "daemon" "$(boot_hash_source | cut -f1)"
+chk "teesim：生效值=属性里那串，不是 override" "$H64" "$(boot_hash_get)"
+rp_reset
+printf '%s' "$H64" > "$RP.ro.boot.vbmeta.digest"
+apply_boot_hash; chk_ok "teesim：已有值这一支返回成功" "$?"
+chk "teesim：digest 仍是守护进程那串（没被 override 换掉）" "$H64" "$(cat "$RP.ro.boot.vbmeta.digest" 2>/dev/null)"
+chk "teesim：只补了 hash_alg，一次都没动 digest（写次数=1）" 1 "$(rp_writes)"
+GP_VAL="zz-not-hex"
+chk "teesim：属性里是脏值不算已有值（回落到 override）" "teesim" "$(boot_hash_source | cut -f1)"
+GP_VAL=""
+KL_BACKEND=omk
+
+echo "── 8 变异：把「只认 hex」的守卫摘掉，random 就会被写进 prop ──"
 sed -n '/^boot_hash_source() {/,/^}$/p' "$ROOT/module/lib/props.sh" > "$T/src.orig"
 if [ -s "$T/src.orig" ]; then
     sed -e '/boot_hash_valid "\$v"/s/.*/    :/' "$T/src.orig" > "$T/src.mut"
@@ -185,6 +217,25 @@ if [ -s "$T/src.orig" ]; then
 else
     printf '  ✗   抽不到 boot_hash_source（锚点改了？）\n'; fail=1
 fi
+
+echo "── 9 变异：摘掉「属性已有值就采用它」那一行，override 就会覆盖守护进程 ──"
+KL_BACKEND=teesim
+GP_VAL="$H64"
+sed -n '/^boot_hash_source() {/,/^}$/p' "$ROOT/module/lib/props.sh" > "$T/src2.orig"
+if [ -s "$T/src2.orig" ]; then
+    sed '/printf .daemon/d' "$T/src2.orig" > "$T/src2.mut"
+    if cmp -s "$T/src2.orig" "$T/src2.mut"; then
+        printf '  ✗   变异没落地（与真源逐字节相同，这条不算证据）\n'; fail=1
+    else
+        eval "$(cat "$T/src2.mut")"
+        chk "变异后生效值变成 override 那串（守卫确实在拦覆盖）" "$H64BL" "$(boot_hash_get)"
+        . "$ROOT/module/lib/props.sh"
+        chk "换回真源后又采用守护进程那串" "$H64" "$(boot_hash_get)"
+    fi
+else
+    printf '  ✗   抽不到 boot_hash_source（锚点改了？）\n'; fail=1
+fi
+GP_VAL=""; KL_BACKEND=omk
 
 if [ "$fail" = 0 ]; then echo "全部通过"; else echo "有断言失败"; fi
 exit $fail

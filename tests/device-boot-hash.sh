@@ -75,6 +75,27 @@ else
     bad "缺 $REAL_HASH_FILE 或 $REAL_OMK_CFG，这条正对照跑不了（不是通过，是没测）"
 fi
 
+printf '── TEESim 那一支：属性已有值时必须采用守护进程那串（§5.15，真机现量）──\n'
+# 夹具里放一份 teesim 模块目录 + 一个**诱饵** override（与 live 属性不同的一串）。
+# 上游每次 push 都把这条 prop 强制成它正在证明的值（App.kt:510-523），而 override 只在
+# 当前是合成兜底值时才被采纳（Harvester.kt:183-189）⇒ 属性有值时取属性、不取诱饵。
+# 诱饵长度错了会直接落进"不合法"那一支，下面的断言当场就红 —— 它自带自证。
+E64=eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee
+R3="$T/teesim-adopt"; mkdir -p "$R3/data/adb" "$R3/data/adb/modules/teesim" "$R3/data/adb/teesim"
+printf '{"verifiedBootHash":"%s"}\n' "$E64" > "$R3/data/adb/teesim/overrides.json"
+A3=$(sh_bh "$R3"); B3=$(rs_bh "$R3")
+chk "teesim 夹具两侧输出逐字节相同" "$A3" "$B3"
+live=$(getprop ro.boot.vbmeta.digest | tr -d '[:space:]' | tr 'A-F' 'a-f')
+if [ "$(KL_BOOT_HASH="$T/x" sh -c ". $MODDIR/lib/props.sh; boot_hash_valid '$live' && echo yes || echo no")" = "yes" ]; then
+    chk "属性已有合法值 ⇒ source=daemon（不取诱饵）" "$(kv_of "$A3" source)" "daemon"
+    chk "生效值 = 属性里那串，不是诱饵" "$(kv_of "$A3" effective)" "$live"
+    chk "这一支 status=ok（属性与生效值本来就一致）" "$(kv_of "$A3" status)" "ok"
+else
+    chk "属性为空/不合法 ⇒ source=teesim，取诱饵那串（兜底支）" "$(kv_of "$A3" source)" "teesim"
+    chk "生效值 = 诱饵（这一支确实会补）" "$(kv_of "$A3" effective)" "$E64"
+fi
+printf '  ·   本机 digest=%s（决定上面走的是哪一支）\n' "${live:0:16}…"
+
 printf '── random 必须熄火（过期值比空着更糟）──\n'
 R2="$T/random"; mkdir -p "$R2/data/adb" "$R2/data/adb/modules/oh_my_keymint" "$R2/data/misc/keystore/omk"
 printf '[trust]\nvb_hash = "random"\n' > "$R2/data/misc/keystore/omk/config.toml"

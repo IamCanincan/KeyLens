@@ -545,6 +545,19 @@ fn json_string_value(text: &str, key: &str) -> String {
 fn boot_hash_source(p: &Paths) -> (String, String) {
     let mut v = String::new();
     if backend::active(&p.teesim_module) {
+        // 与 OMK 不同：TEESim 守护进程每次 push 都把这条 prop 强制成它自己正在证明的值
+        // （App.kt:516-523「the value we attest wins unconditionally」），而 overrides.json
+        // 里那串 hex 只在它当前那份是合成兜底值时才被采纳（Harvester.kt:183-189、
+        // applyUserOverrides 对非 editable 字段直接 continue：399-415）。已有合法值就采用它，
+        // 拿 override 去覆盖正好会在上游不采纳时造出"证明与 prop 不符"那一格 Danger。
+        let live: String = getprop("ro.boot.vbmeta.digest")
+            .chars()
+            .filter(|c| !c.is_whitespace())
+            .collect::<String>()
+            .to_ascii_lowercase();
+        if boot_hash_valid(&live) {
+            return ("daemon".into(), live);
+        }
         let text = std::fs::read_to_string(p.teesim_dir.join("overrides.json")).unwrap_or_default();
         v = json_string_value(&text, "verifiedBootHash");
         if v.is_empty() || !boot_hash_valid(&v) {

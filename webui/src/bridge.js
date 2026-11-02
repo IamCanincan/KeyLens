@@ -628,13 +628,15 @@ function demoResult(cmd, arg) {
       'ro.vendor_dlkm.build.fingerprint\t\t不含 userdebug（则改写为 user）\tabsent',
       'ro.vendor_dlkm.build.fingerprint\t\t不含 test-keys（则改写为 release-keys）\tabsent'
     ].join('\n'),
-    /* ?bh=<auto|random|manual|off|invalid>：启动哈希那一格要能画出三态。
+    /* ?bh=<auto|daemon|random|manual|off|invalid>：启动哈希那一格要能画出三态。
        默认走 auto（新用户装完就是这个形状：一个字没填、digest 已从后端配置派生）。
+       daemon = TEESim 那一支：属性里已有守护进程强制下去的值，模块采用它、不覆盖。
        旧版这里只给 configured/current/status 三行，界面也就只认"填了/没填"两态。 */
     'boot-hash': (function () {
       const H = '11223344556677889900aabbccddeeff0123456789abcdef0123456789abcdef';
       const bh = QUERY.get('bh') || 'auto';
       if (bh === 'random') return 'mode=auto\nconfigured=\nsource=none\neffective=\ncurrent=\nstatus=unset';
+      if (bh === 'daemon') return 'mode=auto\nconfigured=\nsource=daemon\neffective=' + H + '\ncurrent=' + H + '\nstatus=ok';
       if (bh === 'manual') return 'mode=manual\nconfigured=' + H + '\nsource=omk\neffective=' + H + '\ncurrent=' + H + '\nstatus=ok';
       if (bh === 'off') return 'mode=off\nconfigured=off\nsource=omk\neffective=\ncurrent=\nstatus=off';
       if (bh === 'invalid') return 'mode=invalid\nconfigured=zz\nsource=omk\neffective=\ncurrent=\nstatus=invalid';
