@@ -20,7 +20,7 @@
   `git config` 的代理，要显式给 `HTTPS_PROXY`。`static.rust-lang.org`（rustup target）本来就可达。
 - 本地工具链：Windows + WSL(Ubuntu)。**Rust 构建/测试都在 WSL 里跑**（`~/.cargo/bin/cargo`），Windows 侧没有可用链接器。
 - 真机：`adb devices` 里有 `QV7709NLJ7`（arm64-v8a，`adb root` 可拿到 root，build 是 userdebug）。
-  模块已装：`/data/adb/modules/keylens`（v3.0.1，OMK 后端）—— **发布的 v3.0.2 见 §3.11**，机上要变成 v3.0.2 得刷一次包。测试用的临时副本 `/data/adb/keylens-ab`
+  模块已装：`/data/adb/modules/keylens`（OMK 后端）。**目录里的模块版本串还写着 v3.0.2，但文件已是 3.0.3 的内容**（二进制 sha256 前 16 位 `0905d3b7bb383ea5`，props.sh / lib 都同步过）；要管理器显示 v3.0.3 得刷一次 §3.12 的包。测试用的临时副本 `/data/adb/keylens-ab`
   **已按主人要求删掉**（2026-11-01 20:3x），要跑真机台子先照 §3 那一段重建（先 mkdir，再一条 deploy + 六条 push）。
 
 ## 1. 现在完成到哪
@@ -32,7 +32,7 @@
 | Rust 单测 | 72 项 | 见 §2 |
 | shell↔Rust 逐字节对拍 | **247 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
-| 真机属性伪装 | **16 条断言全过**：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
+| 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
 | shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
@@ -296,6 +296,27 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 
 **顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——
 `service.adb.root: 1`（`adb unroot` 后下次重启自然消失）与 `persist.sys.usb.config: adb`（要关掉 USB 调试）。
+
+### 3.12 发版 v3.0.3（2026-11-03 00:2x）
+
+**这一版装了什么**（相对 v3.0.2）：启动哈希三态（默认 auto）、属性伪装补到 43 个属性名 +
+就地改写、属性页 absent 那条修复、TEESim 那一侧不覆盖守护进程的 digest、
+`current=` 读数口径统一、打包剔除运行时缓存、二进制 −50%（326,416 字节）。
+详细条目见 `CHANGELOG.md` 的 3.0.3 段。
+
+**四处一起改**：`module/module.prop`（`version=v3.0.3`、`versionCode=2026110300`）、
+`update.json`（version / versionCode / `zipUrl` → `.../v3.0.3/KeyLens-v3.0.3.zip`）、
+`CHANGELOG.md`（3.0.3 → `2026-11-03`）、`README.md`（版本行）。
+
+**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.3.zip` **533,142 字节 / 31 条目**，
+sha256 `1afc7c3806d6378b5cee77baf3a20ee2b86ab1133db1694a5d844f058c60a523`；
+内含 `bin/keylens` 326,416 字节（sha256 前 16 位 `0905d3b7bb383ea5`，与真机上那份逐字节相同）、
+**0 份 awk**、**没有 `webroot/icons/`**、`module.prop` 里是 v3.0.3。
+`--check` 全过（含「包里没有运行时缓存」「`bin/keylens` 只有一条」两条新断言）。
+
+**发布前验过的**：对拍 247（用同一份 build-std 的 x86 产物）、`cargo test` 72、
+真机 `device-boot-hash` 20 条与 `device-props-mask --write` 17 条（跑完现场逐字节还原）、
+机上 smoke（`contract` 40 条 / `props` 53 项全 ok / `boot-hash` auto·ok / `doctor` 11·0·0）。
 
 ### 3.11 发版 v3.0.2（2026-11-01 23:4x）
 
@@ -618,7 +639,7 @@ WSL 的 **GNU awk** 上；设备上是 **toybox awk**。这一台补的就是这
 - **本机没有的分区报 `absent`**：不计入「写入并复核」的不符项，也绝不凭空写出来 ——
   凭空多一个 `ro.system_dlkm.build.type` 本身就是破绽（stock 不会给不存在的分区留属性）。
   固定表那 15 项保留"缺失就补"的原语义，没动。
-- 真机证据（`tests/device-props-mask.sh --write`，16 条断言全过）：台子**自己种出待改状态**
+- 真机证据（`tests/device-props-mask.sh --write`，17 条断言全过）：台子**自己种出待改状态**
   （这台机很可能已经被上次开机掩好了，指望现场泄漏会让正对照变成"没测到"），
   臂 A 实测改写 **11 个**属性；两臂从同一起点出发、跑完 43 个键逐字节相同；
   属性区**没有新增键**；`applied=1 / mismatch=0`；toybox 与 busybox 两种 awk 同结果；
