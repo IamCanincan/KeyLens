@@ -42,6 +42,16 @@ props_expect_pairs() {
 #       顺序有讲究：同一个属性可以有多条规则（如 description 既可能带 userdebug
 #       也可能带 test-keys），写入时按这里的顺序**链式**改一遍、只落一次盘；
 #       见 props_plan。属性名不许同时出现在固定表与这张表里（tests/props-plan.sh 钉）。
+#
+#       有意没做的三件事，别当成遗漏来"补"：
+#         · 不覆盖 eng 构建（needle 只放 userdebug / test-keys）。eng 的 ROM 在十几个
+#           属性上同时露相，单把 type 说成 user 只会多出另一处对不上。
+#         · 不动 ROM 身份（ro.lineage.*、flavor 里的 lineage、description 的产品名）。
+#           那是"藏 ROM"而不是"自洽"：删属性会打断 LineageOS 自己的应用，而检测器的
+#           Custom ROM 卡本来就从包名与服务名起火（本机现量 runtime 26 项），抹属性
+#           清不掉那张卡。
+#         · 不掩 service.adb.root / persist.sys.usb.config。那是主人的调试状态，不是
+#           模块的形状；adbd 随时会把它写回去，掩了只是制造一处新的对不上。
 # 用法：props_expect_rules
 props_expect_rules() {
     printf '%s\n' \
