@@ -581,12 +581,7 @@ pub fn boot_hash() {
     let mode = boot_hash_mode(&p).to_string();
     let (src, _) = boot_hash_source(&p);
     let eff = boot_hash_effective(&p);
-    let current = std::process::Command::new("getprop")
-        .arg("ro.boot.vbmeta.digest")
-        .output()
-        .ok()
-        .map(|o| String::from_utf8_lossy(&o.stdout).trim().to_string())
-        .unwrap_or_default();
+    let current = getprop("ro.boot.vbmeta.digest");
     let status = match mode.as_str() {
         "off" => "off",
         "invalid" => "invalid",
@@ -772,6 +767,9 @@ pub fn props() {
     }
 }
 
+/// 单个属性的读数口径，对齐 `module/webui.sh` 的 `prop_now`（那边也是 getprop）。
+/// 报告用的 current= 一律走这里，不走 resetprop：resetprop 不在 PATH 时它会答空，
+/// 而属性其实有值 —— 真机上就这么报出过一次假空。写完的复核仍用 resetprop（两边同）。
 fn getprop(name: &str) -> String {
     std::process::Command::new("getprop")
         .arg(name)
@@ -1322,7 +1320,7 @@ pub fn props_boot_hash(arg: &str) {
         println_ok!("saved=0");
         println_ok!("mode={}", boot_hash_mode(&p));
         println_ok!("applied={applied}");
-        println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
+        println_ok!("current={}", getprop("ro.boot.vbmeta.digest"));
         return;
     }
 
@@ -1335,7 +1333,7 @@ pub fn props_boot_hash(arg: &str) {
         println_ok!("saved=1");
         println_ok!("mode=off");
         println_ok!("applied=0");
-        println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
+        println_ok!("current={}", getprop("ro.boot.vbmeta.digest"));
         return;
     }
 
@@ -1357,7 +1355,7 @@ pub fn props_boot_hash(arg: &str) {
     println_ok!("saved=1");
     println_ok!("mode=manual");
     println_ok!("applied={}", if applied { 1 } else { 0 });
-    println_ok!("current={}", resetprop(&["ro.boot.vbmeta.digest"]));
+    println_ok!("current={}", getprop("ro.boot.vbmeta.digest"));
 }
 
 /// cmd_props_apply：按期望表写一次（缺/不符才写），复核后输出 applied / mismatch。

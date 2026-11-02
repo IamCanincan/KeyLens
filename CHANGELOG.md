@@ -78,13 +78,21 @@
   跑完还原到**原始现场**。不加 `--write` 直接 skip，不在 CI 上改现场。
 * 对拍 205 → 216 项：两侧写完的**属性区**逐字节相同（状态 A/B，不只比 stdout）、
   链式改只落一次盘、absent 不凭空创建、`getprop` 全废的降级三条。
-* 新增 `tests/device-boot-hash.sh`（真机 17 条，**全程只读**）：夹具里只放真实
+* 新增 `tests/device-boot-hash.sh`（真机 16 条，**全程只读**）：夹具里只放真实
   `config.toml`、不放 boot_hash 文件，断言 auto 算出的 effective 与手抄那串逐字节相同；
   random/off/invalid/无后端四种形状各自熄火；跑完核对现场没被动过。
 * `tests/props-boot-hash.sh` 从 20 条扩到 **22 条**（三态 + 派生 + random/注释行/不带引号/
-  不缓存 + 变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值）。对拍 216 → **239 项**
-  （启动哈希三态 23 条）。`mutate-verify.mjs` 从 5 个变异加到 **6 个**（第 ⑥ 个把界面
+  不缓存 + 变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值）。对拍 216 → **242 项**
+  （启动哈希三态 23 条 + `current=` 读数口径 3 条）。`mutate-verify.mjs` 从 5 个变异加到 **6 个**（第 ⑥ 个把界面
   auto 档说回「未设置」，必须响）。
+* **修掉一处读数口径分叉**（真机现场切 auto 时抓出来的）：`props-boot-hash` 的 `current=`
+  原先两侧都用 `resetprop` 读，而生产的 shell 侧 `prop_now`（`module/webui.sh`）用的是
+  `getprop`。裸 shell 里 `resetprop` 不在 PATH，命令于是报 `current=`（空），属性其实有值。
+  对拍当时抓不到，因为夹具 `pb.sh`/`pba.sh` 自己**手抄**了一份 resetprop 版 `prop_now` ——
+  台子和被测物共用同一把坏仪器。现在夹具改成从 `module/webui.sh` 抽那一份，`current=` 两侧
+  统一走 `getprop`（写完的复核仍走 `resetprop`，两边同），并补 `RP_READ_DEAD=1` 这条控制与
+  「那种情况下 `current=` 必须等于真值」的绝对判据：只加"两侧相同"不够，那版两侧一起报空照样过。
+  两个变异各自自证（夹具退回手抄版 → 两侧相同那条响；Rust 退回 resetprop → 绝对判据那条响）。
 * 台子覆盖：真机 A/B 38 条全过，shell 测试套 53 套在 WSL(mawk) 与 Git Bash(gawk) 两边全绿。
 * 界面这一层：`tools/md3e-build/verify.mjs` 加 4 条属性页断言（53 行逐行上屏、absent 画
   「本机无」、标题只数 9 项、absent 不挂 warn 色），`mutate-verify.mjs` 从 2 个变异加到

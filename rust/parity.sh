@@ -677,6 +677,9 @@ cat > "$T/bin/resetprop" <<'EOF'
 #!/bin/sh
 db="${RP_DB:?}"
 if [ "$1" = "-n" ]; then mkdir -p "$db"; printf '%s' "$3" > "$db/$2"; exit 0; fi
+# RP_READ_DEAD=1：写仍落库，但**读**答空 —— 真机上 resetprop 不在 PATH 时就是这个形状。
+# 这条控制存在的理由：current= 曾经两侧都用 resetprop 读，属性其实有值却报成空。
+[ "${RP_READ_DEAD:-0}" = 1 ] && exit 0
 [ -f "$db/$1" ] && cat "$db/$1"
 EOF
 chmod +x "$T/bin/resetprop"
@@ -687,9 +690,11 @@ cat > "$T/pb.sh" <<'EOF'
 kv() { printf "%s=%s\n" "$1" "$2"; }
 log_info() { :; }
 log_warn() { :; }
-prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
 KL_BOOT_HASH="$1"
 EOF
+# prop_now 从 webui.sh 抽那一份，不在这里手抄：手抄过 resetprop 的那版，
+# 于是生产用 getprop、台子用 resetprop，读数口径分叉时两侧"照样一致"。
+sed -n '/^prop_now() {/,/^}/p' module/webui.sh >> "$T/pb.sh"
 sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pb.sh"
 sed -n '/^cmd_set_boot_hash() {/,/^}/p' module/lib/write.sh >> "$T/pb.sh"
 echo 'cmd_set_boot_hash "$2"' >> "$T/pb.sh"
@@ -699,6 +704,19 @@ chk 'props-boot-hash：文件存在且 600' "$(stat -c '%a' "$BH/data/adb/keylen
 chk 'props-boot-hash：非法哈希' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" zzzz 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash zzzz 2>&1)"
 chk 'props-boot-hash：清除' "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" - 2>&1)" "$(PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash - 2>&1)"
 chk 'props-boot-hash：清除后文件消失' "$([ -e "$BH/data/adb/keylens.boot_hash" ] && echo exists || echo gone)" "gone"
+
+# 读数口径的正对照：resetprop 读不回时（真机上不在 PATH 就是这个形状），current= 仍要
+# 报属性的真值。这一条在"两侧都用 resetprop 读"的那版上是恒空的 —— 那版只会把一起报空
+# 当成一致，所以除了两侧相同，还必须钉一个绝对判据。
+rm -rf "$T/rpdb"; mkdir -p "$T/rpdb"
+PATH="$T/bin:$PATH" RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash "$H64B" >/dev/null 2>&1
+rd_shell=$(PATH="$T/bin:$PATH" RP_READ_DEAD=1 RP_DB="$T/rpdb" sh "$T/pb.sh" "$BH/data/adb/keylens.boot_hash" "$H64B" 2>&1)
+rd_rust=$(PATH="$T/bin:$PATH" RP_READ_DEAD=1 RP_DB="$T/rpdb" KEYLENS_ROOT="$BH" "$B" props-boot-hash "$H64B" 2>&1)
+chk '读数口径：resetprop 读不回时两侧仍逐字节相同' "$rd_shell" "$rd_rust"
+chk '读数口径：那种情况下 current= 报真值而不是空（正对照）' \
+    "$(printf '%s\n' "$rd_rust" | sed -n 's/^current=//p')" "$H64B"
+chk '读数口径：那种情况下如实报 applied=0' \
+    "$(printf '%s\n' "$rd_rust" | sed -n 's/^applied=//p')" "0"
 
 # ── 自动档（默认）：从当前后端自己的配置派生 digest ────────────────────────
 # 三态：文件不在=auto / 文件里是 hex=manual / 文件里是 off=不写。
@@ -726,7 +744,6 @@ cat > "$T/pba.sh" <<'EOF'
 kv() { printf '%s=%s\n' "$1" "$2"; }
 log_info() { :; }
 log_warn() { :; }
-prop_now() { PROP_NOW=$(resetprop "$1" 2>/dev/null); [ -n "$PROP_NOW" ] || PROP_NOW=""; }
 ROOT="$1"; ACT="$2"; ARG="$3"
 KL_BOOT_HASH="$ROOT/data/adb/keylens.boot_hash"
 OMK_MODULE="$ROOT/data/adb/modules/oh_my_keymint"
@@ -735,6 +752,8 @@ TRICKY_MODULE="$ROOT/data/adb/modules/tricky_store"
 OMK_DIR="$ROOT/data/misc/keystore/omk"
 TEESIM_DIR="$ROOT/data/adb/teesim"
 EOF
+# 同 pb.sh：prop_now 用生产那一份（getprop），不手抄
+sed -n '/^prop_now() {/,/^}/p' module/webui.sh >> "$T/pba.sh"
 sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/pba.sh"
 sed -n '/^cmd_boot_hash() {/,/^}/p' module/webui.sh >> "$T/pba.sh"
 sed -n '/^cmd_set_boot_hash() {/,/^}/p' module/lib/write.sh >> "$T/pba.sh"
@@ -1990,7 +2009,9 @@ echo
 # 209 → 216：判定换成一次 awk 出计划 + 期望表补满"构建身份"那一族（状态 A_B、链式只落一次、absent 不凭空创建）
 # 216 → 239：启动哈希三态（auto 从当前后端配置派生 / random 与 null 必须熄火 /
 #             手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生）
-if [ "$oks" -lt 239 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 239），疑似用例被删"; fail=1
+# 239 → 242：current= 的读数口径（两侧都用生产那份 getprop，不再手抄 resetprop；
+#             外加"resetprop 读不回时仍报真值"的正对照 —— 真机上就是这么报出过一次假空）
+if [ "$oks" -lt 242 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 242），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

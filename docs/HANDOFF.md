@@ -30,11 +30,11 @@
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 72 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **239 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条） | `sh rust/parity.sh` |
+| shell↔Rust 逐字节对拍 | **242 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **16 条断言全过**：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
-| 启动哈希三态（auto/manual/off） | 单元 **22 条**（含变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop）；对拍 **23 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生）；真机 **17 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场 | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
+| 启动哈希三态（auto/manual/off） | 单元 **22 条**（含变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop）；对拍 **23+3 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；后 3 条钉 `current=` 的读数口径）；真机 **16 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
 | shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | **38/38 全过**（本轮重跑过） | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
@@ -132,6 +132,11 @@ adb shell "cd /data/adb/keylens-ab && MODDIR=/data/adb/keylens-ab sh device-prop
 # 启动哈希三态（全程只读：夹具里只放真实 config.toml，不碰主人的 boot_hash 文件，见 §5.14）
 adb push tests/device-boot-hash.sh /data/adb/keylens-ab/device-boot-hash.sh
 adb shell "MODDIR=/data/adb/modules/keylens sh /data/adb/keylens-ab/device-boot-hash.sh"
+# 现场那一侧的 auto 切换（会动主人的 boot_hash 文件，跑完必须原样还原；§5.14 记了本轮现量）
+adb shell 'cp -p /data/adb/keylens.boot_hash /data/adb/keylens.boot_hash.pre'
+adb shell '/data/adb/modules/keylens/bin/keylens props-boot-hash auto'    # 裸 shell：resetprop 不在 PATH
+adb shell 'export PATH=/data/adb/ksu/bin:$PATH; /data/adb/modules/keylens/bin/keylens props-boot-hash auto'  # 生产形状
+adb shell 'mv /data/adb/keylens.boot_hash.pre /data/adb/keylens.boot_hash'   # 还原，然后 boot-hash 应回 mode=manual
 ```
 
 ## 3.5 装包后、重启前该跑的那一条（真做过一次）
@@ -644,12 +649,19 @@ Danger 4 → 2 的差就是这一格（§3.10）。
 另一条边界：只问启用的后端（`KL_BACKEND` 或 `omk_active`/`teesim_active` 探针），
 不去读卸载后残留的配置目录——那会把一个不再被证明的 hash 写进 prop。
 
-**真机上的决定性正对照**（`tests/device-boot-hash.sh`，17 条，全程只读）：夹具根里
+**真机上的决定性正对照**（`tests/device-boot-hash.sh`，16 条，全程只读）：夹具根里
 只放真实的 `config.toml`、**不放 boot_hash 文件**，auto 档算出的 effective 与主人手抄
 那串 `0561fff0…` **逐字节相同** ⇒ 新用户装完重启就能拿到今天这个状态。
 
+**现场那一侧也真跑了一遍**（2026-11-02 21:3x，跑完原样还原成 manual）：把 boot_hash 文件
+挪走再 `props-boot-hash auto`，出 `mode=auto / configured=（空）/ source=omk /
+effective=0561fff0… / status=ok`，`getprop ro.boot.vbmeta.digest` 一字未动 —— 不是只在夹具里
+算得对，是真机上一个字不填也能对齐。这一趟顺手抓出了 §6 那条读数口径分叉：裸 shell 里
+`resetprop` 不在 PATH，旧版命令把 `current=` 报成空，而属性其实有值。
+
 **闸**：单元 22 条（含变异：摘掉「只认 hex」的守卫 ⇒ `random` 被当成值写进 prop）、
-对拍 23 条（两侧逐字节 + random/off/invalid/手动优先/不缓存/无后端不派生）、真机 17 条。
+对拍 23 条（两侧逐字节 + random/off/invalid/手动优先/不缓存/无后端不派生）+ 读数口径 3 条
+（`current=` 两侧统一走 getprop，见 §6），真机 16 条（本轮现量：16 条全 ok、0 条 skip）。
 命令契约变了：`boot-hash` 现在出 `mode/configured/source/effective/current/status`，
 `props-boot-hash` 多回一个 `mode=`，`help` 里那行用法也改了（shell 与 `main.rs` 两处必须同文，
 对拍比的是逐字节）。界面那一格从两态改成三态（`?bh=auto|random|manual|off|invalid`
@@ -661,6 +673,21 @@ Danger 4 → 2 的差就是这一格（§3.10）。
 
 
 
+- **台子里手抄一遍读数函数，等于给分叉装了消音器**（2026-11-02，真机抓出来的）：`rust/parity.sh`
+  的 `pb.sh`/`pba.sh` 自己抄了 `prop_now()`，抄的是 **resetprop** 那版；而生产的
+  `module/webui.sh:160` 用的是 **getprop**。Rust 侧 `props-boot-hash` 的 `current=` 也跟着用
+  resetprop 读，于是"两份实现逐字节对拍"242 项里没有一项能看见这件事 —— 台子和被测物共用
+  同一把会坏的仪器。真机上直接敲二进制（不经开机脚本，`resetprop` 不在 PATH）当场就露：
+  命令报 `current=`（空），而 `getprop ro.boot.vbmeta.digest` 明明是 `0561fff0…`。
+  修法三层：夹具改成 `sed -n '/^prop_now() {/,/^}/p' module/webui.sh` 抽生产那一份
+  （`doc.sh`/`env.sh` 早就是这个写法，只有这两处漏了）；报告用的 `current=` 两侧统一走 getprop，
+  **写完的复核**仍走 resetprop（`apply_boot_hash` 与 `apply_digest` 本来就有 `command -v` 前置，
+  两边同）；再加 `RP_READ_DEAD=1`（写落库、读取答空，就是真机那个形状）与一条**绝对判据**
+  「那种情况下 current= 必须等于真值」——只加"两侧相同"不够，那版两侧一起报空照样过。
+- **从 Git Bash 内联问 WSL 的退码会恒 0**：`wsl -d Debian bash -c 'sh rust/parity.sh; echo exit=$?'`
+  里那个 `$?` 在本地就被展开掉了，量到的 `exit=0` 与对拍真实成败无关（`wsl -d Debian bash -c 'exit 7'`
+  的退码倒是正常传播的）。本轮差点据此宣布"parity.sh 的退码逻辑坏了、CI 那道闸形同虚设"。
+  要看退码就让它落进文件再读（`_harness/run-parity.sh` → `_harness/parity-wsl.exit`）。
 - **台架的假数据必须是真形状**（2026-11-02 这条值一整轮）：`webui/src/bridge.js` 里 `props`
   的演示数据是手写的 5 行，其中 `ro.product.brand` / `ro.serialno` **根本不在期望表里**。
   于是属性页从没按真形状渲染过一次 —— 命令层新增第四种状态 `absent` 之后，界面那句三元
