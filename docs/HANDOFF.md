@@ -66,7 +66,7 @@
 ~/.cargo/bin/cargo test  --manifest-path rust/Cargo.toml --release
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release
 # aarch64 静态（本机没 NDK，用 musl + rust-lld；真机上可直接跑）
-RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
+sh rust/build-release.sh   # 发布构建（nightly + build-std + immediate-abort，两个 musl 产物）
 # 对拍（242 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
 # 是在 WSL Debian 里跑同一份 x86_64-musl 产物 —— 那边 awk 是 mawk，与 Git Bash 的 gawk
 # 会给出不同结果，见 §5.12 的方言差）
@@ -710,6 +710,38 @@ OMK 那一家相反：`vb_hash` 是显式 hex 时上游**不写**这条 prop（`
 外加一个**诱饵** override（64 个 `e`，与本机那串不同）。本机 `ro.boot.vbmeta.digest` 是合法
 hex ⇒ 两侧逐字节相同、`source=daemon`、生效值 = 属性里那串、`status=ok`，诱饵一个字都没被采用；
 属性为空或不合法时同一台子改判"取诱饵"那一支（两条腿都留着，换机器不会假红）。
+
+## 5.16 体积与性能：量完再砍（2026-11-02/03）
+
+**先量清楚三件交付物**：发布包（压缩后）728,684 → **533,142 字节**（-26.8%），其中
+二进制 368KB(52%)、界面 241KB(34%)、shell 层 91KB(13%) —— **大头是二进制，不是 HTML**。
+
+**砍掉的**（都有闸）：
+1. 打包带上运行时缓存：`webroot/icons/`（设备上 `webui.sh icons` 写的）被 walk 递归收进包，
+   v3.0.2 实测 3 张、33KB。现在跳过，并在 `--check` 与落盘前各断言一次（含 `bin/keylens`
+   恰好一条）。-21KB。
+2. 二进制：`sh rust/build-release.sh`（nightly + `-Z build-std=std,panic_abort` +
+   `-Zunstable-options -Cpanic=immediate-abort`）—— aarch64 **652,960 → 326,416 字节（-50%）**，
+   包再 -175KB。夜间工具链是代价（CI 装 nightly + rust-src + 两个 musl target）；
+   panic 时不再打印消息、退出码由 101 变 SIGABRT —— 命令的错误路径全走 Result + 自己的
+   退出码，247 项对拍与真机台子覆盖了这些路径。
+3. WebUI 台架加了性能基线（`verify.mjs` 末尾）：**首屏可见 45ms · FCP 48ms · 脚本 15ms ·
+   布局 3ms**（本机 Chrome 417×975@2x，轮询粒度 ~10ms）。结论：808KB 的产物在 WebView
+   同引擎里只值 15ms 脚本时间 ⇒ 缩界面的理由是包大小，不是首屏速度。
+
+**量过但不做的**（每条都有数，不是感觉）：
+- 去掉 unwind 表（`-C force-unwind-tables=no`）：产物一字未变 —— `.eh_frame` 那 79KB
+  来自预编译的 std/crt，不在我们这层。
+- tokens 瘦身：382 个变量里 154 个没人引用，全删只省 8.8KB（16% 的 tokens 文件）。
+- color-spaces 表 133KB：表覆盖 20 个色彩空间、`compose-color.js` 泛型遍历；换小实现要赌
+  "界面永远只用 Srgb/Oklab"，赌错的症状是色值静默偏移，收益仅约 40KB 压缩（5.7%）⇒ 不值。
+- shell 回退层（224KB 原文 / 91KB 压缩）：砍了就没有"二进制 exec 不了（noexec 挂载）"
+  的兜底，也没有 `KL_USE_RUST=0` 调试闸 —— 这是取舍，不是优化。
+
+**量测自己的坑**（这轮又踩一个）：`Performance.getMetrics` 的计数在跨文档导航时清零，
+拿"导航前后做差"量脚本时长会得到负数（第一版 `script=-2ms`）。这些计数是"当前文档自开始
+以来的累积值"，导航完、渲染出来后读一次即可；台架留了自检（首屏/FCP/脚本都必须为正），
+量测写歪时会立刻红。
 
 ## 6. 坑（都踩过）
 

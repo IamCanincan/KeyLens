@@ -20,10 +20,13 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install Rust targets
-        uses: dtolnay/rust-toolchain@stable
-        with:
-          targets: aarch64-unknown-linux-musl,x86_64-unknown-linux-musl
+      - name: Install Rust（nightly + rust-src + 两个 musl target）
+        # 发布产物走 `-Z build-std` + `-Cpanic=immediate-abort`（见 rust/build-release.sh）：
+        # std 跟着 opt-level=z 重编、panic 的格式化与展开整块去掉，aarch64 产物
+        # 652,960 → 326,416 字节。`-Z build-std` 需要 nightly 与 rust-src。
+        run: |
+          rustup toolchain install nightly --profile minimal --component rust-src
+          rustup target add --toolchain nightly aarch64-unknown-linux-musl x86_64-unknown-linux-musl
 
       # 产物选 aarch64-unknown-linux-musl，不选 aarch64-linux-android。理由实测过两条：
       #   1) `rustc --print cfg --target aarch64-linux-android` 里没有 target_feature="crt-static"，
@@ -37,13 +40,8 @@ jobs:
       - name: Unit tests（b64 / payload / json_flat / keybox / ov_valid / lock / backend）
         run: cargo test --manifest-path rust/Cargo.toml --release
 
-      - name: Build (aarch64 musl, static — 发布用产物)
-        env:
-          RUSTFLAGS: '-C linker=rust-lld -C link-self-contained=yes'
-        run: cargo build --manifest-path rust/Cargo.toml --release --target aarch64-unknown-linux-musl
-
-      - name: Build (x86_64 musl, for parity test)
-        run: cargo build --manifest-path rust/Cargo.toml --release --target x86_64-unknown-linux-musl
+      - name: Build（nightly + build-std + immediate-abort，两份 musl 产物）
+        run: sh rust/build-release.sh
 
       - name: Contract parity（Rust 输出 == webui.sh 的 KL_COMMANDS）
         run: |

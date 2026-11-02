@@ -11,9 +11,23 @@
   v3.0.2 实测带了 3 张、33KB。现在 walk 跳过 `webroot/icons` 与 `bin`(后者由脚本显式追加,
   磁盘上有残留就会变成两条同名条目),并在 `--check` 里加两条断言:
   「包里没有 `webroot/icons/`」「`bin/keylens` 只有一条」;落盘前也自证一次,跳过表失效时当场退出。
-  现量:zip 728,684 → **707,760 字节**(-20,924),条目 34 → 31。
-* **交付体积的构成现在写进文档**:压缩后 `keylens` 368KB(52%)、`index.html` 241KB(34%)、
-  shell 层 91KB(13%)、其余 3KB —— 想再瘦,第一顺位是二进制,不是界面。
+  第一步 **-20,924 字节**（728,684 → 707,760），条目 34 → 31；加上后面的二进制优化，
+  最终 **728,684 → 533,142（-26.8%）**。
+* **交付体积的构成（优化前量的）**:压缩后 `keylens` 368KB(52%)、`index.html` 241KB(34%)、
+  shell 层 91KB(13%)、其余 3KB —— 大头是二进制，不是界面，所以下一刀落在二进制上。
+* **二进制 -50%（652,960 → 326,416 字节）**:新增 `rust/build-release.sh` 固定发布构建 ——
+  nightly + `-Z build-std=std,panic_abort` + `-Zunstable-options -Cpanic=immediate-abort`
+  （std 跟着 `opt-level=z` 重编、panic 的格式化与展开整块去掉）。CI 改成装 nightly +
+  rust-src + 两个 musl target 后调这个脚本。发布包因此 **728,684 → 533,142 字节（-26.8%）**。
+  代价与前提写进脚本抬头：panic 时不打印消息、退出码由 101 变 SIGABRT；命令的错误路径
+  全走 Result + 自己的退出码，247 项对拍、`cargo test` 72、真机 `device-boot-hash` 20 条与
+  `device-props-mask --write` 17 条（跑完现场还原）都在这份产物上验过。
+* **量过但决定不做的三刀**（都留了数）:去 unwind 表（产物一字未变，`.eh_frame` 来自预编译
+  std/crt）、tokens 瘦身（154/382 个变量没人用，只值 8.8KB）、color-spaces 换小实现
+  （133KB 覆盖 20 个色彩空间且被泛型遍历，收益约 40KB 压缩而风险是色值静默偏移）。
+* **WebUI 台架加性能基线**（`verify.mjs` 末尾，3 次导航取中位）:首屏可见 **45ms** · FCP 48ms ·
+  脚本 15ms · 布局 3ms（本机 Chrome 417×975@2x）。第一版量测写错了并当场被自检抓住：
+  `Performance.getMetrics` 跨文档导航会清零，做差得负值；改成导航完读一次累积值。
 
 * **「启动哈希」改成三态，默认是「自动」——新用户一个字都不用填**。以前这一格只有
   「填了 / 没填」两态，而多数 ROM（本机是 LineageOS）根本不给 `ro.boot.vbmeta.digest`，

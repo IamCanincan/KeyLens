@@ -194,7 +194,7 @@ if (CHECK) {
 if (!fs.existsSync(BIN_SRC)) {
   console.error(`✗ 找不到命令层二进制 ${path.relative(repo, BIN_SRC)}
   自阶段 5 起 awk 参照实现不随包发布：没有 bin/keylens 的包装上就跑不动（装机脚本会 abort）。
-  交叉编译（本机不用 NDK）：RUSTFLAGS='-C linker=rust-lld -C link-self-contained=yes' cargo build --release --target aarch64-unknown-linux-musl --manifest-path rust/Cargo.toml`);
+  交叉编译（本机不用 NDK）：sh rust/build-release.sh   # nightly + build-std + immediate-abort`);
   process.exit(1);
 }
 const entries = walk(MOD, '', []);

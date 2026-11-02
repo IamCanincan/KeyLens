@@ -15,6 +15,8 @@ MODDIR=${MODDIR:-/data/adb/modules/keylens}
 BIN=${KL_BIN:-$MODDIR/bin/keylens}
 REAL_OMK_CFG=${REAL_OMK_CFG:-/data/misc/keystore/omk/config.toml}
 REAL_HASH_FILE=${REAL_HASH_FILE:-/data/adb/keylens.boot_hash}
+# 跑前记下"这一格现在是什么档"：默认档（auto）本来就没有文件，不能把它当成"文件丢了"
+HAD_HASH_FILE=$([ -f "$REAL_HASH_FILE" ] && echo yes || echo no)
 
 [ "$(id -u)" = "0" ] || { echo "  skip 需要 root（现在 uid=$(id -u)）"; echo '全部通过'; exit 0; }
 [ -f "$MODDIR/lib/props.sh" ] || { echo "  skip 找不到 $MODDIR/lib/props.sh"; echo '全部通过'; exit 0; }
@@ -61,18 +63,27 @@ printf '  ·   mode=%s status=%s effective=%s\n' "$p_mode" "$p_st" "${p_eff:0:16
 case "$p_mode" in manual|auto) : ;; *) bad "mode 不是 manual/auto（$p_mode）";; esac
 chk "生产上 status=ok（digest 与生效值一致）" "$p_st" "ok"
 
-printf '── 自动档在真机上算出的值 == 手动那一格（正对照：新用户免抄）──\n'
-if [ -f "$REAL_HASH_FILE" ] && [ -f "$R/data/misc/keystore/omk/config.toml" ]; then
-    manual=$(tr -d '[:space:]' < "$REAL_HASH_FILE" | tr 'A-F' 'a-f')
+printf '── 自动档在真机上算出的值（正对照：新用户免抄）──\n'
+if [ -f "$R/data/misc/keystore/omk/config.toml" ]; then
     A=$(sh_bh "$R"); B=$(rs_bh "$R")
     chk "夹具（只有后端配置、没有 boot_hash 文件）两侧输出逐字节相同" "$A" "$B"
     chk "夹具里 mode=auto" "$(kv_of "$A" mode)" "auto"
     chk "夹具里 source=omk（值确实来自当前后端自己的配置）" "$(kv_of "$A" source)" "omk"
-    chk "auto 派生出的值 = 主人手抄那串（逐字节）" "$(kv_of "$A" effective)" "$manual"
+    # 参照值按现场档位选：手动档取主人手抄那串；默认的自动档没有文件，就取"已经在 prop 里
+    # 生效的那串" —— 它同时必然等于 OMK 配置里的 hex，两者任一不同都说明这一档算错了。
+    # 以前这里只有手动档一条路，现场切到 auto 之后它会把"没测"报成失败（2026-11-03 实测）。
+    if [ -f "$REAL_HASH_FILE" ]; then
+        ref=$(tr -d '[:space:]' < "$REAL_HASH_FILE" | tr 'A-F' 'a-f')
+        what="主人手抄那串"
+    else
+        ref=$(getprop ro.boot.vbmeta.digest | tr -d '[:space:]' | tr 'A-F' 'a-f')
+        what="现场已经生效的那串（默认档没有手填文件）"
+    fi
+    chk "auto 派生出的值 = $what（逐字节）" "$(kv_of "$A" effective)" "$ref"
     chk "auto 派生值合法（64 或 128 位十六进制）" \
         "$(. "$MODDIR/lib/props.sh"; KL_BOOT_HASH="$T/x"; v=$(kv_of "$A" effective); boot_hash_valid "$v" && echo yes || echo no)" "yes"
 else
-    bad "缺 $REAL_HASH_FILE 或 $REAL_OMK_CFG，这条正对照跑不了（不是通过，是没测）"
+    bad "缺 $REAL_OMK_CFG，这条正对照跑不了（不是通过，是没测）"
 fi
 
 printf '── TEESim 那一支：属性已有值时必须采用守护进程那串（§5.15，真机现量）──\n'
@@ -123,7 +134,7 @@ chk "坏值：mode=invalid、effective 空（不写半个值进去）" \
     "$(kv_of "$A4" mode)/$(kv_of "$A4" effective)" "invalid/"
 
 printf '── 现场没被动过 ──\n'
-chk "生产 boot_hash 文件仍在原位" "$([ -f "$REAL_HASH_FILE" ] && echo yes || echo no)" "yes"
+chk "跑完现场的档位没变（boot_hash 文件在不在，跑前跑后一致）" "$([ -f "$REAL_HASH_FILE" ] && echo yes || echo no)" "$HAD_HASH_FILE"
 chk "真实后端配置未被改写" "$(sha256sum < "$REAL_OMK_CFG" 2>/dev/null | cut -c1-16)" \
     "$(sha256sum < "$R/data/misc/keystore/omk/config.toml" 2>/dev/null | cut -c1-16)"
 chk "digest 现值仍是生效值" "$(getprop ro.boot.vbmeta.digest)" "$p_eff"
