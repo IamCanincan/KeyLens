@@ -983,6 +983,27 @@ function listSection() {
     if (seg.scrollWidth > seg.clientWidth + 1) seg.setAttribute('data-scrolls', '');
     else seg.removeAttribute('data-scrolls');
   }, 0);
+  /* 参考清单建议（exclude-suggest，包名与分类来自 Tricky-Addon 的 more-exclude.json，
+     Apache-2.0）：这些应用不会去检测 bootloader，留在名单里只是多一张要伪造的证书链。
+     只给建议、只数**当前在名单里的**那几条；动不动的决定权在人（一颗按钮，走 remove-apps）。
+     命令层没有这条命令时 S.useless 是 null，这一块整个不出现。 */
+  const uselessHits = (S.useless || []).filter(function (u) { return baseSet[u.pkg]; });
+  if (uselessHits.length && (S.view === 'targets' || S.view === 'apps')) {
+    const CAT = { 'root-manager': '根管理器', 'root-related': '根相关工具', general: '不会查 bootloader 的普通应用' };
+    const cats = {};
+    uselessHits.forEach(function (u) { cats[u.cat] = (cats[u.cat] || 0) + 1; });
+    const why = Object.keys(cats).map(function (k) { return (CAT[k] || k) + ' ' + cats[k]; }).join(' · ');
+    const row = h('div', 'suggest-row');
+    row.appendChild(h('span', 'hint', '参考清单建议移出 ' + uselessHits.length + ' 条：' + why));
+    row.appendChild(button('移出这 ' + uselessHits.length + ' 条', {
+      variant: 'tonal',
+      on: function () {
+        write('remove-apps', uselessHits.map(function (u) { return u.pkg; }).join(' '),
+          '已移出 ' + uselessHits.length + ' 条');
+      }
+    }));
+    s.appendChild(row);
+  }
   /* 被启动器判据筛掉的那些（覆盖层 / 服务 / 资源包）收起来，但一句话点名、点得开 ——
      要 spoof com.android.bluetooth 的人必须还找得到它。 */
   if (S.view === 'system' && S.system !== null && sysSp.comps.length) {

@@ -79,7 +79,9 @@ cp module/lib/applist.sh "$work/applist.sh"
 sed 's|\${AWK_CMD:-awk} -v adopt=|awk -v adopt=|' "$work/applist.sh" > "$work/a1"
 cmp -s "$work/applist.sh" "$work/a1"; [ "$?" = 1 ]
 chk '变异 ③ 落地（一处退回裸 awk）' $?
-n3=$(grep -nE "awk[ ]+(-|')" "$work/a1" | grep -v 'AWK_CMD' | grep -vE ':[0-9]+:[[:space:]]*#' | grep -c . || true)
+# 过滤注释：grep -n 单文件时的输出是「行号:正文」，多文件才是「路径:行号:正文」——
+# 原来只写 `:[0-9]+:`，单文件那支永远匹配不上（2026-11-03 一条缩进注释把它顶成 2 处）。
+n3=$(grep -nE "awk[ ]+(-|')" "$work/a1" | grep -v 'AWK_CMD' | grep -vE '(:|^)[0-9]+:[[:space:]]*#' | grep -c . || true)
 [ "$n3" = 1 ]
 chk "变异 ③「退回裸 awk」被同一条计数管道抓到（命中 $n3 处，要 1 处）" $?
 rm -rf "$work"

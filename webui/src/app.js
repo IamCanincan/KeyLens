@@ -606,7 +606,7 @@ function loadSub(sub, force) {
   const key = 'func/' + sub;
   const wasPending = pagePending;
   if (sub === 'targets') {
-    need.push('lists', 'excluded');
+    need.push('lists', 'excluded', 'useless');
     /* Tricky 行尾「自动 →」的判定读 tee_status：跟名单一起取，首帧就画对，
        不必等用户先进一次后端配置。 */
     if (S.backendInfo.backend === 'tricky') need.push('teestatus');

@@ -277,6 +277,69 @@ excluded_apps() {
     rm -rf "$base" 2>/dev/null
 }
 
+# ---------- 参考清单：建议移出的那些 ----------
+# 包名与分类抄自 Tricky-Addon-Update-Target-List 的 more-exclude.json（Apache-2.0，
+# 出处见 THIRD_PARTY_NOTICES.md）。它的判据是"这些应用不会去检测 bootloader"：
+# 根管理器、终端、文件管理器、地图/办公这类东西放进目标名单，只是多一张要伪造的
+# 证书链，换不来任何隐蔽性。
+# 这里**只给建议、不动文件** —— 移出走的还是界面上那条 remove-apps，由人点。
+# 类别用短 id（root-manager / root-related / general），中文由界面翻。
+kl_exclude_table() {
+    cat <<'KL_EXCLUDE_TABLE'
+com.topjohnwu.magisk	root-manager
+io.github.vvb2060.magisk	root-manager
+io.github.huskydg.magisk	root-manager
+me.weishu.kernelsu	root-manager
+com.rifsxd.ksunext	root-manager
+com.sukisu.ultra	root-manager
+me.bmax.apatch	root-manager
+me.garfieldhan.apatch.next	root-manager
+org.lsposed.manager	root-related
+com.termux	root-related
+bin.mt.plus	root-related
+bin.mt.plus.canary	root-related
+xzr.konabess	root-related
+io.github.a13e300.ksuwebui	root-related
+moe.shizuku.privileged.api	root-related
+com.dergoogler.mmrl	root-related
+com.dergoogler.mmrl.wx	root-related
+org.swiftapps.swiftbackup	general
+com.google.android.apps.docs.editors.docs	general
+com.google.android.apps.docs.editors.sheets	general
+com.google.android.apps.docs.editors.slides	general
+com.google.android.keep	general
+com.google.android.apps.maps	general
+com.google.earth	general
+com.google.android.apps.translate	general
+com.android.chrome	general
+com.google.android.youtube	general
+com.google.android.apps.youtube.music	general
+org.zwanoo.android.speedtest	general
+KL_EXCLUDE_TABLE
+}
+
+# 已装列表与清单之间的分隔行（不是合法包名，撞不上）。
+KL_EXCLUDE_SENTINEL='--kl-exclude-table--'
+
+# exclude_suggest：参考清单 ∩ 已装（全量，含系统应用 —— Chrome/Translate 在不少机器上
+# 是预装的系统应用，按 `-3` 取就漏了）。每行「包名<TAB>类别」。
+# **不**输出"在不在名单里"：界面自己手里就有那份目标文件，两边各算一次迟早会分叉。
+exclude_suggest() {
+    local inst
+    inst=$(cmd package list packages --user all 2>/dev/null || pm list packages 2>/dev/null)
+    # 已装列表走 stdin + 分隔行，**不用** `awk -v inst=…`：toybox awk 的 -v 遇到
+    # 200 多行的值会当场 `newline in string`（2026-11-03 真机上第一跑就撞上）。
+    {
+        printf '%s\n' "$inst" | sed -n 's/^package://p'
+        printf '%s\n' "$KL_EXCLUDE_SENTINEL"
+        kl_exclude_table
+    } | ${AWK_CMD:-awk} -v sentinel="$KL_EXCLUDE_SENTINEL" '
+        $0 == sentinel { table = 1; next }
+        !table { if ($0 != "") I[$0] = 1; next }
+        NF == 2 && ($1 in I) { printf "%s\t%s\n", $1, $2 }
+    '
+}
+
 # ---------- 旧版本状态清理 ----------
 # 说明：墓碑模型的遗留文件，升级后不再使用。成功同步一次就删掉；
 #       失败时保留，便于回退旧版本时仍读得到。

@@ -468,6 +468,54 @@ pub fn apps(arg: &str) {
     }
 }
 
+/// 参考清单（包名与分类抄自 Tricky-Addon-Update-Target-List 的 more-exclude.json，
+/// Apache-2.0，出处见 THIRD_PARTY_NOTICES.md）：这些应用不会去检测 bootloader，
+/// 放进目标名单只是多一张要伪造的证书链。**只给建议、不动文件** —— 移出走的还是 remove-apps。
+/// 顺序与 shell 侧 `kl_exclude_table` 逐字同序（对拍按行比）。
+const EXCLUDE_HINTS: &[(&str, &str)] = &[
+    ("com.topjohnwu.magisk", "root-manager"),
+    ("io.github.vvb2060.magisk", "root-manager"),
+    ("io.github.huskydg.magisk", "root-manager"),
+    ("me.weishu.kernelsu", "root-manager"),
+    ("com.rifsxd.ksunext", "root-manager"),
+    ("com.sukisu.ultra", "root-manager"),
+    ("me.bmax.apatch", "root-manager"),
+    ("me.garfieldhan.apatch.next", "root-manager"),
+    ("org.lsposed.manager", "root-related"),
+    ("com.termux", "root-related"),
+    ("bin.mt.plus", "root-related"),
+    ("bin.mt.plus.canary", "root-related"),
+    ("xzr.konabess", "root-related"),
+    ("io.github.a13e300.ksuwebui", "root-related"),
+    ("moe.shizuku.privileged.api", "root-related"),
+    ("com.dergoogler.mmrl", "root-related"),
+    ("com.dergoogler.mmrl.wx", "root-related"),
+    ("org.swiftapps.swiftbackup", "general"),
+    ("com.google.android.apps.docs.editors.docs", "general"),
+    ("com.google.android.apps.docs.editors.sheets", "general"),
+    ("com.google.android.apps.docs.editors.slides", "general"),
+    ("com.google.android.keep", "general"),
+    ("com.google.android.apps.maps", "general"),
+    ("com.google.earth", "general"),
+    ("com.google.android.apps.translate", "general"),
+    ("com.android.chrome", "general"),
+    ("com.google.android.youtube", "general"),
+    ("com.google.android.apps.youtube.music", "general"),
+    ("org.zwanoo.android.speedtest", "general"),
+];
+
+/// cmd_exclude_suggest：参考清单 ∩ 已装（**全量**，含系统应用 —— Chrome / Translate
+/// 在不少机器上是预装的，按 `-3` 取就漏了）。每行「包名<TAB>类别」。
+/// 不输出"在不在名单里"：界面手里就有那份目标文件，两边各算一次迟早分叉。
+pub fn exclude_suggest() {
+    let installed: std::collections::HashSet<String> = pkg_names(&[]).into_iter().collect();
+    for (pkg, cat) in EXCLUDE_HINTS {
+        if installed.contains(*pkg) {
+            println_ok!("{}\t{}", pkg, cat);
+        }
+    }
+}
+
 /// 目标条目 → 基础包名（entry_base.awk 的等价）。
 fn entry_base(tok: &str, id: BackendId) -> String {
     match id {
@@ -2961,7 +3009,28 @@ pub fn doctor() {
         } else {
             doc("并发锁", "ok", "空闲", "");
         }
-        // 11. 日志
+        // 11. 名单共用：同一份 target 文件可能有别的模块也在写（Tricky-Addon 的自动更新、
+        // TSupport-A 的自动同步）。两边各写各的，用户只会看见"名单自己变了"。
+        let mut others: Vec<&str> = Vec::new();
+        if std::fs::metadata("/data/adb/modules/TA_utl").is_ok()
+            || std::fs::metadata("/data/adb/modules/.TA_utl").is_ok()
+        {
+            others.push("Tricky-Addon（更新目标名单）");
+        }
+        if std::fs::metadata("/data/adb/modules/tsupport-advance").is_ok() {
+            others.push("TSupport-A");
+        }
+        if others.is_empty() && std::fs::metadata("/storage/emulated/0/stop-tspa-auto-target").is_ok() {
+            others.push("TSupport-A 留下的停更标记（模块不在了，标记还在）");
+        }
+        if others.is_empty() {
+            doc("名单共用", "ok", "没有别的工具在写这份名单", "");
+        } else {
+            doc("名单共用", "warn",
+                &format!("还有别的东西在写同一份名单：{}", others.join("、")),
+                "二选一：卸掉它，或在它自己的界面里关掉自动同步");
+        }
+        // 12. 日志
         match std::fs::metadata(&p.log) {
             Ok(md) => {
                 let base = p.log.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
