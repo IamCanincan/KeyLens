@@ -626,7 +626,9 @@ chk('分组圆角：首行上角、末行下角大圆角',
 chk('目标名单用轻量行一次画全（不建 md-list-item、不分批）',
   /const l = h\('div', 'app-list'\)/.test(screens)
   && /const r = h\('div', 'app-row'\)/.test(screens)
-  && /page\.forEach\(function \(t\) \{ l\.appendChild\(rowOf\(t\)\); \}\)/.test(screens)
+  /* 这里只认「一次画全 rowOf(t…)」这个形状，不钉死实参：给 rowOf 加一个参数
+     （mixed）就让整条闸红过一次 —— 判据要钉行为，不要钉调用点的字面量。 */
+  && /page\.forEach\(function \(t\) \{ l\.appendChild\(rowOf\(t[,)]/.test(screens)
   && /\.app-row\{[^}]*min-height:72px[^}]*background:var\(--md-sys-color-surface-container\)/.test(css)
   && /\.app-list > \.app-row:first-child\{border-top-left-radius:22px/.test(css)
   && /\.app-row-sub\{[^}]*font-family:var\(--kl-mono\)/.test(css)

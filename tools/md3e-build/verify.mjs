@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 127;
+const FLOOR_CHKS = 128;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1166,6 +1166,31 @@ async function main() {
     chk('已装档按显示名排（两种序都钉死：退回包名序就红）',
       JSON.stringify(ord1.all) === JSON.stringify(BY_LABEL)
       && JSON.stringify(ord1.all) !== JSON.stringify(BY_PKG), JSON.stringify(ord1));
+
+    /* 角标只该在"混着"的时候出现：台架默认那一屏本来就混（3 在名单 / 1 不在）。
+       这里再注入一份"全在名单里"的真机形状（本机已装 129 条全在），角标必须一枚都不画。
+       注入必须走 addScriptToEvaluateOnNewDocument —— S.lists 是 ensure 缓存，
+       在页内改 window.__KL_DEMO_FIXTURE 再切回来不会重新取数（第一次这么写，rows 读到 0）。 */
+    const inj = await send('Page.addScriptToEvaluateOnNewDocument', {
+      source: "window.__KL_DEMO_FIXTURE = { targets: 'a.one\\nb.two', apps: 'a.one\\nb.two' };" });
+    await send('Page.navigate', { url: URL0 });
+    await sleep(2400);
+    /* 刚加载完停在主页：tapEntry 只在「功能」那一栏里找条目（第一次没切过去，chip=[] 才发现） */
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+    await sleep(700);
+    await tapEntry('目标名单');
+    await sleep(900);
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
+    await sleep(800);
+    const allIn = await ev(`(function(){ return { rows: document.querySelectorAll('#view .app-row').length,
+      角标: document.querySelectorAll('#view .app-row-tag').length,
+      chip: [].slice.call(document.querySelectorAll('#view md-chip')).filter(function(c){return c.hasAttribute('selected');})
+        .map(function(c){return c.getAttribute('label');}) }; })()`);
+    chk('整屏都在名单里时不画「已纳入」（129 行全是噪音），行列数照常',
+      allIn.rows === 2 && allIn.角标 === 0, JSON.stringify(allIn));
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
   }
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；

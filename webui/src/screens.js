@@ -1031,7 +1031,7 @@ function listSection() {
     }
     return letterBlock((ic && ic.label) || title);
   }
-  function rowOf(tok) {
+  function rowOf(tok, mixed) {
     const b = baseOf(tok), ic = S.icons[b];
     const meta = (S.targetMeta || {})[tok];
     const isTrickyTargets = S.view === 'targets' && bi.backend === 'tricky' && syn.modes;
@@ -1040,7 +1040,9 @@ function listSection() {
     const title = (ic && ic.label) || b || tok;
     const note = m ? (m.note || '') : '';
     /* 「已在名单里」以前只靠行尾那个 add/remove 小图标区分，扫一眼根本看不出来
-       （主人原话：哪些选了哪些没选都不明了）。非名单档里给一枚明文角标。 */
+       （主人原话：哪些选了哪些没选都不明了）。非名单档里给一枚明文角标 ——
+       但只在**这一屏有混有没混**时才给：本机「已装」129 条全在名单里，
+       逐行都挂一枚「已纳入」等于 129 行噪音，反而不如行尾那个"−"清楚。 */
     const inList = !!baseSet[b || tok];
     const sup = [detail, note].filter(Boolean).join(' · ');
     const r = h('div', 'app-row');
@@ -1056,7 +1058,7 @@ function listSection() {
     const tx = h('div', 'app-row-text');
     tx.appendChild(h('b', 'app-row-title', title));
     if (sup) tx.appendChild(h('span', 'app-row-sub', sup));
-    if (S.view !== 'targets' && inList) tx.appendChild(h('span', 'app-row-tag', '已纳入'));
+    if (S.view !== 'targets' && mixed && inList) tx.appendChild(h('span', 'app-row-tag', '已纳入'));
     r.appendChild(tx);
     if (m) {
       r.appendChild(m.el);
@@ -1098,8 +1100,11 @@ function listSection() {
       return String(lx).localeCompare(String(ly), 'zh') || String(x).localeCompare(String(y));
     });
     const page = shown.slice(0, shownLimit);
+    /* 这一屏是不是"混着"（有在名单里的、也有不在的）—— 角标只在混着的时候有信息量 */
+    const inCount = shown.filter(function (t) { return !!baseSet[baseOf(t)]; }).length;
+    const mixed = inCount > 0 && inCount < shown.length;
     l.textContent = '';
-    page.forEach(function (t) { l.appendChild(rowOf(t)); });
+    page.forEach(function (t) { l.appendChild(rowOf(t, mixed)); });
     if (!shown.length) {
       empty.textContent = (S.view === 'system' && S.systemErr)
         ? '系统应用读不到：' + S.systemErr
