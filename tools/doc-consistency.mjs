@@ -58,5 +58,13 @@ chk('module.prop 描述含三家后端',
 /* D. 文档引用的文件存在 */
 chk('README 引用的 LICENSE 存在', fs.existsSync('LICENSE'));
 
+/* E. 会随代码漂移的计数：文档写的对拍条数必须等于台子里的下限常量。
+   本轮就同时存在过 261 / 266 / 269 三个版本的说法 —— 每加一条 chk 文档就过期一次，
+   而"文档落后于代码"不会让任何东西变红，只会让用户读到假话。 */
+const pf = (read('rust/parity.sh').match(/\[ "\$oks" -lt (\d+) \]/) || [])[1];
+const dc = (read('docs/HANDOFF.md').match(/\*\*(\d+) 项 chk\*\*/) || [])[1];
+chk('HANDOFF 的对拍条数 = parity.sh 的下限',
+  !!pf && dc === pf, `文档=${dc || '没写'} vs 下限=${pf || '没找到'}`);
+
 console.log(bad ? `\n${bad} 处不一致` : '\n全部一致');
 process.exit(bad ? 1 : 0);

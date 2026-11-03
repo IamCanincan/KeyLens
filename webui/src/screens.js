@@ -1049,6 +1049,10 @@ function listSection() {
     }
     const rest = shown.length - page.length;
     more.hidden = rest <= 0;
+    /* md-button 自己设了 display:flex，会盖掉 UA 的 [hidden]{display:none} ——
+       只写 hidden 的话那颗画全之后还占着一格 48px 的空壳在台架上量得到、人也看得见
+       （台架那条"屏上真看不见"的断言就是为这个红的）。所以显式收掉。 */
+    more.style.display = rest > 0 ? '' : 'none';
     /* 藏起来的时候把标签也清空：留着一句"继续显示余下 N 条"会被台架的 peek 读成
        屏上的文字（它在 DOM 里，只是不可见），对照就不干净了。 */
     const moreLabel = rest > 0 ? '继续显示余下 ' + rest + ' 条' : '';

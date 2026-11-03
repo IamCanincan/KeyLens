@@ -968,8 +968,13 @@ async function main() {
      反引号会把字符串当场截断，node 直接在加载时报语法错。 */
   const readList = () => ev(`(function(){ var m=document.querySelector('#view [data-role="list-more"]');
     var hints=[].slice.call(document.querySelectorAll('#view p.hint')).map(function(p){return p.textContent;});
+    var r = m ? m.getBoundingClientRect() : null;
     return { rows: document.querySelectorAll('#view .app-row').length,
       more: m ? (m.getAttribute('label') || '') : '(没有那颗)', hidden: m ? m.hidden === true : null,
+      /* hidden 属性 = true 不等于屏上看不见：组件自己设了 display:flex 就会盖掉 UA 的
+         [hidden]{display:none}。这里量真实的高度与 offsetParent。 */
+      offscreen: m ? (m.offsetParent === null) : null,
+      h: r ? Math.round(r.height) : -1,
       hint: hints.filter(function(t){ return /共 [0-9]+ 条/.test(t); })[0] || '',
       chips: [].slice.call(document.querySelectorAll('#view md-chip')).map(function(c){return c.getAttribute('label');}),
       sk: !!document.querySelector('#view .load-card'),
@@ -989,8 +994,9 @@ async function main() {
   await tapHere(`document.querySelector('#view [data-role="list-more"]')`);
   await sleep(700);
   const L2 = await readList();
-  chk('点一下画全 250 行，那颗自己退场（标签清空，不留屏外文字）',
-    L2.rows === 250 && L2.hidden === true && L2.more === '' && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
+  chk('点一下画全 250 行，那颗自己退场（**屏上真看不见**：offsetParent 为空或高度 0）',
+    L2.rows === 250 && L2.hidden === true && L2.more === ''
+    && (L2.offscreen === true || L2.h === 0) && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
 
   /* §5.19 的三条"看不见就永远点不响 / 整页空白 / 形状不符"，各画一遍真屏 */
   {
@@ -1031,6 +1037,17 @@ async function main() {
     chk('没有 resetprop 的机器上「立即应用一次」禁用并说明（界面读 env.resetprop 了）',
       rp.found === 1 && rp.disabled === 1 && /找不到 resetprop/.test(rp.hint), JSON.stringify(rp));
 
+    /* disabled 属性 = true 不等于真点不动：组件要是自己吞掉了 disabled，那颗照样发命令。
+       这里真点一次，看有没有冒出"已写入并复核"那条提示。 */
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('立即应用一次')===0;})[0]; })()`);
+    await sleep(600);
+    const af = await ev(`(function(){ var s=document.querySelector('md-snackbar');
+      var t = s ? (String(s.textContent||'') + ' | ' + String(s.message||'')) : '(没有 snackbar)';
+      return { snack: t.replace(/\\s+/g,' ').trim().slice(0, 70) }; })()`);
+    chk('点那颗禁用按钮不发出写入（没有"已写入并复核"的提示）',
+      !/已写入并复核/.test(af.snack), JSON.stringify(af));
+
     /* #9：OMK 的 verified_boot_state 命令层只收 true/false，控件必须是开关。
        表单在折叠里（fold 的「编辑 config.toml」），先点开再找那一行。 */
     await send('Page.navigate', { url: URL0 + '&backend=omk' });
@@ -1046,6 +1063,39 @@ async function main() {
       return { found:1, sw: r.querySelector('md-switch')?1:0, tf: r.querySelector('md-text-field')?1:0 }; })()`);
     chk('verified_boot_state 画成开关（命令层只收 true/false，文本框填 green 必被打回）',
       vbs.found === 1 && vbs.sw === 1 && vbs.tf === 0, JSON.stringify(vbs));
+
+    /* #2 / #3 / #10：TEESim 选中非默认 profile 的三张脸。
+       这三条以前只是"改了代码"，没有任何一条断言钉着 —— 假成功最容易悄悄回来。 */
+    await send('Page.navigate', { url: URL0 + '&backend=teesim' });
+    await sleep(1400);
+    await toFunc(); await sleep(500);
+    await tapEntry('后端配置'); await sleep(700);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('alt')===0;})[0]; })()`);
+    await sleep(800);
+    const alt = await ev(`(function(){ var t=document.querySelector('#view .page-title');
+      var hints=[].slice.call(document.querySelectorAll('#view p.hint')).map(function(p){return p.textContent;});
+      var labels=[].slice.call(document.querySelectorAll('#view .row-t')).map(function(x){return x.textContent;});
+      return { title: t?t.textContent.trim():'', 只上报default: hints.some(function(h){return /只上报 default/.test(h);}),
+        未知行: labels.filter(function(l){return /当前值未知/.test(l);}).length, 行总数: labels.length }; })()`);
+    chk('选中 alt 后：编辑器说明"只上报 default"，且缺值的下拉/开关标成「当前值未知」而不是某个确定档',
+      alt.只上报default === true && alt.未知行 >= 2 && alt.行总数 > alt.未知行, JSON.stringify(alt));
+
+    await toFunc(); await sleep(500);
+    await tapEntry('目标名单'); await sleep(700);
+    const scope = await ev(`(function(){ var hints=[].slice.call(document.querySelectorAll('#view p.hint')).map(function(p){return p.textContent;});
+      return { 点名: hints.filter(function(h){return /profiles\.default\.apps/.test(h);})[0] || '' }; })()`);
+    chk('TEESim 的名单页明说加减写的是 profiles.default.apps（选中 alt 时要点名它）',
+      /profiles\.default\.apps/.test(scope.点名) && /alt/.test(scope.点名), JSON.stringify(scope));
+
+    await toFunc(); await sleep(500);
+    await tapEntry('密钥箱'); await sleep(700);
+    const kb = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){return (x.getAttribute('label')||'').indexOf('替换 keybox')===0;})[0];
+      var errs=[].slice.call(document.querySelectorAll('#view p.read-err')).map(function(p){return p.textContent;});
+      return { found: b?1:0, disabled: b?(b.hasAttribute('disabled')?1:0):-1, 说明: errs.join(' | ').slice(0, 80) }; })()`);
+    chk('选中非默认 profile 时 keybox 那颗按钮不给（不再回"已替换 keybox"骗人）',
+      kb.found === 1 && kb.disabled === 1 && /这条路还没有/.test(kb.说明), JSON.stringify(kb));
   }
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；
