@@ -1251,7 +1251,13 @@ cmd_icons() {
     # 按文件名抠图不可行、解析 resources.arsc 又不划算。所以带一个小 dex
     # （源与编译命令在 tools/icondump/），在 app_process 里调
     # PackageManager.loadIcon —— 顺带拿到显示名，自适应图标也由系统渲染好。
-    # 只补"缺的"、一次最多 60 个：实测 12 个包约 2s，其中约 1.5s 是 ART 启动。
+    # 只补"缺的"、一次最多 120 个 —— 这个数必须与界面一批要的量（screens.js 的 batch）以及
+    # Rust 侧 read_cmds.rs 的上限**三个一致**（tests/ui-shape.js 钉住）。
+    # 为什么是 120 而不是原来的 60：60 是照着"第三方应用一屏"定的，界面一批要 120 个，
+    # 于是每次都有 60 个被悄悄丢掉、界面永远画首字块。开了「系统应用」那一档之后这条被
+    # 踩得很实在（本机现量：要 120 个只回 65 行）。
+    # 代价现量（同一次 app_process，只换包数）：60 个 2619ms / 120 个 3749ms / 200 个 5709ms
+    # —— 约 1.7s 是 ART 启动的固定成本，每个包约 19ms；图标是后台补的，不挡首屏。
     dex="$MODDIR/lib/icondump.dex"
     res2=""
     if [ -n "$want" ] && [ -f "$dex" ] && command -v app_process >/dev/null 2>&1; then
@@ -1262,7 +1268,7 @@ cmd_icons() {
             case "$have" in *" $p "*) continue ;; esac
             miss="$miss,$p"
             mn=$((mn + 1))
-            [ "$mn" -ge 60 ] && break
+            [ "$mn" -ge 120 ] && break
         done
         miss="${miss#,}"
         if [ -n "$miss" ]; then

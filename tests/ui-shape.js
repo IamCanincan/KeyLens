@@ -737,6 +737,17 @@ chk('Tricky 那条写明 no = 标签不报', /tricky: '[^']*标签不报/.test(p
 chk('两个 PATCH_HINT 都真的挂到了对应表单上',
   /form\(cur\.isDefault[\s\S]{0,220}PATCH_HINT\.teesim/.test(screens) && /PATCH_HINT\.tricky/.test(screens));
 
+/* 图标冷路的三个数必须一致：界面一批问多少、shell 补多少、Rust 补多少。
+   以前界面要 120 而命令层只补 60 —— 差额被**静默丢掉**，那 60 行在界面上永远只有首字块，
+   而且两侧各写各的，改一边没人提醒。本机现量：要 120 个只回 65 行。
+   （开了「系统应用」那一档之后这条从"边界"变成"日常踩"：那一档 235 条，多数没有启动器入口。） */
+const uiBatch = Number((screens.match(/need\.slice\(0, (\d+)\)/) || [])[1]);
+const shCap = Number((sh.match(/\[ "\$mn" -ge (\d+) \] && break/) || [])[1]);
+const rsCap = Number((read('rust/src/read_cmds.rs').match(/if miss\.len\(\) >= (\d+)/) || [])[1]);
+chk('图标冷路三个数一致（界面 batch = shell 上限 = Rust 上限）',
+  uiBatch > 0 && uiBatch === shCap && uiBatch === rsCap,
+  `界面=${uiBatch || '没读到'} shell=${shCap || '没读到'} Rust=${rsCap || '没读到'}`);
+
 /* 三家互斥矩阵：状态必须是三态、三家齐全，并且以字面量读出来（动态下标会脱离 kv-shape 闸） */
 chk('矩阵三家齐全', /BACKENDS = \[[\s\S]*?'tricky'[\s\S]*?'teesim'[\s\S]*?'omk'/.test(screens));
 ['tricky_state', 'teesim_state', 'omk_state'].forEach(k =>

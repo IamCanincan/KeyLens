@@ -6137,7 +6137,10 @@ pub fn icons(arg: &str) {
                 continue;
             }
             miss.push(p.clone());
-            if miss.len() >= 60 {
+            // 120 = 界面一批要的量 = shell 侧 kl 冷路上限（三个数由 tests/ui-shape.js 钉住）。
+            // 原来这里是 60：界面要 120 个，每次有 60 个被静默丢掉，只能永远画首字块 ——
+            // 「系统应用」那一档（本机 235 条）把这条踩实了：实测要 120 个只回 65 行。
+            if miss.len() >= 120 {
                 break;
             }
         }
