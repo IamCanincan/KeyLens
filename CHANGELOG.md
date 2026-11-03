@@ -68,7 +68,7 @@
 * **参考清单建议移出**（命令层第 41 条 `exclude-suggest`）：包名与分类抄自 Tricky-Addon 的
   `more-exclude.json`（Apache-2.0，出处见 `THIRD_PARTY_NOTICES.md`），29 个包分三类
   （根管理器 / 根相关工具 / 不会查 bootloader 的普通应用）。名单页多一行
-  「参考清单建议移出 N 条：根管理器 1 · …」+ 一颗按钮，点它走的是既有 `remove-apps`
+  「参考清单：N 条可以移出（按类别报数：根管理器 / 根相关工具 / 普通应用）」+ 一颗按钮，点它走的是既有 `remove-apps`
   （没有新增写入口）；命令层只报「清单 ∩ 已装」，不替界面判断"在不在名单里"。
   这台机现量命中 5 条（Chrome / Translate / YouTube / Termux / KernelSU 管理器本体）。
 * **体检多一行「名单共用」**（第 12 行）：还有别的东西在写同一份 target 文件时 warn 并点名

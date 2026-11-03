@@ -989,12 +989,14 @@ function listSection() {
      命令层没有这条命令时 S.useless 是 null，这一块整个不出现。 */
   const uselessHits = (S.useless || []).filter(function (u) { return baseSet[u.pkg]; });
   if (uselessHits.length && (S.view === 'targets' || S.view === 'apps')) {
-    const CAT = { 'root-manager': '根管理器', 'root-related': '根相关工具', general: '不会查 bootloader 的普通应用' };
+    const CAT = { 'root-manager': '根管理器', 'root-related': '根相关工具', general: '普通应用' };
     const cats = {};
     uselessHits.forEach(function (u) { cats[u.cat] = (cats[u.cat] || 0) + 1; });
     const why = Object.keys(cats).map(function (k) { return (CAT[k] || k) + ' ' + cats[k]; }).join(' · ');
     const row = h('div', 'suggest-row');
-    row.appendChild(h('span', 'hint', '参考清单建议移出 ' + uselessHits.length + ' 条：' + why));
+    /* 一句话要能在 417px 上读完：类别用短词（"不会查 bootloader 的普通应用"会占两行半），
+       具体是哪几个包由行尾按钮 + 之后的行状态回答，不在这句里铺开。 */
+    row.appendChild(h('span', 'hint', '参考清单：' + uselessHits.length + ' 条可以移出（' + why + '）'));
     row.appendChild(button('移出这 ' + uselessHits.length + ' 条', {
       variant: 'tonal',
       on: function () {

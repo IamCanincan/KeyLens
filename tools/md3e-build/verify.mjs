@@ -1262,7 +1262,7 @@ async function main() {
         btn: r ? [].slice.call(r.querySelectorAll('md-button')).map(function(b){return b.getAttribute('label')||'';})[0] || '' : '',
         rows: document.querySelectorAll('#view .app-row').length }; })()`);
     chk('参考清单命中名单里的包时，给出一行建议 + 一颗按钮',
-      /参考清单建议移出 2 条/.test(sug.hint) && /根相关工具 1/.test(sug.hint) && /根管理器 1/.test(sug.hint)
+      /参考清单：2 条可以移出/.test(sug.hint) && /根相关工具 1/.test(sug.hint) && /根管理器 1/.test(sug.hint)
       && /^移出这 2 条/.test(sug.btn) && sug.rows === 3, JSON.stringify(sug));
     await tapHere2(`(function(){ var r=document.querySelector('#view .suggest-row');
       return r ? r.querySelector('md-button') : null; })()`);
