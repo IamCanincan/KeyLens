@@ -1124,6 +1124,16 @@ Tricky-Addon 的自动更新、TSupport-A 的自动同步。它自己就是这�
 （`module/service.sh`）。我们这边只**报告**、不替人做决定：存在 `TA_utl` / `.TA_utl` /
 `tsupport-advance`（或那个停更标记）就 warn，并说清"二选一"。
 
+**这一轮自己查出来的第二个洞**：那颗"移出这 N 条"按钮第一版用**空格**拼包名，而命令层两侧
+（`IFS=','` / `raw.split(',')`）只认**逗号** —— demo 不校验参数所以台架全绿，真机上第一下就会
+"不是合法的目标条目：com.tencent.mm com.android.vending"。现在界面发逗号、台架用
+`window.__klWrites` 记下真正发出去的参数再比；demo 的 `remove-apps` 也改成逗号/空格都认
+（只认空格的话，界面改用逗号后台架会"什么都没删"）。**命令层自己的分隔符本来就是逗号**，
+parity 里有 `remove-apps 'com.a,com.c'` 的用例，是界面这一侧没对齐。
+
+开销现量（`exclude-suggest`）：**106ms**（一次 `cmd package list packages --user all` + awk），
+跟 lists / excluded 并行跑，没进关键路径。
+
 没照搬的：它的"装完不用重启"（`hotinstall.sh` 是重跑自己的 post-fs-data/service；我们这几个
 脚本会起 inotifyd/守护进程，盲目重跑是双开）；它的在线排除表（要多一次网络请求，本地那份够用，
 等真有人反馈漏了再加）；它把自己藏进 `.TA_utl` 再 symlink 到后端模块 webroot 那套（我们是独立

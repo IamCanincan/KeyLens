@@ -998,7 +998,9 @@ function listSection() {
     row.appendChild(button('移出这 ' + uselessHits.length + ' 条', {
       variant: 'tonal',
       on: function () {
-        write('remove-apps', uselessHits.map(function (u) { return u.pkg; }).join(' '),
+        /* 分隔符是**逗号**：命令层两侧（shell 的 IFS=',' 与 Rust 的 raw.split(',')）都只认逗号。
+           这里写成空格会被当成"一个叫 `a b` 的包名"，第一下就回"不是合法的目标条目"。 */
+        write('remove-apps', uselessHits.map(function (u) { return u.pkg; }).join(','),
           '已移出 ' + uselessHits.length + ' 条');
       }
     }));

@@ -614,6 +614,11 @@ function demoResult(cmd, arg) {
       window.__klIconReqs.push(String(arg || '').split(',').filter(Boolean));
     } catch (e) { /* 台架之外的环境没有 window 也无所谓 */ }
   }
+  /* 台架记录写命令的参数形状。这条以前是盲区：界面发空格分隔、命令层两侧都只认逗号，
+     demo 照样回 ok，真机上第一下就"不是合法的目标条目：com.a com.b"。 */
+  if ((' ' + WRITE_CMDS + ' ').indexOf(' ' + cmd + ' ') >= 0) {
+    try { (window.__klWrites = window.__klWrites || []).push({ cmd: cmd, arg: String(arg == null ? '' : arg) }); } catch (e) {}
+  }
   /* 「系统应用」那一档台架也要画得出来（这几台机上下面几个都是系统包）。
      不带参数时仍走下面 body 里那份第三方清单 —— 默认档的形状不能被这一档改掉。 */
   if (cmd === 'apps' && arg === 'system') {
@@ -710,7 +715,9 @@ function demoResult(cmd, arg) {
   /* 台架也要"记住"写的结果：整行点选之后 reload() 会重新取 targets，
      不把这份状态改掉的话，刚勾上的行下一帧又变回未勾 —— 那是台架自己造出来的假绿。 */
   if ((cmd === 'restore-apps' || cmd === 'remove-apps') && demoTargets) {
-    var pk = String(arg || '').split(/\s+/).filter(Boolean);
+    /* 真实命令层只认逗号（shell 的 IFS=',' 与 Rust 的 raw.split(',')）；台架这里也按逗号切，
+       再顺带认空格 —— 写成只认空格的话，界面发逗号时台架会"什么都没删"，而真机是能删的。 */
+    var pk = String(arg || '').split(/[,\s]+/).filter(Boolean);
     if (cmd === 'restore-apps') {
       pk.forEach(function (p) { if (demoTargets.indexOf(p) < 0) demoTargets.push(p); });
     } else {
