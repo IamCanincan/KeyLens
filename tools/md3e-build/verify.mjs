@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 128;
+const FLOOR_CHKS = 133;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -587,18 +587,22 @@ async function main() {
         var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
         return { chips: cs.map(function(c){return c.getAttribute('label');}),
           bases: rows.map(function(r){return r.getAttribute('data-base');}),
-          acts: rows.map(function(r){var a=r.querySelector('.app-row-act'); return a?(a.getAttribute('aria-label')||''):'';}) }; })()`);
+          /* 行尾那枚复选框：勾上 = 这条在名单里（照 Tricky-Addon 的做法） */
+          pressed: rows.map(function(r){return r.getAttribute('aria-pressed');}),
+          glyph: rows.map(function(r){var c=r.querySelector('.app-row-check'); return c?c.textContent:'';}),
+          tinted: rows.map(function(r){return r.classList.contains('is-in') ? 1 : 0;}),
+          acts: rows.map(function(r){return r.getAttribute('aria-label')||'';}) }; })()`);
       chk('读到了系统包，芯片上的数与画出的行数一致',
         sy.chips.some(function (l) { return l === '系统 ' + sy.bases.length; }) && sy.bases.length >= 2,
-        JSON.stringify(sy));
-      /* 已在名单里的系统包（台架名单含 com.android.vending）按钮必须是「移出」。
-         以前按钮按"你在哪一档"决定，非名单档里已在名单的项一律画「加入」，点一下
-         只换来一句"已加入"而什么都没改 —— 这一条钉的是"按是否在名单里决定按钮"。 */
+        JSON.stringify({ chips: sy.chips, rows: sy.bases.length }));
+      /* 已在名单里的系统包（台架名单含 com.android.vending）必须是"已勾选 + 移出"，
+         其余是空框 + 加入。整行可点，所以 aria-label / aria-pressed 都挂在行上。 */
       const vi = sy.bases.indexOf('com.android.vending');
-      chk('系统档里已在名单的那一行画「移出」，其余画「加入」',
-        vi >= 0 && /^移出 /.test(sy.acts[vi])
-        && sy.bases.every(function (b, j) { return j === vi || /^加入 /.test(sy.acts[j]); }),
-        JSON.stringify(sy.acts));
+      chk('系统档：在名单的那行是勾选态（移出），其余是空框（加入）',
+        vi >= 0 && sy.pressed[vi] === 'true' && sy.glyph[vi] === 'check_box' && sy.tinted[vi] === 1
+        && sy.bases.every(function (b, j) { return j === vi
+          || (sy.pressed[j] === 'false' && sy.glyph[j] === 'check_box_outline_blank' && sy.tinted[j] === 0); }),
+        JSON.stringify({ pressed: sy.pressed, glyph: sy.glyph, tinted: sy.tinted }));
       await tapChip2('名单');
       await sleep(400);
     }
@@ -1136,46 +1140,80 @@ async function main() {
       var btns=[].slice.call(document.querySelectorAll('#view md-button')).map(function(b){return b.getAttribute('label')||'';});
       return { rows: rows.length,
         titles: rows.map(function(r){return r.getAttribute('headline')||'';}),
-        角标: rows.filter(function(r){return [].slice.call(r.querySelectorAll('.app-row-tag')).length>0;}).length,
+        勾选: rows.map(function(r){return r.getAttribute('aria-pressed') === 'true' ? 1 : 0;}),
         折叠句: btns.filter(function(t){return /系统组件/.test(t);})[0] || '' }; })()`);
     const sy1 = await readSys();
     chk('「系统」档只列有启动器入口的（台架 5 个系统包 → 2 个应用），其余收成一句可点开的',
       sy1.rows === 2 && /^另有 3 条系统组件/.test(sy1.折叠句), JSON.stringify(sy1));
-    chk('已在名单里的那行带「已纳入」角标，没在的不带',
-      sy1.角标 === 1, JSON.stringify(sy1));
+    chk('系统档里在名单中的那行是勾选态，其余不勾',
+      sy1.勾选.filter(Boolean).length === 1, JSON.stringify(sy1.勾选));
     await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
       return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('另有')===0;})[0]; })()`);
     await sleep(700);
     const sy2 = await readSys();
     chk('点那一句能把 218…组件全列出来（不是藏死）', sy2.rows === 5, JSON.stringify({ rows: sy2.rows }));
-    const ord0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row .app-row-title')).map(function(x){return x.textContent;});
-      var s=t.slice().sort(function(a,b){return String(a).localeCompare(String(b),'zh');});
-      return { got:t, want:s }; })()`);
-    chk('「系统」这一屏内部自洽（显示名序，不是包名序）',
-      JSON.stringify(ord0.got) === JSON.stringify(ord0.want), JSON.stringify(ord0));
-    /* 上面那条单独是**假绿**：这一屏多数行没有名字，包名序与名字序长得一样，`want` 又是拿
-       `got` 自己排的。所以补一条能区分的正对照 —— 台架「已装」那 4 条两种序长得不一样，
-       两边都钉死（谁退回按包名排，这条当场红）。 */
+    const ord0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row')).map(function(r){
+        return { t: (r.querySelector('.app-row-title')||{}).textContent || '', on: r.getAttribute('aria-pressed') === 'true' }; });
+      return { got: t.map(function(x){return x.t;}), on: t.filter(function(x){return x.on;}).map(function(x){return x.t;}),
+        rest: t.filter(function(x){return !x.on;}).map(function(x){return x.t;}) }; })()`);
+    /* 排序规则照 Tricky-Addon：**已选的排最前**，其余按显示名 —— 拿"其余那段自己排一遍"
+       对照，而不是拿整屏自己排（那样选没选中混在一起，两种序长得一样也照样绿）。 */
+    chk('「系统」这一屏：已选的在最前，其余按显示名排',
+      ord0.on.length === 1 && ord0.got[0] === ord0.on[0]
+      && JSON.stringify(ord0.rest) === JSON.stringify(ord0.rest.slice().sort(function (a, b) { return String(a).localeCompare(String(b), 'zh'); })),
+      JSON.stringify(ord0));
     await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
       return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
     await sleep(800);
     const ord1 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row .app-row-title')).map(function(x){return x.textContent;});
       return { first: t[0] || '', all: t }; })()`);
+    /* 台架「已装」4 条里 3 条在名单、1 条不在：已选优先再按名字 ⇒ 这个序；
+       纯名字序是 BY_LABEL。两个都钉死，退回"只按名字"或"只按包名"都会红。 */
+    const BY_SELECTED = ['com.tencent.mm', 'Google Play 商店', 'Mihon', 'io.legado.app'];
     const BY_LABEL = ['com.tencent.mm', 'Google Play 商店', 'io.legado.app', 'Mihon'];
-    const BY_PKG = ['Mihon', 'Google Play 商店', 'com.tencent.mm', 'io.legado.app'];
-    chk('已装档按显示名排（两种序都钉死：退回包名序就红）',
-      JSON.stringify(ord1.all) === JSON.stringify(BY_LABEL)
-      && JSON.stringify(ord1.all) !== JSON.stringify(BY_PKG), JSON.stringify(ord1));
+    chk('已装档：已选优先、其余按显示名（纯名字序会红）',
+      JSON.stringify(ord1.all) === JSON.stringify(BY_SELECTED)
+      && JSON.stringify(ord1.all) !== JSON.stringify(BY_LABEL), JSON.stringify(ord1));
 
-    /* 角标只该在"混着"的时候出现：台架默认那一屏本来就混（3 在名单 / 1 不在）。
-       这里再注入一份"全在名单里"的真机形状（本机已装 129 条全在），角标必须一枚都不画。
-       注入必须走 addScriptToEvaluateOnNewDocument —— S.lists 是 ensure 缓存，
-       在页内改 window.__KL_DEMO_FIXTURE 再切回来不会重新取数（第一次这么写，rows 读到 0）。 */
+    /* 整行点选（照 Tricky-Addon）：点一下写 restore-apps、再点一下 remove-apps，
+       写完 reload 会重取 targets —— 这里量的是「点 → 写 → 重读 → 勾选态跟着变」的闭环。 */
+    const rowExpr = pkg => `(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
+      return rs.filter(function(r){return r.getAttribute('data-base') === '${pkg}';})[0]; })()`;
+    const readOne = () => ev(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
+      var r=rs.filter(function(x){return x.getAttribute('data-base')==='io.legado.app';})[0];
+      return { pressed: r?r.getAttribute('aria-pressed'):'',
+        glyph: r?(r.querySelector('.app-row-check')||{}).textContent:'',
+        all: rs.filter(function(x){return x.getAttribute('aria-pressed')==='true';}).length }; })()`);
+    const beforeAdd = await readOne();
+    await tapHere2(rowExpr('io.legado.app'));
+    await sleep(900);
+    const afterAdd = await readOne();
+    chk('点一行就加进名单：勾选框变勾（不用去找行尾那颗小按钮）',
+      beforeAdd.pressed === 'false' && afterAdd.pressed === 'true' && afterAdd.glyph === 'check_box'
+      && afterAdd.all === beforeAdd.all + 1, JSON.stringify({ before: beforeAdd, after: afterAdd }));
+    await tapHere2(rowExpr('io.legado.app'));
+    await sleep(900);
+    const afterDel = await readOne();
+    chk('同一行再点一次就移出名单（正反两面是同一条命令）',
+      afterDel.pressed === 'false' && afterDel.all === beforeAdd.all, JSON.stringify(afterDel));
+
+    /* 原生快路（KernelSU 3.x 的 ksu.pm + ksu://icon）：台架用一个假 ksu 顶上，
+       必须看到三件事 —— 一次 icons 命令都不发（真机上那一批 120 个要 1823ms）、
+       行上直接是显示名（不用等图标命令带回 label）、图标地址是 ksu://icon/<包名>。
+       注入走 addScriptToEvaluateOnNewDocument：ensure 缓存让页内改夹具不重新取数。 */
     const inj = await send('Page.addScriptToEvaluateOnNewDocument', {
-      source: "window.__KL_DEMO_FIXTURE = { targets: 'a.one\\nb.two', apps: 'a.one\\nb.two' };" });
+      source: `window.__klIconReqs = [];
+        window.__KL_DEMO_FIXTURE = { targets: 'a.alpha\\nb.beta' };
+        window.ksu = { pm: function () { return {
+          listPackages: function () { return JSON.stringify(['a.alpha', 'b.beta', 'com.android.settings']); },
+          getPackagesInfo: function () { return JSON.stringify([
+            { packageName: 'a.alpha', appLabel: '阿尔法', isSystem: false, userId: 0 },
+            { packageName: 'b.beta', appLabel: '贝塔', isSystem: false, userId: 0 },
+            { packageName: 'com.android.settings', appLabel: '设置', isSystem: true, userId: 0 }]); }
+        }; } };` });
     await send('Page.navigate', { url: URL0 });
     await sleep(2400);
-    /* 刚加载完停在主页：tapEntry 只在「功能」那一栏里找条目（第一次没切过去，chip=[] 才发现） */
+    /* 刚加载完停在主页：tapEntry 只在「功能」那一栏里找条目 */
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
     await sleep(700);
@@ -1183,13 +1221,26 @@ async function main() {
     await sleep(900);
     await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
       return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
-    await sleep(800);
-    const allIn = await ev(`(function(){ return { rows: document.querySelectorAll('#view .app-row').length,
-      角标: document.querySelectorAll('#view .app-row-tag').length,
-      chip: [].slice.call(document.querySelectorAll('#view md-chip')).filter(function(c){return c.hasAttribute('selected');})
-        .map(function(c){return c.getAttribute('label');}) }; })()`);
-    chk('整屏都在名单里时不画「已纳入」（129 行全是噪音），行列数照常',
-      allIn.rows === 2 && allIn.角标 === 0, JSON.stringify(allIn));
+    await sleep(600);
+    const nat = await ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
+      return { 名: rows.map(function(r){return (r.querySelector('.app-row-title')||{}).textContent||'';}),
+        图标: rows.map(function(r){return r.getAttribute('data-icon-src')||'';}),
+        icons命令: (window.__klIconReqs||[]).length,
+        系统芯片: [].slice.call(document.querySelectorAll('#view md-chip')).map(function(c){return c.getAttribute('label');}),
+        勾选: rows.filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length,
+        着色: rows.filter(function(r){return r.classList.contains('is-in');}).length }; })()`);
+    chk('原生 pm：一帧就有显示名、一条 icons 命令都没发',
+      JSON.stringify(nat.名) === JSON.stringify(['阿尔法', '贝塔']) && nat.icons命令 === 0,
+      JSON.stringify(nat.名) + ' icons命令=' + nat.icons命令);
+    chk('原生 pm：图标走 ksu://icon/<包名>，不再读模块里的 png',
+      nat.图标.length === 2 && nat.图标.every(function (s) { return /^ksu:\/\/icon\//.test(s); }),
+      JSON.stringify(nat.图标));
+    chk('原生 pm 的 isSystem 直接变成「系统」档的名单（不用再过一次 pm 命令）',
+      nat.系统芯片.some(function (l) { return l === '系统 1'; }), JSON.stringify(nat.系统芯片));
+    /* 这一屏 2 条全在名单里（夹具给的 targets 就是这两条）⇒ 勾选 2、但**不着色**：
+       着色只在"混着"的时候有信息量（上面「系统」档那格才是混着的情形）。 */
+    chk('整屏全在名单里：勾选框照画，但不着色（混着才着色）',
+      nat.勾选 === 2 && nat.着色 === 0, JSON.stringify({ 勾选: nat.勾选, 着色: nat.着色 }));
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
   }
 

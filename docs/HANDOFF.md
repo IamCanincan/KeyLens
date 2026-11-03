@@ -1070,6 +1070,42 @@ Realme 两键不读；`invalidate_on_error`（`yes`→SAFE）与 `hash_alg`（`s
 `init.svc.adbd`、`service.adb.root` 这类**咱们完全没碰**的键值得单独一轮去核对——
 但要先搞清 Duck 对每一条的判据，别再像这次一样凭直觉加。
 
+## 5.25 名单整个照 Tricky-Addon 重做（2026-11-03，主人："还是不够直观…干脆完全学习它，它加载又快、做的也成熟"）
+
+**先量它凭什么快**（读 `webui/src/app_list/app_list.ts` + KernelSU 源码，不是猜）：
+它一次 root 命令都不跑 —— 用的是 manager 的 WebView 原生接口：
+
+| 它用的 | 在 KernelSU 里的实现 | 我们原来用的 |
+| --- | --- | --- |
+| `ksu.pm().listPackages('all')` | `KsuPm.kt:18`（3.3.1 只有顶层 `ksu.listPackages`，`pm()` 是之后加的，两条都认） | `pm list packages -3`（99ms）+ `apps system`（138ms） |
+| `ksu.pm().getPackagesInfo([...])` | `KsuPm.kt:41`，一次回 `appLabel / isSystem / uid` | 图标命令顺带回 label |
+| `img.src = 'ksu://icon/<pkg>'` + `IntersectionObserver` | `WebViewHelper.kt:109/116`：拦 `ksu://icon`，`AppIconCache.loadIconSync(...,512)` 出 PNG | `lib/icondump.dex` 走 `app_process`，一批 120 个 **1823ms**，而且首屏等它 |
+
+**照搬的三件事**：
+1. 原生快路（`bridge.js` 的 `nativePm()` / `useNativeApps()`）：一帧之内把 apps / system /
+   显示名 / 图标地址全部就位；没有这些接口的环境（Magisk / APatch / 旧 KSU）原样走命令层，
+   **命令层与对拍一个字没动**。只剩一条 `apps launchable`（141ms）——"有没有启动器入口"是
+   平台判据，原生面板给不了；它跟 lists 一起取，否则芯片上一帧写 235、点开后变 17。
+2. 行 = 开关（`screens.js` 的 `rowOf`）：整行点一下写 `restore-apps`、再点写 `remove-apps`，
+   行尾 `check_box` / `check_box_outline_blank`，`aria-pressed` 挂在建上；± 小按钮退役。
+3. 排序 = **已选优先再按显示名**（`paintRows`），着色只在"这一屏混着"时给
+   （本机已装 129 条全在名单里，整屏铺同色反而拉平对比度）。
+
+**台架怎么测"原生"**：`Page.addScriptToEvaluateOnNewDocument` 注入假 `window.ksu`
+（页内改 `window.__KL_DEMO_FIXTURE` 不管用 —— `ensure('lists')` 有缓存，不会重新取数）。
+断言：一条 `icons` 命令都没发（`window.__klIconReqs` 空）、行上直接是显示名、
+`data-icon-src` 是 `ksu://icon/<包名>`、`isSystem` 直接变成「系统」档的数。
+整行点选那两条量的是"点 → 写 → reload 重读"的闭环，为此 demo 现在真的会改
+`demoTargets`（不改的话刚勾上的行下一帧又变回未勾 = 台架自己造的假绿）。
+
+**没照搬的**：它的"系统应用"是一个弹窗 + `localStorage` 里一份白名单（默认塞 5 个厂商包），
+我们用的是「系统」芯片 + 命令层的 `apps system`；它的图标地址写死在 `<img>` 上（我们同样懒加载，
+但保留了"图打不开就退回首字块"）；它的名单文件是 JSON 配置（我们是三家后端各自的 target 文件）。
+
+**还没在真机验的部分**（重要）：假 `window.ksu` 只证明"接口形状对得上源码"，
+**没有证明这台 3.3.1 的 manager 真会把数据给出来** —— 要主人重开一次 WebUI，
+看名单第一屏是不是**立刻**有应用名和图标（老路径是 1.8 秒后才补上）。
+
 ## 6. 坑（都踩过）
 
 - **`env VAR=… cargo …` 在这台机上会"成功"而不执行 cargo**（2026-11-03）：`~/.local/bin/env`（uv 装的，
@@ -1093,6 +1129,9 @@ Realme 两键不读；`invalidate_on_error`（`yes`→SAFE）与 `hash_alg`（`s
 - **闸的判据锚在一个字面量上，代码一改常量它就瞎**（同上）：`ui-shape` 原来 grep
   `need.slice(0, 120)`；我把批量抽成 `ICON_BATCH` 之后那条正则"没读到"，
   读成 `界面=没读到` 才算响 —— 判据要跟着实现搬家，别留在旧形状上。
+  **同一天又撞两次**（§5.25 重做名单行）：一条钉 `rowOf(t)` 的调用点（加了个参数就红）、
+  一条钉 `h('div', 'app-row')` 的整串（类名后面拼了 `is-in` 就红）。两条都改成只认形状
+  （`rowOf(t[,)]`、`h('div', 'app-row'`）—— 闸要钉"行为"，不是钉"我上次怎么写的那几个字"。
 
 - **"这条不算问题"的判断要跟着自己新开的入口重看一遍**（2026-11-03，§5.20）：图标冷路只补 60 个
   被我判成"边界、不算点不动"就放过了；但正是我这轮新开的「系统应用」档（235 行、多数没有启动器

@@ -112,6 +112,9 @@ export const S = {
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   bridge: { kind: '', label: '', seen: [] },
   targets: [], apps: [], targetMeta: {}, listErr: '',
+  /* 非 null = 这一帧的包名/显示名/是不是系统应用来自 KernelSU 的原生 pm（见 useNativeApps），
+     null = 走命令层。图标 src 也因此可能是 `ksu://icon/…` 而不是模块里的文件。 */
+  appsNative: null, appInfo: {},
   /* null = 「系统应用」那一档还没读过（点开才读，见 loadSystem） */
   system: null, systemErr: '',
   /* 有启动器入口的包（平台的"这是个应用"判据）；null = 没取到，此时不筛、照全列 */
@@ -299,6 +302,59 @@ export function loadStatus() {
 export function loadEnv() {
   return call('env').then(function (r) { if (r.ok) S.env = parseKV(r.text); });
 }
+/* ── KernelSU 3.x 的原生应用清单（做法照 Tricky-Addon）────────────────────
+   manager 侧直接给了三样东西（KsuPm.kt / WebViewHelper.kt）：
+     ksu.pm().listPackages('all'|'system'|'user')  → 包名 JSON 数组
+     ksu.pm().getPackagesInfo(JSON 数组)           → 每包 appLabel / isSystem / userId
+     ksu://icon/<包名>                             → 512px PNG，由 <img loading=lazy> 拉
+   有它们，名单与图标都不必再跑 root 命令。这台机现量：命令路径 99ms 拿已装、138ms 拿系统，
+   图标一批 120 个要 1823ms（而且首屏得等它）；原生是同一帧里就有名字，图标随滚动到位。
+   没有 ksu.pm 的环境（Magisk / APatch / 旧 KSU）原样走命令层，一个字不改。 */
+function nativePm() {
+  if (typeof window === 'undefined') return null;
+  const k = window.ksu;
+  if (!k) return null;
+  try {
+    if (typeof k.pm === 'function') {
+      const pm = k.pm();
+      if (pm && typeof pm.listPackages === 'function' && typeof pm.getPackagesInfo === 'function') return pm;
+    }
+    /* 3.x 早期把这两个直接挂在 ksu 上 */
+    if (typeof k.listPackages === 'function' && typeof k.getPackagesInfo === 'function') return k;
+  } catch (e) {}
+  return null;
+}
+export function nativeAppsSupported() { return !!nativePm(); }
+/* 同步：一帧之内把 apps / system / 显示名 / 图标地址全部就位。
+   失败（解析不动、返回空）就返回 false，让调用方回落到命令层。 */
+export function useNativeApps() {
+  const pm = nativePm();
+  if (!pm) return false;
+  let names = null, infos = [];
+  try { names = JSON.parse(pm.listPackages('all')); } catch (e) { return false; }
+  if (!Array.isArray(names) || !names.length) return false;
+  try { infos = JSON.parse(pm.getPackagesInfo(JSON.stringify(names))) || []; } catch (e) { infos = []; }
+  const by = {};
+  infos.forEach(function (i) {
+    if (!i || !i.packageName || i.error) return;
+    /* 同一个包可能挂在多个用户下：优先 userId 0 那份 */
+    const prev = by[i.packageName];
+    if (!prev || (prev.userId !== 0 && i.userId === 0)) by[i.packageName] = i;
+  });
+  const sys = [], user = [];
+  names.forEach(function (n) {
+    const i = by[n] || {};
+    const isSys = i.isSystem === true;
+    (isSys ? sys : user).push(n);
+    S.appInfo[n] = { label: i.appLabel || '', isSystem: isSys };
+    /* 直接写进 S.icons：行标题、排序、首字块读的都是这里，不用再改消费方 */
+    S.icons[n] = { label: i.appLabel || '', src: 'ksu://icon/' + encodeURIComponent(n) };
+  });
+  S.appsNative = names.slice();
+  S.apps = user.sort();
+  S.system = sys.sort();
+  return true;
+}
 export function loadLists() {
   var errs = [];
   function note(name) {
@@ -307,9 +363,9 @@ export function loadLists() {
       return r;
     };
   }
-  return Promise.all([
+  var native = useNativeApps();
+  var jobs = [
     call('targets').then(function (r) { S.targets = r.ok ? splitLines(r.text) : []; return r; }).then(note('targets')),
-    call('apps').then(function (r) { S.apps = r.ok ? splitLines(r.text) : []; return r; }).then(note('apps')),
     call('target-meta').then(function (r) {
       S.targetMeta = {};
       if (!r.ok) return r;
@@ -319,7 +375,18 @@ export function loadLists() {
       });
       return r;
     }).then(note('target-meta')),
-  ]).then(function () {
+  ];
+  /* 原生的 apps / system 已经在 useNativeApps 里就位，不再重复问命令层。
+     但「系统」档还要平台的"可启动"判据（组件与真应用的分水岭），那一条只有命令层能给：
+     一起取（本机现量 141ms），否则芯片上一帧写 235、点开变成 17 —— 两个数对不上账。 */
+  if (!native) {
+    jobs.push(call('apps').then(function (r) { S.apps = r.ok ? splitLines(r.text) : []; return r; }).then(note('apps')));
+  } else if (!(S.contract.checked && !hasCmd('apps'))) {
+    jobs.push(call('apps', 'launchable').then(function (r) {
+      S.launchable = r.ok ? splitLines(r.text) : null;
+    }, function () { S.launchable = null; }));
+  }
+  return Promise.all(jobs).then(function () {
     /* "读不到"与"名单是空的"是两件事：以前三处失败都吞成空数组，界面照样
        说"这一类现在是空的"。命令层在目标文件缺失时正是这么退的（return 1）。 */
     S.listErr = errs.join('；');
@@ -422,6 +489,15 @@ export function loadExcluded() {
    本机现量 235 个系统包里只有 17 个真有入口，其余是覆盖层/服务/资源包，
    混在列表里就是"翻不到想找的东西"的主因。这条查询 53~80ms，比取全量列表还便宜。 */
 export function loadSystem() {
+  /* 原生 pm 的路径已经在 loadLists 里把系统名单和"可启动"判据一起取回来了（见那边），
+     这里只剩老路径要按需读。 */
+  if (S.appsNative && S.launchable !== null) { S.systemErr = ''; return Promise.resolve(); }
+  if (S.appsNative) {
+    return call('apps', 'launchable').then(function (r) {
+      S.launchable = r.ok ? splitLines(r.text) : null;
+      S.systemErr = '';
+    }, function () { S.launchable = null; S.systemErr = ''; });
+  }
   if (S.contract.checked && !hasCmd('apps')) { S.system = []; S.systemErr = '命令层没有 apps'; return Promise.resolve(); }
   return Promise.all([
     call('apps', 'system'),
@@ -493,6 +569,8 @@ function demoFiles() {
   return o[DEMO_BACKEND] || o.omk;
 }
 
+/* 台架里的名单状态（见 demoResult 里 restore-apps / remove-apps 那一段）。 */
+var demoTargets = null;
 function demoResult(cmd, arg) {
   /* 台架可以注入**真机数据**（window.__KL_DEMO_FIXTURE = { 命令: 原始输出 }）来看"真实的一屏"。
      名单这类界面，四行手写假数据永远看不出排序、密度、认不认得出东西的问题 ——
@@ -577,6 +655,9 @@ function demoResult(cmd, arg) {
     tricky: ['com.android.vending', 'app.mihon?', 'com.tencent.mm!'],
     teesim: ['com.android.vending', 'com.google.android.gms@11', 'uid:10123'],
   }[B.backend] || [];
+  /* 名单是台架里唯一一份"会变的"状态（整行点选 ⇒ 写 ⇒ reload 再读），
+     第一次取数时从种子拷一份，之后由 restore-apps / remove-apps 改它。 */
+  if (demoTargets === null) demoTargets = toks.slice();
   var meta = toks.map(function (tok) {
     var b = tok, kind = 'plain', detail = '', m;
     if (B.backend === 'tricky') {
@@ -610,6 +691,16 @@ function demoResult(cmd, arg) {
     'omk_keystore_pid=914', 'omk_keystore_injected=' + (DEMO_OMK_DEAD ? 0 : 1)]);
   if (B.backend === 'tricky') bi = bi.concat(['patch_file=' + B.dir + '/security_patch.txt', 'patch_exists=1',
     'patch_lines=4', 'patch_packages=1', 'patch_system=2024-01-05', 'patch_vendor=2024-01-05']);
+  /* 台架也要"记住"写的结果：整行点选之后 reload() 会重新取 targets，
+     不把这份状态改掉的话，刚勾上的行下一帧又变回未勾 —— 那是台架自己造出来的假绿。 */
+  if ((cmd === 'restore-apps' || cmd === 'remove-apps') && demoTargets) {
+    var pk = String(arg || '').split(/\s+/).filter(Boolean);
+    if (cmd === 'restore-apps') {
+      pk.forEach(function (p) { if (demoTargets.indexOf(p) < 0) demoTargets.push(p); });
+    } else {
+      demoTargets = demoTargets.filter(function (t) { return pk.indexOf(String(t).replace(/[?!]$/, '')) < 0; });
+    }
+  }
   var body = {
     contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
@@ -636,7 +727,7 @@ function demoResult(cmd, arg) {
       /* seed=…（?demo=1 专用）：台架的种子注入路 —— 不带它就是"系统没有可读强调色"，
          走平台默认那条兜底；带它走 parseSeed + 映射，verify 用它验端到端。 */
       'sys_seed_raw=' + (QUERY.get('seed') || ''), 'sys_seed_src=' + (QUERY.get('seed') ? 'theme_custom_color' : 'none')].join('\n'),
-    targets: toks.join('\n'),
+    targets: demoTargets.join('\n'),
     apps: ['com.android.vending', 'app.mihon', 'com.tencent.mm', 'io.legado.app'].join('\n'),
     'target-meta': meta.join('\n'),
     log: ['10-29 16:52:43 🔄 开始应用列表同步', '10-29 16:52:44 ✅ 同步完成，应用总数：128',
@@ -752,6 +843,9 @@ function demoResult(cmd, arg) {
     'tricky-patches': ['global' + T + 'today' + T + 'YYYY-MM-05' + T + 'YYYY-MM-05',
       'com.android.vending' + T + '2024-01-05' + T + '-' + T + '-'].join('\n'),
     'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),
+    /* 整行点选的两条写命令（上面已经改过 demoTargets，这里只补回包） */
+    'restore-apps': 'restored=1',
+    'remove-apps': 'removed=1',
     icons: ['app.mihon' + T + 'Mihon' + T + 'icons/app.mihon.png',
       'com.android.vending' + T + 'Google Play 商店' + T + 'icons/com.android.vending.png'].join('\n'),
   }[cmd];

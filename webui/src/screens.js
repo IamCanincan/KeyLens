@@ -290,6 +290,9 @@ function drainIcons(issued) {
   });
 }
 function loadIconsFor(shown) {
+  /* 原生 pm（KernelSU 的 ksu://icon）在这一帧已经把每行的图标地址写好了：
+     谁滚到屏上谁去拉，这里什么都不用问（命令层那批 120 个要 1823ms）。 */
+  if (S.appsNative) return Promise.resolve(false);
   const need = [];
   shown.forEach(function (t) { const b = baseOf(t); if (b) need.push(b); });
   return askIcons(need);
@@ -347,6 +350,8 @@ export function targetsPending() {
   /* Tricky 行尾「自动 →」的判定读 tee_status：名单页也要等它，
      否则首进显示"未探测"、逛过一次后端配置再回来才正确。 */
   if (S.backendInfo.backend === 'tricky' && !S.loaded.teestatus) return true;
+  /* 原生 pm 那一帧就把显示名和图标地址都给了：没有"等图标"这回事，直接画。 */
+  if (S.appsNative) return false;
   const bases = listBases().slice(0, PREFETCH_ICONS);
   for (let i = 0; i < bases.length; i++) {
     /* 取过但失败的（iconFailed）不再算"还要等" —— 否则图标命令一失败，
@@ -359,6 +364,7 @@ export function prefetchListIcons() {
   /* 每次"进入/重读"都清一次失败表：这是重试的唯一入口（同一屏内不重问，见 askIcons），
      否则一次权限/读取抖动就永久少几个图标。 */
   iconFailed = {};
+  if (S.appsNative) return Promise.resolve(false);
   return askIcons(listBases().slice(0, PREFETCH_ICONS));
 }
 /* 打开 WebUI 的启动页：品牌标识先出来，壳和数据在下面就位后整层淡出。
@@ -1039,13 +1045,20 @@ function listSection() {
     const detail = (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : '');
     const title = (ic && ic.label) || b || tok;
     const note = m ? (m.note || '') : '';
-    /* 「已在名单里」以前只靠行尾那个 add/remove 小图标区分，扫一眼根本看不出来
-       （主人原话：哪些选了哪些没选都不明了）。非名单档里给一枚明文角标 ——
-       但只在**这一屏有混有没混**时才给：本机「已装」129 条全在名单里，
-       逐行都挂一枚「已纳入」等于 129 行噪音，反而不如行尾那个"−"清楚。 */
+    /* 「已在名单里」照 Tricky-Addon 的做法：整行就是那个开关 —— 行尾一枚复选框
+       显示选没选、已选的行着色、并且（非名单档里）已选的排在最前。
+       原来那枚 ± 小按钮只管一半（切档时按钮语义还会变），扫一眼仍然要读行尾的图标；
+       主人原话"哪些选了哪些没选都不明了"，指的就是这个。 */
     const inList = !!baseSet[b || tok];
+    /* 着色只在"这一屏有混有没混"时给：本机「已装」129 条全在名单里，整屏铺同一层色
+       反而把对比度拉平了，勾选框已经说清了。 */
+    const tinted = inList && S.view !== 'targets' && mixed;
     const sup = [detail, note].filter(Boolean).join(' · ');
-    const r = h('div', 'app-row');
+    const r = h('div', 'app-row' + (tinted ? ' is-in' : ''));
+    r.setAttribute('role', 'button');
+    r.tabIndex = 0;
+    r.setAttribute('aria-pressed', inList ? 'true' : 'false');
+    r.setAttribute('aria-label', (inList ? '移出 ' : '加入 ') + (b || tok));
     /* 行属性给台架读（真实文字在下面的 DOM 里）：headline / supporting-text
        与旧 md-list-item 的属性同形，第一/第二次进入的对照不用改判据。 */
     r.setAttribute('headline', title);
@@ -1054,32 +1067,32 @@ function listSection() {
     r.setAttribute('data-tok', tok);
     r.setAttribute('data-note', note);
     r.setAttribute('data-mono', '');
+    /* 记下这一行**打算**用哪个图（真机上可能是 ksu://icon/<包名>）：图打不开时 DOM 里只剩
+       首字块，光看 DOM 分不清"没给地址"和"给了但拉不动" —— 台架量的是这个属性。 */
+    if (ic && ic.src) r.setAttribute('data-icon-src', ic.src);
     r.appendChild(leading(ic, title));
     const tx = h('div', 'app-row-text');
     tx.appendChild(h('b', 'app-row-title', title));
     if (sup) tx.appendChild(h('span', 'app-row-sub', sup));
-    if (S.view !== 'targets' && mixed && inList) tx.appendChild(h('span', 'app-row-tag', '已纳入'));
     r.appendChild(tx);
+    /* Tricky 的证书模式按钮还在（那是这一档特有的第三种动作），点它不该连带切换勾选 */
     if (m) {
+      m.el.addEventListener('click', function (e) { e.stopPropagation(); });
       r.appendChild(m.el);
-    } else {
-      /* 行尾图标按钮（照系统设置）：文本"移出/加入"夹在标题后面会把行撑乱，
-         而且小屏上最想一眼看全的是应用名。标签走 aria-label，无障碍不丢。
-         两个写命令用**字面量**分支调用：写成三目会让 ui-shape 的 write('…')
+    }
+    const check = h('span', 'app-row-check', inList ? 'check_box' : 'check_box_outline_blank');
+    check.setAttribute('aria-hidden', 'true');
+    r.appendChild(check);
+    if (!m) {
+      /* 两个写命令用**字面量**分支调用：写成三目会让 ui-shape 的 write('…')
          扫描看不见它们（算出来的参数是那道闸的盲区）。 */
-      /* 按**它是否已在名单里**决定按钮，而不是按"你在哪一档"：以前「已装 / 系统应用」
-         里已经在名单中的应用也画着「加入」，点一下只换来一句"已加入"（写命令自己判重、
-         什么也没改）。切档决定按钮的那层歧义没有存在理由。 */
-      const isTargets = S.view === 'targets' || !!baseSet[b || tok];
-      const act = h('button', 'app-row-act');
-      act.type = 'button';
-      act.setAttribute('aria-label', (isTargets ? '移出 ' : '加入 ') + (b || tok));
-      act.appendChild(h('span', 'app-row-act-ic', isTargets ? 'remove' : 'add'));
-      act.addEventListener('click', function () {
-        if (isTargets) write('remove-apps', b || tok, '已移出：' + (b || tok));
+      r.addEventListener('click', function () {
+        if (inList) write('remove-apps', b || tok, '已移出：' + (b || tok));
         else write('restore-apps', b || tok, '已加入：' + (b || tok));
       });
-      r.appendChild(act);
+      r.addEventListener('keydown', function (e) {
+        if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); r.click(); }
+      });
     }
     return r;
   }
@@ -1093,14 +1106,20 @@ function listSection() {
     }) : src.slice();
     /* 按**显示名**排：人找应用是按名字找的。本机现量（按包名排）相机在第 201 行、
        浏览器第 213 行、短信第 84 行。名字还没到货的行按包名参与排序；名字到货只原位
-       改文字、不重排（免得手指底下突然跳一下），所以第二次进这一屏就是完整按名字排的。 */
+       改文字、不重排（免得手指底下突然跳一下），所以第二次进这一屏就是完整按名字排的。
+       「已装 / 系统」这几档里**已选的排最前**（再按名字）：Tricky-Addon 就是这么排的，
+       一屏之内先看见自己已经选过的那些，不用逐行读复选框。 */
     shown.sort(function (x, y) {
+      if (S.view !== 'targets') {
+        const ix = !!baseSet[baseOf(x)], iy = !!baseSet[baseOf(y)];
+        if (ix !== iy) return ix ? -1 : 1;
+      }
       const lx = (S.icons[baseOf(x)] || {}).label || String(x);
       const ly = (S.icons[baseOf(y)] || {}).label || String(y);
       return String(lx).localeCompare(String(ly), 'zh') || String(x).localeCompare(String(y));
     });
     const page = shown.slice(0, shownLimit);
-    /* 这一屏是不是"混着"（有在名单里的、也有不在的）—— 角标只在混着的时候有信息量 */
+    /* 这一屏是不是"混着"（有在名单里的、也有不在的）：着色只在这时候有信息量 */
     const inCount = shown.filter(function (t) { return !!baseSet[baseOf(t)]; }).length;
     const mixed = inCount > 0 && inCount < shown.length;
     l.textContent = '';

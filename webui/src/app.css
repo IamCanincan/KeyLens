@@ -241,8 +241,16 @@ md-list + .form{margin-top:20px}
    分组一致：72px、surface-container、组首/末 22px 圆角、2px 缝；行尾按钮
    也走原生 <button>（图标字体连字 / 文本按钮），不再每行带一个组件。 */
 .app-list{display:flex;flex-direction:column;gap:2px}
+/* 行尾复选框（照 Tricky-Addon）：勾选态就是"这条在名单里"，整行可点。
+   已选的行铺一层 tonal 色，配合"已选排最前"，一屏之内先看见自己选过的那些。 */
 .app-row{box-sizing:border-box;display:flex;align-items:center;gap:12px;min-height:72px;padding:0 16px;
-  border-radius:6px;background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface)}
+  border-radius:6px;background:var(--md-sys-color-surface-container);color:var(--md-sys-color-on-surface);
+  cursor:pointer;-webkit-tap-highlight-color:transparent;transition:background-color .12s ease}
+.app-row.is-in{background:var(--md-sys-color-secondary-container)}
+.app-row.is-in .app-row-title,.app-row.is-in .app-row-sub{color:var(--md-sys-color-on-secondary-container)}
+.app-row:active{border-radius:16px}
+.app-row-check{flex:none;font-family:var(--md-icon-font-family);font-size:24px;line-height:1;
+  font-variation-settings:'FILL' 1,'wght' 400;color:var(--md-sys-color-primary)}
 .app-list > .app-row:first-child{border-top-left-radius:22px;border-top-right-radius:22px}
 .app-list > .app-row:last-child{border-bottom-left-radius:22px;border-bottom-right-radius:22px}
 .app-row-text{flex:1 1 auto;min-width:0;display:flex;flex-direction:column;justify-content:center}
@@ -250,16 +258,8 @@ md-list + .form{margin-top:20px}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .app-row-sub{font-family:var(--kl-mono);font-size:13px;line-height:20px;letter-spacing:0;
   color:var(--md-sys-color-on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
-/* 「已纳入」角标：非名单档里一眼看出这条已经在目标文件里（以前只有行尾小图标不同，
-   扫一眼看不出来 —— 而这一屏的全部意义就是"哪些选了哪些没选"）。 */
-.app-row-tag{align-self:flex-start;margin-top:2px;padding:1px 8px;border-radius:999px;
-  font:500 12px/18px system-ui,sans-serif;letter-spacing:.2px;
-  color:var(--md-sys-color-on-secondary-container);background:var(--md-sys-color-secondary-container)}
-.app-row-act{box-sizing:border-box;width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;
-  padding:0;border:0;border-radius:50%;background:transparent;color:var(--md-sys-color-on-surface-variant);
-  font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
-.app-row-act:active{background:color-mix(in srgb, var(--md-sys-color-primary) 12%, transparent)}
-.app-row-act-ic{font-family:var(--md-icon-font-family);font-size:24px;line-height:1;font-variation-settings:'FILL' 0,'wght' 400}
+/* 「已纳入」角标已退役：整行点选 + 行尾复选框 + 已选排最前，三样加起来比一枚角标清楚
+   （主人点名过"哪些选了哪些没选都不明了"，照 Tricky-Addon 的做法重做了）。 */
 .app-row-mode{box-sizing:border-box;height:40px;flex:none;padding:0 12px;border:0;border-radius:20px;background:transparent;
   color:var(--md-sys-color-primary);font-size:14px;font-weight:500;line-height:20px;font-family:inherit;white-space:nowrap;
   cursor:pointer;-webkit-tap-highlight-color:transparent}
