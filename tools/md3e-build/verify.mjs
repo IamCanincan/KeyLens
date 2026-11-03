@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 140;
+const FLOOR_CHKS = 144;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1212,6 +1212,24 @@ async function main() {
       sy1.rows === 2 && /^另有 3 条系统组件/.test(sy1.折叠句), JSON.stringify(sy1));
     chk('系统档里在名单中的那行是勾选态，其余不勾',
       sy1.勾选.filter(Boolean).length === 1, JSON.stringify(sy1.勾选));
+    /* 反选：这一屏 2 行、1 条在名单 → 翻过来还是 1 条（不会清空名单，允许） */
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return (x.getAttribute('label')||'')==='反选';})[0]; })()`);
+    await sleep(900);
+    const inv = await ev(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
+      var on=rs.filter(function(r){return r.getAttribute('aria-pressed')==='true';});
+      return { n: rs.length, pressed: on.length, 新的那行: on[0] ? on[0].getAttribute('data-base') : '' }; })()`);
+    chk('反选：把勾着的那条换掉（vending → settings），不是整档全清',
+      inv.n === 2 && inv.pressed === 1 && inv.新的那行 === 'com.android.settings', JSON.stringify(inv));
+    /* 再反选一次回到原样（反两次 = 恒等），免得后面的块读到被这段改过的名单 */
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return (x.getAttribute('label')||'')==='反选';})[0]; })()`);
+    await sleep(900);
+    const inv2 = await ev(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
+      var on=rs.filter(function(r){return r.getAttribute('aria-pressed')==='true';});
+      return { pressed: on.length, 回来的那行: on[0] ? on[0].getAttribute('data-base') : '' }; })()`);
+    chk('再反选一次回到原样（不污染后面的断言）',
+      inv2.pressed === 1 && inv2.回来的那行 === 'com.android.vending', JSON.stringify(inv2));
     await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
       return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('另有')===0;})[0]; })()`);
     await sleep(700);
@@ -1267,6 +1285,25 @@ async function main() {
     const afterDel = await readOne();
     chk('同一行再点一次就移出名单（正反两面是同一条命令）',
       afterDel.pressed === 'false' && afterDel.all === beforeAdd.all, JSON.stringify(afterDel));
+
+    /* 全选 / 反选 / 全不选：作用范围是**这一屏画出来的行**；会清空名单的那一下禁用。
+       台架这屏 4 条：3 在名单 / 1 不在。 */
+    const pressedN = () => ev(`(function(){ return [].slice.call(document.querySelectorAll('#view .app-row'))
+      .filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length; })()`);
+    const tapBulk = label => tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return (x.getAttribute('label')||'')===${JSON.stringify(label)};})[0]; })()`);
+    const p0 = await pressedN();
+    await tapBulk('全选');
+    await sleep(900);
+    const p1 = await pressedN();
+    chk('全选：这一屏全部勾上（4 条都在名单里）', p0 === 3 && p1 === 4, p0 + '→' + p1);
+    /* 这一屏 4 条全在名单里：三个动作都做不了 —— 不留三颗灰按钮，改成一句话。
+       （会清空名单的那一下命令层本来就不允许，界面先在按钮上拦住。） */
+    const guards = await ev(`(function(){ var r=document.querySelector('#view .bulk-row');
+      return { hint: r ? ((r.querySelector('.hint')||{}).textContent||'') : '',
+        按钮: r ? r.querySelectorAll('md-button').length : -1 }; })()`);
+    chk('整屏都在名单里时不留灰按钮，改成一句话',
+      /这一屏 4 条都已在名单里/.test(guards.hint) && guards.按钮 === 0, JSON.stringify(guards));
 
     /* 原生快路（KernelSU 3.x 的 ksu.pm + ksu://icon）：台架用一个假 ksu 顶上，
        必须看到三件事 —— 一次 icons 命令都不发（真机上那一批 120 个要 1823ms）、

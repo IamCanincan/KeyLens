@@ -1169,7 +1169,7 @@ function listSection() {
     return r;
   }
   /* 搜索/切档只重画行：输入框、芯片和页面容器都留在原地。 */
-  function paintRows() {
+  function filteredTokens() {
     const src = listSource();
     const q = (S.search || '').toLowerCase();
     const shown = q ? src.filter(function (t) {
@@ -1190,12 +1190,60 @@ function listSection() {
       const ly = (S.icons[baseOf(y)] || {}).label || String(y);
       return String(lx).localeCompare(String(ly), 'zh') || String(x).localeCompare(String(y));
     });
+    return shown;
+  }
+  /* 这一屏真正画出来的行（= 全选/反选的作用范围） */
+  function paintedTokens() { return filteredTokens().slice(0, shownLimit); }
+  /* 移走这些 token 之后名单会不会空 —— 命令层拒绝清空，界面先在按钮上拦住 */
+  function wouldEmpty(removeToks) {
+    const kill = {};
+    removeToks.forEach(function (t) { const b = baseOf(t); if (b) kill[b] = 1; });
+    return S.targets.filter(function (t) { const b = baseOf(t); return !(b && kill[b]); }).length === 0;
+  }
+  function fillBulk(host, page) {
+    host.textContent = '';
+    const on = page.filter(function (t) { return !!baseSet[baseOf(t)]; });
+    const off = page.filter(function (t) { return !baseSet[baseOf(t)]; });
+    /* 三个动作都做不了（这一屏全在名单里、或一条都没有）时不留三颗灰按钮，
+       改成一句话 —— 一排点不动的字比没有这一行更让人迷惑。 */
+    const empty = wouldEmpty(on);
+    if (!page.length) return;
+    if (!off.length && empty) {
+      host.appendChild(h('span', 'hint', '这一屏 ' + page.length + ' 条都已在名单里'));
+      return;
+    }
+    const mk = function (label, disabled, fn) {
+      const b = button(label, { variant: 'text', disabled: disabled, on: fn });
+      b.setAttribute('data-role', 'bulk');
+      host.appendChild(b);
+      return b;
+    };
+    mk('全选', !off.length, function () {
+      write('restore-apps', off.map(baseOf).join(','), '已加入 ' + off.length + ' 条');
+    });
+    mk('反选', !page.length || empty, function () {
+      /* 先移后加：两侧都走既有命令（逗号分隔），写完各自 reload —— 顺序不能反，
+         反了会把刚加进去的又删掉 */
+      write('remove-apps', on.map(baseOf).join(','), '已移出 ' + on.length + ' 条')
+        .then(function () {
+          if (off.length) write('restore-apps', off.map(baseOf).join(','), '已加入 ' + off.length + ' 条');
+        });
+    });
+    mk('全不选', !on.length || empty, function () {
+      write('remove-apps', on.map(baseOf).join(','), '已移出 ' + on.length + ' 条');
+    });
+    if (on.length && empty && off.length) host.appendChild(h('span', 'hint', '会清空名单的那一下不给（至少要留一条）'));
+  }
+  function paintRows() {
+    const shown = filteredTokens();
     const page = shown.slice(0, shownLimit);
     /* 这一屏是不是"混着"（有在名单里的、也有不在的）：着色只在这时候有信息量 */
     const inCount = shown.filter(function (t) { return !!baseSet[baseOf(t)]; }).length;
     const mixed = inCount > 0 && inCount < shown.length;
     l.textContent = '';
     page.forEach(function (t) { l.appendChild(rowOf(t, mixed)); });
+    /* 批量那一行跟着"这一屏画出来的行"走（搜索/继续显示一变就重建按钮的可用态） */
+    if (bulkHost) fillBulk(bulkHost, page);
     if (!shown.length) {
       empty.textContent = (S.view === 'system' && S.systemErr)
         ? '系统应用读不到：' + S.systemErr
@@ -1218,6 +1266,10 @@ function listSection() {
     countHint.textContent = '共 ' + shown.length + ' 条' + (rest > 0 ? ' · 已画 ' + page.length + ' 条' : '');
     loadIconsFor(page);
   }
+  /* 批量那一行要出现在列表**上面**：先挂空壳、再挂列表（不折腾 insertBefore）。
+     按钮在 paintRows 里按"这一屏画出来的行"重建（搜索/继续显示一变就重算可用态）。 */
+  let bulkHost = null;
+  if (S.view !== 'targets') { bulkHost = h('div', 'bulk-row'); s.appendChild(bulkHost); }
   s.appendChild(l);
   /* 空态也放列表 **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
   s.appendChild(empty);
