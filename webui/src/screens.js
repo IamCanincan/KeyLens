@@ -564,7 +564,13 @@ function propsCards() {
   }
   s1.appendChild(acts1);
   const l = h('md-list');
-  S.props.forEach(function (p) {
+  /* 长列表默认收起：这台机 53 行里 40 行是"一致"，逐行铺满一屏只是把真正要看的
+     那十几行淹掉。收起时只画**不是 ok 的**（不符 / 读不到 / 本机无），
+     一致的那些收进一颗「展开其余 N 行」，展开后仍按原顺序画全 53 行。 */
+  const okCount = S.props.filter(function (p) { return p.st === 'ok'; }).length;
+  const healthy = S.props.length - okCount;
+  const shown = S.propsOpen ? S.props : S.props.filter(function (p) { return p.st !== 'ok'; });
+  shown.forEach(function (p) {
     /* 四种状态各有各的说法与颜色，absent 走中性（dot-none = outline 灰）：
        它不是"没做到"，是"这台机没有这个分区，本来就不该有"。 */
     const t = p.st === 'ok' ? 'ok'
@@ -586,6 +592,14 @@ function propsCards() {
     it.appendChild(dot(t === 'ok' ? 'ok' : t === 'missing' ? 'warn' : t === 'absent' ? 'none' : 'bad'));
     l.appendChild(it);
   });
+  /* 展开/收起这颗**放在列表上面**：收起时列表本身短，但真机上"不符"也可能十几行，
+     按钮压在列表底下就要先滚到底才找得到。数量和文案跟着实际情况走。 */
+  if (okCount) {
+    s1.appendChild(button(S.propsOpen
+      ? '收起 ' + okCount + ' 行一致的'
+      : (healthy ? '展开其余 ' + okCount + ' 行（全部一致）' : '展开全部 ' + okCount + ' 行对照'),
+      { variant: 'text', on: function () { S.propsOpen = !S.propsOpen; redraw(); } }));
+  }
   s1.appendChild(l);
   c1.appendChild(s1);
   frag.appendChild(c1);

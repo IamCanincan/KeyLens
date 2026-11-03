@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 134;
+const FLOOR_CHKS = 135;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -670,9 +670,32 @@ async function main() {
         var t0 = (document.getElementById('view')||{}).textContent || '';
         var m = t0.match(/系统属性 · ([^\\n]*)/);
         if (!title && m) title = m[1];
-        return { rows: rows, absent: absent, bad: bad, absentToned: absentToned, title: title, items: items.length };
+        var fold = [].slice.call(document.querySelectorAll('#view md-button'))
+          .map(function(b){ return b.getAttribute('label') || ''; })
+          .filter(function(l){ return /^(展开|收起)/.test(l); })[0] || '';
+        return { rows: rows, absent: absent, bad: bad, absentToned: absentToned, title: title, items: items.length, 折叠: fold };
       })()`);
-      chk('属性页把台架那 53 行对照逐行画出来（一行都不吞）', pv.rows === 53, 'rows=' + pv.rows);
+      /* 默认收起：53 行里 40 行是"一致"，逐行铺满一屏会把真正要看的十几行淹掉。
+         收起时只画不是 ok 的（台架这份：9 不符 + 4 本机无 = 13），其余收在折叠按钮后面。 */
+      chk('属性长列表默认收起：只画不是「一致」的那些行',
+        pv.rows === 13 && /^展开其余 40 行/.test(pv.折叠), JSON.stringify({ rows: pv.rows, 折叠: pv.折叠 }));
+      { const sP = await send('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(SHOT_DIR, 'new-props-collapsed.png'), Buffer.from(sP.data, 'base64')); }
+      await tap(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+        var b=bs.filter(function(x){return /^展开/.test(x.getAttribute('label')||'');})[0];
+        /* 13 行之后那颗按钮在视口外：先滚进来，否则坐标落在 y>900 上，点了个空 */
+        if (b) b.scrollIntoView({ block: 'center' });
+        return b; })()`);
+      await sleep(500);
+      const pvExpanded = await ev(`(function(){ var n=0;
+        [].slice.call(document.querySelectorAll('#view md-list-item')).forEach(function(i){
+          var sup=i.getAttribute('supporting-text')||'';
+          if (/^期望 /.test(sup) || /^这台机没有这项属性/.test(sup)) n++; });
+        var fold=[].slice.call(document.querySelectorAll('#view md-button')).map(function(b){return b.getAttribute('label')||'';})
+          .filter(function(l){return /^收起/.test(l);})[0]||'';
+        return { rows: n, 折叠: fold }; })()`);
+      chk('展开后 53 行一行不少，按钮变成「收起」',
+        pvExpanded.rows === 53 && /^收起 40 行一致的/.test(pvExpanded.折叠), JSON.stringify(pvExpanded));
       chk('absent 标「本机无」而不是红色「不符」（命令层 mismatch=0 的口径）',
         pv.absent === 4 && pv.bad === 9, 'absent=' + pv.absent + ' 不符行=' + pv.bad);
       chk('absent 行不挂 warn/bad 色（"没有这个分区"不是待办也不是风险）',
@@ -727,6 +750,13 @@ async function main() {
       chk('invalid 档直说配置坏了（不是 64/128 位十六进制）',
         /不是 64\/128 位十六进制/.test(bhBad.rows), '');
       await openProps('');
+      /* 列表现在默认收起：这一条问的是"重进这一页有没有把行吞掉"，所以先展开再数，
+         保持原来 >50 的判据（收起时只有不是 ok 的那十几行）。 */
+      await tap(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+        var b=bs.filter(function(x){return /^展开/.test(x.getAttribute('label')||'');})[0];
+        if (b) b.scrollIntoView({ block: 'center' });
+        return b; })()`);
+      await sleep(600);
       const pv2 = await ev(`(function(){ return { rows: document.querySelectorAll('#view md-list-item').length }; })()`);
       chk('回到默认（auto）后属性页仍是完整一屏（切档不吞行）', pv2.rows > 50, 'rows=' + pv2.rows);
       const shotP = await send('Page.captureScreenshot', { format: 'png' });
