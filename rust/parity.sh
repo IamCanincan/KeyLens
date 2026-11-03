@@ -1399,6 +1399,60 @@ printf 'package:com.a\npackage:com.b\n'
 EOF
 chk 'doctor：11 项逐行一致' "$(PATH="$T/bin:$PATH" sh "$T/doc.sh" 2>&1 | sed 's/doc-root-[sr]/doc-root/g')" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$DOCRR" "$B" doctor 2>&1 | sed 's/doc-root-[sr]/doc-root/g')"
 
+# ── doctor「启动哈希」按三态取生效值（2026-11-03 真机红过的就是这一格）──
+# 症状：Rust 那半直接读 keylens.boot_hash，于是 auto 档（文件本来就不存在）报成 skip、
+#       off 档（文件里是哨兵 "off"）报成 bad「格式不对」并让用户重填刚清掉的那串。
+# 上面那条「11 项逐行一致」为什么照绿：它的台子里既没有 boot_hash 文件、也没有能取到值的
+#       后端（KL_BACKEND=tricky，auto 取不到 ⇒ 两侧都走 skip），auto/manual/off/invalid
+#       这四格候选数=0。所以这里逐格钉，并且**两侧各比一次期望文本**——
+#       只比"两侧相等"的话，两侧一起改错照样绿。
+[ -f "$T/bin/getprop" ] && cp "$T/bin/getprop" "$T/getprop.bak"
+BH_WARN_N='点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了'
+bh_stub_getprop() { # <ro.boot.vbmeta.digest 的桩值>
+  cat > "$T/bin/getprop" <<EOS
+#!/bin/sh
+if [ "\${1:-}" = "ro.boot.vbmeta.digest" ]; then printf '%s\n' "$1"; else printf '\n'; fi
+EOS
+  chmod +x "$T/bin/getprop"
+}
+bh_prep_root() { # <root> <boot_hash 内容|-> <后端 teesim|omk|tricky> <omk 配置里的 vb_hash|->
+  local root="$1" bh="$2" be="$3" cfg="$4"
+  rm -rf "$root"; mk_doc_fixture "$root"; mkdir -p "$root/data/adb"
+  if [ "$bh" = "-" ]; then rm -f "$root/data/adb/keylens.boot_hash"
+  else printf '%s\n' "$bh" > "$root/data/adb/keylens.boot_hash"; fi
+  # 模块目录名两侧各自硬编码（shell 走台子给的 none-*，Rust 走真实名），两边都建才都认
+  case "$be" in
+    teesim) mkdir -p "$root/data/adb/modules/none-teesim" "$root/data/adb/modules/teesim" ;;
+    omk)    rm -rf "$root/data/adb/modules/tricky_store"
+            mkdir -p "$root/data/adb/modules/none-omk" "$root/data/adb/modules/oh_my_keymint" \
+                     "$root/data/misc/keystore/omk"
+            printf 'vb_hash = "%s"\n' "$cfg" > "$root/data/misc/keystore/omk/config.toml" ;;
+  esac
+}
+bh_row_sh() { mk_doc_harness "$1"; PATH="$T/bin:$PATH" sh "$T/doc.sh" 2>&1 \
+  | awk -F'\t' '$1=="启动哈希"{print $2"|"$3"|"$4}'; }
+bh_row_rs() { KEYLENS_ROOT="$1" PATH="$T/bin:$PATH" "$B" doctor 2>&1 \
+  | awk -F'\t' '$1=="启动哈希"{print $2"|"$3"|"$4}'; }
+bh_case() { # <标签> <boot_hash|-> <后端> <桩 digest> <omk 配置值|-> <期望 状态|说明|下一步>
+  bh_prep_root "$DOCR-bhs" "$2" "$3" "$5"
+  bh_prep_root "$DOCR-bhr" "$2" "$3" "$5"
+  bh_stub_getprop "$4"
+  chk "doctor 启动哈希：$1（shell=期望）" "$6" "$(bh_row_sh "$DOCR-bhs")"
+  chk "doctor 启动哈希：$1（Rust=期望）" "$6" "$(bh_row_rs "$DOCR-bhr")"
+}
+bh_case 'auto·后端给的值等于当前' '-' teesim "$H64" - "ok|自动取到的值与当前值一致|"
+bh_case 'auto·omk 值与当前不一致' '-' omk "$H64" 1111111111111111111111111111111111111111111111111111111111111111 \
+  "warn|自动取到的值与当前值不一致|$BH_WARN_N"
+bh_case 'auto·后端没给出值' '-' tricky "$H64" - "skip|自动档但后端没给出值|"
+bh_case 'manual·等于当前' "$H64" tricky "$H64" - "ok|当前值等于配置值|"
+bh_case 'manual·与当前不一致' "$H64" tricky \
+  2222222222222222222222222222222222222222222222222222222222222222 - \
+  "warn|当前值与配置值不一致|$BH_WARN_N"
+bh_case 'off·明确不写' off tricky "$H64" - "skip|已设为不写 vbmeta digest|"
+bh_case '配置文件里是废值' zzzz tricky "$H64" - \
+  "skip|配置值不是十六进制，这一项没生效|在「属性伪装」页重填，或改回自动"
+if [ -f "$T/getprop.bak" ]; then cp "$T/getprop.bak" "$T/bin/getprop"; else rm -f "$T/bin/getprop"; fi
+
 echo "── restore-app（名单 writer：tricky 追加）──"
 mk_ra_harness() { # <root>
   {
@@ -2043,7 +2097,9 @@ echo
 # 242 → 247：TEESim 那一侧改成"属性已有值就采用守护进程那份"（不拿 overrides.json 覆盖）
 # 239 → 242：current= 的读数口径（两侧都用生产那份 getprop，不再手抄 resetprop；
 #             外加"resetprop 读不回时仍报真值"的正对照 —— 真机上就是这么报出过一次假空）
-if [ "$oks" -lt 247 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 242），疑似用例被删"; fail=1
+# 247 → 261：体检「启动哈希」那一格改成按三态取生效值。上面几条 242/247 的注释是历史留下的
+#             旧数字（判据早于它们），文案与判据分家本身就是这条闸的毛病，这里顺手并回一处。
+if [ "$oks" -lt 261 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 261），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

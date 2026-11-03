@@ -1459,16 +1459,28 @@ PAIRS
             fi
         fi
 
+        # 这一项必须按**三态**判：auto 档没有配置文件，但生效值是从当前后端取来的，
+        # 直接读文件会把「自动档一切正常」报成跳过（真机就这么红过一次）。
+        bh_mode=$(boot_hash_mode)
         raw=$(boot_hash_get)
-        prop_now ro.boot.vbmeta.digest; cur="$PROP_NOW"
-        if [ -z "$raw" ]; then
-            _doc '启动哈希' skip '没有配置 vbmeta digest' ''
-        elif ! boot_hash_valid "$raw"; then
-            _doc '启动哈希' bad '配置的哈希格式不对' '只接受 64/128 位十六进制，在「属性伪装」页重填'
-        elif [ "$(printf '%s' "$cur" | tr 'A-F' 'a-f')" = "$raw" ]; then
-            _doc '启动哈希' ok '当前值等于配置值' ''
-        else
+        prop_now ro.boot.vbmeta.digest
+        cur=$(printf '%s' "${PROP_NOW:-}" | tr 'A-F' 'a-f')
+        if [ "$bh_mode" = off ]; then
+            _doc '启动哈希' skip '已设为不写 vbmeta digest' ''
+        elif [ "$bh_mode" = invalid ]; then
+            _doc '启动哈希' skip '配置值不是十六进制，这一项没生效' '在「属性伪装」页重填，或改回自动'
+        elif [ -z "$raw" ]; then
+            _doc '启动哈希' skip '自动档但后端没给出值' ''
+        elif [ "$cur" = "$raw" ]; then
+            if [ "$bh_mode" = manual ]; then
+                _doc '启动哈希' ok '当前值等于配置值' ''
+            else
+                _doc '启动哈希' ok '自动取到的值与当前值一致' ''
+            fi
+        elif [ "$bh_mode" = manual ]; then
             _doc '启动哈希' warn '当前值与配置值不一致' '点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了'
+        else
+            _doc '启动哈希' warn '自动取到的值与当前值不一致' '点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了'
         fi
 
         ino=$(find_inotify_cmd)

@@ -586,6 +586,79 @@ fn boot_hash_effective(p: &Paths) -> String {
     }
 }
 
+/// 体检「启动哈希」那一行。必须按三态取生效值：auto 档配置文件是不存在的，
+/// 直接读文件会把「自动档一切正常」报成跳过、把「已设为不写」报成不合格（真机红过一次）。
+/// 返回 (状态, 说明, 下一步)。
+fn boot_hash_doctor_row(mode: &str, eff: &str, cur: &str) -> (&'static str, String, String) {
+    let cur = cur.to_ascii_lowercase();
+    if mode == "off" {
+        return ("skip", "已设为不写 vbmeta digest".into(), String::new());
+    }
+    if mode == "invalid" {
+        return ("skip", "配置值不是十六进制，这一项没生效".into(),
+                "在「属性伪装」页重填，或改回自动".into());
+    }
+    if eff.is_empty() {
+        return ("skip", "自动档但后端没给出值".into(), String::new());
+    }
+    if cur == eff {
+        return if mode == "manual" {
+            ("ok", "当前值等于配置值".into(), String::new())
+        } else {
+            ("ok", "自动取到的值与当前值一致".into(), String::new())
+        };
+    }
+    let next = "点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了".to_string();
+    if mode == "manual" {
+        ("warn", "当前值与配置值不一致".into(), next)
+    } else {
+        ("warn", "自动取到的值与当前值不一致".into(), next)
+    }
+}
+
+#[cfg(test)]
+mod bh_row_tests {
+    use super::*;
+    const H: &str = "1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef";
+
+    #[test]
+    fn auto_with_backend_value_is_ok_not_skip() {
+        // 真机红过的那一格：auto 档没有配置文件，但生效值取得到 ⇒ 必须是 ok
+        let (st, msg, _) = boot_hash_doctor_row("auto", H, H);
+        assert_eq!((st, msg.as_str()), ("ok", "自动取到的值与当前值一致"));
+    }
+
+    #[test]
+    fn off_is_skip_not_bad() {
+        let (st, msg, next) = boot_hash_doctor_row("off", "", H);
+        assert_eq!((st, msg.as_str(), next.as_str()),
+                   ("skip", "已设为不写 vbmeta digest", ""));
+    }
+
+    #[test]
+    fn manual_matches_and_mismatches() {
+        assert_eq!(boot_hash_doctor_row("manual", H, H).0, "ok");
+        let (st, msg, next) = boot_hash_doctor_row("manual", H, "aaa");
+        assert_eq!((st, msg.as_str()), ("warn", "当前值与配置值不一致"));
+        assert!(next.contains("保存并应用"));
+    }
+
+    #[test]
+    fn auto_without_value_and_invalid_file() {
+        let (st, msg, next) = boot_hash_doctor_row("auto", "", H);
+        assert_eq!((st, msg.as_str(), next.as_str()), ("skip", "自动档但后端没给出值", ""));
+        let (st, msg, next) = boot_hash_doctor_row("invalid", "", H);
+        assert_eq!((st, msg.as_str()), ("skip", "配置值不是十六进制，这一项没生效"));
+        assert!(next.contains("重填"));
+    }
+
+    #[test]
+    fn current_is_case_insensitive_and_auto_warns() {
+        assert_eq!(boot_hash_doctor_row("manual", H, &H.to_ascii_uppercase()).0, "ok");
+        assert_eq!(boot_hash_doctor_row("auto", H, "bbb").0, "warn");
+    }
+}
+
 /// cmd_boot_hash：mode / configured / source / effective / current / status。
 pub fn boot_hash() {
     let root = Root::from_env();
@@ -2799,18 +2872,9 @@ pub fn doctor() {
             }
         }
         // 8. 启动哈希
-        let raw = std::fs::read_to_string(&p.boot_hash).unwrap_or_default()
-            .chars().filter(|c| !c.is_whitespace()).collect::<String>().to_ascii_lowercase();
-        let cur = getprop("ro.boot.vbmeta.digest").to_ascii_lowercase();
-        if raw.is_empty() {
-            doc("启动哈希", "skip", "没有配置 vbmeta digest", "");
-        } else if !boot_hash_valid(&raw) {
-            doc("启动哈希", "bad", "配置的哈希格式不对", "只接受 64/128 位十六进制，在「属性伪装」页重填");
-        } else if cur == raw {
-            doc("启动哈希", "ok", "当前值等于配置值", "");
-        } else {
-            doc("启动哈希", "warn", "当前值与配置值不一致", "点「保存并应用」重写一次；重启后仍不一致说明这台设备的值变了");
-        }
+        let (bh_st, bh_msg, bh_next) = boot_hash_doctor_row(
+            boot_hash_mode(&p), &boot_hash_effective(&p), &getprop("ro.boot.vbmeta.digest"));
+        doc("启动哈希", bh_st, &bh_msg, &bh_next);
         // 9. 监听工具
         match find_inotify() {
             Some(mode) => doc("监听工具", "ok", mode, ""),

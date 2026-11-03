@@ -483,13 +483,24 @@ function demoResult(cmd, arg) {
     return { errno: 0, stdout: 'restored=1\nname=' + String(arg || '') + '\n' };
   }
   if (cmd === 'doctor') {
-    return { errno: 0, stdout: 'checks=11\nbad=1\nwarn=1\nskip=0\n'
+    /* 体检的启动哈希那一格跟着 ?bh= 走（与下面 boot-hash 那一份同一个开关）。
+       这一格在界面上只画过"填了/没填"两态，auto 档（一个字没填、值已从后端派生）
+       被报成跳过过一次 —— 台架画不出那一格，就没人看得见它报错了。 */
+    var BH_ROW = {
+      auto: ['ok', '自动取到的值与当前值一致', ''],
+      daemon: ['ok', '自动取到的值与当前值一致', ''],
+      manual: ['ok', '当前值等于配置值', ''],
+      random: ['skip', '自动档但后端没给出值', ''],
+      off: ['skip', '已设为不写 vbmeta digest', ''],
+      invalid: ['skip', '配置值不是十六进制，这一项没生效', '在「属性伪装」页重填，或改回自动'],
+    }[QUERY.get('bh') || 'auto'];
+    return { errno: 0, stdout: 'checks=11\nbad=1\nwarn=1\nskip=' + (BH_ROW[0] === 'skip' ? 1 : 0) + '\n'
       + '权限\tok\t以 root 运行\t\n'
       + '后端\tok\tOhMyKeymint · 配置 ' + demoFiles().dir + '/' + demoFiles().target + '\t\n'
       + '守护进程\tok\t1 个进程在跑\t\n'
       + '名单\twarn\t已装 127 个 · 名单 120 条（只比数量，可能只是你手动排除过）\t点「立即同步一次」，或等下一次安装/卸载自动触发\n'
       + 'keybox\tok\tkeybox.xml 结构通过校验\t\n'
-      + '启动哈希\tskip\t没有配置 vbmeta digest\t\n' };
+      + '启动哈希\t' + BH_ROW[0] + '\t' + BH_ROW[1] + '\t' + BH_ROW[2] + '\n' };
   }
   var B = demoFiles();
   var toks = {
