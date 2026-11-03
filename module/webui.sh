@@ -1032,13 +1032,24 @@ cmd_targets() {
 }
 
 # ---------- 已装应用 ----------
-# 参数：空 = 只第三方（`-3`，与同步"新装发现"同一口径）；system = 系统包；all = 全部。
+# 参数：空 = 只第三方（`-3`，与同步"新装发现"同一口径）；system = 系统包；all = 全部；
+#       launchable = 有启动器入口的包（MAIN/LAUNCHER，平台自己的"这是个应用"判据）。
 # 系统包只能"全量减第三方"：这台机的 `cmd package` 不认 `--system`（实测 Unknown option）。
 # 那是两次 pm 调用（本机现量 56ms + 62ms），所以只在界面点开「系统应用」那一档时才付，
 # 默认档仍是一次调用、一个字不多花。
+# launchable 那条查询本机现量 53~80ms，比取全量列表（74ms）还便宜；注意它**不能带
+# `--user all`** —— 带上会被这台机打空（实测 0 行）。
 kl_pkg_names() { # <额外的 pm 参数，可为空>
     (cmd package list packages ${1:-} --user all 2>/dev/null || pm list packages ${1:-} 2>/dev/null) \
         | sed -n 's/^package://p' | sed 's/\[[0-9]*\]$//' | sort -u
+}
+
+kl_launchable_names() {
+    (cmd package query-activities --components \
+        -a android.intent.action.MAIN -c android.intent.category.LAUNCHER 2>/dev/null \
+      || pm query-activities --components \
+        -a android.intent.action.MAIN -c android.intent.category.LAUNCHER 2>/dev/null) \
+        | sed -n '/\//s#/.*##p' | sort -u
 }
 
 cmd_apps() {
@@ -1046,6 +1057,7 @@ cmd_apps() {
 
     case "$want" in
         all) kl_pkg_names '' ;;
+        launchable) kl_launchable_names ;;
         system)
             t=$(mktemp) || return 1
             a=$(mktemp) || { rm -f "$t"; return 1; }

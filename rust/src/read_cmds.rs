@@ -423,12 +423,40 @@ fn pkg_names(extra: &[&str]) -> Vec<String> {
     names
 }
 
-/// cmd_apps：已装应用。参数：空 = 只第三方（`-3`，同步口径）；system = 系统包；all = 全部。
+/// 有启动器入口的包（MAIN/LAUNCHER）—— 这是平台自己的"这是个应用"判据，
+/// 不是我按包名猜的：本机 235 个系统包里只有 17 个有入口，其余是覆盖层/服务/资源包。
+/// 这条查询不能带 `--user all`（这台机带上就打空，实测 0 行），与 shell 侧同形。
+fn launchable_names() -> Vec<String> {
+    let spawn = |prog: &str| -> Option<Vec<u8>> {
+        std::process::Command::new(prog)
+            .args(["query-activities", "--components",
+                   "-a", "android.intent.action.MAIN",
+                   "-c", "android.intent.category.LAUNCHER"])
+            .output().ok().map(|o| o.stdout)
+    };
+    let out = spawn("cmd").filter(|o| !o.is_empty())
+        .or_else(|| spawn("pm")).unwrap_or_default();
+    let mut v: Vec<String> = Vec::new();
+    for line in String::from_utf8_lossy(&out).lines() {
+        let l = line.trim_end_matches('\r');
+        // 只处理 `包名/组件` 这种行（表头那些行没有斜杠）
+        if !l.contains('/') { continue; }
+        let pkg = l.split('/').next().unwrap_or("").trim();
+        if !pkg.is_empty() { v.push(pkg.to_string()); }
+    }
+    v.sort();
+    v.dedup();
+    v
+}
+
+/// cmd_apps：已装应用。参数：空 = 只第三方（`-3`，同步口径）；system = 系统包；all = 全部；
+/// launchable = 有启动器入口的包。
 /// 系统包只能"全量减第三方"（这台机的 `cmd package` 不认 `--system`），那是两次 pm 调用，
 /// 只在界面点开「系统应用」那一档时才付。语义与 shell 侧 cmd_apps 逐字节一致。
 pub fn apps(arg: &str) {
     let names = match arg.trim() {
         "all" => pkg_names(&[]),
+        "launchable" => launchable_names(),
         "system" => {
             let third: std::collections::HashSet<String> = pkg_names(&["-3"]).into_iter().collect();
             pkg_names(&[]).into_iter().filter(|n| !third.contains(n)).collect()

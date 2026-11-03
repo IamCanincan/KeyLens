@@ -1096,6 +1096,50 @@ async function main() {
       return { found: b?1:0, disabled: b?(b.hasAttribute('disabled')?1:0):-1, 说明: errs.join(' | ').slice(0, 80) }; })()`);
     chk('选中非默认 profile 时 keybox 那颗按钮不给（不再回"已替换 keybox"骗人）',
       kb.found === 1 && kb.disabled === 1 && /这条路还没有/.test(kb.说明), JSON.stringify(kb));
+
+    /* 名单这一屏的三根轴（主人原话："还是不够人性化…主要哪些选了哪些没选都不明了"）。
+       本机现量：235 个系统包里按平台启动器判据只有 17 个是应用；相机排在第 201 行。 */
+    await send('Page.navigate', { url: URL0 });
+    await sleep(1300);
+    await toFunc(); await sleep(500);
+    await tapEntry('目标名单'); await sleep(900);
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('系统应用')===0;})[0]; })()`);
+    await sleep(900);
+    const readSys = () => ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
+      var btns=[].slice.call(document.querySelectorAll('#view md-button')).map(function(b){return b.getAttribute('label')||'';});
+      return { rows: rows.length,
+        titles: rows.map(function(r){return r.getAttribute('headline')||'';}),
+        角标: rows.filter(function(r){return [].slice.call(r.querySelectorAll('.app-row-tag')).length>0;}).length,
+        折叠句: btns.filter(function(t){return /系统组件/.test(t);})[0] || '' }; })()`);
+    const sy1 = await readSys();
+    chk('系统应用档只列有启动器入口的（台架 5 个系统包 → 2 个应用），其余收成一句可点开的',
+      sy1.rows === 2 && /^另有 3 条系统组件/.test(sy1.折叠句), JSON.stringify(sy1));
+    chk('已在名单里的那行带「已纳入」角标，没在的不带',
+      sy1.角标 === 1, JSON.stringify(sy1));
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('另有')===0;})[0]; })()`);
+    await sleep(700);
+    const sy2 = await readSys();
+    chk('点那一句能把 218…组件全列出来（不是藏死）', sy2.rows === 5, JSON.stringify({ rows: sy2.rows }));
+    const ord0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row .app-row-title')).map(function(x){return x.textContent;});
+      var s=t.slice().sort(function(a,b){return String(a).localeCompare(String(b),'zh');});
+      return { got:t, want:s }; })()`);
+    chk('系统应用这一屏内部自洽（显示名序，不是包名序）',
+      JSON.stringify(ord0.got) === JSON.stringify(ord0.want), JSON.stringify(ord0));
+    /* 上面那条单独是**假绿**：这一屏多数行没有名字，包名序与名字序长得一样，`want` 又是拿
+       `got` 自己排的。所以补一条能区分的正对照 —— 台架「已装」那 4 条两种序长得不一样，
+       两边都钉死（谁退回按包名排，这条当场红）。 */
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
+    await sleep(800);
+    const ord1 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row .app-row-title')).map(function(x){return x.textContent;});
+      return { first: t[0] || '', all: t }; })()`);
+    const BY_LABEL = ['com.tencent.mm', 'Google Play 商店', 'io.legado.app', 'Mihon'];
+    const BY_PKG = ['Mihon', 'Google Play 商店', 'com.tencent.mm', 'io.legado.app'];
+    chk('已装档按显示名排（两种序都钉死：退回包名序就红）',
+      JSON.stringify(ord1.all) === JSON.stringify(BY_LABEL)
+      && JSON.stringify(ord1.all) !== JSON.stringify(BY_PKG), JSON.stringify(ord1));
   }
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；

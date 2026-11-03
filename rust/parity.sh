@@ -286,6 +286,12 @@ echo "── apps（cmd/pm 输出 → 去前缀/去[N]/排序去重；默认/sys
 mkdir -p "$T/bin"
 cat > "$T/bin/cmd" <<'EOF'
 #!/bin/sh
+case "$*" in
+  *query-activities*)
+    # --components 的真实形状是「包名/组件」，没有 package: 前缀；同一个包可以多个入口
+    printf 'com.a/.MainActivity\ncom.android.systemui/.recents.RecentsActivity\ncom.b/.StubActivity\ncom.a/.SecondActivity\n'
+    exit 0 ;;
+esac
 # 带 -3 只给第三方；不带就是全量（后面三个是系统包）。桩要认参数，
 # 否则 system 档会算出"全量减全量"= 空，两侧一起空照样绿。
 third=""
@@ -295,18 +301,20 @@ printf 'package:com.b\npackage:com.a\npackage:com.a\npackage:com.c[10]\npackage:
 exit 0
 EOF
 chmod +x "$T/bin/cmd"
-{ sed -n '/^kl_pkg_names() {/,/^}/p' module/webui.sh; sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh; \
-  printf 'AWK_CMD="awk"\n'; } > "$T/apps.sh"
+{ sed -n '/^kl_pkg_names() {/,/^}/p' module/webui.sh; sed -n '/^kl_launchable_names() {/,/^}/p' module/webui.sh; \
+  sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh; printf 'AWK_CMD="awk"\n'; } > "$T/apps.sh"
 apps_sh() { PATH="$T/bin:$PATH" sh -c '. "$1"; cmd_apps "$2"' sh "$T/apps.sh" "$1"; }
 apps_rs() { PATH="$T/bin:$PATH" "$B" apps "$1"; }
 APPS_THIRD=$(printf 'com.a\ncom.b\ncom.c\ncom.d')
 APPS_ALL=$(printf 'com.a\ncom.android.systemui\ncom.android.vending\ncom.b\ncom.c\ncom.d\ncom.sonyericsson.elm')
 APPS_SYSTEM=$(printf 'com.android.systemui\ncom.android.vending\ncom.sonyericsson.elm')
-for arm in "" system all; do
+APPS_LAUNCH=$(printf 'com.a\ncom.android.systemui\ncom.b')
+for arm in "" system all launchable; do
   case "$arm" in
-    '')      want="$APPS_THIRD" ;;
-    system)  want="$APPS_SYSTEM" ;;
-    all)     want="$APPS_ALL" ;;
+    '')           want="$APPS_THIRD" ;;
+    system)       want="$APPS_SYSTEM" ;;
+    all)          want="$APPS_ALL" ;;
+    launchable)   want="$APPS_LAUNCH" ;;
   esac
   label=${arm:-默认档}
   chk "apps：${label}（shell=期望）" "$want" "$(apps_sh "$arm")"
@@ -2161,7 +2169,9 @@ echo
 #             而 Rust 只认两个 argv —— 两边互相自证，真机上那颗「自动 →」按钮一直是死的。
 # 267 → 269：「已排除」的已装宇宙从 -3 改成全量（§5.19 #4）：移出系统包后这一档必须还看得见。
 #             正对照的桩认 -3，所以"退回旧口径"这一刀会被两侧各自钉住。
-if [ "$oks" -lt 269 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 269），疑似用例被删"; fail=1
+# 269 → 271：apps 再加一档 launchable（平台的"这是个应用"判据，§5.21）。桩要认
+#             query-activities，且输出的是「包名/组件」那种形状（没有 package: 前缀）。
+if [ "$oks" -lt 271 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 271），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

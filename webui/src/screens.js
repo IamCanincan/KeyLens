@@ -278,12 +278,29 @@ function loadIconsFor(shown) {
    预取范围就是**当前档**要画的那 200 条（与 listSection 的 LIMIT 对齐）；
    切档后新增的那些仍由 loadIconsFor 增量补。 */
 const PREFETCH_ICONS = 200;
+/* 「系统应用」那一档的分面：235 个系统包里，按平台自己的判据（有没有启动器入口）
+   只有 17 个是"应用"，其余是覆盖层/服务/资源包 —— 全塞在一屏里就是"翻不到想找的东西"。
+   所以默认只列可启动的，组件收进一句可点开的话里。launchable 没取到（老命令层不认这一档）
+   时**不筛**，照全列：宁可长，也不拿一个没读到的判据把人该看的东西藏起来。 */
+function sysSplit() {
+  var sys = S.system || [];
+  if (!S.launchable) return { apps: sys, comps: [] };
+  var L = {};
+  S.launchable.forEach(function (p) { L[p] = 1; });
+  return { apps: sys.filter(function (p) { return L[p]; }),
+    comps: sys.filter(function (p) { return !L[p]; }) };
+}
+function systemSource() {
+  var sp = sysSplit();
+  return S.showSysComp ? sp.apps.concat(sp.comps) : sp.apps;
+}
+
 /* 当前档位的数据源：与 listSection 的 src 同一套规则（targets / apps / system / missing / excluded）。
    两处各写一份的话，预取与真正画出来的集合一旦分叉，就会出现"预取了没画"或
    "画了没预取" —— 后者正是首帧闪一下。 */
 function listSource() {
   if (S.view === 'apps') return S.apps;
-  if (S.view === 'system') return S.system || [];
+  if (S.view === 'system') return systemSource();
   if (S.view === 'excluded') return S.excluded;
   if (S.view === 'missing') {
     const baseSet = {};
@@ -920,14 +937,14 @@ function listSection() {
       : '这一档的加/减写的是 profiles.default.apps（TEESim 的名单只有 default 那一份）。'));
   }
   const seg = h('div', 'acts filter-grid');
+  const sysSp = sysSplit();
   /* 「系统应用」单独一档，而且是**点開才去读**：那一档要跑两次 pm（本机现量 56+62ms），
-     不该让默认的「名单/已装」替它付。系统包以前在界面上根本选不了 —— 数据源是
-     `pm list packages -3`，界面画不出那一行，也就没有「加入」按钮（同步的自动加入
-     仍按 `-3`，不会把 235 个系统包砸进名单）。 */
+     不该让默认的「名单/已装」替它付。芯片上的数报的是**能勾的应用**（本机 17 条），
+     不是全部系统包（235）—— 数字与点开看到的内容必须一致，否则第一屏就对不上账。 */
   [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
    ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
    ['excluded', '已排除 ' + S.excluded.length],
-   ['system', S.system === null ? '系统应用 …' : '系统应用 ' + S.system.length]].forEach(function (v) {
+   ['system', S.system === null ? '系统应用 …' : '系统应用 ' + sysSp.apps.length]].forEach(function (v) {
     seg.appendChild(chip(v[1], v[0] === S.view, function () {
       S.view = v[0];
       if (v[0] === 'system' && S.system === null) loadSystem().then(redraw);
@@ -935,6 +952,13 @@ function listSection() {
     }));
   });
   s.appendChild(seg);
+  /* 被启动器判据筛掉的那些（覆盖层 / 服务 / 资源包）收起来，但一句话点名、点得开 ——
+     要 spoof com.android.bluetooth 的人必须还找得到它。 */
+  if (S.view === 'system' && S.system !== null && sysSp.comps.length) {
+    s.appendChild(button(S.showSysComp ? '收起那 ' + sysSp.comps.length + ' 条系统组件'
+      : '另有 ' + sysSp.comps.length + ' 条系统组件（覆盖层 / 服务 / 资源包）· 点开才列',
+      { variant: 'text', on: function () { S.showSysComp = !S.showSysComp; redraw(); } }));
+  }
   const tf = h('md-text-field');
   tf.setAttribute('variant', 'filled');
   tf.setAttribute('single-line', '');
@@ -990,6 +1014,9 @@ function listSection() {
     const detail = (ic && ic.label ? tok : '') || (meta && meta.detail ? (meta.kind === 'user' ? '用户 ' + meta.detail : 'UID ' + meta.detail) : '');
     const title = (ic && ic.label) || b || tok;
     const note = m ? (m.note || '') : '';
+    /* 「已在名单里」以前只靠行尾那个 add/remove 小图标区分，扫一眼根本看不出来
+       （主人原话：哪些选了哪些没选都不明了）。非名单档里给一枚明文角标。 */
+    const inList = !!baseSet[b || tok];
     const sup = [detail, note].filter(Boolean).join(' · ');
     const r = h('div', 'app-row');
     /* 行属性给台架读（真实文字在下面的 DOM 里）：headline / supporting-text
@@ -1004,6 +1031,7 @@ function listSection() {
     const tx = h('div', 'app-row-text');
     tx.appendChild(h('b', 'app-row-title', title));
     if (sup) tx.appendChild(h('span', 'app-row-sub', sup));
+    if (S.view !== 'targets' && inList) tx.appendChild(h('span', 'app-row-tag', '已纳入'));
     r.appendChild(tx);
     if (m) {
       r.appendChild(m.el);
@@ -1035,7 +1063,15 @@ function listSection() {
     const shown = q ? src.filter(function (t) {
       return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
         || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
-    }) : src;
+    }) : src.slice();
+    /* 按**显示名**排：人找应用是按名字找的。本机现量（按包名排）相机在第 201 行、
+       浏览器第 213 行、短信第 84 行。名字还没到货的行按包名参与排序；名字到货只原位
+       改文字、不重排（免得手指底下突然跳一下），所以第二次进这一屏就是完整按名字排的。 */
+    shown.sort(function (x, y) {
+      const lx = (S.icons[baseOf(x)] || {}).label || String(x);
+      const ly = (S.icons[baseOf(y)] || {}).label || String(y);
+      return String(lx).localeCompare(String(ly), 'zh') || String(x).localeCompare(String(y));
+    });
     const page = shown.slice(0, shownLimit);
     l.textContent = '';
     page.forEach(function (t) { l.appendChild(rowOf(t)); });

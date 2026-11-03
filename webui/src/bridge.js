@@ -114,6 +114,8 @@ export const S = {
   targets: [], apps: [], targetMeta: {}, listErr: '',
   /* null = 「系统应用」那一档还没读过（点开才读，见 loadSystem） */
   system: null, systemErr: '',
+  /* 有启动器入口的包（平台的"这是个应用"判据）；null = 没取到，此时不筛、照全列 */
+  launchable: null, showSysComp: false,
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
@@ -415,12 +417,20 @@ export function loadExcluded() {
 }
 
 /* 系统应用那一档：命令层要跑两次 pm（全量减第三方），所以只在点开时读一次，
-   结果留在 S.system（null = 还没读过，芯片上要显出"还没读"而不是"没有"）。 */
+   结果留在 S.system（null = 还没读过，芯片上要显出"还没读"而不是"没有"）。
+   同时取 `launchable`（平台自己的"这是个应用"判据：有没有启动器入口）——
+   本机现量 235 个系统包里只有 17 个真有入口，其余是覆盖层/服务/资源包，
+   混在列表里就是"翻不到想找的东西"的主因。这条查询 53~80ms，比取全量列表还便宜。 */
 export function loadSystem() {
   if (S.contract.checked && !hasCmd('apps')) { S.system = []; S.systemErr = '命令层没有 apps'; return Promise.resolve(); }
-  return call('apps', 'system').then(function (r) {
+  return Promise.all([
+    call('apps', 'system'),
+    call('apps', 'launchable').then(function (r) { return r.ok ? splitLines(r.text) : null; }, function () { return null; }),
+  ]).then(function (both) {
+    var r = both[0];
     if (!r.ok) { S.system = []; S.systemErr = failText(r); return; }
     S.system = splitLines(r.text);
+    S.launchable = both[1];
     S.systemErr = '';
   }, function () { S.system = []; S.systemErr = '读不到'; });
 }
@@ -493,6 +503,11 @@ function demoResult(cmd, arg) {
   if (cmd === 'apps' && arg === 'system') {
     return { errno: 0, stdout: ['com.android.systemui', 'com.android.settings', 'com.android.vending',
       'com.google.android.gms', 'com.google.android.gsf'].join('\n') };
+  }
+  /* 台架里"有启动器入口"的那几个（systemui / gms / gsf 是真组件，画的是筛掉它们之后的形状） */
+  if (cmd === 'apps' && arg === 'launchable') {
+    return { errno: 0, stdout: ['com.android.settings', 'com.android.vending', 'app.mihon',
+      'io.legado.app', 'com.tencent.mm'].join('\n') };
   }
   /* ?many=1：已装档给 250 条。名单屏一次只画 200 行（LIMIT），「继续显示余下 N 条」
      那颗要跨过 200 才存在 —— 台架默认只有 4 条，永远画不到那一格。 */

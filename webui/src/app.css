@@ -246,6 +246,11 @@ md-list + .form{margin-top:20px}
   white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
 .app-row-sub{font-family:var(--kl-mono);font-size:13px;line-height:20px;letter-spacing:0;
   color:var(--md-sys-color-on-surface-variant);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+/* 「已纳入」角标：非名单档里一眼看出这条已经在目标文件里（以前只有行尾小图标不同，
+   扫一眼看不出来 —— 而这一屏的全部意义就是"哪些选了哪些没选"）。 */
+.app-row-tag{align-self:flex-start;margin-top:2px;padding:1px 8px;border-radius:999px;
+  font:500 12px/18px system-ui,sans-serif;letter-spacing:.2px;
+  color:var(--md-sys-color-on-secondary-container);background:var(--md-sys-color-secondary-container)}
 .app-row-act{box-sizing:border-box;width:40px;height:40px;flex:none;display:flex;align-items:center;justify-content:center;
   padding:0;border:0;border-radius:50%;background:transparent;color:var(--md-sys-color-on-surface-variant);
   font:inherit;cursor:pointer;-webkit-tap-highlight-color:transparent}
