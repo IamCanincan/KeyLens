@@ -33,6 +33,16 @@ exit 1
 EOF
 chmod +x "$tmp/stub0" "$tmp/stub2" "$tmp/stub1"
 
+# 数 argv 的桩：接管点必须把 ARG 当**一个**参数转过去。
+# 界面发的是 `set-mode '包名 模式'`（webui.sh 的分派臂按第一个空格拆），所以接管点
+# 一旦被人"顺手"改成不带引号的 $ARG，包名和模式就散成两个 argv，那颗按钮当场死。
+cat > "$tmp/stubc" <<'EOF'
+#!/bin/sh
+printf 'rust:%s:argc=%d:argv2=%s\n' "$1" "$#" "${2:-}"
+exit 0
+EOF
+chmod +x "$tmp/stubc"
+
 # 被测段读的是变量，所以赋值必须留在同一个 shell 里：别写成 `env VAR=x sh -c …` ——
 # 这台 Windows 的 env 会把 `env sh 脚本` 跑成空输出（本测试之前在 Git Bash 里恒红、
 # 在 WSL 里全绿，就是这个差别，与被测代码无关）。
@@ -51,6 +61,8 @@ run() { # <bin> <cmd> [arg] [use_rust]
 
 chk "开关打开 + 二进制存在 → 走 Rust" "$(run "$tmp/stub0" status "" 1)" "rust:status:"
 chk "带参数的命令也传参" "$(run "$tmp/stub0" log 30 1)" "rust:log:30"
+chk "带空格的单参数原样转发（argc 只有 2）" \
+  "$(run "$tmp/stubc" set-mode 'com.a leaf' 1)" "rust:set-mode:argc=2:argv2=com.a leaf"
 chk "Rust 返回 2 → 回落 shell" "$(run "$tmp/stub2" sync "" 1)" "rust:sync
 shell-fallback"
 chk "开关关闭 → 不接管" "$(run "$tmp/stub0" status "" 0)" "shell-fallback"

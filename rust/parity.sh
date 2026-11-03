@@ -653,7 +653,15 @@ mk_mode_harness() { # <root>
   sed -n '/^webui_lock() {/,/^}/p' module/webui.sh >> "$T/md.sh"
   sed -n '/^require_runnable() {/,/^}/p' module/webui.sh >> "$T/md.sh"
   sed -n '/^cmd_set_mode() {/,/^}/p' module/lib/write.sh >> "$T/md.sh"
-  echo 'detect_backend "$MODDIR"; cmd_set_mode "$1" "$2"' >> "$T/md.sh"
+  # 台子走**分派臂本身**（sed 抽出来跑），不在台子里重抄一遍拆分逻辑 —— 重抄就等于给分叉
+  # 装消音器（这条正是被"台子按两个 argv 调"瞒了很久的：界面发的是一个参数）。
+  # 抽不到时必须有响：落到 `*)` 退 9，否则两侧一起空跑照样绿。
+  echo 'detect_backend "$MODDIR"' >> "$T/md.sh"
+  echo 'main() { set -- set-mode "$1"; CMD="$1"; case "$CMD" in' >> "$T/md.sh"
+  sed -n '/^    set-mode)$/,/^        ;;$/p' module/webui.sh >> "$T/md.sh"
+  echo '  *) echo "set-mode 分派臂没抽到（改名/挪位了？）" >&2; return 9 ;;' >> "$T/md.sh"
+  echo 'esac; }' >> "$T/md.sh"
+  echo 'main "$@"' >> "$T/md.sh"
 }
 MD="$T/mdr"
 mk_md_fixture() { # <dir>
@@ -663,13 +671,14 @@ mk_md_fixture() { # <dir>
 MDS="$MD-s"; MDR="$MD-r"
 mk_md_fixture "$MDS"; mk_md_fixture "$MDR"
 mk_mode_harness "$MDS"
-chk 'set-mode：改 auto→leaf（输出）' "$(sh "$T/md.sh" com.a leaf 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.a leaf 2>&1)"
+chk 'set-mode：改 auto→leaf（输出，界面那一发的形状）' "$(sh "$T/md.sh" 'com.a leaf' 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode 'com.a leaf' 2>&1)"
 chk 'set-mode：两侧写回结果逐字节一致' "$(cat "$MDS/data/adb/tricky_store/target.txt")" "$(cat "$MDR/data/adb/tricky_store/target.txt")"
 chk 'set-mode：注释/缩进/行尾空白保留' "$(sed -n '3,4p' "$MDR/data/adb/tricky_store/target.txt")" "# 注释
   com.c   "
-chk 'set-mode：同模式再改（changed=0）' "$(sh "$T/md.sh" com.a leaf 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.a leaf 2>&1)"
-chk 'set-mode：不存在的包（changed=0）' "$(sh "$T/md.sh" com.zzz auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode com.zzz auto 2>&1)"
-chk 'set-mode：非法包名' "$(sh "$T/md.sh" bad..pkg auto 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode bad..pkg auto 2>&1)"
+chk 'set-mode：同模式再改（changed=0）' "$(sh "$T/md.sh" 'com.a leaf' 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode 'com.a leaf' 2>&1)"
+chk 'set-mode：不存在的包（changed=0）' "$(sh "$T/md.sh" 'com.zzz auto' 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode 'com.zzz auto' 2>&1)"
+chk 'set-mode：非法包名' "$(sh "$T/md.sh" 'bad..pkg auto' 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode 'bad..pkg auto' 2>&1)"
+chk 'set-mode：只给包名（=自动，两侧同形）' "$(sh "$T/md.sh" 'com.a' 2>&1)" "$(KEYLENS_ROOT="$MDR" "$B" set-mode 'com.a' 2>&1)"
 
 echo "── props-on / props-off（开关文件）──"
 mk_props_harness() { # <root>
@@ -2122,7 +2131,10 @@ echo
 #             旧数字（判据早于它们），文案与判据分家本身就是这条闸的毛病，这里顺手并回一处。
 # 261 → 266：apps 的三档（默认/system/all）各钉两侧**期望文本**。桩原来不认参数 ——
 #             那会让 system 档算成"全量减全量=空"，两侧一起空照样绿，所以先把桩改成认 -3。
-if [ "$oks" -lt 266 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 266），疑似用例被删"; fail=1
+# 266 → 267：set-mode 的台子改成走**分派臂**（sed 抽 webui.sh 那一段），调用形状改成界面
+#             真发的那样：`set-mode '包名 模式'` 一个参数。以前台子按两个 argv 调，
+#             而 Rust 只认两个 argv —— 两边互相自证，真机上那颗「自动 →」按钮一直是死的。
+if [ "$oks" -lt 267 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 267），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

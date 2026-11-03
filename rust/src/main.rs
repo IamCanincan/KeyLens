@@ -299,7 +299,17 @@ fn main() {
         "props" => read_cmds::props(),
         "clear-log" => read_cmds::clear_log(),
         "omk-restart" => read_cmds::omk_restart(arg),
-        "set-mode" => read_cmds::set_mode(arg, args.get(3).map(|s| s.as_str()).unwrap_or("")),
+        // 界面把「包名 模式」当成**一个**参数发（见 webui.sh 的 set-mode 分派臂），接管点
+        // 原样转发 ⇒ 这里必须同样按第一个空格拆。以前只认 args[3]（两个 argv），带二进制的
+        // 发布包里这颗「自动 →」按钮永远收到"包名里带空格"，校验当场拒绝；对拍按两个 argv
+        // 调，所以它一直照绿。
+        "set-mode" => {
+            let (pkg, mode) = match arg.split_once(' ') {
+                Some((p, m)) => (p, m),
+                None => (arg, ""),
+            };
+            read_cmds::set_mode(pkg, mode)
+        }
         "props-on" => read_cmds::props_switch("on"),
         "props-off" => read_cmds::props_switch("off"),
         "props-boot-hash" => read_cmds::props_boot_hash(arg),
