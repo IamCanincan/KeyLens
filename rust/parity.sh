@@ -321,25 +321,6 @@ for arm in "" system all launchable; do
   chk "apps：${label}（Rust=期望）" "$want" "$(apps_rs "$arm")"
 done
 
-echo "── exclude-suggest（参考清单 ∩ 已装；只读，不动文件）──"
-# 桩：已装里清单内外混着，还有重复（真机 `package list` 会重复）与顺序打乱 ——
-# 两侧都必须按**清单顺序**只报已装的那些，重复靠去重吃掉。
-cat > "$T/bin/cmd" <<'EOF'
-#!/bin/sh
-printf 'package:com.termux\npackage:me.weishu.kernelsu\npackage:com.a\npackage:com.termux\npackage:com.android.chrome\n'
-exit 0
-EOF
-chmod +x "$T/bin/cmd"
-{ sed -n '/^kl_exclude_table() {/,/^}/p' module/lib/applist.sh; \
-  sed -n '/^exclude_suggest() {/,/^}/p' module/lib/applist.sh; \
-  printf 'KL_EXCLUDE_SENTINEL=%s\n' "'--kl-exclude-table--'"; \
-  printf 'AWK_CMD="awk"\n'; } > "$T/useless.sh"
-useless_sh() { PATH="$T/bin:$PATH" sh -c '. "$1"; exclude_suggest' sh "$T/useless.sh"; }
-useless_rs() { PATH="$T/bin:$PATH" "$B" exclude-suggest; }
-USELESS_WANT=$(printf 'me.weishu.kernelsu\troot-manager\ncom.termux\troot-related\ncom.android.chrome\tgeneral')
-chk 'exclude-suggest：只报已装的、按清单顺序（shell=期望）' "$USELESS_WANT" "$(useless_sh)"
-chk 'exclude-suggest：只报已装的、按清单顺序（Rust=期望）' "$USELESS_WANT" "$(useless_rs)"
-
 echo "── excluded（已装 ∩ ever ∖ 当前目标）──"
 ex_harness() { # <root>
   {
@@ -2190,9 +2171,7 @@ echo
 #             正对照的桩认 -3，所以"退回旧口径"这一刀会被两侧各自钉住。
 # 269 → 271：apps 再加一档 launchable（平台的"这是个应用"判据，§5.21）。桩要认
 #             query-activities，且输出的是「包名/组件」那种形状（没有 package: 前缀）。
-# 271 → 273：exclude-suggest（参考清单 ∩ 已装，只读，§5.26）。桩里清单内外混着、
-#             还有重复与乱序 —— 两侧都必须按清单顺序输出。
-if [ "$oks" -lt 273 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 273），疑似用例被删"; fail=1
+if [ "$oks" -lt 271 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 271），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

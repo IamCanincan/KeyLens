@@ -124,8 +124,6 @@ export const S = {
   profile: 'default', scope: 'global', overrides: [],
   icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], theme: 'auto', doctor: null, doctorErr: false, backups: [], backupsErr: false,
-  /* 参考清单建议（null = 命令层没有这条命令 / 没读到；[] = 读到了但没有命中） */
-  useless: null,
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，
      存一份就把另一份正在粘的内容吃掉；keybox 页粘完整份再点 profile 芯片也一样没。
@@ -490,19 +488,6 @@ export function loadExcluded() {
    同时取 `launchable`（平台自己的"这是个应用"判据：有没有启动器入口）——
    本机现量 235 个系统包里只有 17 个真有入口，其余是覆盖层/服务/资源包，
    混在列表里就是"翻不到想找的东西"的主因。这条查询 53~80ms，比取全量列表还便宜。 */
-/* 参考清单建议（exclude-suggest，只读）：包名 + 类别。命令层没有这条就当"没建议"，
-   界面不显示那一行 —— 老命令层带新界面不能凭空造建议。 */
-export function loadUseless() {
-  if (S.contract.checked && !hasCmd('exclude-suggest')) { S.useless = null; return Promise.resolve(); }
-  return call('exclude-suggest').then(function (r) {
-    S.useless = r.ok ? splitLines(r.text).map(function (line) {
-      var f = line.split('\t');
-      return { pkg: f[0] || '', cat: f[1] || '' };
-    }).filter(function (x) { return x.pkg; }) : null;
-    if (!r.ok) S.useless = null;
-  }, function () { S.useless = null; });
-}
-
 export function loadSystem() {
   /* 原生 pm 的路径已经在 loadLists 里把系统名单和"可启动"判据一起取回来了（见那边），
      这里只剩老路径要按需读。 */
@@ -546,7 +531,7 @@ export function ensure(what) {
     base: function () { return Promise.all([ensure('status'), ensure('env')]); },
     status: loadStatus,
     env: loadEnv,
-    lists: loadLists, log: loadLog, backend: loadBackend, useless: loadUseless,
+    lists: loadLists, log: loadLog, backend: loadBackend,
     props: function () { return Promise.all([loadProps(), call('boot-hash').then(function (r) {
       S.boot = r.ok ? parseKV(r.text) : null;
     }, function () { S.boot = null; })]); },
@@ -725,7 +710,7 @@ function demoResult(cmd, arg) {
     }
   }
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore exclude-suggest',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种
@@ -868,11 +853,7 @@ function demoResult(cmd, arg) {
     'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),
     /* 整行点选的两条写命令（上面已经改过 demoTargets，这里只补回包） */
     'restore-apps': 'restored=1',
-    'remove-apps': 'removed=1',
-    /* 参考清单建议：命令层的语义是"已装 ∩ 清单"，所以这里给的必须是"装了但不在名单里"的，
-       界面上那一行不该出现 —— 台架要用真形状测"出现"的那一支，得靠 __KL_DEMO_FIXTURE 注入。 */
-    'exclude-suggest': ['com.android.chrome' + T + 'general', 'com.termux' + T + 'root-related'].join('\n'),
-    icons: ['app.mihon' + T + 'Mihon' + T + 'icons/app.mihon.png',
+    'remove-apps': 'removed=1',    icons: ['app.mihon' + T + 'Mihon' + T + 'icons/app.mihon.png',
       'com.android.vending' + T + 'Google Play 商店' + T + 'icons/com.android.vending.png'].join('\n'),
   }[cmd];
   return body === undefined

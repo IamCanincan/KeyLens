@@ -269,10 +269,6 @@ md-list + .form{margin-top:20px}
 md-list-item[data-tone="bad"]{--md-list-item-supporting-text-color:var(--md-sys-color-on-error-container)}
 md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-warn) 38%, transparent);outline-offset:-2px;border-radius:12px}
 .hint{font-size:13px;line-height:1.65;color:var(--md-sys-color-on-surface-variant);margin:10px 4px 0}
-/* 「参考清单建议移出 N 条」：一句话 + 一颗按钮，与芯片行同宽 */
-.suggest-row{display:flex;align-items:center;gap:10px;justify-content:space-between;
-  padding:6px 4px 0;flex-wrap:wrap}
-.suggest-row .hint{margin:0;flex:1 1 200px}
 /* 过渡加载页（骨架屏）：骨架填满首屏、形状与真实内容一致，数据到齐后整页替换。
    只做很轻的呼吸，不做扫光 —— 扫光在长页上像进度条，反而让人误以为卡住。 */
 .load-card{display:flex;flex-direction:column;gap:16px;animation:sk-pulse 1.6s ease-in-out infinite}

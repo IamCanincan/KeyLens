@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 136;
+const FLOOR_CHKS = 134;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1191,6 +1191,12 @@ async function main() {
     chk('点一行就加进名单：勾选框变勾（不用去找行尾那颗小按钮）',
       beforeAdd.pressed === 'false' && afterAdd.pressed === 'true' && afterAdd.glyph === 'check_box'
       && afterAdd.all === beforeAdd.all + 1, JSON.stringify({ before: beforeAdd, after: afterAdd }));
+    /* 写命令的参数原样记在 window.__klWrites 里：逗号/空格这类分隔符错位在 demo 里看不出来
+       （demo 不校验包名），真机会直接"不是合法的目标条目"。 */
+    const wrote = await ev(`(function(){ var w=(window.__klWrites||[]).filter(function(x){return x.cmd==='restore-apps';});
+      return w.length ? w[w.length-1].arg : ''; })()`);
+    chk('加进名单时发出去的就是那个包名（没有多包/没带分隔符）',
+      wrote === 'io.legado.app', 'arg=' + JSON.stringify(wrote));
     await tapHere2(rowExpr('io.legado.app'));
     await sleep(900);
     const afterDel = await readOne();
@@ -1242,40 +1248,6 @@ async function main() {
     chk('整屏全在名单里：勾选框照画，但不着色（混着才着色）',
       nat.勾选 === 2 && nat.着色 === 0, JSON.stringify({ 勾选: nat.勾选, 着色: nat.着色 }));
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
-
-    /* 参考清单建议（exclude-suggest）：命令层只报"已装 ∩ 清单"，界面只数**当前在名单里**的
-       那几条。用夹具把建议换成两条确实在名单里的包，看那一行出现 → 点 → 消失，
-       并且**记下真正发出去的参数**：命令层两侧都只认逗号，界面写成空格会被当成一个
-       叫 `a b` 的包名（demo 不校验，真机第一下就红）—— 这条以前没有任何断言盯着。 */
-    const inj2 = await send('Page.addScriptToEvaluateOnNewDocument', {
-      source: `window.__klWrites = [];
-        window.__KL_DEMO_FIXTURE = { 'exclude-suggest': 'com.tencent.mm\\troot-related\\ncom.android.vending\\troot-manager' };` });
-    await send('Page.navigate', { url: URL0 });
-    await sleep(2400);
-    await ev(`(function(){ var n=document.getElementById('nav');
-      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
-    await sleep(700);
-    await tapEntry('目标名单');
-    await sleep(900);
-    const sug = await ev(`(function(){ var r=document.querySelector('#view .suggest-row');
-      return { hint: r ? (r.querySelector('.hint')||{}).textContent || '' : '',
-        btn: r ? [].slice.call(r.querySelectorAll('md-button')).map(function(b){return b.getAttribute('label')||'';})[0] || '' : '',
-        rows: document.querySelectorAll('#view .app-row').length }; })()`);
-    chk('参考清单命中名单里的包时，给出一行建议 + 一颗按钮',
-      /参考清单：2 条可以移出/.test(sug.hint) && /根相关工具 1/.test(sug.hint) && /根管理器 1/.test(sug.hint)
-      && /^移出这 2 条/.test(sug.btn) && sug.rows === 3, JSON.stringify(sug));
-    await tapHere2(`(function(){ var r=document.querySelector('#view .suggest-row');
-      return r ? r.querySelector('md-button') : null; })()`);
-    await sleep(1000);
-    const sug2 = await ev(`(function(){ var w=(window.__klWrites||[]).filter(function(x){return x.cmd==='remove-apps';});
-      return { 还有建议: !!document.querySelector('#view .suggest-row'),
-        行数: document.querySelectorAll('#view .app-row').length,
-        最后一次: w.length ? w[w.length-1].arg : '' }; })()`);
-    chk('点了就按清单移出（走 remove-apps），建议那一行随之消失',
-      sug2.还有建议 === false && sug2.行数 === 1, JSON.stringify(sug2));
-    chk('两个包用**逗号**拼（命令层两侧只认逗号，空格会被当成一个包名）',
-      sug2.最后一次 === 'com.tencent.mm,com.android.vending', 'arg=' + JSON.stringify(sug2.最后一次));
-    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj2.identifier });
   }
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；

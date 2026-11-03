@@ -95,7 +95,7 @@ KL_COMMANDS="status env targets target-meta apps icons log clear-log props props
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore exclude-suggest"
+teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -426,13 +426,6 @@ omk_restart() {
 cmd_excluded() {
   detect_backend "$MODDIR"     # 基线路径是探测后端时才定的
   excluded_apps
-}
-
-# 用法：exclude-suggest（只读）
-# 输出：包名<TAB>类别（root-manager | root-related | general）
-# 说明：参考清单 ∩ 已装。只报"可以考虑移出"，不动文件 —— 移出走 remove-apps。
-cmd_exclude_suggest() {
-  exclude_suggest
 }
 
 
@@ -1355,7 +1348,6 @@ cmd_help() {
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
-  exclude-suggest        参考清单里建议移出的包（包名<TAB>类别，只读、不动文件）
 EOF
 }
 
@@ -1588,7 +1580,6 @@ case "$CMD" in
     backups)     cmd_backups ;;
     contract)    cmd_contract ;;
     excluded)    cmd_excluded ;;
-    exclude-suggest) cmd_exclude_suggest ;;
     status)      cmd_status ;;
     env)         cmd_env ;;
     targets)     cmd_targets ;;
