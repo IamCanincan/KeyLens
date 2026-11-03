@@ -23,6 +23,9 @@ export const DEMO_CONFLICT = DEMO && QUERY.get('conflict') === '1';
 /* ?omk=dead：把 OMK 两个 daemon 与 keystore2 注入都打成异常，验运行状态卡的红态。
    真机上故意杀 daemon 才能造，台架里不值得为它动设备。 */
 const DEMO_OMK_DEAD = DEMO && QUERY.get('omk') === 'dead';
+/* ?noresetprop=1：这台机上没有 resetprop（env 会报 resetprop=0）。
+   台架靠它画"那颗按钮点不动"的形状 —— 界面以前根本不读这个能力。 */
+const DEMO_NORESPROP = DEMO && QUERY.get('noresetprop') === '1';
 /* ?slow=<命令>：只给台架看加载页 —— 把某条读命令延后 900ms，骨架屏才有机会上屏。 */
 const DEMO_SLOW = DEMO ? (QUERY.get('slow') || '') : '';
 
@@ -589,7 +592,7 @@ function demoResult(cmd, arg) {
       'target_exists=1', 'target_writable=1', 'target_mtime=1793263964',
       'props_masking=on', 'daemon_alive=' + (DEMO_CONFLICT ? 0 : 1), 'log_file=/data/adb/keylens.log',
       'log_lines=492', 'log_bytes=33933'].join('\n'),
-    env: ['resetprop=1', 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
+    env: ['resetprop=' + (DEMO_NORESPROP ? '0' : '1'), 'awk=1', 'base64=1', 'inotify_mode=inotifyd', 'inotify_cmd=inotifyd',
       'root_user=0', 'device=XQ-DQ72', 'brand=Sony', 'android=17', 'sdk=37', 'build_type=user',
       'vbstate=green', 'sys_dark=1', 'sys_dark_src=mComputedNightMode', 'sys_statusbar_dp=28',
       /* seed=…（?demo=1 专用）：台架的种子注入路 —— 不带它就是"系统没有可读强调色"，

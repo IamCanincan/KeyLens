@@ -358,6 +358,31 @@ printf 'com.a\n' > "$EX2/data/adb/tricky_store/target.txt"
 ex_harness "$EX2"
 chk 'excluded：无 ever 时为空' "$(PATH="$T/bin:$PATH" sh "$T/h5.sh")" "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$EX2" "$B" excluded)"
 
+# 正对照（§5.19 #4）：被移出的是**系统包**时「已排除」必须还看得见它。
+# 旧口径 inst 取 `-3` ⇒ 系统包压根不在 inst 里 ⇒ 移出后这一档永远不出现、计数也不涨，
+# 而名单页刚加的「系统应用」档让人正好会去移系统包。只比"两侧相等"抓不到（两侧一起看不见），
+# 所以这两条钉的是**期望文本**，桩也必须认 -3（不认参数的话两侧都当全量，照样自证）。
+EXSY="$T/exroot-sys"
+mkdir -p "$EXSY/data/adb/modules/tricky_store" "$EXSY/data/adb/tricky_store"
+printf 'com.a\n' > "$EXSY/data/adb/tricky_store/target.txt"
+printf 'com.a\ncom.android.systemui\n' > "$EXSY/data/adb/tricky_store/.kl_ever"
+cat > "$T/bin/cmd" <<'EOF'
+#!/bin/sh
+for a in "$@"; do [ "$a" = "-3" ] && third=1; done
+if [ "${third:-}" = 1 ]; then printf 'package:com.a\n'
+else printf 'package:com.a\npackage:com.android.systemui\n'; fi
+EOF
+chmod +x "$T/bin/cmd"
+ex_harness "$EXSY"
+chk 'excluded：移出的是系统包也要在（shell=期望）' 'com.android.systemui' "$(PATH="$T/bin:$PATH" sh "$T/h5.sh")"
+chk 'excluded：移出的是系统包也要在（Rust=期望）' 'com.android.systemui' "$(PATH="$T/bin:$PATH" KEYLENS_ROOT="$EXSY" "$B" excluded)"
+# 把这一段原来那份桩恢复回去：后面的台子按它写期望，留着这份会改到别人的读数
+cat > "$T/bin/cmd" <<'EOF'
+#!/bin/sh
+printf 'package:com.a\npackage:com.b\npackage:com.c\npackage:com.d\npackage:com.e\n'
+EOF
+chmod +x "$T/bin/cmd"
+
 echo "── boot-hash（configured/current/status）──"
 H64=1234567890abcdef1234567890abcdef1234567890abcdef1234567890abcdef
 mkdir -p "$T/bhroot/data/adb"
@@ -2134,7 +2159,9 @@ echo
 # 266 → 267：set-mode 的台子改成走**分派臂**（sed 抽 webui.sh 那一段），调用形状改成界面
 #             真发的那样：`set-mode '包名 模式'` 一个参数。以前台子按两个 argv 调，
 #             而 Rust 只认两个 argv —— 两边互相自证，真机上那颗「自动 →」按钮一直是死的。
-if [ "$oks" -lt 267 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 267），疑似用例被删"; fail=1
+# 267 → 269：「已排除」的已装宇宙从 -3 改成全量（§5.19 #4）：移出系统包后这一档必须还看得见。
+#             正对照的桩认 -3，所以"退回旧口径"这一刀会被两侧各自钉住。
+if [ "$oks" -lt 269 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 269），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

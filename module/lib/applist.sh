@@ -249,7 +249,10 @@ build_app_list() {
 excluded_apps() {
     local inst cur base
 
-    inst=$(cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null)
+    # 「已排除」的宇宙是**全部已装**，不是 `-3`：系统应用现在也能进名单（§5.18），
+    #   把它移出之后必须在这档里找得回来 —— 用 -3 就永远不出现，计数也不涨。
+    #   同步的"新装"口径仍然按 `-3`（那是有意的，见本文件头部），两件事别混。
+    inst=$(cmd package list packages --user all 2>/dev/null || pm list packages 2>/dev/null)
     inst=$(printf '%s\n' "$inst" | sed -n 's/^package://p' | sed '/^$/d')
     cur=$(current_target_apps 2>/dev/null)
 

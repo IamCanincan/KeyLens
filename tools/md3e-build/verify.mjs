@@ -992,6 +992,62 @@ async function main() {
   chk('点一下画全 250 行，那颗自己退场（标签清空，不留屏外文字）',
     L2.rows === 250 && L2.hidden === true && L2.more === '' && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
 
+  /* §5.19 的三条"看不见就永远点不响 / 整页空白 / 形状不符"，各画一遍真屏 */
+  {
+    const tapHere2 = async expr => {
+      const pos = await ev(`(function(){ var e=${expr}; if(!e) return null;
+        e.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
+        var r=e.getBoundingClientRect();
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + Math.min(r.height/2, 44)) }; })()`);
+      if (!pos) return 0;
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      return 1;
+    };
+    const toFunc = () => ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+
+    /* #8：backend-info 读不到 → 「后端配置」以前是整页空白 */
+    await send('Page.navigate', { url: URL0 + '&fail=backend-info' });
+    await sleep(1300);
+    await toFunc(); await sleep(500);
+    await tapEntry('后端配置'); await sleep(600);
+    const cfg = await ev(PROBE);
+    chk('没探测到后端时「后端配置」给空态，不是整页空白',
+      /没有可用的后端/.test(cfg.text || '') && (cfg.rows || 0) === 0,
+      'rows=' + cfg.rows + ' 文字=' + String(cfg.text || '').replace(/\s+/g, ' ').slice(0, 60));
+
+    /* #7：env 报 resetprop=0 → 那颗按钮必须点不动并说清为什么 */
+    await send('Page.navigate', { url: URL0 + '&noresetprop=1' });
+    await sleep(1300);
+    await toFunc(); await sleep(500);
+    await tapEntry('属性伪装'); await sleep(700);
+    const rp = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var apply=bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('立即应用一次')===0;})[0];
+      var t=document.querySelector('#view .page-title');
+      return { title: t?t.textContent:'', found: apply?1:0,
+        disabled: apply ? (apply.hasAttribute('disabled') ? 1 : 0) : -1,
+        hint: [].slice.call(document.querySelectorAll('#view p.read-err')).map(function(p){return p.textContent;}).join(' | ') }; })()`);
+    chk('没有 resetprop 的机器上「立即应用一次」禁用并说明（界面读 env.resetprop 了）',
+      rp.found === 1 && rp.disabled === 1 && /找不到 resetprop/.test(rp.hint), JSON.stringify(rp));
+
+    /* #9：OMK 的 verified_boot_state 命令层只收 true/false，控件必须是开关。
+       表单在折叠里（fold 的「编辑 config.toml」），先点开再找那一行。 */
+    await send('Page.navigate', { url: URL0 + '&backend=omk' });
+    await sleep(1300);
+    await toFunc(); await sleep(500);
+    await tapEntry('后端配置'); await sleep(700);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'')==='编辑 config.toml';})[0]; })()`);
+    await sleep(700);
+    const vbs = await ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view .row'));
+      var r=rows.filter(function(x){var t=x.querySelector('.row-t'); return t && t.textContent.indexOf('verified_boot_state')>=0;})[0];
+      if(!r) return { found:0, 行: rows.length };
+      return { found:1, sw: r.querySelector('md-switch')?1:0, tf: r.querySelector('md-text-field')?1:0 }; })()`);
+    chk('verified_boot_state 画成开关（命令层只收 true/false，文本框填 green 必被打回）',
+      vbs.found === 1 && vbs.sw === 1 && vbs.tf === 0, JSON.stringify(vbs));
+  }
+
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；
      数据就绪后启动页淡出，主页已经在下面画好。 */
   await send('Page.navigate', { url: URL0 + '&slow=env' });

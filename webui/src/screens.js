@@ -500,17 +500,34 @@ function propsCards() {
   s1.appendChild(list([
     item({ headline: '开机重置属性', trailing: maskKnown(S.status) ? (maskOn(S.status) ? '已开启' : '已关闭') : '读不到',
       tone: maskOn(S.status) ? 'ok' : maskKnown(S.status) ? 'warn' : 'bad',
-      supporting: maskKnown(S.status) ? '关闭后下次开机不再写入' : 'status 那一次没读到，这里不猜方向；下面「立即应用一次」不依赖它' }),
+      /* 原来这句是假的：「立即应用一次」第一行就查开关文件（write.sh 的 props_disabled），
+         关着直接拒 —— 不能当着用户说不依赖它。 */
+      supporting: maskKnown(S.status) ? '关闭后下次开机不再写入；「立即应用一次」要求它是"开"'
+        : 'status 那一次没读到，这里不猜方向；开关是"关"着的话「立即应用一次」会被拒（下面两颗自己挑）' }),
   ]));
   /* 动作按钮别塞进 md-list：组件会把行里的控件居中，看着像另一行数据。
      读不到时不给那颗"切换"键 —— 它得先知道现在是开还是关才知道发哪条命令，
-     拿"当成关"去补一个默认值，用户点下去可能是**开启**了他没打算动的写入。 */
+     拿"当成关"去补一个默认值，用户点下去可能是**开启**了他没打算动的写入。
+     但也不许因此把这一屏变成死路（原来就是这样：状态读不到 → 切换键隐藏 →
+     而「立即应用一次」恰好又被开关文件拒掉，用户没有出路）。给两颗明说的按钮。 */
   const acts1 = h('div', 'acts');
   if (maskKnown(S.status)) {
     acts1.appendChild(button(maskOn(S.status) ? '关闭开机写入' : '开启开机写入',
       { variant: 'tonal', on: function () { write(maskOn(S.status) ? 'props-off' : 'props-on', '', '已切换'); } }));
+  } else {
+    acts1.appendChild(button('开启开机写入', { variant: 'tonal', on: function () { write('props-on', '', '已开启开机写入'); } }));
+    acts1.appendChild(button('关闭开机写入', { variant: 'tonal', on: function () { write('props-off', '', '已关闭开机写入'); } }));
   }
-  acts1.appendChild(button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }));
+  /* env 早就把这台机有没有 resetprop 报上来了（kv resetprop 1|0），界面一直不读：
+     没有它的机器上这颗按钮点一万次也只回"未找到 resetprop 命令"。读不到时不降级
+     （S.env 空 = 那次没读到，不是"没有"）。 */
+  const noResetprop = String(S.env && S.env.resetprop || '') === '0';
+  if (noResetprop) {
+    acts1.appendChild(button('立即应用一次', { variant: 'filled', icon: ICON.sync, disabled: true }));
+    s1.appendChild(h('p', 'read-err', '这台机上找不到 resetprop，「立即应用一次」点不动 —— 开机写入那条路仍然照走（重启后由模块写）。'));
+  } else {
+    acts1.appendChild(button('立即应用一次', { variant: 'filled', icon: ICON.sync, on: function () { write('props-apply', '', '已写入并复核'); } }));
+  }
   s1.appendChild(acts1);
   const l = h('md-list');
   S.props.forEach(function (p) {
@@ -676,6 +693,12 @@ export function renderFuncSub(sub) {
     if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
     if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
     if (bi.backend === 'omk') { box.appendChild(omkReload()); }
+    /* 三家都不在（或 backend-info 那次没读到）时这一页以前是**整页空白**：菜单项照旧可点，
+       进去标题下面什么都没有，看着像界面坏了。空态必须自己说话。 */
+    if (!bi.backend) {
+      box.appendChild(h('p', 'read-err', '这一页按当前后端渲染可编辑的字段，而现在没有可用的后端'
+        + '（三家都没装/都被禁用，或 backend-info 那一次没读到）。装好并启用其中一家，回到本页重新读取。'));
+    }
   }
   if (sub === 'sync') box.appendChild(autoSyncCard());
   if (sub === 'keybox') box.appendChild(keyboxCard());
@@ -889,6 +912,13 @@ function listSection() {
      而且从词中间断开（截图里 "injector.to" / "ml"）。放说明行里整条给。 */
   s.appendChild(h('p', 'hint', '目标文件：' + (bi.target_file || '—')));
   s.appendChild(h('p', 'hint', '这个后端接受的写法：' + syn.label));
+  /* §5.19 #2：TEESim 的名单只有 default 那一份 —— 在别的 profile 页面上点加/减，
+     改的仍是 profiles.default.apps，而这一屏原来一句话都没说（假成功）。 */
+  if (bi.backend === 'teesim') {
+    s.appendChild(h('p', 'hint', S.profile && S.profile !== 'default'
+      ? '注意：现在选中的 profile 是「' + S.profile + '」，但名单只有一份 —— 加/减写的都是 profiles.default.apps。'
+      : '这一档的加/减写的是 profiles.default.apps（TEESim 的名单只有 default 那一份）。'));
+  }
   const seg = h('div', 'acts filter-grid');
   /* 「系统应用」单独一档，而且是**点開才去读**：那一档要跑两次 pm（本机现量 56+62ms），
      不该让默认的「名单/已装」替它付。系统包以前在界面上根本选不了 —— 数据源是
@@ -1197,7 +1227,7 @@ const F_OMK_CONFIG = [
   ['trust_boot_patchlevel', 'trust_boot_patchlevel', 'boot 补丁级别', 'text'],
   ['trust_vb_key', 'trust_vb_key', 'vb_key', 'text', 'auto：每次开机解析真实值上报，不会被改写；找不到来源才生成并钉进 config.toml。想固定就填 64 hex，想每次换就 random。'],
   ['trust_vb_hash', 'trust_vb_hash', 'vb_hash', 'text', 'auto：重启后解析成真实 vbmeta digest 上报（看到的那串字符就是它，文件里仍是 auto，与真机 bootloader 一致才算正常）。想固定就填 64 hex。'],
-  ['trust_verified_boot', 'trust_verified_boot', 'verified_boot_state', 'text'],
+  ['trust_verified_boot', 'trust_verified_boot', 'verified_boot_state', 'switch'],
   ['trust_device_locked', 'trust_device_locked', 'device_locked', 'switch'],
   ['dev_brand', 'dev_brand', '品牌', 'text', '设备身份 [device]'],
   ['dev_device', 'dev_device', '设备', 'text'],
@@ -1232,10 +1262,15 @@ function form(spec, fields, cmd, extra, note) {
     const key = f[0], from = f[1], label = f[2], type = f[3], sub = f[4], opts = f[5];
     if (sub) wrap.appendChild(h('div', 'form-sub', sub));
     const cur = biValue(spec, from);
+    /* 命令层没上报这一项的当前值（非默认 profile 就是这样）—— 下面按"未知"画，
+       不拿缺值冒充一个确定状态。 */
+    const unknown = cur == null || cur === '';
     const ek = cmd + '|' + key;          // 草稿按"哪条命令的哪个字段"存，见文件末尾
     if (type === 'switch') {
       const row = h('div', 'row');
-      row.appendChild(h('span', 'row-t', label));
+      /* 读不到当前值时不能画成"关"（§5.19 #10）：用户会照着这个"现状"做决定。
+         开关照样能拨 —— 它表达的是"要改成什么"，不是"现在是什么"。 */
+      row.appendChild(h('span', 'row-t', label + (unknown ? ' · 当前值未知' : '')));
       const sw = h('md-switch');
       sw.checked = String(cur) === 'true';
       row.appendChild(sw);
@@ -1247,10 +1282,18 @@ function form(spec, fields, cmd, extra, note) {
         init: String(cur) === 'true' ? 'true' : 'false' });
     } else if (type === 'select' || type === 'seg') {
       const row = h('div', 'row');
-      row.appendChild(h('span', 'row-t', label));
+      row.appendChild(h('span', 'row-t', label + (unknown ? ' · 当前值未知' : '')));
       const sel = h('md-select');
+      /* 缺值时以前直接落到**第一项**（"补丁"），于是"没上报"被画成"就是这一档"。
+         这里插一颗不可选的占位，选中它 = 留空 = 不改这一项。 */
+      if (unknown && (opts || []).length && !opts.some(function (o) { return o[0] === ''; })) {
+        const ph = h('md-option');
+        ph.value = ''; ph.textContent = '（当前值未知 · 留空即不改）';
+        ph.setAttribute('disabled', '');
+        sel.appendChild(ph);
+      }
       (opts || []).forEach(function (o) { const op = h('md-option'); op.value = o[0]; op.textContent = o[1]; sel.appendChild(op); });
-      sel.value = cur == null || cur === '' ? (opts && opts[0] ? opts[0][0] : '') : String(cur);
+      sel.value = unknown ? '' : String(cur);
       const baseSel = String(sel.value || '');
       row.appendChild(sel);
       wrap.appendChild(row);
@@ -1665,13 +1708,21 @@ function keyboxCard() {
   fieldKey(ta, 'keybox-save|xml');
   s.appendChild(ta);
   const acts = h('div', 'acts');
-  acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
-    const v = ta.value || '';
-    /* 只拦"三家都必定不收"的形状（少了 <Key 块），判据比命令层宽；
-       具体结构由 keybox_check.awk 按当前后端判，理由用 toast 原样报出来。 */
-    if (v.indexOf('<Key') < 0) { toast('三家都要求至少一个 <Key algorithm="…"> 块，这段里一个也没有', true); return; }
-    write('keybox-save', b64(v), '已替换 keybox');
-  } }));
+  /* §5.19 #3：上面那句"它的 keybox 是另一个文件"说完，按钮照样写 default 那份并回一句
+     「已替换 keybox」—— 那是假成功。逐 profile 的写入还没做，这里就不给这颗按钮。 */
+  if (kbNote) {
+    acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, disabled: true }));
+    s.appendChild(h('p', 'read-err', '命令层目前只会写 default 那份 keybox —— 现在选中的是「' + S.profile
+      + '」，所以这颗按钮不给（不是坏了，是这条路还没有）。'));
+  } else {
+    acts.appendChild(button('替换 keybox', { variant: 'filled', icon: ICON.save, on: function () {
+      const v = ta.value || '';
+      /* 只拦"三家都必定不收"的形状（少了 <Key 块），判据比命令层宽；
+         具体结构由 keybox_check.awk 按当前后端判，理由用 toast 原样报出来。 */
+      if (v.indexOf('<Key') < 0) { toast('三家都要求至少一个 <Key algorithm="…"> 块，这段里一个也没有', true); return; }
+      write('keybox-save', b64(v), '已替换 keybox');
+    } }));
+  }
   s.appendChild(acts);
   c.appendChild(s);
   return c;

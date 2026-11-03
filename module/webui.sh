@@ -1429,7 +1429,7 @@ cmd_doctor() {
             if [ -w "$TARGET_FILE" ]; then _doc '目标文件' ok "$TARGET_FILE 存在且可写" ''
             else _doc '目标文件' warn "$TARGET_FILE 不可写" '检查是否被别的模块或后端改成了只读'; fi
         else
-            _doc '目标文件' bad "不存在：$TARGET_FILE" '让后端先跑一轮生成默认文件，或在名单页点「立即同步」'
+            _doc '目标文件' bad "不存在：$TARGET_FILE" '让后端先跑一轮生成默认文件，或在「自动同步」页点「立即同步一次」'
         fi
 
         # 名单 vs 已装：**只比数量**（不逐个对），所以文案里写清"可能"

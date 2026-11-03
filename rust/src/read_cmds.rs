@@ -466,9 +466,11 @@ pub fn excluded() {
     let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
         std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
     };
-    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+    // 「已排除」的宇宙是**全部已装**（不是 -3）：系统应用也能进名单之后，移出的一定要
+    // 在这档里找得回来。与 lib/applist.sh 的 excluded_apps 同口径。
+    let out = run("cmd", &["package", "list", "packages", "--user", "all"])
         .filter(|o| !o.is_empty())
-        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .or_else(|| run("pm", &["list", "packages"]))
         .unwrap_or_default();
     let inst: Vec<String> = String::from_utf8_lossy(&out)
         .lines()
@@ -2836,7 +2838,7 @@ pub fn doctor() {
                 doc("目标文件", "warn", &format!("{} 不可写", b.target.display()), "检查是否被别的模块或后端改成了只读");
             }
         } else {
-            doc("目标文件", "bad", &format!("不存在：{}", b.target.display()), "让后端先跑一轮生成默认文件，或在名单页点「立即同步」");
+            doc("目标文件", "bad", &format!("不存在：{}", b.target.display()), "让后端先跑一轮生成默认文件，或在「自动同步」页点「立即同步一次」");
         }
         // 5. 名单 vs 已装（只比数量）
         let nl = if b.target.is_file() {
