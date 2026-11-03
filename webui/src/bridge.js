@@ -632,8 +632,8 @@ function demoResult(cmd, arg) {
     'backend-info': bi.join('\n'),
     /* props 是 TSV「名字<TAB>当前<TAB>期望<TAB>状态」，没有键 —— 台架必须用
        真形状，否则解析分支等于没测。
-       下面这 53 行取自真机现量（2026-11-02，XQ-DQ72 / LineageOS 24.0，
-       `KL_USE_RUST=0 sh webui.sh props`），不是手写的：15 固定表 + 38 特征行，
+       下面这 56 行取自真机现量（2026-11-03，XQ-DQ72 / LineageOS 24.0，
+       `sh webui.sh props`），不是手写的：18 固定表 + 38 特征行，
        含同名的多条规则（description / 每个指纹各两行）。
        唯一假造的部分：把 vendor_dlkm 那一族的 4 行改成 absent —— 这台机有那个
        分区，给不出 absent，而 absent 是本轮新状态，界面必须画得到它。
@@ -641,9 +641,12 @@ function demoResult(cmd, arg) {
        表里，等于属性页从没按真形状渲染过一次。） */
     props: [
       'ro.boot.vbmeta.device_state\tlocked\tlocked\tok',
+      'vendor.boot.vbmeta.device_state\tlocked\tlocked\tok',
       'ro.boot.verifiedbootstate\tgreen\tgreen\tok',
+      'vendor.boot.verifiedbootstate\tgreen\tgreen\tok',
       'ro.boot.flash.locked\t1\t1\tok',
       'ro.boot.veritymode\tenforcing\tenforcing\tok',
+      'sys.oem_unlock_allowed\t0\t0\tok',
       'ro.boot.warranty_bit\t0\t0\tok',
       'ro.warranty_bit\t0\t0\tok',
       'ro.debuggable\t0\t0\tok',

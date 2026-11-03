@@ -1,7 +1,10 @@
 ro.boot.vbmeta.device_state	unlocked	locked	diff
+vendor.boot.vbmeta.device_state		locked	missing
 ro.boot.verifiedbootstate	orange	green	diff
+vendor.boot.verifiedbootstate		green	missing
 ro.boot.flash.locked		1	missing
 ro.boot.veritymode		enforcing	missing
+sys.oem_unlock_allowed		0	missing
 ro.boot.warranty_bit		0	missing
 ro.warranty_bit		0	missing
 ro.debuggable		0	missing

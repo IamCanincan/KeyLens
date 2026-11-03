@@ -650,7 +650,7 @@ async function main() {
         if (!title && m) title = m[1];
         return { rows: rows, absent: absent, bad: bad, absentToned: absentToned, title: title, items: items.length };
       })()`);
-      chk('属性页把台架那 53 行对照逐行画出来（一行都不吞）', pv.rows === 53, 'rows=' + pv.rows);
+      chk('属性页把台架那 56 行对照逐行画出来（一行都不吞）', pv.rows === 56, 'rows=' + pv.rows);
       chk('absent 标「本机无」而不是红色「不符」（命令层 mismatch=0 的口径）',
         pv.absent === 4 && pv.bad === 9, 'absent=' + pv.absent + ' 不符行=' + pv.bad);
       chk('absent 行不挂 warn/bad 色（"没有这个分区"不是待办也不是风险）',

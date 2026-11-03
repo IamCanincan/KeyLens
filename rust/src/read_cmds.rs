@@ -735,11 +735,31 @@ pub fn boot_hash() {
 }
 
 /// 期望值表（与 lib/props.sh 的 props_expect_pairs 单点对齐，由对拍守着）。
+/// 固定表：缺失也要**凭空补出来**（`missing` 状态），所以往里加键之前要先想清楚
+/// "这台机本来没有它"是不是也在说实话。
+/// 这三条是**镜像族**：`ro.boot.*` 那一套存在且已对上，而 `vendor.boot.*` 镜像与
+/// `sys.oem_unlock_allowed` 在真机上缺失 —— 检测器逐键读时会拿到空串，比"绿"更可疑。
+/// （2026-11-03 对着 Tricky-Addon 那项目对出来的现量：这台 XQ-DQ72 上
+/// `vendor.boot.vbmeta.device_state` / `vendor.boot.verifiedbootstate` /
+/// `sys.oem_unlock_allowed` 三条全空。）
+///
+/// **有意没往里加的**（照抄别人那份表会把猜测写进 prop）：
+/// - `ro.boot.vbmeta.size`（别人硬编码 4096）—— 我们量不到这台机真实的 vbmeta 分区大小，
+///   写一个猜出来的值比空着更像被动过；
+/// - `ro.boot.vbmeta.avb_version` / `invalidate_on_error` —— 同理，版本是设备相关的；
+/// - `ro.boot.vbmeta.hash_alg` —— 摘要 64 位十六进制=sha256、128 位=sha512，
+///   要按**生效摘要的长度**推，不能当常量；那需要固定表支持"动态期望值"，是下一步；
+/// - MIUI `ro.secureboot.lockstate` / Realme `ro.boot.realmebootstate|lockstate` ——
+///   这些只在对应厂商机上存在，进固定表等于在 Sony 上凭空造出 realme 的键，
+///   是新的 tell。要走"只改已存在"那一类，也还没做。
 const PROPS_PAIRS: &[(&str, &str)] = &[
     ("ro.boot.vbmeta.device_state", "locked"),
+    ("vendor.boot.vbmeta.device_state", "locked"),
     ("ro.boot.verifiedbootstate", "green"),
+    ("vendor.boot.verifiedbootstate", "green"),
     ("ro.boot.flash.locked", "1"),
     ("ro.boot.veritymode", "enforcing"),
+    ("sys.oem_unlock_allowed", "0"),
     ("ro.boot.warranty_bit", "0"),
     ("ro.warranty_bit", "0"),
     ("ro.debuggable", "0"),

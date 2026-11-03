@@ -12,9 +12,12 @@
 props_expect_pairs() {
     printf '%s\n' \
         "ro.boot.vbmeta.device_state locked" \
+        "vendor.boot.vbmeta.device_state locked" \
         "ro.boot.verifiedbootstate green" \
+        "vendor.boot.verifiedbootstate green" \
         "ro.boot.flash.locked 1" \
         "ro.boot.veritymode enforcing" \
+        "sys.oem_unlock_allowed 0" \
         "ro.boot.warranty_bit 0" \
         "ro.warranty_bit 0" \
         "ro.debuggable 0" \

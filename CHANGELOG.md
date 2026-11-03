@@ -52,6 +52,15 @@
 
 #### 新增
 
+* **属性固定表补了三条镜像键**（对着 Tricky-Addon 那项目量出来的，见 `docs/HANDOFF.md` §5.23）：
+  `vendor.boot.vbmeta.device_state=locked`、`vendor.boot.verifiedbootstate=green`、
+  `sys.oem_unlock_allowed=0`。这台 XQ-DQ72 上这三条原本 `getprop` 读回来是空的，而 `ro.boot.*`
+  那一套都在 —— 检测器逐键读时"镜像族缺失"比"值不对"更可疑。固定表的语义本来就是"缺了补出来"，
+  所以加键不用改规矩。装机现量：`props-apply` → `applied=1 / mismatch=0`，全表 **53 → 56 行全 ok**。
+  **有意没照抄的 5 条**：`ro.boot.vbmeta.size`（它硬编码 4096，我们量不到真实分区大小）、
+  `avb_version` / `invalidate_on_error`（设备相关）、`hash_alg`（要按生效摘要的长度推：
+  64 位=sha256、128 位=sha512，不能当常量）、MIUI/Realme 那几个只有对应厂商机才存在的键
+  （进固定表等于在 Sony 上凭空造出 realme 的键，是新的 tell）。
 * **修掉一个我自己上一步改出来的洞**：界面一次问 200 个图标/名字，而命令层一批只答 120，
   `askedIcons` 又在发出请求前就给整串包名置了位 —— 于是第 121 行往后**既没被问、又被标成"问过了"**，
   那一屏永远只有首字块 + 包名（只有重进名单页才清）。现在按 `ICON_BATCH = 120` 分批问，

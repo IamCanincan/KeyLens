@@ -38,7 +38,7 @@
 | shell↔Rust 逐字节对拍 | **271 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条、**体检「启动哈希」那一格按三态各钉两侧 14 条**（§5.17）、**`apps` 三档各钉两侧期望文本 6 条**（§5.18）、**`set-mode` 走分派臂 + 界面形状 7 条**（§5.19 #1）、**「已排除」覆盖系统包的正对照 2 条**（§5.19 #4）、**`apps launchable` 两侧各一条**（§5.21）） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
-| **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的 53 行**（`KL_USE_RUST=0 sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
+| **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：56 行逐行上屏（rows=56；2026-11-03 固定表 15→18 行，见 §5.23）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
 | shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | 装了 3.0.3 的现场：**16/17**（只读，红的就是 `doctor`，见 §5.17）；补上 §5.17 的两处改动后在临时副本里 **38/38 全过**（2026-11-03 现量，未发版）。台子怎么跑见 §3，参照 awk 要先推上去 | `sh tests/device-ab.sh [--write]` |
@@ -989,6 +989,56 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
 （第一次测这条我给的临时根**没有那个 dex**，冷路整个被跳过，只回了桌面库的 13 条 ——
 容器不对的测量不算测量，见 §6。）
 
+## 5.23 对着 Tricky-Addon 那项目对了一遍属性（2026-11-03，主人给了 `D:\下载\Tricky-Addon-Update-Target-List`）
+
+它是同一道题的另一个解（KOWX712/Tricky-Addon-Update-Target-List v5.0-beta.4，Apache-2.0）。
+**没抄它任何代码**，只是把它的做法拿到这台机与咱们仓库里对量。
+
+**先说结论性的对比**（都有现量支撑）：
+
+| 面 | 它 | KeyLens |
+|---|---|---|
+| 名单 | `pm list packages -3 \| grep -v 排除 > target.txt` —— **整份重写**，手工增删每轮被冲掉 | 增量差分：只加新装、只删卸载、其余原样（所以"手动排除"这个语义才成立） |
+| 属性 | 24 条 `check_reset_prop`（**只在已存在且不符时改**，缺了不造）+ 3 条 bootmode | 18 固定表（缺了**补出来**）+ 38 特征行**就地替换**；构建身份那一族（`*.build.type/tags/fingerprint`、flavor、description）它完全没有 |
+| 装完生效 | `MODULE_HOT_INSTALL_REQUEST` + `hotinstall.sh`，**不用重启** | 必须重启（这是它的真优势，见"待做"） |
+| 冲突 | 检测到 `tsupport-advance` 就在 `/storage/emulated/0/` 落哨兵文件让对方停写 | 只锁自家进程，**不检测别的模块也在写名单** |
+| 入口 | 把自己藏起来（`.TA_utl`、删 module.prop）+ 软链 webroot 进后端模块 | 独立模块独立入口（不玩符号链接那套分支） |
+
+**这一轮真正落地的一件事**：它补了 8 个咱们根本不碰的属性，而这台机现在**全是空的**
+（`getprop` 现量：`vendor.boot.vbmeta.device_state` / `vendor.boot.verifiedbootstate` /
+`sys.oem_unlock_allowed` / `ro.boot.vbmeta.size` / `avb_version` / `invalidate_on_error` /
+`ro.boot.bootmode` / `vendor.boot.bootmode`）。
+
+固定表**缺了会补出来**是咱们已有的语义（`missing` 状态），所以加键不用改规矩。加了 3 条镜像：
+
+- `vendor.boot.vbmeta.device_state = locked`
+- `vendor.boot.verifiedbootstate = green`
+- `sys.oem_unlock_allowed = 0`
+
+装机现量：`props-apply` → `applied=1 / mismatch=0`，全表 **53 → 56 行全 ok**，
+`getprop` 独立读回 `locked / green / 0`。
+
+**有意没加的 5 条**（照抄会把猜测写进 prop，比空着更像被动过）：
+
+- `ro.boot.vbmeta.size`（它硬编码 4096）—— 我们量不到这台机真实的 vbmeta 大小；
+- `ro.boot.vbmeta.avb_version` / `invalidate_on_error` —— 版本与策略是设备相关的；
+- `ro.boot.vbmeta.hash_alg` —— 摘要 64 位十六进制=sha256、128 位=sha512，**要按生效摘要的长度推**，
+  不能当常量；那需要固定表支持"动态期望值"，是下一步；
+- MIUI `ro.secureboot.lockstate` / Realme `ro.boot.realmebootstate|lockstate` —— 这些只在对应厂商机上
+  存在，进固定表等于**在 Sony 上凭空造出 realme 的键**，是新的 tell。要走"只改已存在"那一类
+  （也就是它 `check_reset_prop` 的语义），那张新表还没做。
+
+**这一轮我自己弄坏过一次，是台架抓的**：给台架那份"真机现量"假数据加 3 行时，脚本里把
+`to` 写成了"只有新行"，于是**替换**掉三条原行而不是插入 —— 条目数仍是 53，`verify.mjs` 立刻报
+`rows=53`（期望 56）。修回后 56 行全画。教训：改夹具的脚本必须**自证条目数的前后差**，
+不能只看"新字符串在不在文件里"（我那次自证的就是"在不在"，所以它没拦住）。
+
+**待做（按价值排）**：① hot install（省掉重启，改动面最大）；② "只改已存在"那张表（OEM 特有键）；
+③ 默认排除表（它那份 `more-exclude.json` 是 Apache-2.0 的数据，拿进包要在
+`THIRD_PARTY_NOTICES.md` 署名）；④ 检测别的模块在写名单；⑤ Xposed 模块识别（它用
+`pm path` + `unzip -l` 找 `xposed_init`，`xargs -P $(nproc)` 并行 + 持久 skiplist ——
+和咱们的 env 探针缓存同一个路子）。
+
 ## 6. 坑（都踩过）
 
 - **临时根少了 `lib/icondump.dex`，图标冷路整个被跳过**（2026-11-03，§5.22）：我拿一个空目录当
@@ -1058,7 +1108,7 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
   黄金快照闸跳过，本地那轮「53 套全绿」里它其实没跑。而 CI（Rust CLI）跑它时 `props` 红了 ——
   黄金还停在 17 行那张旧表。要跑就进 WSL：`KEYLENS_BIN=rust/target/x86_64-unknown-linux-musl/release/keylens sh tests/rust-golden.sh`。
   同一轮还修了它的一处不可复现：`props` 读的是**宿主的** `getprop`（CI 上没有这个命令、全 absent；
-  开发机接了手机就变成真机的 53 行），现在台子自带桩 `getprop`，快照与机器无关。
+  开发机接了手机就变成真机的 53 行（现表 56 行）)，现在台子自带桩 `getprop`，快照与机器无关。
 - **两臂共用同一个属性桩时，前一臂会把后一臂的前提抹掉**：给"teesim 属性为空才补"数写次数，
   shell 臂先跑并**真的把 digest 写上了**，Rust 臂随后看到的是"属性已有值"⇒ 走 daemon 支、
   写 0 次。报出来的 `1/0` 看着像 Rust 漏写一次，实际是台架自己改了现场。现在两臂之间
@@ -1069,9 +1119,9 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
   于是属性页从没按真形状渲染过一次 —— 命令层新增第四种状态 `absent` 之后，界面那句三元
   `p.st === 'ok' ? … : p.st === 'missing' ? … : '不符'` 把 absent 画成**红色「不符」**、
   标题写「13 项不符」，而命令层报的是 `mismatch=0`。对拍 216 项、真机 15 条全绿，
-  因为这缺陷不在命令层。现在假数据换成真机现量的 53 行（`KL_USE_RUST=0 sh webui.sh props`），
+  因为这缺陷不在命令层。现在假数据换成真机现量的 56 行（`sh webui.sh props`），
   只有 vendor_dlkm 那一族 4 行是假造的（这台机有那个分区，给不出 absent）。
-- **只看头图会把新状态整个漏掉**：53 行的属性页头几行永远是 ok，absent/diff 在中尾部。
+- **只看头图会把新状态整个漏掉**：属性页头几行永远是 ok，absent/diff 在中尾部。
   `verify.mjs` 现在把尾部也存一张（`new-props-tail.png`），并且行数/配色/标题三条断言
   各配一个变异（`mutate-verify.mjs` 的 ③④⑤）。
 - **探针绑在文案上就会随文案一起漂**：数"属性行"最初认的是 `期望` 这个词，我把 absent 行
