@@ -598,7 +598,20 @@ function propsCards() {
     s1.appendChild(button(S.propsOpen
       ? '收起 ' + okCount + ' 行一致的'
       : (healthy ? '展开其余 ' + okCount + ' 行（全部一致）' : '展开全部 ' + okCount + ' 行对照'),
-      { variant: 'text', on: function () { S.propsOpen = !S.propsOpen; redraw(); } }));
+      { variant: 'text', on: function () {
+        /* 展开/收起只改列表长度，页面别跳回顶部：这颗按钮在列表上面，重画会把滚动位置
+           复位成 0 —— 用户刚点开就发现自己被踢回标题，还得重新滚一遍才看得到新放出来的行。 */
+        const sc = document.scrollingElement || document.documentElement;
+        const y = sc ? sc.scrollTop : 0;
+        S.propsOpen = !S.propsOpen;
+        redraw();
+        /* 重画是异步落地的（页面有入场动画，draw 里可能还挪了节点）：同步赋值会被
+           随后的一次高度塌陷冲回 0，所以在下一帧再放回去。 */
+        if (sc) {
+          sc.scrollTop = y;
+          requestAnimationFrame(function () { sc.scrollTop = y; });
+        }
+      } }));
   }
   s1.appendChild(l);
   c1.appendChild(s1);

@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 135;
+const FLOOR_CHKS = 136;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -681,6 +681,9 @@ async function main() {
         pv.rows === 13 && /^展开其余 40 行/.test(pv.折叠), JSON.stringify({ rows: pv.rows, 折叠: pv.折叠 }));
       { const sP = await send('Page.captureScreenshot', { format: 'png' });
         fs.writeFileSync(path.join(SHOT_DIR, 'new-props-collapsed.png'), Buffer.from(sP.data, 'base64')); }
+      const foldTopBefore = await ev(`(function(){ var b=[].slice.call(document.querySelectorAll('#view md-button'))
+        .filter(function(x){return /^展开/.test(x.getAttribute('label')||'');})[0];
+        return b ? Math.round(b.getBoundingClientRect().top) : -1; })()`);
       await tap(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
         var b=bs.filter(function(x){return /^展开/.test(x.getAttribute('label')||'');})[0];
         /* 13 行之后那颗按钮在视口外：先滚进来，否则坐标落在 y>900 上，点了个空 */
@@ -691,9 +694,15 @@ async function main() {
         [].slice.call(document.querySelectorAll('#view md-list-item')).forEach(function(i){
           var sup=i.getAttribute('supporting-text')||'';
           if (/^期望 /.test(sup) || /^这台机没有这项属性/.test(sup)) n++; });
-        var fold=[].slice.call(document.querySelectorAll('#view md-button')).map(function(b){return b.getAttribute('label')||'';})
-          .filter(function(l){return /^收起/.test(l);})[0]||'';
-        return { rows: n, 折叠: fold }; })()`);
+        var fb=[].slice.call(document.querySelectorAll('#view md-button'))
+          .filter(function(b){return /^收起/.test(b.getAttribute('label')||'');})[0];
+        return { rows: n, 折叠: fb ? fb.getAttribute('label') : '',
+          按钮顶: fb ? Math.round(fb.getBoundingClientRect().top) : -1 }; })()`);
+      /* 展开是"在原地把下面的行放出来"：那颗按钮（在列表上面）不许挪窝，
+         否则用户点完发现页面跳了、还得重新找位置。 */
+      chk('展开后那颗按钮原地不动（内容只在它下面长）',
+        Math.abs(pvExpanded.按钮顶 - foldTopBefore) <= 1,
+        'top ' + foldTopBefore + '→' + pvExpanded.按钮顶);
       chk('展开后 53 行一行不少，按钮变成「收起」',
         pvExpanded.rows === 53 && /^收起 40 行一致的/.test(pvExpanded.折叠), JSON.stringify(pvExpanded));
       chk('absent 标「本机无」而不是红色「不符」（命令层 mismatch=0 的口径）',
