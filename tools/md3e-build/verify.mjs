@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 138;
+const FLOOR_CHKS = 140;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1066,6 +1066,32 @@ async function main() {
     return { 批次: r.length, 批大小: r.map(function(b){return b.length;}), 去重包数: n }; })()`);
   chk('整屏 250 行的名字都问到（分批问完，批次数 ≥ 2 且没有漏掉的行）',
     reqs.批次 >= 2 && reqs.去重包数 >= 250, JSON.stringify(reqs));
+
+  /* 同页重画不许把人踢回页首：整页重建时 page 先被清空、高度塌到 0，浏览器会把
+     scrollTop 夹成 0 —— 以前点一行、展开一次属性表，都直接回顶（主人："每次都会直接回顶部"）。
+     这里量的是"点一行 → 写入 → 重读 → 重画"之后滚动位置还在不在。 */
+  await ev(`window.scrollTo(0, 900); 1`);
+  await sleep(250);
+  const yBefore = await ev(`Math.round(document.scrollingElement.scrollTop)`);
+  await tapHere(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
+    return rs.filter(function(r){ var b=r.getBoundingClientRect(); return b.top > 120 && b.bottom < 860; })[0]; })()`);
+  await sleep(900);
+  const yAfter = await ev(`Math.round(document.scrollingElement.scrollTop)`);
+  chk('名单里点一行（写入→重读→重画）后页面不回顶',
+    yBefore > 400 && yAfter > 400, 'y ' + yBefore + '→' + yAfter);
+
+  /* 切档是换一批内容，回页首才是对的（S.jumpTop）。芯片只认真指针事件
+     （`.click()` 不切视图，这条踩过一次），所以先滚到芯片还看得见的位置再点。 */
+  await ev(`window.scrollTo(0, 150); 1`);
+  await sleep(250);
+  const yPre = await ev(`Math.round(document.scrollingElement.scrollTop)`);
+  await tapHere(`[].slice.call(document.querySelectorAll('#view md-chip'))
+    .filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]`);
+  await sleep(700);
+  const yChip = await ev(`(function(){ return { y: Math.round(document.scrollingElement.scrollTop),
+    view: [].slice.call(document.querySelectorAll('#view md-chip')).filter(function(c){return c.hasAttribute('selected');})
+      .map(function(c){return c.getAttribute('label');})[0] || '' }; })()`);
+  chk('切档（名单→已装）回到页首', yPre > 0 && yChip.y === 0 && /^已装/.test(yChip.view), JSON.stringify(yChip));
 
   /* §5.19 的三条"看不见就永远点不响 / 整页空白 / 形状不符"，各画一遍真屏 */
   {

@@ -508,6 +508,14 @@ let lastSub = '';
 function draw() {
   const key = S.tab + '/' + S.sub;
   const changed = key !== lastPageKey;
+  /* 同页重画（写入后 reload、展开/收起、数据回来）**不许把滚动位置复位成 0**：
+     整页重建时 page 先被清空，高度塌到 0，浏览器顺手把 scrollTop 夹成 0 ——
+     以前每点一下名单里的行、每展开一次属性表，人就被踢回页首。
+     换页与"切档"（调用方先置 S.jumpTop）才回顶。 */
+  const sc = document.scrollingElement || document.documentElement;
+  const jump = !!S.jumpTop;
+  S.jumpTop = 0;
+  const keepY = (!changed && !jump && sc) ? sc.scrollTop : 0;
   const toIdx = PAGES.findIndex(function (p) { return p.id === S.tab; });
   const prev = view.firstElementChild;
   /* 缓存命中：整页原样贴回，不跑 render、不再建节点。贴回后从仓里删掉 ——
@@ -578,6 +586,10 @@ function draw() {
   }
   /* 重建完再把光标还给原来那一格（等两帧：MD 组件要先升级并渲染完才吃 focus）。 */
   if (!changed) afterPaint(function () { restoreEditFocus(page); });
+  /* 滚动位置：换页 / 切档回页首；同页重画（写入、展开、数据回来）保原位置。
+     都在两帧之后做 —— MD 组件升级完高度才定，早一帧会被随后的一次高度变化冲掉。 */
+  if (changed || jump) afterPaint(function () { if (sc) sc.scrollTop = 0; });
+  else if (keepY > 0) afterPaint(function () { if (sc) sc.scrollTop = keepY; });
   lastTabIndex = toIdx;
   lastSub = S.sub;
 }
