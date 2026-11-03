@@ -549,6 +549,41 @@ async function main() {
       await tapChip('名单');
       await sleep(400);
     }
+    /* 「系统应用」这一档以前在界面上**根本不存在**：数据源是 `pm list packages -3`，
+       系统包没有行可画，连「加入」按钮都摸不到。芯片点开才去读（命令层要跑两次 pm），
+       所以断言"读之前写 …、读之后有行、且数对得上"。 */
+    {
+      const cs0 = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        return cs.map(function(c){return c.getAttribute('label');}); })()`);
+      chk('名单页有「系统应用」这一档，未读时标签写"…"',
+        cs0.some(function (l) { return l === '系统应用 …'; }), JSON.stringify(cs0));
+      const tapChip2 = kw => tap(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        var e=cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(${JSON.stringify(kw)})===0;})[0];
+        /* 这一行是 nowrap + 横滑的（见 app.css 的 .acts.filter-grid），第五颗天然落在 417px
+           之外 —— 人是滑过去点的，台架也得先滚进视野再量坐标，否则事件落在屏外。 */
+        if (e) e.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
+        return e; })()`);
+      chk('点得动「系统应用」（先横滑到它）', await tapChip2('系统应用') === 1);
+      await sleep(800);
+      const sy = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
+        return { chips: cs.map(function(c){return c.getAttribute('label');}),
+          bases: rows.map(function(r){return r.getAttribute('data-base');}),
+          acts: rows.map(function(r){var a=r.querySelector('.app-row-act'); return a?(a.getAttribute('aria-label')||''):'';}) }; })()`);
+      chk('读到了系统包，芯片上的数与画出的行数一致',
+        sy.chips.some(function (l) { return l === '系统应用 ' + sy.bases.length; }) && sy.bases.length >= 2,
+        JSON.stringify(sy));
+      /* 已在名单里的系统包（台架名单含 com.android.vending）按钮必须是「移出」。
+         以前按钮按"你在哪一档"决定，非名单档里已在名单的项一律画「加入」，点一下
+         只换来一句"已加入"而什么都没改 —— 这一条钉的是"按是否在名单里决定按钮"。 */
+      const vi = sy.bases.indexOf('com.android.vending');
+      chk('系统档里已在名单的那一行画「移出」，其余画「加入」',
+        vi >= 0 && /^移出 /.test(sy.acts[vi])
+        && sy.bases.every(function (b, j) { return j === vi || /^加入 /.test(sy.acts[j]); }),
+        JSON.stringify(sy.acts));
+      await tapChip2('名单');
+      await sleep(400);
+    }
     const captureRows = () => ev(`(function(){ var out=[];
       [].slice.call(document.querySelectorAll('#view .app-row[data-base]')).slice(0, 5).forEach(function(it){
         out.push([it.getAttribute('headline')||'', it.getAttribute('supporting-text')||'']); });
@@ -900,6 +935,62 @@ async function main() {
       head: it ? (it.getAttribute('headline')||'') : '' }; })()`);
   chk('骨架页在数据到齐后换成完整名单',
     !sk2.load && sk2.rows > 0 && sk2.head === 'Google Play 商店', JSON.stringify(sk2));
+
+  /* 「继续显示」那颗（?many=1 把已装撑到 250 条）：一次只画 200 行是给首屏让路的，
+     但跨过 200 的那部分以前只剩一句「只画前 200 条」—— 35 条在界面上摸不到，
+     只能靠搜索框碰运气。这里钉：截断时要给得出那颗，点一下要真画全。 */
+  await send('Page.navigate', { url: URL0 + '&many=1' });
+  await sleep(1500);
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(600);
+  await tapEntry('目标名单');
+  await sleep(900);
+  /* 这一段的点击用 CDP 鼠标事件（与上面菜单页那段的 `tap` 同一套）：`tap` 是那个块的
+     局部助手，这里用不到；而 `element.click()` 在这些 md-chip/md-button 上**不触发**
+     （试过，视图根本不切）—— 只有真指针事件才走组件的处理器。 */
+  const tapHere = async expr => {
+    const pos = await ev(`(function(){ var e=${expr}; if(!e) return null;
+      e.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
+      var r=e.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + Math.min(r.height/2, 44)) }; })()`);
+    if (!pos) return 0;
+    await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+    return 1;
+  };
+  chk('点得动「已装」（撑到 250 条那一档）',
+    await tapHere(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`) === 1);
+  await sleep(600);
+  /* readList 里的正则写 [0-9] 不写 \d：整段是模板字符串，`\d` 会先被字符串转义吃掉变成
+     字面 "d"，正则永远匹配不上（第一版就是这么假红的）。注释也不能写进那段模板里 ——
+     反引号会把字符串当场截断，node 直接在加载时报语法错。 */
+  const readList = () => ev(`(function(){ var m=document.querySelector('#view [data-role="list-more"]');
+    var hints=[].slice.call(document.querySelectorAll('#view p.hint')).map(function(p){return p.textContent;});
+    return { rows: document.querySelectorAll('#view .app-row').length,
+      more: m ? (m.getAttribute('label') || '') : '(没有那颗)', hidden: m ? m.hidden === true : null,
+      hint: hints.filter(function(t){ return /共 [0-9]+ 条/.test(t); })[0] || '',
+      chips: [].slice.call(document.querySelectorAll('#view md-chip')).map(function(c){return c.getAttribute('label');}),
+      sk: !!document.querySelector('#view .load-card'),
+      allHints: hints.slice(0, 4),
+      titles: [].slice.call(document.querySelectorAll('#view .page-title')).map(function(t){return t.textContent;}) }; })()`);
+  const L1 = await readList();
+  chk('250 条时先画 200 行，并给出「继续显示余下 50 条」',
+    L1.rows === 200 && L1.more === '继续显示余下 50 条' && L1.hidden === false
+    && /^共 250 条 · 已画 200 条$/.test(L1.hint), JSON.stringify(L1));
+  await ev(`(function(){ var t=document.querySelector('#view [data-role="list-more"]');
+    if (t) t.scrollIntoView(true); return t?1:0; })()`);
+  await sleep(300);
+  {
+    const sM = await send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(SHOT_DIR, 'new-list-more.png'), Buffer.from(sM.data, 'base64'));
+  }
+  await tapHere(`document.querySelector('#view [data-role="list-more"]')`);
+  await sleep(700);
+  const L2 = await readList();
+  chk('点一下画全 250 行，那颗自己退场（标签清空，不留屏外文字）',
+    L2.rows === 250 && L2.hidden === true && L2.more === '' && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；
      数据就绪后启动页淡出，主页已经在下面画好。 */

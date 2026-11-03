@@ -292,7 +292,7 @@ fn main() {
         "status" => read_cmds::status(),
         "targets" => read_cmds::targets(),
         "target-meta" => read_cmds::target_meta(),
-        "apps" => read_cmds::apps(),
+        "apps" => read_cmds::apps(arg),
         "excluded" => read_cmds::excluded(),
         "boot-hash" => read_cmds::boot_hash(),
         "tee-status" => read_cmds::tee_status(),

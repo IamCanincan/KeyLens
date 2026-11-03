@@ -1031,10 +1031,30 @@ cmd_targets() {
     current_target_apps
 }
 
-# ---------- 已安装第三方应用 ----------
-cmd_apps() {
-    (cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null) \
+# ---------- 已装应用 ----------
+# 参数：空 = 只第三方（`-3`，与同步"新装发现"同一口径）；system = 系统包；all = 全部。
+# 系统包只能"全量减第三方"：这台机的 `cmd package` 不认 `--system`（实测 Unknown option）。
+# 那是两次 pm 调用（本机现量 56ms + 62ms），所以只在界面点开「系统应用」那一档时才付，
+# 默认档仍是一次调用、一个字不多花。
+kl_pkg_names() { # <额外的 pm 参数，可为空>
+    (cmd package list packages ${1:-} --user all 2>/dev/null || pm list packages ${1:-} 2>/dev/null) \
         | sed -n 's/^package://p' | sed 's/\[[0-9]*\]$//' | sort -u
+}
+
+cmd_apps() {
+    local want="${1:-}" t a
+
+    case "$want" in
+        all) kl_pkg_names '' ;;
+        system)
+            t=$(mktemp) || return 1
+            a=$(mktemp) || { rm -f "$t"; return 1; }
+            kl_pkg_names '-3' > "$t"
+            kl_pkg_names '' > "$a"
+            ${AWK_CMD:-awk} 'NR==FNR { seen[$0]=1; next } !($0 in seen)' "$t" "$a"
+            rm -f "$t" "$a" ;;
+        *)   kl_pkg_names '-3' ;;
+    esac
 }
 
 # ---------- 日志 ----------
@@ -1551,7 +1571,7 @@ case "$CMD" in
     teesim-profile-new) cmd_teesim_profile_new "$ARG" ;;
     teesim-profile-del) cmd_teesim_profile_del "$ARG" ;;
     keybox-save) cmd_keybox_save "$ARG" ;;
-    apps)        cmd_apps ;;
+    apps)        cmd_apps "$ARG" ;;
     icons)       cmd_icons ;;
     log)         cmd_log ;;
     clear-log)   cmd_clear_log ;;

@@ -7,7 +7,7 @@
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
 import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons, loadDoctor, loadBackups,
-  daemonLabel, daemonDown, propsMaskLabel } from './bridge.js';
+  daemonLabel, daemonDown, propsMaskLabel, loadSystem } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
 /* KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
@@ -278,11 +278,12 @@ function loadIconsFor(shown) {
    预取范围就是**当前档**要画的那 200 条（与 listSection 的 LIMIT 对齐）；
    切档后新增的那些仍由 loadIconsFor 增量补。 */
 const PREFETCH_ICONS = 200;
-/* 当前档位的数据源：与 listSection 的 src 同一套规则（targets / apps / missing / excluded）。
+/* 当前档位的数据源：与 listSection 的 src 同一套规则（targets / apps / system / missing / excluded）。
    两处各写一份的话，预取与真正画出来的集合一旦分叉，就会出现"预取了没画"或
    "画了没预取" —— 后者正是首帧闪一下。 */
 function listSource() {
   if (S.view === 'apps') return S.apps;
+  if (S.view === 'system') return S.system || [];
   if (S.view === 'excluded') return S.excluded;
   if (S.view === 'missing') {
     const baseSet = {};
@@ -889,10 +890,19 @@ function listSection() {
   s.appendChild(h('p', 'hint', '目标文件：' + (bi.target_file || '—')));
   s.appendChild(h('p', 'hint', '这个后端接受的写法：' + syn.label));
   const seg = h('div', 'acts filter-grid');
+  /* 「系统应用」单独一档，而且是**点開才去读**：那一档要跑两次 pm（本机现量 56+62ms），
+     不该让默认的「名单/已装」替它付。系统包以前在界面上根本选不了 —— 数据源是
+     `pm list packages -3`，界面画不出那一行，也就没有「加入」按钮（同步的自动加入
+     仍按 `-3`，不会把 235 个系统包砸进名单）。 */
   [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
    ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
-   ['excluded', '已排除 ' + S.excluded.length]].forEach(function (v) {
-    seg.appendChild(chip(v[1], v[0] === S.view, function () { S.view = v[0]; redraw(); }));
+   ['excluded', '已排除 ' + S.excluded.length],
+   ['system', S.system === null ? '系统应用 …' : '系统应用 ' + S.system.length]].forEach(function (v) {
+    seg.appendChild(chip(v[1], v[0] === S.view, function () {
+      S.view = v[0];
+      if (v[0] === 'system' && S.system === null) loadSystem().then(redraw);
+      redraw();
+    }));
   });
   s.appendChild(seg);
   const tf = h('md-text-field');
@@ -918,6 +928,13 @@ function listSection() {
   empty.hidden = true;
   const countHint = h('p', 'hint');
   const LIMIT = 200;
+  /* 一次只画 LIMIT 行是给首屏让路的。但"截断"以前只留一句「只画前 200 条」：
+     「系统应用」这一档有 235 条（本机现量），余下 35 条在界面上**摸都摸不到**，
+     只能靠搜索框碰运气 —— 所以补一颗「继续显示」，点一次多画一档。 */
+  let shownLimit = LIMIT;
+  const more = button('继续显示', { variant: 'tonal', on: function () { shownLimit += LIMIT; paintRows(); } });
+  more.setAttribute('data-role', 'list-more');
+  more.hidden = true;
   function letterBlock(text) {
     return h('span', 'app-ic-fallback', (String(text || '?').trim().charAt(0) || '?').toUpperCase());
   }
@@ -965,7 +982,10 @@ function listSection() {
          而且小屏上最想一眼看全的是应用名。标签走 aria-label，无障碍不丢。
          两个写命令用**字面量**分支调用：写成三目会让 ui-shape 的 write('…')
          扫描看不见它们（算出来的参数是那道闸的盲区）。 */
-      const isTargets = S.view === 'targets';
+      /* 按**它是否已在名单里**决定按钮，而不是按"你在哪一档"：以前「已装 / 系统应用」
+         里已经在名单中的应用也画着「加入」，点一下只换来一句"已加入"（写命令自己判重、
+         什么也没改）。切档决定按钮的那层歧义没有存在理由。 */
+      const isTargets = S.view === 'targets' || !!baseSet[b || tok];
       const act = h('button', 'app-row-act');
       act.type = 'button';
       act.setAttribute('aria-label', (isTargets ? '移出 ' : '加入 ') + (b || tok));
@@ -986,22 +1006,31 @@ function listSection() {
       return String(t).toLowerCase().indexOf(q) >= 0 || baseOf(t).toLowerCase().indexOf(q) >= 0
         || ((S.icons[baseOf(t)] || {}).label || '').toLowerCase().indexOf(q) >= 0;
     }) : src;
-    const page = shown.slice(0, LIMIT);
+    const page = shown.slice(0, shownLimit);
     l.textContent = '';
     page.forEach(function (t) { l.appendChild(rowOf(t)); });
     if (!shown.length) {
-      empty.textContent = S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。';
+      empty.textContent = (S.view === 'system' && S.systemErr)
+        ? '系统应用读不到：' + S.systemErr
+        : (S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。');
       empty.hidden = false;
     } else {
       empty.hidden = true;
     }
-    const overLimit = shown.length > LIMIT ? '（只画前 ' + LIMIT + ' 条）' : '';
-    countHint.textContent = '共 ' + shown.length + ' 条' + overLimit;
+    const rest = shown.length - page.length;
+    more.hidden = rest <= 0;
+    /* 藏起来的时候把标签也清空：留着一句"继续显示余下 N 条"会被台架的 peek 读成
+       屏上的文字（它在 DOM 里，只是不可见），对照就不干净了。 */
+    const moreLabel = rest > 0 ? '继续显示余下 ' + rest + ' 条' : '';
+    more.setAttribute('label', moreLabel);
+    more.textContent = moreLabel;
+    countHint.textContent = '共 ' + shown.length + ' 条' + (rest > 0 ? ' · 已画 ' + page.length + ' 条' : '');
     loadIconsFor(page);
   }
   s.appendChild(l);
   /* 空态也放列表 **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
   s.appendChild(empty);
+  s.appendChild(more);
   s.appendChild(countHint);
   c.appendChild(s);
   paintRows();

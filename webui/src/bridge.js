@@ -109,6 +109,8 @@ export const S = {
   contract: { api: null, commands: '', bad: false, shape: '', checked: false },
   bridge: { kind: '', label: '', seen: [] },
   targets: [], apps: [], targetMeta: {}, listErr: '',
+  /* null = 「系统应用」那一档还没读过（点开才读，见 loadSystem） */
+  system: null, systemErr: '',
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
@@ -409,6 +411,17 @@ export function loadExcluded() {
     function () { S.excluded = []; });
 }
 
+/* 系统应用那一档：命令层要跑两次 pm（全量减第三方），所以只在点开时读一次，
+   结果留在 S.system（null = 还没读过，芯片上要显出"还没读"而不是"没有"）。 */
+export function loadSystem() {
+  if (S.contract.checked && !hasCmd('apps')) { S.system = []; S.systemErr = '命令层没有 apps'; return Promise.resolve(); }
+  return call('apps', 'system').then(function (r) {
+    if (!r.ok) { S.system = []; S.systemErr = failText(r); return; }
+    S.system = splitLines(r.text);
+    S.systemErr = '';
+  }, function () { S.system = []; S.systemErr = '读不到'; });
+}
+
 export function loadOverrides() {
   if (S.contract.checked && !hasCmd('teesim-overrides')) { S.overrides = []; return Promise.resolve(); }
   return call('teesim-overrides').then(function (r) {
@@ -471,6 +484,21 @@ function demoResult(cmd, arg) {
   var T = '\t';
   if (DEMO_FAIL && cmd === DEMO_FAIL) {
     return { errno: 1, stdout: '', stderr: '目标文件不存在：' + demoFiles().dir + '/' + demoFiles().target };
+  }
+  /* 「系统应用」那一档台架也要画得出来（这几台机上下面几个都是系统包）。
+     不带参数时仍走下面 body 里那份第三方清单 —— 默认档的形状不能被这一档改掉。 */
+  if (cmd === 'apps' && arg === 'system') {
+    return { errno: 0, stdout: ['com.android.systemui', 'com.android.settings', 'com.android.vending',
+      'com.google.android.gms', 'com.google.android.gsf'].join('\n') };
+  }
+  /* ?many=1：已装档给 250 条。名单屏一次只画 200 行（LIMIT），「继续显示余下 N 条」
+     那颗要跨过 200 才存在 —— 台架默认只有 4 条，永远画不到那一格。 */
+  if (cmd === 'apps' && QUERY.get('many') === '1') {
+    var manyArr = [];
+    for (var mi = 0; mi < 250; mi++) {
+      manyArr.push('com.demo.app' + (mi < 10 ? '00' : (mi < 100 ? '0' : '')) + mi);
+    }
+    return { errno: 0, stdout: manyArr.join('\n') };
   }
   /* 三家各有一套路径与条目语法。台架默认 omk，切 ?backend=tricky 才会画到
      tee_status、按包补丁块和 ?/! 后缀那一套分支 —— 上一版只跑 omk，

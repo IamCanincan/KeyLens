@@ -282,15 +282,36 @@ chk 'meta teesim：user/uid/plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$TS2" "$B
 mk_meta_harness "$OS"
 chk 'meta omk：plain' "$(sh "$T/h4.sh")" "$(KEYLENS_ROOT="$OS" "$B" target-meta)"
 
-echo "── apps（cmd/pm 输出 → 去前缀/去[N]/排序去重）──"
+echo "── apps（cmd/pm 输出 → 去前缀/去[N]/排序去重；默认/system/all 三档）──"
 mkdir -p "$T/bin"
 cat > "$T/bin/cmd" <<'EOF'
 #!/bin/sh
+# 带 -3 只给第三方；不带就是全量（后面三个是系统包）。桩要认参数，
+# 否则 system 档会算出"全量减全量"= 空，两侧一起空照样绿。
+third=""
+for a in "$@"; do [ "$a" = "-3" ] && third=1; done
 printf 'package:com.b\npackage:com.a\npackage:com.a\npackage:com.c[10]\npackage:com.d[2]\n'
+[ -z "$third" ] && printf 'package:com.android.systemui\npackage:com.android.vending[11]\npackage:com.sonyericsson.elm\n'
+exit 0
 EOF
 chmod +x "$T/bin/cmd"
-sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh > "$T/apps.sh"
-chk 'apps：去重/去[N]/排序' "$(PATH="$T/bin:$PATH" sh -c '. "$1"; cmd_apps' sh "$T/apps.sh")" "$(PATH="$T/bin:$PATH" "$B" apps)"
+{ sed -n '/^kl_pkg_names() {/,/^}/p' module/webui.sh; sed -n '/^cmd_apps() {/,/^}/p' module/webui.sh; \
+  printf 'AWK_CMD="awk"\n'; } > "$T/apps.sh"
+apps_sh() { PATH="$T/bin:$PATH" sh -c '. "$1"; cmd_apps "$2"' sh "$T/apps.sh" "$1"; }
+apps_rs() { PATH="$T/bin:$PATH" "$B" apps "$1"; }
+APPS_THIRD=$(printf 'com.a\ncom.b\ncom.c\ncom.d')
+APPS_ALL=$(printf 'com.a\ncom.android.systemui\ncom.android.vending\ncom.b\ncom.c\ncom.d\ncom.sonyericsson.elm')
+APPS_SYSTEM=$(printf 'com.android.systemui\ncom.android.vending\ncom.sonyericsson.elm')
+for arm in "" system all; do
+  case "$arm" in
+    '')      want="$APPS_THIRD" ;;
+    system)  want="$APPS_SYSTEM" ;;
+    all)     want="$APPS_ALL" ;;
+  esac
+  label=${arm:-默认档}
+  chk "apps：${label}（shell=期望）" "$want" "$(apps_sh "$arm")"
+  chk "apps：${label}（Rust=期望）" "$want" "$(apps_rs "$arm")"
+done
 
 echo "── excluded（已装 ∩ ever ∖ 当前目标）──"
 ex_harness() { # <root>
@@ -2099,7 +2120,9 @@ echo
 #             外加"resetprop 读不回时仍报真值"的正对照 —— 真机上就是这么报出过一次假空）
 # 247 → 261：体检「启动哈希」那一格改成按三态取生效值。上面几条 242/247 的注释是历史留下的
 #             旧数字（判据早于它们），文案与判据分家本身就是这条闸的毛病，这里顺手并回一处。
-if [ "$oks" -lt 261 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 261），疑似用例被删"; fail=1
+# 261 → 266：apps 的三档（默认/system/all）各钉两侧**期望文本**。桩原来不认参数 ——
+#             那会让 system 档算成"全量减全量=空"，两侧一起空照样绿，所以先把桩改成认 -3。
+if [ "$oks" -lt 266 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 266），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

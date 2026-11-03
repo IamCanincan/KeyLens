@@ -387,18 +387,24 @@ fn omk_scoop(buf: &[u8]) -> Option<Vec<String>> {
     Some(quoted_strings(&buf[ob + 1..cb]))
 }
 
-/// cmd_apps：已装第三方应用（`cmd package …`，失败退回 `pm list`），去前缀、
-/// 去 `[N]` 尾缀、排序去重。
-pub fn apps() {
-    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
+/// 一次 `cmd package list packages …` → 包名列表（去前缀、去 `[N]` 尾缀、排序去重）。
+/// 与 shell 侧 kl_pkg_names 同一条式子：先 `cmd`，空/失败退回 `pm`。
+fn pkg_names(extra: &[&str]) -> Vec<String> {
+    let spawn = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
         std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
     };
-    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
+    let mut cmd_args: Vec<&str> = vec!["package", "list", "packages"];
+    cmd_args.extend_from_slice(extra);
+    cmd_args.extend_from_slice(&["--user", "all"]);
+    let mut pm_args: Vec<&str> = vec!["list", "packages"];
+    pm_args.extend_from_slice(extra);
+
+    let out = spawn("cmd", &cmd_args)
         .filter(|o| !o.is_empty())
-        .or_else(|| run("pm", &["list", "packages", "-3"]))
+        .or_else(|| spawn("pm", &pm_args))
         .unwrap_or_default();
     let text = String::from_utf8_lossy(&out);
-    let mut names: Vec<&str> = Vec::new();
+    let mut names: Vec<String> = Vec::new();
     for line in text.lines() {
         let Some(rest) = line.strip_prefix("package:") else { continue };
         // 去掉结尾的 [数字]（多用户/多 profile 的编号）
@@ -409,11 +415,26 @@ pub fn apps() {
             }
         }
         if !name.is_empty() {
-            names.push(name);
+            names.push(name.to_string());
         }
     }
     names.sort_unstable();
     names.dedup();
+    names
+}
+
+/// cmd_apps：已装应用。参数：空 = 只第三方（`-3`，同步口径）；system = 系统包；all = 全部。
+/// 系统包只能"全量减第三方"（这台机的 `cmd package` 不认 `--system`），那是两次 pm 调用，
+/// 只在界面点开「系统应用」那一档时才付。语义与 shell 侧 cmd_apps 逐字节一致。
+pub fn apps(arg: &str) {
+    let names = match arg.trim() {
+        "all" => pkg_names(&[]),
+        "system" => {
+            let third: std::collections::HashSet<String> = pkg_names(&["-3"]).into_iter().collect();
+            pkg_names(&[]).into_iter().filter(|n| !third.contains(n)).collect()
+        }
+        _ => pkg_names(&["-3"]),
+    };
     for n in names {
         println_ok!("{}", n);
     }
@@ -5784,28 +5805,10 @@ pub fn env_cmd() {
 }
 
 /// 已装第三方应用（排序去重，含去前缀与去 [N] 尾缀）。
+/// 就是 `cmd_apps` 的默认档 —— 以前这里是自己抄的一份（多了一步 `\r` 裁剪，与 shell
+/// 那条 sed 并不逐字节相同）。同步读的这份必须与命令层同源，否则两侧"已装"会分叉。
 fn installed_pkgs() -> Vec<String> {
-    let run = |prog: &str, args: &[&str]| -> Option<Vec<u8>> {
-        std::process::Command::new(prog).args(args).output().ok().map(|o| o.stdout)
-    };
-    let out = run("cmd", &["package", "list", "packages", "-3", "--user", "all"])
-        .filter(|o| !o.is_empty())
-        .or_else(|| run("pm", &["list", "packages", "-3"]))
-        .unwrap_or_default();
-    let mut v: Vec<String> = String::from_utf8_lossy(&out)
-        .lines()
-        .filter_map(|l| l.strip_prefix("package:").map(|s| {
-            let s = s.trim_end_matches('\r');
-            match s.rfind('[') {
-                Some(i) if s.ends_with(']') && s[i + 1..s.len() - 1].bytes().all(|c| c.is_ascii_digit()) => s[..i].to_string(),
-                _ => s.to_string(),
-            }
-        }))
-        .filter(|s| !s.is_empty())
-        .collect();
-    v.sort();
-    v.dedup();
-    v
+    pkg_names(&["-3"])
 }
 
 fn read_lines(path: &std::path::Path) -> Vec<String> {
