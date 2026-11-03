@@ -73,6 +73,7 @@ export const KV_REQUIRED = {
   'omk-restart': 'restarted trigger',
   doctor: 'checks bad warn',
   'backup-restore': 'restored name',
+  'update-fetch': 'saved bytes',
 };
 
 export const BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
@@ -123,7 +124,7 @@ export const S = {
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
   propsOpen: false, icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
-  excluded: [], theme: 'auto', doctor: null, doctorErr: false, backups: [], backupsErr: false,
+  excluded: [], update: null, theme: 'auto', doctor: null, doctorErr: false, backups: [], backupsErr: false,
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，
      存一份就把另一份正在粘的内容吃掉；keybox 页粘完整份再点 profile 芯片也一样没。
@@ -458,6 +459,52 @@ export function loadIcons(pkgs) {
   }, function () {});
 }
 /* 备份列表：TSV（名称/字节/mtime/对应后端文件）。只列当前后端的那些。 */
+/* ── 版本检查 ──────────────────────────────────────────────────────────────
+   手机上实测：api.github.com / github.com 通，raw.githubusercontent.com 不通 —— 所以
+   版本走 API（CORS 是 `*`），包地址取 release 资产（会跳到 objects，也通）。
+   只查、只下载；**不安装** —— 装那一步要在管理器里做，或者等下一轮再做。 */
+export const UPDATE_REPO = 'IamCanincan/KeyLens';
+
+export function versionParts(v) {
+  return String(v || '').replace(/^v/i, '').split(/[.\-+]/).map(function (x) { return parseInt(x, 10) || 0; });
+}
+/* a 比 b 新？逐段比，缺的当 0（v3.0.4 > v3.0.3、v3.0.4-1 > v3.0.4） */
+export function isNewer(a, b) {
+  var x = versionParts(a), y = versionParts(b);
+  for (var i = 0; i < Math.max(x.length, y.length); i++) {
+    var p = x[i] || 0, q = y[i] || 0;
+    if (p !== q) return p > q;
+  }
+  return false;
+}
+
+export function checkUpdate() {
+  var fx = (typeof window !== 'undefined' && window.__KL_DEMO_FIXTURE) || null;
+  if (fx && fx['update-check']) {
+    try { S.update = JSON.parse(String(fx['update-check'])); } catch (e) { S.update = { state: 'err', msg: '夹具坏了' }; }
+    return Promise.resolve(S.update);
+  }
+  if (DEMO) { S.update = { state: 'err', msg: '演示模式不联网' }; return Promise.resolve(S.update); }
+  S.update = { state: 'checking' };
+  var cur = (S.status && S.status.mod_version) || '';
+  return fetch('https://api.github.com/repos/' + UPDATE_REPO + '/releases/latest',
+    { headers: { Accept: 'application/vnd.github+json' } })
+    .then(function (r) { if (!r.ok) throw new Error('HTTP ' + r.status); return r.json(); })
+    .then(function (j) {
+      var tag = String(j.tag_name || '').trim();
+      var asset = (j.assets || []).filter(function (a) { return /\.zip$/i.test(String(a.name || '')); })[0] || {};
+      S.update = {
+        state: 'ok', tag: tag, url: String(asset.browser_download_url || ''),
+        size: Number(asset.size || 0), notes: String(j.body || '').slice(0, 1200),
+        page: String(j.html_url || ''), current: cur, newer: isNewer(tag, cur),
+      };
+      return S.update;
+    }, function (e) {
+      S.update = { state: 'err', msg: String((e && e.message) || e) };
+      return S.update;
+    });
+}
+
 export function loadBackups() {
   return call('backups').then(function (r) {
     S.backupsErr = !r.ok;
@@ -634,6 +681,10 @@ function demoResult(cmd, arg) {
   if (cmd === 'backup-restore') {
     return { errno: 0, stdout: 'restored=1\nname=' + String(arg || '') + '\n' };
   }
+  /* 更新包只下载、不安装：真机上 update-fetch 回 saved / bytes，这里照真形状给 */
+  if (cmd === 'update-fetch') {
+    return { errno: 0, stdout: 'saved=/data/adb/keylens/update.zip\nbytes=1234567\n' };
+  }
   if (cmd === 'doctor') {
     /* 体检的启动哈希那一格跟着 ?bh= 走（与下面 boot-hash 那一份同一个开关）。
        这一格在界面上只画过"填了/没填"两态，auto 档（一个字没填、值已从后端派生）
@@ -710,7 +761,7 @@ function demoResult(cmd, arg) {
     }
   }
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种

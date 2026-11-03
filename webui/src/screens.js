@@ -7,7 +7,7 @@
  *  - OMK 的字段分"热生效 / 要重启 keymint / 要重启手机"三档，界面上必须标出来。
  *===========================================================================*/
 import { S, EXPECT_API, hasCmd, b64, bytesLabel, timeLabel, call, parseKV, failText, loadIcons, loadDoctor, loadBackups,
-  daemonLabel, daemonDown, propsMaskLabel, loadSystem } from './bridge.js';
+  daemonLabel, daemonDown, propsMaskLabel, loadSystem, checkUpdate } from './bridge.js';
 import { loadOverrides } from './bridge.js';
 import { accentNote } from './theme.js';
 /* KL 标识：淡粉底 #FCE4EC + 墨色字 #031019，构建时内联为 data URL */
@@ -869,7 +869,59 @@ export function renderSettings() {
   box.appendChild(selfCheck());
   box.appendChild(doctorCard());
   box.appendChild(backupCard());
+  box.appendChild(updateCard());
   return box;
+}
+
+/* 版本与更新：只查、只下载，不装。查走 api.github.com（raw. 在这台机上不通），
+   包走 release 资产。装那一步留在管理器里 —— 免得一个按钮就把模块换了。 */
+function updateCard() {
+  const u = S.update || {};
+  const cur = (S.status && S.status.mod_version) || '';
+  const c = card();
+  const s = section('版本与更新', ICON.about);
+  let line = '当前 ' + (cur || '读不到版本');
+  let tone = '';
+  if (u.state === 'checking') line += ' · 正在检查…';
+  else if (u.state === 'err') { line += ' · 检查失败：' + (u.msg || '网络'); tone = 'warn'; }
+  else if (u.state === 'ok') {
+    if (u.newer) { line += ' · 有新版本 ' + (u.tag || '') + (u.size ? '（' + bytesLabel(u.size) + '）' : ''); tone = 'ok'; }
+    else line += ' · 已是最新';
+  } else if (u.state === 'done') {
+    line += ' · 已下载 ' + bytesLabel(u.bytes || 0) + ' 到 update.zip';
+    tone = 'ok';
+  }
+  s.appendChild(list([item({ headline: 'KeyLens', supporting: line, trailing: u.state === 'ok' && u.newer ? '有新版' : '', tone: tone })]));
+  const acts = h('div', 'acts');
+  if (u.state !== 'checking' && u.state !== 'done') {
+    acts.appendChild(button('检查更新', { variant: 'tonal', icon: ICON.sync, on: function () {
+      checkUpdate().then(redraw);
+    } }));
+  }
+  if (u.state === 'ok' && u.newer && u.url) {
+    acts.appendChild(button('下载更新包', { variant: 'filled', icon: ICON.read, on: function () {
+      /* 走 call 而不是 write()：这里要读回 saved/bytes 才能把状态画成"已下载" */
+      call('update-fetch', u.url).then(function (r) {
+        if (!r.ok) { toast(failText(r), true); return; }
+        const kv = parseKV(r.text || '');
+        S.update = { state: 'done', bytes: Number(kv.bytes || 0) || 0, path: kv.saved || '', tag: u.tag };
+        redraw();
+      }, function (e) { toast(String((e && e.message) || e), true); });
+    } }));
+  }
+  if (u.state === 'done') {
+    acts.appendChild(button('再检查一次', { variant: 'text', on: function () { checkUpdate().then(redraw); } }));
+  }
+  s.appendChild(acts);
+  if (u.state === 'done') {
+    s.appendChild(h('p', 'hint', '想让新版本生效：在管理器里用「从本地安装」选 ' + (u.path || '模块目录下的 update.zip') + '。'));
+  } else if (u.state === 'ok' && u.newer) {
+    s.appendChild(h('p', 'hint', '下载只把包放到模块目录，不改现有模块；安装还是你自己点。'));
+  } else if (u.state === 'err') {
+    s.appendChild(h('p', 'hint', '这台机的 WebView 连不上 GitHub 时就会这样；可以到 Releases 页手动下载。'));
+  }
+  c.appendChild(s);
+  return c;
 }
 
 /* 三家互斥矩阵：抢的是同一个 keymint HAL，同时启用时本模块直接停止写入。

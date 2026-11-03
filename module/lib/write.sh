@@ -1109,3 +1109,47 @@ cmd_backup_restore() {
     kv restored 1
     kv name "$name"
 }
+
+# ---------- 下载更新包（只落到模块目录，不安装） ----------
+# 用法：update-fetch <https://… 或 /绝对路径>
+# 输出：saved=<路径>  bytes=<字节数>
+# 说明：这是"检查更新"那一半的另一半 —— 界面只负责问版本、把地址给这里；
+#   下载放命令层，是因为 WebView 里拿不到能写文件的权限。
+#   只收 http(s) 与绝对路径（路径那支是给测试/本地包用的），下完先落 .tmp，
+#   校验过 zip 魔数与长度才改名 —— 半截文件不许冒充 update.zip。
+cmd_update_fetch() {
+    local src="$1" dest tmp bytes magic
+    dest="${MODDIR}/update.zip"
+    tmp="${dest}.tmp"
+    [ -n "$src" ] || { echo "参数为空" >&2; return 1; }
+    rm -f "$tmp" 2>/dev/null
+    case "$src" in
+        http://*|https://*)
+            if command -v curl >/dev/null 2>&1; then
+                curl -L --max-time 180 -fsS -o "$tmp" -- "$src" >/dev/null 2>&1 || { rm -f "$tmp"; echo "下载失败：$src" >&2; return 1; }
+            elif command -v wget >/dev/null 2>&1; then
+                wget -q -O "$tmp" "$src" >/dev/null 2>&1 || { rm -f "$tmp"; echo "下载失败：$src" >&2; return 1; }
+            else
+                echo "这台机上没有 curl / wget" >&2; return 1
+            fi
+            ;;
+        /*)
+            [ -f "$src" ] || { echo "没有这个文件：$src" >&2; return 1; }
+            cp -f "$src" "$tmp" 2>/dev/null || { rm -f "$tmp"; echo "复制失败：$src" >&2; return 1; }
+            ;;
+        *)
+            echo "不是 http(s) 地址或绝对路径：$src" >&2; return 1
+            ;;
+    esac
+    [ -f "$tmp" ] || { echo "下载后没有文件" >&2; return 1; }
+    bytes=$(wc -c < "$tmp" 2>/dev/null | tr -d ' ')
+    magic=$(dd if="$tmp" bs=1 count=2 2>/dev/null)
+    if [ -z "$bytes" ] || [ "$bytes" -le 4 ] 2>/dev/null || [ "$magic" != "PK" ]; then
+        rm -f "$tmp" 2>/dev/null
+        echo "不是有效的 zip（${bytes:-0} 字节）" >&2
+        return 1
+    fi
+    mv -f "$tmp" "$dest" 2>/dev/null || { rm -f "$tmp"; echo "无法写入 $dest" >&2; return 1; }
+    kv saved "$dest"
+    kv bytes "$bytes"
+}

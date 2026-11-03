@@ -1,6 +1,6 @@
 //! KeyLens 命令层（Rust 版）。
 //!
-//! 契约与 shell 版逐字一致：`KL_API=4`、`KL_COMMANDS` 40 条、`contract` 输出
+//! 契约与 shell 版逐字一致：`KL_API=4`、`KL_COMMANDS` 41 条、`contract` 输出
 //! `api=4` 与 `commands=<空格分隔>`。未迁移的命令返回 2（不假装成功），
 //! 便于对拍时区分「还没做」与「做错了」。
 
@@ -33,7 +33,7 @@ const COMMANDS: &[&str] = &[
     "tricky-drop-patch", "keybox-save", "sync", "help", "contract", "excluded",
     "teesim-profiles", "tee-status", "tricky-patches", "omk-restart",
     "teesim-overrides", "teesim-save-overrides", "teesim-profile-new",
-    "teesim-profile-del", "doctor", "backups", "backup-restore",
+    "teesim-profile-del", "doctor", "backups", "backup-restore", "update-fetch",
 ];
 
 const USAGE: &str = "\
@@ -71,7 +71,8 @@ const USAGE: &str = "\
   keybox-save <b64>      替换当前后端的 keybox.xml（base64 XML）
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
-  excluded               列出被人为排除（手动删除）的包名";
+  excluded               列出被人为排除（手动删除）的包名
+  update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）";
 
 /// 预览：在影子根里跑同一条命令，事后比对差异（不碰真实文件）。
 fn preview_run(cmd: &str, arg: &str) -> ! {
@@ -326,6 +327,7 @@ fn main() {
         "restore-app" => read_cmds::restore_app(arg),
         "restore-apps" => read_cmds::restore_apps(arg),
         "remove-apps" => read_cmds::remove_apps(arg),
+        "update-fetch" => read_cmds::update_fetch(arg),
         "teesim-save" => read_cmds::teesim_save(arg),
         "omk-save-injector" => read_cmds::omk_save_injector(arg),
         "omk-save-config" => read_cmds::omk_save_config(arg),

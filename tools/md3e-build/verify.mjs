@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 136;
+const FLOOR_CHKS = 138;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1476,6 +1476,57 @@ async function main() {
     return { n: names.length, names: names.join(','), confirm: (document.getElementById('view').textContent||'').indexOf('再点确认')>=0 }; })()`);
   chk('备份列表：点刷新出两行 .bak（未点回滚时没有"再点确认"）',
     !!bbtn && bks.n >= 2 && bks.names.indexOf('injector.toml.bak') >= 0 && !bks.confirm, JSON.stringify(bks).slice(0, 160));
+
+  /* ── 版本与更新（只查、只下载，不装）─────────────────────────────
+     夹具给一份"有新版本"的 API 形状：界面要说出新版本号与大小，并且那颗按钮
+     只调 update-fetch —— 装不装由人在管理器里决定。 */
+  {
+    const injU = await send('Page.addScriptToEvaluateOnNewDocument', {
+      source: 'window.__KL_DEMO_FIXTURE = { "update-check": ' + JSON.stringify(JSON.stringify({
+        state: 'ok', tag: 'v9.9.9', url: 'https://example.invalid/x.zip', size: 1234567, newer: true,
+      })) + ' };' });
+    await send('Page.navigate', { url: URL0 });
+    await sleep(2200);
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true})); return 1; })()`);
+    await sleep(700);
+    /* 设置页那几个按钮用真指针事件（与上面体检/备份两处同一条写法）：带 scrollIntoView，
+       版本卡在页面最底下，不滚就是点屏外。 */
+    const tapUp = async label => {
+      const pos = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+        var b=bs.filter(function(x){return (x.getAttribute('label')||x.textContent||'').indexOf(${JSON.stringify(label)})>=0;})[0];
+        if(!b) return null; b.scrollIntoView({ block: 'center' }); var r=b.getBoundingClientRect();
+        return { x: Math.round(r.left+r.width/2), y: Math.round(r.top+r.height/2) }; })()`);
+      if (!pos) return 0;
+      await send('Input.dispatchMouseEvent', { type: 'mousePressed', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
+      return 1;
+    };
+    /* 不自动联网检查：先点「检查更新」，夹具才会被读到（真机上这一下就是去问 GitHub） */
+    const tapped = await tapUp('检查更新');
+    await sleep(700);
+    const up0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll("#view md-list-item"))
+        .map(function(i){return (i.getAttribute("supporting-text")||"");}).join("|") + "|" +
+        [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
+      var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
+      return { 有新版本: /有新版本 v9\\.9\\.9（1\\.2 MB）/.test(t),
+        按钮: bs.filter(function(l){return l==='下载更新包';}).length,
+        说明: /下载只把包放到模块目录/.test(t) }; })()`);
+    chk('版本卡：点检查后说出新版本（号 + 大小）并给「下载更新包」，明说只下载不安装',
+      tapped === 1 && up0.有新版本 && up0.按钮 === 1 && up0.说明, JSON.stringify(up0));
+    const tapped2 = await tapUp('下载更新包');
+    await sleep(900);
+    const up1 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll("#view md-list-item"))
+        .map(function(i){return (i.getAttribute("supporting-text")||"");}).join("|") + "|" +
+        [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
+      var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
+      return { 已下载: /已下载 1\\.2 MB 到 update\\.zip/.test(t),
+        安装指引: /「从本地安装」/.test(t) && /update\\.zip/.test(t),
+        再查: bs.filter(function(l){return l==='再检查一次';}).length }; })()`);
+    chk('点下载后：状态变「已下载」，并说清包在哪、怎么装',
+      tapped2 === 1 && up1.已下载 && up1.安装指引 && up1.再查 === 1, JSON.stringify(up1));
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: injU.identifier });
+  }
 
   /* ── 性能基线（只报数，不拍绝对阈值）──────────────────────────────
      量的是"这份产物在 WebView 同款引擎里解析 + 执行 + 首屏"的成本：产物是单文件、

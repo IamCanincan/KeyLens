@@ -3651,6 +3651,66 @@ pub fn remove_target_apps(b: &Backend, req: &[String]) -> (i32, Vec<String>) {
     (0, removed)
 }
 
+/// update-fetch <https://… 或 /绝对路径>：把更新包下载到模块目录的 update.zip。
+/// 只下载、不安装 —— 界面负责问版本，这里负责落盘。先写 .tmp，校验 zip 魔数与长度再改名，
+/// 半截文件不许冒充 update.zip。与 shell 侧 cmd_update_fetch 逐字节同输出。
+pub fn update_fetch(raw: &str) {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let src = raw.trim();
+    if src.is_empty() {
+        eprintln!("参数为空");
+        std::process::exit(1);
+    }
+    let dir = p.module_prop.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+    let dest = dir.join("update.zip");
+    let tmp = dir.join("update.zip.tmp");
+    let _ = std::fs::remove_file(&tmp);
+    if src.starts_with("http://") || src.starts_with("https://") {
+        let ran = std::process::Command::new("curl")
+            .args(["-L", "--max-time", "180", "-fsS", "-o"]).arg(&tmp).arg("--").arg(src)
+            .output()
+            .map(|o| o.status.success())
+            .unwrap_or(false);
+        let ran = if ran { true } else {
+            std::process::Command::new("wget")
+                .arg("-q").arg("-O").arg(&tmp).arg(src)
+                .output().map(|o| o.status.success()).unwrap_or(false)
+        };
+        if !ran || !tmp.is_file() {
+            let _ = std::fs::remove_file(&tmp);
+            eprintln!("下载失败：{}", src);
+            std::process::exit(1);
+        }
+    } else if src.starts_with('/') {
+        if std::fs::copy(src, &tmp).is_err() {
+            let _ = std::fs::remove_file(&tmp);
+            eprintln!("复制失败：{}", src);
+            std::process::exit(1);
+        }
+    } else {
+        eprintln!("不是 http(s) 地址或绝对路径：{}", src);
+        std::process::exit(1);
+    }
+    let bytes = std::fs::metadata(&tmp).map(|m| m.len()).unwrap_or(0);
+    let mut magic = [0u8; 2];
+    let ok_magic = std::fs::File::open(&tmp)
+        .and_then(|mut f| std::io::Read::read_exact(&mut f, &mut magic))
+        .is_ok() && &magic == b"PK";
+    if bytes <= 4 || !ok_magic {
+        let _ = std::fs::remove_file(&tmp);
+        eprintln!("不是有效的 zip（{} 字节）", bytes);
+        std::process::exit(1);
+    }
+    if std::fs::rename(&tmp, &dest).is_err() {
+        let _ = std::fs::remove_file(&tmp);
+        eprintln!("无法写入 {}", dest.display());
+        std::process::exit(1);
+    }
+    println_ok!("saved={}", dest.display());
+    println_ok!("bytes={}", bytes);
+}
+
 /// cmd_remove_apps：逗号分隔的批量移出（名单至少保留一条）。
 pub fn remove_apps(raw: &str) {
     let root = Root::from_env();

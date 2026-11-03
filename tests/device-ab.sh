@@ -1,5 +1,5 @@
 #!/bin/sh
-# device-ab：真机上把 40 条命令逐条 A/B（shell 实现 vs bin/keylens），输出 diff 为空的才算过。
+# device-ab：真机上把 41 条命令逐条 A/B（shell 实现 vs bin/keylens），输出 diff 为空的才算过。
 #
 # 为什么不在 CI 跑：需要真机的 root、真实后端文件、真实 getprop/dumpsys。
 # 本地/CI 直接 skip，不制造假绿灯。

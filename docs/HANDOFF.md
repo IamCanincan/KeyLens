@@ -30,12 +30,12 @@
 
 ## 1. 现在完成到哪
 
-**命令层 40/40 全部用 Rust 实现**（`rust/src/*.rs`，`read_cmds.rs` 约 5.4k 行），命令契约（40 条、同序、同 kv/tsv 输出）保持不变。
+**命令层 41/41 全部用 Rust 实现**（`rust/src/*.rs`，`read_cmds.rs` 约 5.4k 行），命令契约（41 条、同序、同 kv/tsv 输出）保持不变。
 
 | 证据 | 数值 | 怎么跑 |
 |---|---|---|
 | Rust 单测 | 77 项 | 见 §2 |
-| shell↔Rust 逐字节对拍 | **271 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条、**体检「启动哈希」那一格按三态各钉两侧 14 条**（§5.17）、**`apps` 三档各钉两侧期望文本 6 条**（§5.18）、**`set-mode` 走分派臂 + 界面形状 7 条**（§5.19 #1）、**「已排除」覆盖系统包的正对照 2 条**（§5.19 #4）、**`apps launchable` 两侧各一条**（§5.21）） | `sh rust/parity.sh` |
+| shell↔Rust 逐字节对拍 | **276 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条、**体检「启动哈希」那一格按三态各钉两侧 14 条**（§5.17）、**`apps` 三档各钉两侧期望文本 6 条**（§5.18）、**`set-mode` 走分派臂 + 界面形状 7 条**（§5.19 #1）、**「已排除」覆盖系统包的正对照 2 条**（§5.19 #4）、**`apps launchable` 两侧各一条**（§5.21）） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53；固定表今天试过 15→18、装了机，又被 Duck 源码推翻撤回 15，见 §5.23/§5.24）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
@@ -72,7 +72,7 @@
 ~/.cargo/bin/cargo build --manifest-path rust/Cargo.toml --release
 # aarch64 静态（本机没 NDK，用 musl + rust-lld；真机上可直接跑）
 sh rust/build-release.sh   # 发布构建（nightly + build-std + immediate-abort，两个 musl 产物）
-# 对拍（271 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
+# 对拍（276 项 chk；CI 用 musl 产物；本机那份 ELF 在 Windows 上跑不了，
 # 是在 WSL Debian 里跑同一份 x86_64-musl 产物 —— 那边 awk 是 mawk，与 Git Bash 的 gawk
 # 会给出不同结果，见 §5.12 的方言差）
 sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
@@ -953,7 +953,7 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
 "不折行，折成两排会把首屏顶下去"（`app.css` 的 `.acts.filter-grid` 注释），要挪得重新量首屏，
 这轮不动它，记在这里。
 
-**闸**（这一节当时的口径，后面的轮次又加过）：对拍 **271**（`apps` 四档 × 两侧期望文本；桩现在认
+**闸**（这一节当时的口径，后面的轮次又加过）：对拍 **276**（`apps` 四档 × 两侧期望文本；桩现在认
 `query-activities`，且输出的是「包名/组件」那种没有 `package:` 前缀的形状）。界面台架当时 **121** 条
 （现在是 **136**，见 §5.25/§5.26）：
 系统档只列可启动的（台架 5 个系统包 → 2 个应用）+ 那句折叠能点开变 5 行 +
@@ -1146,6 +1146,30 @@ THIRD_PARTY_NOTICES 里那份"包名数据"的署名都删了；对拍回到 **2
 `getBoundingClientRect().top`。滚动位置照样保了（`redraw()` 会把滚动复位，下一帧放回去），
 那是给"已经滚下去才点"的情形留的。
 
+## 5.28 版本与更新：只查、只下载（2026-11-04，主人对"升级做到哪步"答"你看着来"）
+
+**取舍**：做到"检查 + 下载"为止。装那一步要 `ksud module install`，一个按钮就把现装模块换掉，
+风险不对等 —— 下载只把 zip 放到模块目录，装还是人在管理器里点「从本地安装」。
+
+**网络实测**（手机上直接 curl）：`api.github.com` 200、`github.com` 200、
+`objects.githubusercontent.com` 有响应；`raw.githubusercontent.com` **000（不通）**。
+所以：版本检查走 releases API（CORS 是 `*`，WebView 里 fetch 得到），包地址取 release 资产；
+`update.json` 里那条 raw 链接在这台机上不可用（但管理器自己的更新检查走的是另一条路，不受影响）。
+
+**界面**：设置页最后一张卡。**不自动联网**（进设置页不付网络，点「检查更新」才查）：
+`checking → ok(err) → done` 三态。有新版报「vX（N MB）」+ 下载；下完报"已下载到模块目录
+update.zip"并明说怎么装；查不到时明说"连不上 GitHub"，**不假装已是最新**（那是把"我不知道"
+画成"没问题"，和属性页那条同一个规矩）。
+
+**命令层**：第 41 条 `update-fetch <地址|路径>`。URL 支走 curl（没有就 wget），路径支直接拷；
+先落 `.tmp`，校验 zip 魔数 `PK` 与长度 > 4 才改名 —— 半截文件不许冒充 `update.zip`；
+失败时删掉 `.tmp` 不留残骸。路径支不只是给测试用：本地已经有 zip 时也能走这条路。
+
+**测试**：对拍 5 条走本地包那一支（输出、落盘字节、非 zip 拒、失败不留文件）；**网络那一支
+不进自动化**（CI 不联网，进不进得去取决于那台机的网络），台架两条用 `__KL_DEMO_FIXTURE`
+注入 API 形状。真机上我只到"命令层能下本地包"这一步，**没有真的从 GitHub 下过** ——
+要不要下、什么时候下，等主人点。
+
 ## 6. 坑（都踩过）
 
 - **删掉一条命令后，"重新录制黄金快照"用了个旧产物**（2026-11-04）：撤 `exclude-suggest` 时
@@ -1334,7 +1358,7 @@ THIRD_PARTY_NOTICES 里那份"包名数据"的署名都删了；对拍回到 **2
 | 文件 | 作用 |
 |---|---|
 | `rust/src/main.rs` | 分派、`COMMANDS`、`USAGE`、preview 影子根 |
-| `rust/src/read_cmds.rs` | 40 条命令实现 + 校验器 + `lcs_diff` + preview 基础设施 |
+| `rust/src/read_cmds.rs` | 41 条命令实现 + 校验器 + `lcs_diff` + preview 基础设施 |
 | `rust/src/backend.rs` | `Root`/`Paths`/后端探测/冲突 |
 | `rust/src/{b64,payload,json_flat,keybox,lock,ov_valid}.rs` | 基础件 |
 | `rust/parity.sh` | 205 项逐字节对拍（含漂移闸、覆盖率、EPIPE、下限 205） |

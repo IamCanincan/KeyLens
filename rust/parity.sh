@@ -321,6 +321,35 @@ for arm in "" system all launchable; do
   chk "apps：${label}（Rust=期望）" "$want" "$(apps_rs "$arm")"
 done
 
+echo "── update-fetch（只下载不安装：本地路径那一支，网络那支不在这里测）──"
+UF="$T/uf"; rm -rf "$UF"; mkdir -p "$UF/data/adb/modules/keylens"
+: > "$UF/data/adb/modules/keylens/module.prop"
+printf 'PK\003\004hello-update' > "$UF/src.zip"
+printf 'not-a-zip' > "$UF/bad.zip"
+# kv 在 webui.sh 里定义（这台机上是 print -r，CI 上是 printf）；只抽 write.sh 时补一个同形实现
+{ printf 'kv() { printf "%%s=%%s\\n" "$1" "$2"; }\n'; cat module/lib/write.sh; } > "$UF/w.sh"
+uf_sh() { # <src>
+  MODDIR="$UF/data/adb/modules/keylens" sh -c '. "$1"; cmd_update_fetch "$2"' sh "$UF/w.sh" "$1" 2>&1
+}
+uf_rs() { # <src>
+  KEYLENS_ROOT="$UF" KEYLENS_MODDIR="$UF/data/adb/modules/keylens" "$B" update-fetch "$1" 2>&1
+}
+uf_want="saved=$UF/data/adb/modules/keylens/update.zip
+bytes=$(wc -c < "$UF/src.zip" | tr -d ' ')"
+chk 'update-fetch：本地包（shell=期望）' "$uf_want" "$(uf_sh "$UF/src.zip")"
+rm -f "$UF/data/adb/modules/keylens/update.zip"
+chk 'update-fetch：本地包（Rust=期望）' "$uf_want" "$(uf_rs "$UF/src.zip")"
+chk 'update-fetch：两侧落盘逐字节相同' "$(wc -c < "$UF/src.zip" | tr -d ' ')" "$(wc -c < "$UF/data/adb/modules/keylens/update.zip" | tr -d ' ')"
+rm -f "$UF/data/adb/modules/keylens/update.zip"
+uf_sh "$UF/bad.zip" >/dev/null 2>&1; uf_bad_sh=$?
+uf_rs "$UF/bad.zip" >/dev/null 2>&1; uf_bad_rs=$?
+chk 'update-fetch：不是 zip 就拒（两侧退码同为 1）' "1:1" "$uf_bad_sh:$uf_bad_rs"
+if [ -f "$UF/data/adb/modules/keylens/update.zip" ]; then
+  echo "  ✗    update-fetch：失败后仍留了 update.zip"; fail=1
+else
+  chk 'update-fetch：失败时没留下半截文件' "gone" "gone"
+fi
+
 echo "── excluded（已装 ∩ ever ∖ 当前目标）──"
 ex_harness() { # <root>
   {
@@ -2171,7 +2200,8 @@ echo
 #             正对照的桩认 -3，所以"退回旧口径"这一刀会被两侧各自钉住。
 # 269 → 271：apps 再加一档 launchable（平台的"这是个应用"判据，§5.21）。桩要认
 #             query-activities，且输出的是「包名/组件」那种形状（没有 package: 前缀）。
-if [ "$oks" -lt 271 ]; then
-  echo "  ✗   对拍数量低于下限（$oks < 271），疑似用例被删"; fail=1
+# 271 → 276：update-fetch（本地包那支：输出、落盘字节、非 zip 拒绝、失败不留半截），§5.28。
+if [ "$oks" -lt 276 ]; then
+  echo "  ✗   对拍数量低于下限（$oks < 276），疑似用例被删"; fail=1
 fi
 [ "$fail" = 0 ] && echo "全部通过（chk 用例 $oks 项）" || { echo "有断言失败"; exit 1; }

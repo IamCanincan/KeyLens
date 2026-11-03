@@ -95,7 +95,7 @@ KL_COMMANDS="status env targets target-meta apps icons log clear-log props props
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore"
+teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -1348,6 +1348,7 @@ cmd_help() {
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
+  update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）
 EOF
 }
 
@@ -1621,6 +1622,7 @@ case "$CMD" in
     backup-restore) cmd_backup_restore "$ARG" ;;
     restore-apps) cmd_restore_apps "$ARG" ;;
     remove-apps) cmd_remove_apps "$ARG" ;;
+    update-fetch) cmd_update_fetch "$ARG" ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;
