@@ -494,6 +494,20 @@ function demoFiles() {
 }
 
 function demoResult(cmd, arg) {
+  /* 台架可以注入**真机数据**（window.__KL_DEMO_FIXTURE = { 命令: 原始输出 }）来看"真实的一屏"。
+     名单这类界面，四行手写假数据永远看不出排序、密度、认不认得出东西的问题 ——
+     主人一句"做得太差"，我得先看见他看见的东西。只在 demo 模式生效，没注入时逐字照旧。 */
+  var FX = (typeof window !== 'undefined' && window.__KL_DEMO_FIXTURE) || null;
+  if (FX && Object.prototype.hasOwnProperty.call(FX, cmd)) {
+    /* 值可以是字符串，也可以是 { '<参数>': 输出 } —— 带参数的命令（apps system / apps launchable）
+       要按参数分档，否则三档渲染出同一份数据，等于没测。 */
+    var v = FX[cmd];
+    if (v && typeof v === 'object') {
+      var k = String(arg == null ? '' : arg);
+      v = Object.prototype.hasOwnProperty.call(v, k) ? v[k] : (v[''] || '');
+    }
+    return { errno: 0, stdout: String(v == null ? '' : v), stderr: '' };
+  }
   var T = '\t';
   if (DEMO_FAIL && cmd === DEMO_FAIL) {
     return { errno: 1, stdout: '', stderr: '目标文件不存在：' + demoFiles().dir + '/' + demoFiles().target };
@@ -632,8 +646,8 @@ function demoResult(cmd, arg) {
     'backend-info': bi.join('\n'),
     /* props 是 TSV「名字<TAB>当前<TAB>期望<TAB>状态」，没有键 —— 台架必须用
        真形状，否则解析分支等于没测。
-       下面这 56 行取自真机现量（2026-11-03，XQ-DQ72 / LineageOS 24.0，
-       `sh webui.sh props`），不是手写的：18 固定表 + 38 特征行，
+       下面这 53 行取自真机现量（2026-11-03，XQ-DQ72 / LineageOS 24.0，
+       `sh webui.sh props`），不是手写的：15 固定表 + 38 特征行，
        含同名的多条规则（description / 每个指纹各两行）。
        唯一假造的部分：把 vendor_dlkm 那一族的 4 行改成 absent —— 这台机有那个
        分区，给不出 absent，而 absent 是本轮新状态，界面必须画得到它。
@@ -641,12 +655,9 @@ function demoResult(cmd, arg) {
        表里，等于属性页从没按真形状渲染过一次。） */
     props: [
       'ro.boot.vbmeta.device_state\tlocked\tlocked\tok',
-      'vendor.boot.vbmeta.device_state\tlocked\tlocked\tok',
       'ro.boot.verifiedbootstate\tgreen\tgreen\tok',
-      'vendor.boot.verifiedbootstate\tgreen\tgreen\tok',
       'ro.boot.flash.locked\t1\t1\tok',
       'ro.boot.veritymode\tenforcing\tenforcing\tok',
-      'sys.oem_unlock_allowed\t0\t0\tok',
       'ro.boot.warranty_bit\t0\t0\tok',
       'ro.warranty_bit\t0\t0\tok',
       'ro.debuggable\t0\t0\tok',

@@ -737,11 +737,12 @@ pub fn boot_hash() {
 /// 期望值表（与 lib/props.sh 的 props_expect_pairs 单点对齐，由对拍守着）。
 /// 固定表：缺失也要**凭空补出来**（`missing` 状态），所以往里加键之前要先想清楚
 /// "这台机本来没有它"是不是也在说实话。
-/// 这三条是**镜像族**：`ro.boot.*` 那一套存在且已对上，而 `vendor.boot.*` 镜像与
-/// `sys.oem_unlock_allowed` 在真机上缺失 —— 检测器逐键读时会拿到空串，比"绿"更可疑。
-/// （2026-11-03 对着 Tricky-Addon 那项目对出来的现量：这台 XQ-DQ72 上
-/// `vendor.boot.vbmeta.device_state` / `vendor.boot.verifiedbootstate` /
-/// `sys.oem_unlock_allowed` 三条全空。）
+/// **查证后不往里加的镜像族**（2026-11-03，读了 Duck Detector 的源码，也看了它在自己机器上
+/// 打出的那张卡）：`vendor.boot.vbmeta.device_state` / `vendor.boot.verifiedbootstate` /
+/// `sys.oem_unlock_allowed` 这三条今天加过又撤了 —— 它们在 Duck 里**不进任何值判定**
+/// （`SystemPropertiesCatalog.kt:196-202` 明写 oem_unlock 那一族"不计入完整性结论"，
+/// 两条 vendor 镜像只出现在原生取证白名单里），而"属性缺失"在它那儿是**不参与判定**，
+/// 不是失败。零收益 + 每次开机多三次 resetprop ⇒ 撤。
 ///
 /// **有意没往里加的**（照抄别人那份表会把猜测写进 prop）：
 /// - `ro.boot.vbmeta.size`（别人硬编码 4096）—— 我们量不到这台机真实的 vbmeta 分区大小，
@@ -754,12 +755,9 @@ pub fn boot_hash() {
 ///   是新的 tell。要走"只改已存在"那一类，也还没做。
 const PROPS_PAIRS: &[(&str, &str)] = &[
     ("ro.boot.vbmeta.device_state", "locked"),
-    ("vendor.boot.vbmeta.device_state", "locked"),
     ("ro.boot.verifiedbootstate", "green"),
-    ("vendor.boot.verifiedbootstate", "green"),
     ("ro.boot.flash.locked", "1"),
     ("ro.boot.veritymode", "enforcing"),
-    ("sys.oem_unlock_allowed", "0"),
     ("ro.boot.warranty_bit", "0"),
     ("ro.warranty_bit", "0"),
     ("ro.debuggable", "0"),

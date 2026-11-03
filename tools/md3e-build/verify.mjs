@@ -20,6 +20,8 @@ const CHROME = process.env.CHROME || 'C:\\Program Files\\Google\\Chrome\\Applica
 const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
+/* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
+const FLOOR_CHKS = 127;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -140,7 +142,8 @@ async function main() {
   await sleep(2800);
 
   let bad = 0;
-  const chk = (name, ok, detail) => { if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
+  let runs = 0;
+  const chk = (name, ok, detail) => { runs++; if (!ok) bad++; console.log(`${ok ? 'ok  ' : '✗   '} ${name}${detail ? '  — ' + detail : ''}`); };
 
   const p0 = await ev(PROBE);
   /* 需要看底栏内部时：DUMP_NAV=1 node tools/md3e-build/verify.mjs
@@ -304,6 +307,7 @@ async function main() {
     const ok = p.title === want.title && !miss.length && p.scrollW - p.vw <= 0
       && !p.missFam && (!want.items || p.items > 0);
     if (!ok) bad++;
+    runs++;
     console.log(`${ok ? 'ok  ' : '✗   '} 第 ${i} 格 → ${want.title}  标题=${p.title} 列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
       + (miss.length ? '  缺区块: ' + miss.join('、') : '')
       + (p.missFam ? '  字体落空: ' + p.missFam : ''));
@@ -333,6 +337,7 @@ async function main() {
     const stable = m.topBefore === m.topAfter && m.hBefore === m.hAfter;
     const atTop = m.scrollTop === 0;
     if (!stable || !atTop) bad++;
+    runs += 2;
     console.log(`     ${stable ? 'ok  ' : '✗   '} 底栏不跳  y ${m.topBefore}→${m.topAfter} · 高 ${m.hBefore}→${m.hAfter}`
       + `  ${atTop ? 'ok  ' : '✗   '} 停在页首 scrollTop=${m.scrollTop}`
       + `  ·  二次进入 ${m.ms}ms（同步 ${m.syncMs}ms）/ ${m.nodes} 节点`);
@@ -555,15 +560,28 @@ async function main() {
     {
       const cs0 = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
         return cs.map(function(c){return c.getAttribute('label');}); })()`);
-      chk('名单页有「系统应用」这一档，未读时标签写"…"',
-        cs0.some(function (l) { return l === '系统应用 …'; }), JSON.stringify(cs0));
+      chk('名单页有「系统」这一档，未读时标签写…',
+        cs0.some(function (l) { return l === '系统 …'; }), JSON.stringify(cs0));
       const tapChip2 = kw => tap(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
         var e=cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(${JSON.stringify(kw)})===0;})[0];
         /* 这一行是 nowrap + 横滑的（见 app.css 的 .acts.filter-grid），第五颗天然落在 417px
            之外 —— 人是滑过去点的，台架也得先滚进视野再量坐标，否则事件落在屏外。 */
         if (e) e.scrollIntoView({ behavior: 'instant', inline: 'center', block: 'nearest' });
         return e; })()`);
-      chk('点得动「系统应用」（先横滑到它）', await tapChip2('系统应用') === 1);
+      chk('点得动「系统」芯片（先横滑到它）', await tapChip2('系统') === 1);
+      /* 芯片行不许有半截被切：直接量几何。上一版五颗标签总宽 505 > 容器 460，
+         第五颗画成"系统应"半截（截图里看得见），而原来没有任何一条断言在量这件事。 */
+      const geo = await ev(`(function(){ var g=document.querySelector('#view .filter-grid');
+        var cs=[].slice.call(g.querySelectorAll('md-chip'));
+        var gr=g.getBoundingClientRect().right;
+        var cut=cs.filter(function(c){ return c.getBoundingClientRect().right > gr + 0.5; }).length;
+        return { 芯片数: cs.length, 容器宽: Math.round(g.clientWidth), 滚动宽: Math.round(g.scrollWidth),
+          被切: cut, 有渐隐: g.hasAttribute('data-scrolls') ? 1 : 0,
+          标签: cs.map(function(c){return c.getAttribute('label');}) }; })()`);
+      /* 要么一行放得下，要么溢出但**明说还能滑**（data-scrolls + 右侧渐隐）。
+         半颗芯片切在边上又没有任何提示，才是上一版截图里那个样子。 */
+      chk('芯片行：要么放得下，要么溢出但有"还能滑"的提示',
+        geo.被切 === 0 || (geo.滚动宽 > geo.容器宽 && geo.有渐隐 === 1), JSON.stringify(geo));
       await sleep(800);
       const sy = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
         var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
@@ -571,7 +589,7 @@ async function main() {
           bases: rows.map(function(r){return r.getAttribute('data-base');}),
           acts: rows.map(function(r){var a=r.querySelector('.app-row-act'); return a?(a.getAttribute('aria-label')||''):'';}) }; })()`);
       chk('读到了系统包，芯片上的数与画出的行数一致',
-        sy.chips.some(function (l) { return l === '系统应用 ' + sy.bases.length; }) && sy.bases.length >= 2,
+        sy.chips.some(function (l) { return l === '系统 ' + sy.bases.length; }) && sy.bases.length >= 2,
         JSON.stringify(sy));
       /* 已在名单里的系统包（台架名单含 com.android.vending）按钮必须是「移出」。
          以前按钮按"你在哪一档"决定，非名单档里已在名单的项一律画「加入」，点一下
@@ -650,7 +668,7 @@ async function main() {
         if (!title && m) title = m[1];
         return { rows: rows, absent: absent, bad: bad, absentToned: absentToned, title: title, items: items.length };
       })()`);
-      chk('属性页把台架那 56 行对照逐行画出来（一行都不吞）', pv.rows === 56, 'rows=' + pv.rows);
+      chk('属性页把台架那 53 行对照逐行画出来（一行都不吞）', pv.rows === 53, 'rows=' + pv.rows);
       chk('absent 标「本机无」而不是红色「不符」（命令层 mismatch=0 的口径）',
         pv.absent === 4 && pv.bad === 9, 'absent=' + pv.absent + ' 不符行=' + pv.bad);
       chk('absent 行不挂 warn/bad 色（"没有这个分区"不是待办也不是风险）',
@@ -796,6 +814,7 @@ async function main() {
     const miss = b.must.filter(s => p.text.indexOf(s) < 0);
     const ok = miss.length === 0 && p.scrollW - p.vw <= 0 && !p.missFam && p.items >= 4;
     if (!ok) bad++;
+    runs++;
     console.log(`${ok ? 'ok  ' : '✗   '} 后端 ${b.id}  列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
       + (miss.length ? '  没画出来: ' + miss.join('、') : '')
       + (p.missFam ? '  字体落空: ' + p.missFam : ''));
@@ -1111,7 +1130,7 @@ async function main() {
     await toFunc(); await sleep(500);
     await tapEntry('目标名单'); await sleep(900);
     await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
-      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('系统应用')===0;})[0]; })()`);
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('系统')===0;})[0]; })()`);
     await sleep(900);
     const readSys = () => ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view .app-row'));
       var btns=[].slice.call(document.querySelectorAll('#view md-button')).map(function(b){return b.getAttribute('label')||'';});
@@ -1120,7 +1139,7 @@ async function main() {
         角标: rows.filter(function(r){return [].slice.call(r.querySelectorAll('.app-row-tag')).length>0;}).length,
         折叠句: btns.filter(function(t){return /系统组件/.test(t);})[0] || '' }; })()`);
     const sy1 = await readSys();
-    chk('系统应用档只列有启动器入口的（台架 5 个系统包 → 2 个应用），其余收成一句可点开的',
+    chk('「系统」档只列有启动器入口的（台架 5 个系统包 → 2 个应用），其余收成一句可点开的',
       sy1.rows === 2 && /^另有 3 条系统组件/.test(sy1.折叠句), JSON.stringify(sy1));
     chk('已在名单里的那行带「已纳入」角标，没在的不带',
       sy1.角标 === 1, JSON.stringify(sy1));
@@ -1132,7 +1151,7 @@ async function main() {
     const ord0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll('#view .app-row .app-row-title')).map(function(x){return x.textContent;});
       var s=t.slice().sort(function(a,b){return String(a).localeCompare(String(b),'zh');});
       return { got:t, want:s }; })()`);
-    chk('系统应用这一屏内部自洽（显示名序，不是包名序）',
+    chk('「系统」这一屏内部自洽（显示名序，不是包名序）',
       JSON.stringify(ord0.got) === JSON.stringify(ord0.want), JSON.stringify(ord0));
     /* 上面那条单独是**假绿**：这一屏多数行没有名字，包名序与名字序长得一样，`want` 又是拿
        `got` 自己排的。所以补一条能区分的正对照 —— 台架「已装」那 4 条两种序长得不一样，
@@ -1371,6 +1390,13 @@ async function main() {
   /* 仪器自检：三项都必须量到正数，否则这份"基线"只是没量到 */
   chk('性能量测本身有效（首屏 / FCP / 脚本都量到正数）',
     med('ready') > 0 && med('fcp') > 0 && med('script') > 0, JSON.stringify(perfRuns));
+
+  /* 断言条数下限（与对拍的下限同理）："跑完且全绿"不等于"还在看那么多东西"——
+     某一整块被条件跳过、或断言被删掉，退码照样是 0。本轮那句"56 行"就是被删条件
+     悄悄跳过一整块才没人响。改台架时同步这个数与 CHANGELOG。 */
+  console.log('── 断言 ' + runs + ' 项');
+  if (runs < FLOOR_CHKS) { console.error('✗ 断言只跑到 ' + runs + ' 项（下限 ' + FLOOR_CHKS
+    + '）：有断言被删了，或某一整块没执行'); bad++; }
 
   ws.close(); chrome.kill();
   process.exit(bad ? 1 : 0);

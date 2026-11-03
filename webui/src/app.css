@@ -155,6 +155,10 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .acts.filter-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .acts.filter-grid::-webkit-scrollbar{display:none}
 .acts.filter-grid md-chip{flex:0 0 auto}
+/* 溢出时钉一道右侧渐隐（sticky 伪元素，不随内容划走）：
+   让人看出"后面还有"，而不是把半颗芯片切在边上当装饰。 */
+.acts.filter-grid[data-scrolls]::after{content:'';flex:0 0 26px;position:sticky;right:0;align-self:stretch;
+  background:linear-gradient(to right,transparent,var(--md-sys-color-surface))}
 /* 主页英雄卡：状态芯片 + 大字后端名 + 三个小统计。
    以前是四段小字用 · 连成一行（.strip-*），信息都在但要凑近读。 */
 .hero .hero-top{display:flex;align-items:center;gap:12px;flex-wrap:wrap}

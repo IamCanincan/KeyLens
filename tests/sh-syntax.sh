@@ -22,9 +22,12 @@ bad() { printf '  ✗    %s\n' "$1"; fail=1; }
 W=$(mktemp -d 2>/dev/null || echo "/tmp/klsyn-$$"); mkdir -p "$W"
 
 # ── 清单从目录推，不手抄（手抄的那份会漏掉下一个新文件）────────────────
+# 机器侧 + 构建侧一起扫：rust/build-release.sh 是"能不能拿到新产物"的那一步，
+# 它自己语法坏了不会有任何动静（2026-11-03 就因为 `env` 被别的程序抢掉，
+# 这个脚本一声不响地"成功"了一整轮，装到机器上的还是旧二进制）。
 FILES="$W/files"
 : > "$FILES"
-for f in module/*.sh module/lib/*.sh module/backends/*.sh \
+for f in module/*.sh module/lib/*.sh module/backends/*.sh rust/*.sh \
          module/META-INF/com/google/android/update-binary; do
     [ -f "$f" ] && printf '%s\n' "$f" >> "$FILES"
 done
@@ -34,6 +37,8 @@ n=$(grep -c . "$FILES")
 grep -qx 'module/lib/write.sh' "$FILES" && ok 'lib/write.sh 在范围内（坏的就是它）' \
     || bad 'lib/write.sh 没进检查范围 —— 正是当初漏掉的那一个'
 grep -qx 'module/webui.sh' "$FILES" && ok 'webui.sh 在范围内' || bad 'webui.sh 没进范围'
+grep -qx 'rust/build-release.sh' "$FILES" && ok 'rust/build-release.sh 在范围内（构建脚本也会被语法/环境问题吃掉）' \
+    || bad 'rust/build-release.sh 没进范围'
 
 # ── 逐个 sh -n ────────────────────────────────────────────────────────
 broken=""

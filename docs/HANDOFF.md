@@ -38,7 +38,7 @@
 | shell↔Rust 逐字节对拍 | **271 项 chk**（含 preview-* 11 例 ×4 条断言、env 探针缓存一节 24 条、属性判定改造后的降级 3 条与"两侧写完的属性区逐字节相同"状态 A/B、启动哈希三态 23 条、`current=` 读数口径 3 条、teesim 那一支"采用守护进程的值"5 条、**体检「启动哈希」那一格按三态各钉两侧 14 条**（§5.17）、**`apps` 三档各钉两侧期望文本 6 条**（§5.18）、**`set-mode` 走分派臂 + 界面形状 7 条**（§5.19 #1）、**「已排除」覆盖系统包的正对照 2 条**（§5.19 #4）、**`apps launchable` 两侧各一条**（§5.21）） | `sh rust/parity.sh` |
 | 属性判定（两张表 → 一份计划） | **30 条断言全过**：表形状（属性名字符集、两表不重名）、四列与状态（含坑值 `]`/空值/空格/中文）、链式改只落一次盘、absent 不进计划也不凭空创建、awk 路与逐键回落路落到**同一个属性区**；三处变异（只换第一处 / absent 塌成 missing / 键名拼错熄火）各自自证 | `sh tests/props-plan.sh` |
 | 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
-| **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：56 行逐行上屏（rows=56；2026-11-03 固定表 15→18 行，见 §5.23）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
+| **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53；固定表今天试过 15→18、装了机，又被 Duck 源码推翻撤回 15，见 §5.23/§5.24）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
 | shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | 装了 3.0.3 的现场：**16/17**（只读，红的就是 `doctor`，见 §5.17）；补上 §5.17 的两处改动后在临时副本里 **38/38 全过**（2026-11-03 现量，未发版）。台子怎么跑见 §3，参照 awk 要先推上去 | `sh tests/device-ab.sh [--write]` |
@@ -999,7 +999,7 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
 | 面 | 它 | KeyLens |
 |---|---|---|
 | 名单 | `pm list packages -3 \| grep -v 排除 > target.txt` —— **整份重写**，手工增删每轮被冲掉 | 增量差分：只加新装、只删卸载、其余原样（所以"手动排除"这个语义才成立） |
-| 属性 | 24 条 `check_reset_prop`（**只在已存在且不符时改**，缺了不造）+ 3 条 bootmode | 18 固定表（缺了**补出来**）+ 38 特征行**就地替换**；构建身份那一族（`*.build.type/tags/fingerprint`、flavor、description）它完全没有 |
+| 属性 | 24 条 `check_reset_prop`（**只在已存在且不符时改**，缺了不造）+ 3 条 bootmode | 15 固定表（缺了**补出来**）+ 38 特征行**就地替换**；构建身份那一族（`*.build.type/tags/fingerprint`、flavor、description）它完全没有 |
 | 装完生效 | `MODULE_HOT_INSTALL_REQUEST` + `hotinstall.sh`，**不用重启** | 必须重启（这是它的真优势，见"待做"） |
 | 冲突 | 检测到 `tsupport-advance` 就在 `/storage/emulated/0/` 落哨兵文件让对方停写 | 只锁自家进程，**不检测别的模块也在写名单** |
 | 入口 | 把自己藏起来（`.TA_utl`、删 module.prop）+ 软链 webroot 进后端模块 | 独立模块独立入口（不玩符号链接那套分支） |
@@ -1009,29 +1009,21 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
 `sys.oem_unlock_allowed` / `ro.boot.vbmeta.size` / `avb_version` / `invalidate_on_error` /
 `ro.boot.bootmode` / `vendor.boot.bootmode`）。
 
-固定表**缺了会补出来**是咱们已有的语义（`missing` 状态），所以加键不用改规矩。加了 3 条镜像：
+固定表**缺了会补出来**是咱们已有的语义（`missing` 状态），所以我一开始把 3 条镜像键
+（`vendor.boot.vbmeta.device_state=locked` / `vendor.boot.verifiedbootstate=green` /
+`sys.oem_unlock_allowed=0`）加进了表并装了机 —— **读了 Duck Detector 的源码之后撤销**（§5.24）：
+零收益，还每次开机多三次 resetprop。机上已用 `resetprop -d` 删回空（现量三条 `getprop` 全空）。
 
-- `vendor.boot.vbmeta.device_state = locked`
-- `vendor.boot.verifiedbootstate = green`
-- `sys.oem_unlock_allowed = 0`
-
-装机现量：`props-apply` → `applied=1 / mismatch=0`，全表 **53 → 56 行全 ok**，
-`getprop` 独立读回 `locked / green / 0`。
-
-**有意没加的 5 条**（照抄会把猜测写进 prop，比空着更像被动过）：
-
-- `ro.boot.vbmeta.size`（它硬编码 4096）—— 我们量不到这台机真实的 vbmeta 大小；
-- `ro.boot.vbmeta.avb_version` / `invalidate_on_error` —— 版本与策略是设备相关的；
-- `ro.boot.vbmeta.hash_alg` —— 摘要 64 位十六进制=sha256、128 位=sha512，**要按生效摘要的长度推**，
-  不能当常量；那需要固定表支持"动态期望值"，是下一步；
-- MIUI `ro.secureboot.lockstate` / Realme `ro.boot.realmebootstate|lockstate` —— 这些只在对应厂商机上
-  存在，进固定表等于**在 Sony 上凭空造出 realme 的键**，是新的 tell。要走"只改已存在"那一类
-  （也就是它 `check_reset_prop` 的语义），那张新表还没做。
+同样**一条都不补**的还有 Tricky-Addon 那 5 条：按 Duck 源码，`ro.boot.vbmeta.size` 读但恒 INFO、
+`ro.boot.vbmeta.avb_version` 是**键名写错**（Duck 读 `ro.boot.avb_version`）、MIUI/Realme 那几条不读；
+`invalidate_on_error` 与 `hash_alg` 确实给 SAFE，但"缺失不判定"意味着补它们只是把"不判定"换成
+"SAFE"，收益为零。
 
 **这一轮我自己弄坏过一次，是台架抓的**：给台架那份"真机现量"假数据加 3 行时，脚本里把
 `to` 写成了"只有新行"，于是**替换**掉三条原行而不是插入 —— 条目数仍是 53，`verify.mjs` 立刻报
 `rows=53`（期望 56）。修回后 56 行全画。教训：改夹具的脚本必须**自证条目数的前后差**，
 不能只看"新字符串在不在文件里"（我那次自证的就是"在不在"，所以它没拦住）。
+（那 3 行随后被 §5.24 整体撤回，夹具与真表一起回到 53 行 —— 这条教训跟撤不撤没关系，仍然有效。）
 
 **待做（按价值排）**：① hot install（省掉重启，改动面最大）；② "只改已存在"那张表（OEM 特有键）；
 ③ 默认排除表（它那份 `more-exclude.json` 是 Apache-2.0 的数据，拿进包要在
@@ -1039,7 +1031,60 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
 `pm path` + `unzip -l` 找 `xposed_init`，`xargs -P $(nproc)` 并行 + 持久 skiplist ——
 和咱们的 env 探针缓存同一个路子）。
 
+## 5.24 Duck Detector 的源码把我这两条判断都推翻了（2026-11-03，主人："你明明可以直接看 duck 的源码"）
+
+源码 `D:\下载\Duck-Detector-Refactoring`，另外它给这台机打的那张卡
+（`D:\下载\Screenshot_20261101-225108_Duck Detector.png`）上已经写明了自己的读数。三条关键事实：
+
+1. **属性"缺失"= 不参与判定，不是失败**。四重证据：`SystemPropertiesRepository.kt:65`
+   （`preferredValue.isBlank()` 就 `return@forEach`）、`BootloaderPropertyFindings.kt:34`、
+   `BootloaderPropertyContext.kt:80`（未知就不算 danger）、`CustomRomBootloaderFinding.kt:28`
+   注释「an empty or unreadable value says nothing about the lock state」。
+   ⇒ 我"补上镜像族别让它空着"的动机**根本不成立**。
+2. **那三条键在 Duck 里没有值判定**：两条 `vendor.boot.*` 只出现在原生取证白名单
+   `property_integrity_internal.h:65-66`；`sys.oem_unlock_allowed` 被
+   `SystemPropertiesCatalog.kt:196-202` 明写"不计入完整性结论"。⇒ 撤销。
+3. **我担心的 `/proc/bootconfig` 对质到不了它**：这台机 bootconfig 里写着
+   `androidboot.verifiedbootstate = "orange"`（adb root 下 `cat /proc/bootconfig` 现量），
+   而 Duck 那张卡自己写着 **「Raw boot params — Unavailable」**（androidboot.* 来自
+   /proc/cmdline 与 /proc/bootconfig），且 Source consistency = Aligned、
+   Source mismatches = **0**。⇒ 应用侧读不到那两个文件，这条探针在这台机上是哑的。
+
+**它真正报的那一条**（那张卡 Danger 的来源，原文）：
+
+> Attested hash vs vbmeta digest — **Digest missing**：Attested verifiedBootHash was present,
+> but `ro.boot.vbmeta.digest` was empty.
+
+即"证书里有 hash、属性里没有"。这正是 §5.14「启动哈希改三态、默认自动」已经修掉的东西
+（现量 `ro.boot.vbmeta.digest = 0561fff0…`、`boot-hash` = auto·omk·ok）。
+**所以下一步是重跑一次 Duck 看那张卡变没变，而不是继续加属性。**
+
+顺带按源码把 Tricky-Addon 那 5 条判完：`ro.boot.vbmeta.size` 读但恒 INFO
+（`BootloaderPropertyFindings.kt:171`）；`avb_version` 它读的是 `ro.boot.avb_version`，
+别人写的是 `ro.boot.vbmeta.avb_version`（**键名就不对**）；MIUI `ro.secureboot.lockstate`、
+Realme 两键不读；`invalidate_on_error`（`yes`→SAFE）与 `hash_alg`（`sha256/sha512`→SAFE）确实读，
+但"缺失不判定"⇒ 补它们只是把"不判定"换成"SAFE"，对过检**收益为零**。结论：一条都不补。
+
+它还有 21 条 `BootloaderCatalog` + 45 条 rules + 17 条 infoProperties + 18 条原生白名单，
+其中 `partition.{system,vendor,...}.verified`、`ro.boot.secureboot`、`ro.boot.selinux`、
+`init.svc.adbd`、`service.adb.root` 这类**咱们完全没碰**的键值得单独一轮去核对——
+但要先搞清 Duck 对每一条的判据，别再像这次一样凭直觉加。
+
 ## 6. 坑（都踩过）
+
+- **`env VAR=… cargo …` 在这台机上会"成功"而不执行 cargo**（2026-11-03）：`~/.local/bin/env`（uv 装的，
+  本来是要 source 的）排在 PATH 前面，它只改 PATH、**不 exec 参数**，于是整条命令原地退 0、零输出。
+  `rust/build-release.sh` 因此"全部通过"而产物还是上一轮的旧二进制，我把那个旧产物当新的查了一圈
+  （撤掉的三条属性在旧产物里 grep 得到 —— 差点得出"撤销没生效"）。规矩：① 构建脚本改用 `export`，
+  别用 `env`；② **构建末尾自证"产物不比源码旧"**（`find src Cargo.toml -newer "$b"`，与 `parity.sh`
+  开头那条同款）；③ `tests/sh-syntax.sh` 的 glob 扩到 `rust/*.sh`，构建脚本自己也过 `sh -n`。
+  另两条环境事实：这台机真正的发布构建环境是 **WSL Debian**（Windows 侧链接 build-script 要 MSVC
+  `link.exe`，而且 nightly 被一次中断的 rustup 安装毁过，重装后要 `component add rust-src` +
+  两个 musl target）；cargo 读的是 **Windows 系统代理**（127.0.0.1:7890 拒连时卡在
+  "Updating crates.io index"），单条命令加 `--config 'http.proxy=""'` 就能直连，别改全局配置。
+- **toybox `grep` 不认 BRE 的 `\|`**（同日）：在设备上 `grep -c 'a\|b\|c' /data/adb/modules/keylens/lib/props.sh`
+  回 **0**，而文件里那三条明明白白在 —— 我据此差点判"装机文件已经是撤过的版本"。**用 0 命中下结论前，
+  先拿一个已知会命中的写法验它能数到非零**（这里换 `grep -E 'a|b|c'` 就正常）。
 
 - **临时根少了 `lib/icondump.dex`，图标冷路整个被跳过**（2026-11-03，§5.22）：我拿一个空目录当
   模块根去测"尾巴那 115 行能不能拿到名字"，得到 13 行，差点写成"系统里只有 13 个有名字"。
@@ -1108,7 +1153,7 @@ tricky**（auto 取不到值）⇒ auto/manual/off/invalid 四格候选数全 0�
   黄金快照闸跳过，本地那轮「53 套全绿」里它其实没跑。而 CI（Rust CLI）跑它时 `props` 红了 ——
   黄金还停在 17 行那张旧表。要跑就进 WSL：`KEYLENS_BIN=rust/target/x86_64-unknown-linux-musl/release/keylens sh tests/rust-golden.sh`。
   同一轮还修了它的一处不可复现：`props` 读的是**宿主的** `getprop`（CI 上没有这个命令、全 absent；
-  开发机接了手机就变成真机的 53 行（现表 56 行）)，现在台子自带桩 `getprop`，快照与机器无关。
+  开发机接了手机就变成真机的 53 行（15 固定 + 38 特征；本轮一度是 56 行，撤回后仍是 53）)，现在台子自带桩 `getprop`，快照与机器无关。
 - **两臂共用同一个属性桩时，前一臂会把后一臂的前提抹掉**：给"teesim 属性为空才补"数写次数，
   shell 臂先跑并**真的把 digest 写上了**，Rust 臂随后看到的是"属性已有值"⇒ 走 daemon 支、
   写 0 次。报出来的 `1/0` 看着像 Rust 漏写一次，实际是台架自己改了现场。现在两臂之间

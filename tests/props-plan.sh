@@ -124,7 +124,7 @@ props_expect_rules | awk '{print $1}' | sort -u > "$T/kr"
 chk '固定表自身没有重复行' "$(props_expect_pairs | awk '{print $1}' | sort | uniq -d)" ""
 chk '特征表与固定表没有重名属性（重名=两处各写各的，谁赢说不清）' \
     "$(comm -12 "$T/kp" "$T/kr" | tr '\n' ' ')" ""
-chk '表行数 = 界面行数 = 复核分母的来源' "$n_pairs/$n_rules" "18/38"
+chk '表行数 = 界面行数 = 复核分母的来源' "$n_pairs/$n_rules" "15/38"
 
 printf '── 判定：props_plan display 的四列与状态 ──\n'
 seed

@@ -949,13 +949,21 @@ function listSection() {
   }
   const seg = h('div', 'acts filter-grid');
   const sysSp = sysSplit();
-  /* 「系统应用」单独一档，而且是**点開才去读**：那一档要跑两次 pm（本机现量 56+62ms），
-     不该让默认的「名单/已装」替它付。芯片上的数报的是**能勾的应用**（本机 17 条），
-     不是全部系统包（235）—— 数字与点开看到的内容必须一致，否则第一屏就对不上账。 */
-  [['targets', '名单 ' + S.targets.length], ['apps', '已装 ' + S.apps.length],
-   ['missing', '未纳入 ' + S.apps.filter(function (a) { return !baseSet[a]; }).length],
-   ['excluded', '已排除 ' + S.excluded.length],
-   ['system', S.system === null ? '系统应用 …' : '系统应用 ' + sysSp.apps.length]].forEach(function (v) {
+  const missCount = S.apps.filter(function (a) { return !baseSet[a]; }).length;
+  /* 芯片行的账（417px 视口现量）：五颗标签总宽 505 > 容器 460 ⇒ 第五颗被切掉 45px，
+     画成"系统应"半截。两处一起收：① 标签缩短；② 计数为 0 的档不占位
+     （这台机常年「未纳入 0」「已排除 0」，两颗空档挤掉了真正要点的那颗）。
+     当前选中的那一档即使为 0 也留着 —— 不然切进去芯片自己消失，看着像坏了。 */
+  const chipDefs = [
+    ['targets', '名单 ' + S.targets.length, false],
+    ['apps', '已装 ' + S.apps.length, false],
+    ['missing', '未纳入 ' + missCount, true],
+    ['excluded', '排除 ' + S.excluded.length, true],
+    ['system', S.system === null ? '系统 …' : '系统 ' + sysSp.apps.length, false],
+  ];
+  chipDefs.filter(function (d) {
+    return !d[2] || d[1].slice(-1) !== '0' || d[0] === S.view;
+  }).forEach(function (v) {
     seg.appendChild(chip(v[1], v[0] === S.view, function () {
       S.view = v[0];
       if (v[0] === 'system' && S.system === null) loadSystem().then(redraw);
@@ -963,6 +971,12 @@ function listSection() {
     }));
   });
   s.appendChild(seg);
+  /* 溢出时给一道右渐隐：横滑本身是合法模式，"半颗芯片被切掉又没有任何提示"不是 ——
+     上一版截图里那颗「系统应」就是这么让人看不出来还能滑。 */
+  setTimeout(function () {
+    if (seg.scrollWidth > seg.clientWidth + 1) seg.setAttribute('data-scrolls', '');
+    else seg.removeAttribute('data-scrolls');
+  }, 0);
   /* 被启动器判据筛掉的那些（覆盖层 / 服务 / 资源包）收起来，但一句话点名、点得开 ——
      要 spoof com.android.bluetooth 的人必须还找得到它。 */
   if (S.view === 'system' && S.system !== null && sysSp.comps.length) {

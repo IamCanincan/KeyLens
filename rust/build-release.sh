@@ -34,8 +34,22 @@ done
 for t in $TARGETS; do
   upper=$(printf '%s' "$t" | tr 'a-z-' 'A-Z_')
   echo "── $t"
-  env "CARGO_TARGET_${upper}_RUSTFLAGS=$FLAGS" \
-    cargo +nightly build --release --target "$t" -Z build-std=std,panic_abort
+  # 这里**不用** `env VAR=… cargo`：这台 Windows 机上 `~/.local/bin/env`（uv 装的）排在 PATH
+  # 前面，那个脚本只改 PATH、不执行参数，于是 `env … cargo …` 原地退 0 且一个字节都没编 ——
+  # 脚本"全部通过"，产物还是上一轮的旧二进制（2026-11-03 就这么骗过我一整轮）。
+  export "CARGO_TARGET_${upper}_RUSTFLAGS=$FLAGS"
+  cargo +nightly build --release --target "$t" -Z build-std=std,panic_abort
+done
+
+# 自证"这一轮真的编译了"：产物不许比源码旧（与 parity.sh 开头那条守卫同款）。
+# 上面那条坑的现场就是"rc=0 + 无输出 + 产物没动"，只看退码抓不到它。
+for t in $TARGETS; do
+  b="target/$t/release/keylens"
+  [ -f "$b" ] || die "没有产出 $b"
+  stale=$(find src Cargo.toml -newer "$b" 2>/dev/null | head -1)
+  if [ -n "$stale" ]; then
+    die "$b 比源码旧（$stale 在其之后改过）—— 这一轮没有真编译，别拿这个产物装机/对拍"
+  fi
 done
 
 ls -l target/aarch64-unknown-linux-musl/release/keylens target/x86_64-unknown-linux-musl/release/keylens
