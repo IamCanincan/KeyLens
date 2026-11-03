@@ -498,6 +498,15 @@ function demoResult(cmd, arg) {
   if (DEMO_FAIL && cmd === DEMO_FAIL) {
     return { errno: 1, stdout: '', stderr: '目标文件不存在：' + demoFiles().dir + '/' + demoFiles().target };
   }
+  /* 台架记录每一次 icons 请求了哪些包：界面那条分批问的路（askIcons/drainIcons）
+     必须把整屏问完。以前一次问 200、命令层只答 120，剩下的既没被请求又被标成"问过了"，
+     那一屏后面几十行就永远只有首字块。 */
+  if (cmd === 'icons') {
+    try {
+      if (!window.__klIconReqs) window.__klIconReqs = [];
+      window.__klIconReqs.push(String(arg || '').split(',').filter(Boolean));
+    } catch (e) { /* 台架之外的环境没有 window 也无所谓 */ }
+  }
   /* 「系统应用」那一档台架也要画得出来（这几台机上下面几个都是系统包）。
      不带参数时仍走下面 body 里那份第三方清单 —— 默认档的形状不能被这一档改掉。 */
   if (cmd === 'apps' && arg === 'system') {

@@ -263,21 +263,42 @@ function iconsSettled(list) {
     else { iconFailed[b] = 1; delete askedIcons[b]; }
   });
 }
+/* 一批的量必须 = 命令层冷路一次能补的上限（shell 的 `-ge` 与 Rust 的 `miss.len()`），
+   tests/ui-shape.js 钉这三个数。以前界面一次问 200 而命令层只答 120，
+   差额既没被请求、又被标成"问过了" ⇒ 那一屏后面几十行永远只有首字块。 */
+const ICON_BATCH = 120;
+let iconsBusy = false, iconsWanted = [];
+function askIcons(list) {
+  iconsWanted = iconsWanted.concat(list || []);
+  if (iconsBusy) return Promise.resolve(false);
+  return drainIcons(false);
+}
+function drainIcons(issued) {
+  const uniq = [], seen = {};
+  iconsWanted.forEach(function (b) {
+    if (b && !seen[b] && !S.icons[b] && !askedIcons[b] && !iconFailed[b]) { seen[b] = 1; uniq.push(b); }
+  });
+  if (!uniq.length) return Promise.resolve(!!issued);
+  const batch = uniq.slice(0, ICON_BATCH);
+  iconsWanted = uniq.slice(ICON_BATCH);      // 没发出去的**不**算问过了
+  batch.forEach(function (b) { askedIcons[b] = 1; });
+  iconsBusy = true;
+  return loadIcons(batch).then(function () {
+    iconsBusy = false; swapIcons(); iconsSettled(batch); return drainIcons(true);
+  }, function () {
+    iconsBusy = false; iconsSettled(batch); return drainIcons(true);
+  });
+}
 function loadIconsFor(shown) {
   const need = [];
-  shown.forEach(function (t) { const b = baseOf(t); if (b && !S.icons[b] && !askedIcons[b] && !iconFailed[b]) { need.push(b); askedIcons[b] = 1; } });
-  if (!need.length) return;
-  /* 图标异步到货后**原位替换**首字块，不整页重画：重画会打断滚动，
-     名单一大时还会把已经建好的行全拆掉重建。 */
-  const batch = need.slice(0, 120);
-  loadIcons(batch).then(function () { swapIcons(); iconsSettled(batch); },
-    function () { iconsSettled(batch); });
+  shown.forEach(function (t) { const b = baseOf(t); if (b) need.push(b); });
+  return askIcons(need);
 }
-/* 首进名单的预取：先拿 lists 的包名，再一次性取图标/显示名，最后才画列表。
+/* 首进名单的预取：先拿 lists 的包名，再取图标/显示名，最后才画列表。
    这样第一帧就是应用名 + 图标，不会先露出包名再原位替换。
-   预取范围就是**当前档**要画的那 200 条（与 listSection 的 LIMIT 对齐）；
-   切档后新增的那些仍由 loadIconsFor 增量补。 */
-const PREFETCH_ICONS = 200;
+   首屏只等**一批**（120）—— 再多的行先带首字块画出来，剩下的到货原位补，
+   不让一屏 200 行的机器把入场拖成两三次 root 命令的时间。 */
+const PREFETCH_ICONS = ICON_BATCH;
 /* 「系统应用」那一档的分面：235 个系统包里，按平台自己的判据（有没有启动器入口）
    只有 17 个是"应用"，其余是覆盖层/服务/资源包 —— 全塞在一屏里就是"翻不到想找的东西"。
    所以默认只列可启动的，组件收进一句可点开的话里。launchable 没取到（老命令层不认这一档）
@@ -335,20 +356,10 @@ export function targetsPending() {
   return false;
 }
 export function prefetchListIcons() {
-  /* 每次"进入/重读"都清一次失败表：这是重试的唯一入口（同一屏内不重问，
-     见 loadIconsFor），否则一次网络/权限抖动就永久少几个图标。 */
+  /* 每次"进入/重读"都清一次失败表：这是重试的唯一入口（同一屏内不重问，见 askIcons），
+     否则一次权限/读取抖动就永久少几个图标。 */
   iconFailed = {};
-  const need = [];
-  listBases().slice(0, PREFETCH_ICONS).forEach(function (b) {
-    if (askedIcons[b]) return;
-    askedIcons[b] = 1;
-    need.push(b);
-  });
-  if (!need.length) return Promise.resolve(false);
-  /* true = 这次真的发起了图标读取（调用方据此决定要不要重画）；
-     命令失败也返回 true —— 数据没变也要把首字块状态画定。 */
-  return loadIcons(need).then(function () { iconsSettled(need); return true; },
-    function () { iconsSettled(need); return true; });
+  return askIcons(listBases().slice(0, PREFETCH_ICONS));
 }
 /* 打开 WebUI 的启动页：品牌标识先出来，壳和数据在下面就位后整层淡出。
    不用裸 spinner —— 空页面突然换成主页就是用户说的"很生硬"。 */

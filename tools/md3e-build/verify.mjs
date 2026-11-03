@@ -997,6 +997,13 @@ async function main() {
   chk('点一下画全 250 行，那颗自己退场（**屏上真看不见**：offsetParent 为空或高度 0）',
     L2.rows === 250 && L2.hidden === true && L2.more === ''
     && (L2.offscreen === true || L2.h === 0) && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
+  /* 名字到底问没问全：台架在 demo 里记录每次 icons 请求的包。
+     旧写法一次问 200、命令层只答 120，剩下的**没被请求却被标成"问过了"** ⇒ 永远首字块。 */
+  const reqs = await ev(`(function(){ var r=window.__klIconReqs||[]; var seen={}, n=0;
+    r.forEach(function(b){ b.forEach(function(p){ if(!seen[p]){ seen[p]=1; n++; } }); });
+    return { 批次: r.length, 批大小: r.map(function(b){return b.length;}), 去重包数: n }; })()`);
+  chk('整屏 250 行的名字都问到（分批问完，批次数 ≥ 2 且没有漏掉的行）',
+    reqs.批次 >= 2 && reqs.去重包数 >= 250, JSON.stringify(reqs));
 
   /* §5.19 的三条"看不见就永远点不响 / 整页空白 / 形状不符"，各画一遍真屏 */
   {
