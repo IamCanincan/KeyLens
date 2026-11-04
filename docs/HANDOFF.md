@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：写作时 35 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
+- 未推送提交：写作时 0（发版这一轮全部已推），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
   `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
@@ -313,6 +313,41 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 
 **顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——
 `service.adb.root: 1`（`adb unroot` 后下次重启自然消失）与 `persist.sys.usb.config: adb`（要关掉 USB 调试）。
+
+### 3.13 发版 v3.0.4（2026-11-04 22:0x）
+
+**这一版装了什么**（相对 v3.0.3，详细条目见 CHANGELOG 的 3.0.4 段）：功能页按任务流重排成**四项**
+（自动同步并进名单页、备份回滚并进后端配置、体检进主页大卡片）；名单屏按人的找法重做（吸顶层、
+整行点选、继续显示、两段式批量、卸载残留点名）；**修掉从 v3.0.0 起每条提示都印 `[object Object]`**；
+Tricky 的证书模式按钮在发布包里能用；系统应用可勾选；回退层不再把"读不到"交成"0 条 + 成功"。
+
+**四处一起改**：`module/module.prop`（`v3.0.4` / `2026110422`）、`update.json`（version /
+versionCode / `zipUrl` → `.../v3.0.4/KeyLens-v3.0.4.zip`）、`CHANGELOG.md`（未发布 → `3.0.4 - 2026-11-04`）、
+`README.md` 版本行。**`RELEASE_NOTES.md` 整篇重写** —— 它原来还停着改名前的 `v2.2.19.5-yuzu`
+（那份文件从改名起就漏了，标题、正文全是上一个项目名下的旧版本）。
+
+**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.4.zip` **547,793 字节 / 31 条目**，
+sha256 `e5c5b22b1c8fbbfae9c586867eda73744c650b205c8eebc55e4e0a1e99760c2b`；
+内含 `bin/keylens` **329,640 字节**（与 `rust/target/aarch64-…/release/keylens` 逐字节相同，
+`fbc02da5af9021c1`）、**0 份 awk**、**没有 `webroot/icons/`**、`module.prop` 里是 v3.0.4。
+`--check` 8 条全过。
+
+**发布前全量验过**（这一轮一件没改产品行为，只是版本号）：Git Bash **55/55** · WSL **55/55** ·
+对拍 **276 exit=0**（用同一份 build-std 的 x86 产物重跑的）· `cargo test` **77 passed** ·
+11 条静态闸全 OK · 台架 **175** · `attr-audit` 52 屏 / 893 个元素 0 命中 ·
+真机回放 **42/42** · `device-fallback` **44 + 7 条现量**。新二进制另外在真机上直接跑过
+`targets`(131) / `status`(ok) / `doctor`(16 行) / `props`(53) / `contract`(api=4)。
+**CI**：`d09efff` 两条 workflow（Build CI Module、Rust CLI）都是 success。
+
+**资产已上传（2026-11-04 22:03 本地）** —— `https://github.com/IamCanincan/KeyLens/releases/tag/v3.0.4`
+（tag 指向 `d09efff`，非 draft / 非 prerelease）。上传仍走 `git credential fill` 取 token、
+`GH_TOKEN` 只在环境里用一次、`HTTPS_PROXY` 显式给（`gh` 不读 git 的代理配置）。
+**GitHub 自己算的 digest 就是 `sha256:e5c5b22b…6c2b`，与本地那份相同**；`update.json` 线上已指向
+v3.0.4，资产 URL 302 → 200。
+
+**顺带修的台子 flaky**：`tests/teesim-overrides-write.sh` 把 MSYS 的 `/tmp/…` 直接喂给 Windows 原生
+`node`（node 读成 `D:\tmp\…` 报 ENOENT）。全量跑时红过一次、再跑又绿 —— 现在先过 `cygpath`，
+`TMPDIR=/tmp` 与默认两种形状都跑过。
 
 ### 3.12 发版 v3.0.3（2026-11-03 00:2x）
 
