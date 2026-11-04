@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 153;
+const FLOOR_CHKS = 154;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1146,7 +1146,10 @@ async function main() {
       return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('立即应用一次')===0;})[0]; })()`);
     await sleep(600);
     const af = await ev(`(function(){ var s=document.querySelector('md-snackbar');
-      var t = s ? (String(s.textContent||'') + ' | ' + String(s.message||'')) : '(没有 snackbar)';
+      /* 读 message **属性**（组件就是把 show() 的第一个参数落到这里）：
+         以前读 textContent + s.message，两条在组件上都恒空 —— 一条反向断言配一把
+         空仪器，"没提示"永远成立。能读数的那条正对照在后面（同步那句）。 */
+      var t = s ? String(s.getAttribute('message')||'') : '(没有 snackbar)';
       return { snack: t.replace(/\\s+/g,' ').trim().slice(0, 70) }; })()`);
     chk('点那颗禁用按钮不发出写入（没有"已写入并复核"的提示）',
       !/已写入并复核/.test(af.snack), JSON.stringify(af));
@@ -1247,6 +1250,27 @@ async function main() {
     await sleep(900);
     const dp1 = await wCount('tricky-drop-patch');
     chk('第二下才真删：正好发一条 tricky-drop-patch', dp1 === 1, '写次数 ' + dp0 + '→' + dp1);
+
+    /* 「立即同步一次」以前只回一句"已请求同步"：点完名单到底变成几条没人念出来，
+       而命令层两侧都带 count（**同步之后**的目标文件行数，shell 与 Rust 同口径）。 */
+    await send('Page.navigate', { url: URL0 });
+    await sleep(1300);
+    await toFunc(); await sleep(500);
+    await tapEntry('自动同步'); await sleep(800);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'')==='立即同步一次';})[0]; })()`);
+    await sleep(1000);
+    const snk = await ev(`(function(){ var s=document.querySelector('md-snackbar'); if(!s) return {attr:'(没有 snackbar)', 屏上:''};
+      var m = s.shadowRoot ? s.shadowRoot.querySelector('.message') : null;
+      return { attr: String(s.getAttribute('message')||''), 屏上: m ? String(m.textContent||'') : '(影子里找不到那句)' }; })()`);
+    chk('同步那句报的是同步之后的条数，而且提示**真落在屏上**（不是 [object Object]）',
+      /已同步：名单现在 [0-9]+ 条/.test(snk.attr) && /已同步：名单现在 [0-9]+ 条/.test(snk.屏上),
+      JSON.stringify(snk));
+    {
+      /* 留一张图给人看：这条以前屏上是 "[object Object]"，说十遍不如给一张。 */
+      const sT = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(path.join(SHOT_DIR, 'new-toast-readable.png'), Buffer.from(sT.data, 'base64'));
+    }
 
     /* 名单这一屏的三根轴（主人原话："还是不够人性化…主要哪些选了哪些没选都不明了"）。
        本机现量：235 个系统包里按平台启动器判据只有 17 个是应用；相机排在第 201 行。 */

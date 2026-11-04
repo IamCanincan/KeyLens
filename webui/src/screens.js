@@ -1436,7 +1436,12 @@ function autoSyncCard() {
   rows.children[1].appendChild(avatar('article'));
   s.appendChild(rows);
   const acts = h('div', 'acts');
-  acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync, on: function () { write('sync', '', '已请求同步'); } }));
+  /* 命令层回来的就是同步**之后**的条数（shell 与 Rust 同口径：`count` = 目标文件行数）——
+     以前这句写死"已请求同步"，点完只知道自己"请求"了，名单到底变成几条得另找地方看。 */
+  acts.appendChild(button('立即同步一次', { variant: 'filled', icon: ICON.sync,
+    on: function () { write('sync', '', function (kv) {
+      return (kv && kv.count) ? '已同步：名单现在 ' + kv.count + ' 条' : '已请求同步';
+    }); } }));
   acts.appendChild(button('重新读取', { variant: 'tonal', icon: ICON.read, on: function () { reload(); } }));
   s.appendChild(acts);
   s.appendChild(h('p', 'hint', '最近一次描述：' + (stripEmoji(st.description || '') || '—')));
@@ -2131,8 +2136,12 @@ function write(cmd, arg, note) {
        （只动 [trust] 那四个补丁字段 = 整组热生效、不重启），
        界面这边写死一句"已保存"就会说错话。 */
     var kv = r.ok ? parseKV(r.text || '') : null;
-    if (r.ok) { toast((kv && kv.apply_note) || note || '已完成'); dropEdits(cmd); reload(); }
-    else {
+    /* note 可以是函数：有些命令跑完才知道该说什么（同步就是），写死一句
+       "已请求同步"会在它**已经做完**的当口说半截话。 */
+    if (r.ok) {
+      var msg = (kv && kv.apply_note) || (typeof note === 'function' ? note(kv) : note) || '已完成';
+      toast(msg); dropEdits(cmd); reload();
+    } else {
       /* 超时 ≠ 没写成：命令可能在守护进程那边跑完了，只是回调没回来。
          以前 failText 自己写着"已重新读取当前状态"，而这一句谁都没重读 ——
          屏幕上留的还是旧值。现在文案与动作对齐：这里真的重读一次。 */

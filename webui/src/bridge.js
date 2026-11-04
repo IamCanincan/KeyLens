@@ -902,6 +902,10 @@ function demoResult(cmd, arg) {
     'tricky-patches': ['global' + T + 'today' + T + 'YYYY-MM-05' + T + 'YYYY-MM-05',
       'com.android.vending' + T + '2024-01-05' + T + '-' + T + '-'].join('\n'),
     'omk-restart': 'restarted=' + (arg || 'all') + '\ntrigger=/data/adb/omk/restart.' + (arg || 'all'),
+    /* 「立即同步一次」以前在 demo 里压根是"未知命令"（台架从没点过那颗按钮），
+       所以界面点了只回一句"命令失败（退出码 1）"。count 用真口径：同步**之后**的名单条数。 */
+    'sync': ['rc=0', 'count=' + (demoTargets ? demoTargets.length : 0),
+      'description=KeyLens · 名单 ' + (demoTargets ? demoTargets.length : 0) + ' 条'].join('\n'),
     /* 整行点选的两条写命令（上面已经改过 demoTargets，这里只补回包） */
     'restore-apps': 'restored=1',
     'remove-apps': 'removed=1',    icons: ['app.mihon' + T + 'Mihon' + T + 'icons/app.mihon.png',

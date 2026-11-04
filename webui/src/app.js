@@ -268,7 +268,12 @@ if (!snack) {
 }
 onToast(function (text, bad) {
   try {
-    snack.show({ message: (bad ? '✕ ' : '') + text, timeout: bad ? 5200 : 2600 });
+    /* show(message, actionLabel, duration) —— **位置参数**。写成 `show({message, timeout})`
+       时组件把整个对象当成 message 落到 `message` 属性上，屏上每个提示都印成
+       "[object Object]"，而 timeout 那半也没进属性（永远用组件默认的停留时间）。
+       这一整轮就是被台架的一条**反向**断言（"没有某句提示"）蒙过去的：反向断言对
+       "[object Object]" 同样成立。见 tools/md3e-build/verify.mjs 那条正对照。 */
+    snack.show((bad ? '✕ ' : '') + text, undefined, bad ? 5200 : 2600);
   } catch (e) { /* 组件没提供该方法时退回 DOM，不让提示把主流程带崩 */
     snack.textContent = text;
     snack.setAttribute('open', '');
