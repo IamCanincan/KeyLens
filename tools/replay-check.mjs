@@ -326,7 +326,15 @@ async function main() {
       chk('体检跑完：第四格从「未跑」变成结论', pd && pd.stat.indexOf('未跑') < 0, pd ? '第四格=' + pd.stat : '没读到');
       chk('体检跑完：汇总句项数与真机一致（共 12 项）', pd && pd.txt.indexOf('共 12 项') >= 0,
         pd ? (pd.txt || '').slice(0, 50) : '');
-      chk('体检默认收起（全正常时一行都不留）', pd && pd.rows === 0, pd ? 'rows=' + pd.rows : '');
+      /* 收起态默认只留**非 ok** 的那几行 —— 不能假设"全正常"：这一版加 keybox 有效期之后，
+         这台机就稳定有一条 warn（证书快到期），按"必须 0 行"写会当场红（2026-11-05 就是这么红的）。
+         期望值直接从真机 doctor 的输出数出来。 */
+      const NL = String.fromCharCode(10);
+      const docRows = (store['doctor'].stdout || '').split(NL).filter(l => l.indexOf('	') > 0);
+      const badN = docRows.filter(l => l.split('	')[1] === 'bad').length;
+      const warnN = docRows.filter(l => l.split('	')[1] === 'warn').length;
+      chk('体检默认收起（只留 ' + (badN + warnN) + ' 行不正常/注意的）',
+        pd && pd.rows === badN + warnN, pd ? 'rows=' + pd.rows + ' 期望=' + (badN + warnN) : '没读到');
       const foldPos = await ev(`(function(){ var b=document.querySelector('#view .hero-doctor [data-fold]');
         if(!b) return null; var r=b.getBoundingClientRect();
         return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
