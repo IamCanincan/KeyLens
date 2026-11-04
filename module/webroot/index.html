@@ -77,8 +77,10 @@ body{min-height:100dvh;font-family:var(--md-sys-typescale-font-family);-webkit-f
   box-sizing:border-box;width:fit-content;max-width:calc(100% - 32px);height:64px;margin-inline:auto;padding:6px;
   display:flex;align-items:center;justify-content:center;gap:4px;
   border-radius:999px;border:1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 38%, transparent);
-  background:color-mix(in srgb, var(--navigation-container, var(--md-sys-color-surface-container)) 86%, transparent);
-  -webkit-backdrop-filter:blur(18px);backdrop-filter:blur(18px);
+  /* 底色**不透明**（主人："底栏我不要透明的"）：以前是 86% 的 surface-container 再叠 18px 模糊，
+     长名单从底下过时能看见行影。现在整颗药丸用实色 navigation-container，模糊一起去掉 ——
+     不透明底上做模糊只剩 GPU 开销，什么也看不出来。 */
+  background:var(--navigation-container, var(--md-sys-color-surface-container));
   box-shadow:0 10px 30px color-mix(in srgb, var(--md-sys-color-shadow, #000) 30%, transparent);
   touch-action:none;user-select:none;-webkit-user-select:none;-webkit-touch-callout:none;
   transition:transform .26s cubic-bezier(.2,.9,.25,1),opacity .18s ease}
@@ -225,10 +227,13 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
   background:var(--md-sys-color-surface-container-highest);
   color:var(--md-sys-color-on-surface-variant);font-variant-numeric:tabular-nums}
 .hero-state{margin-inline-start:auto;flex:none}
-.hero-stats{display:flex;gap:28px;margin-top:14px;flex-wrap:wrap}
-.hero-stat{display:flex;flex-direction:column;gap:2px}
+/* 四格必须**同一行**：以前是 flex + wrap + 28px 间距，版本号一长（比如夹具里那串
+   v2.2.19.5-yuzu）就把第四格「体检」挤到第二行 —— 截图一眼看见。现在四格都能缩：
+   min-width:0 让它们压缩自己，长值在格内换行，整行不塌。 */
+.hero-stats{display:flex;gap:20px;margin-top:14px}
+.hero-stat{display:flex;flex-direction:column;gap:2px;min-width:0;flex:1 1 0}
 .hero-k{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
-.hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+.hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums;overflow-wrap:anywhere}
 /* 体检并到主页大卡片之后：第四格是结论（未跑 / N 项有问题 / 都过），结论用色不用堆表情；
    按钮与逐行结果跟在统计下面，同一张卡里展开，靠一道分隔线分开而不是再起一张卡。 */
 .hero-v.is-bad{color:var(--md-sys-color-error)}

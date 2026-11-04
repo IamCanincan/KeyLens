@@ -579,16 +579,24 @@ chk('顶栏让位在外层包壳上，组件保持原生 64px',
   /#barwrap\{[^}]*padding-top:var\(--inset-top\)[^}]*background:var\(--md-sys-color-surface\)/.test(css)
   && !/md-top-app-bar\{[^}]*padding-top/.test(css)
   && /<div id="barwrap"><md-top-app-bar id="bar"/.test(tpl));
-chk('底栏是悬浮药丸（不贴边 + 模糊 + 阴影）',
+chk('底栏是悬浮药丸（不贴边 + 不透明 + 阴影）',
   /<nav id="nav" class="bottom-nav"/.test(tpl)
   && /\.bottom-nav\{[^}]*position:fixed/.test(css)
   && /\.bottom-nav\{[^}]*width:fit-content/.test(css)
   && /\.bottom-nav\{[^}]*justify-content:center[^}]*gap:4px/.test(css)
   && /\.bottom-nav\{[^}]*border-radius:999px/.test(css)
   && /\.bottom-nav\{[^}]*bottom:calc\(var\(--inset-bottom\) \+ 24px\)/.test(css)
-  && /\.bottom-nav\{[^}]*background:color-mix\(in srgb, var\(--navigation-container/.test(css)
-  && /\.bottom-nav\{[^}]*backdrop-filter:blur/.test(css)
+  /* 2026-11-04 主人点名"底栏我不要透明的"：这里**反向**钉住 —— 底色必须是实色 token，
+     不许再掺 transparent，也不许再挂 backdrop-filter（不透明底上它只剩 GPU 开销）。 */
+  && /\.bottom-nav\{[^}]*background:var\(--navigation-container/.test(css)
+  && !/\.bottom-nav\{[^}]*background:color-mix/.test(css)
+  && !/\.bottom-nav\{[^}]*backdrop-filter/.test(css)
   && /\.bottom-nav\{[^}]*box-shadow:/.test(css));
+/* 四格统计必须同一行：版本号一长就把「体检」挤到第二行 —— 这是截图看出来的
+   （夹具里那串 v2.2.19.5-yuzu）。钉法：flex 不许 wrap、每格 min-width:0、长值格内换行。 */
+chk('主页统计四格同一行（长值在格内换行，不把第四格挤下去）',
+  /.hero-stats{[^}]*display:flex/.test(css) && !/.hero-stats{[^}]*flex-wrap:wrap/.test(css)
+  && /.hero-stat{[^}]*min-width:0/.test(css) && /.hero-v{[^}]*overflow-wrap:anywhere/.test(css));
 chk('长页下滑时药丸收缩消失、上滑/回顶回来',
   /\.bottom-nav\.nav-hidden\{[^}]*translateY/.test(css)
   && /nav\.classList\.toggle\('nav-hidden'/.test(app)
