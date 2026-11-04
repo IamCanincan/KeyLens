@@ -700,14 +700,29 @@ function demoResult(cmd, arg) {
       off: ['skip', '已设为不写 vbmeta digest', ''],
       invalid: ['skip', '配置值不是十六进制，这一项没生效', '在「属性伪装」页重填，或改回自动'],
     }[QUERY.get('bh') || 'auto'];
-    return { errno: 0, stdout: 'checks=11\nbad=1\nwarn=1\nskip=' + (BH_ROW[0] === 'skip' ? 1 : 0) + '\n'
-      + '权限\tok\t以 root 运行\t\n'
-      + '后端\tok\tOhMyKeymint · 配置 ' + demoFiles().dir + '/' + demoFiles().target + '\t\n'
-      + '守护进程\tok\t1 个进程在跑\t\n'
-      + '名单\twarn\t已装 127 个 · 名单 120 条（只比数量，可能只是你手动排除过）\t点「立即同步一次」，或等下一次安装/卸载自动触发\n'
-      + 'keybox\tok\tkeybox.xml 结构通过校验\t\n'
-      + '启动哈希\t' + BH_ROW[0] + '\t' + BH_ROW[1] + '\t' + BH_ROW[2] + '\n'
-      + '名单共用\tok\t没有别的工具在写这份名单\t\n' };
+    /* 行与计数都要跟真机同形（2026-11-04 现量：12 行、全 ok、bad=0）。
+       以前这份假数据是 7 行却报 checks=11 / bad=1 —— 汇总句说"有问题 1"而屏上
+       一行红的都没有，台架读到的是个自相矛盾的样本；照抄真机形状之后，
+       汇总句与行数由同一份 rows 算出来，改一处不会让另一处说谎。 */
+    var ROWS = [
+      ['权限', 'ok', '以 root 运行', ''],
+      ['后端', 'ok', 'OhMyKeymint · 配置 ' + demoFiles().dir + '/' + demoFiles().target, ''],
+      ['守护进程', 'ok', '1 个进程在跑', ''],
+      ['目标文件', 'ok', '存在 · 可写', ''],
+      ['名单', 'warn', '已装 127 个 · 名单 120 条（只比数量，可能只是你手动排除过）',
+        '到「目标名单」页底部点「立即同步一次」，或等下一次安装/卸载自动触发'],
+      ['keybox', 'ok', 'keybox.xml 结构通过校验', ''],
+      ['属性伪装', 'ok', '53 项全部一致', ''],
+      ['启动哈希', BH_ROW[0], BH_ROW[1], BH_ROW[2]],
+      ['监听工具', 'ok', 'inotifyd 在跑', ''],
+      ['并发锁', 'ok', '锁目录干净', ''],
+      ['名单共用', 'ok', '没有别的工具在写这份名单', ''],
+      ['日志', 'ok', '492 行 · 33.1 KB', ''],
+    ];
+    var cnt = function (st) { return ROWS.filter(function (r) { return r[1] === st; }).length; };
+    return { errno: 0, stdout: 'checks=' + ROWS.length + '\nbad=' + cnt('bad')
+      + '\nwarn=' + cnt('warn') + '\nskip=' + cnt('skip') + '\n'
+      + ROWS.map(function (r) { return r[0] + '\t' + r[1] + '\t' + r[2] + '\t' + (r[3] || ''); }).join('\n') + '\n' };
   }
   var B = demoFiles();
   var toks = {

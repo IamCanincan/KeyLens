@@ -1839,13 +1839,22 @@ async function main() {
     await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: dbtn.x, y: dbtn.y, button: 'left', clickCount: 1 });
   }
   await sleep(1200);
-  const doc = await ev(`(function(){ var rows=[].slice.call(document.querySelectorAll('#view md-list-item'));
+  /* 只数体检那张卡自己的行（主页现在还有后端矩阵那三行，整页计数会把两件事混在一起）。
+     顺带把"汇总句与行数必须自洽"钉住：demo 的假数据以前是 7 行却报 checks=11 / bad=1，
+     汇总句说"有问题 1"而屏上一行红的都没有 —— 台架读的本来就是个自相矛盾的样本。 */
+  const doc = await ev(`(function(){
+    var cards=[].slice.call(document.querySelectorAll('#view md-card'));
+    var card=cards.filter(function(c){ return [].slice.call(c.querySelectorAll('md-button'))
+      .some(function(b){ return (b.getAttribute('label')||'').indexOf('运行体检')>=0; }); })[0];
+    var rows=card?[].slice.call(card.querySelectorAll('md-list-item')):[];
     var tone=function(x){return x.getAttribute('data-tone')||'';};
     var warn=rows.filter(function(x){return tone(x)==='warn';}).map(function(x){return x.getAttribute('headline');});
-    return { n: rows.length, warn: warn.join(','),
-      hasSummary: (document.getElementById('view').textContent||'').indexOf('共 ')>=0 }; })()`);
-  chk('体检：点一次出 6 行 TSV，名单那行是 warn 档，且有汇总句',
-    dbtn && doc.n >= 6 && doc.warn.indexOf('名单') >= 0 && doc.hasSummary, JSON.stringify(doc).slice(0, 220));
+    var txt=card?(card.textContent||''):'';
+    return { n: rows.length, warn: warn.join(','), 红行: rows.filter(function(x){return tone(x)==='bad';}).length,
+      汇总: (txt.match(/共 [0-9]+ 项[^\\n]{0,26}/)||[''])[0] }; })()`);
+  chk('体检卡与真机同形：12 行、warn 只有「名单」、没有红行，汇总句的数与行数对得上',
+    dbtn && doc.n === 12 && doc.warn === '名单' && doc.红行 === 0 && /^共 12 项 · 有问题 0/.test(doc.汇总),
+    JSON.stringify(doc).slice(0, 240));
 
   /* 备份列表：那张卡跟着"它撤的就是这一页写的文件"挪到了**后端配置**页底。
      demo 里点「刷新列表」应出两行 .bak 且带对应文件。 */
