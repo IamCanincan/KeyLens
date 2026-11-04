@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：写作时 34 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
+- 未推送提交：写作时 35 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
   `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
@@ -1499,6 +1499,23 @@ WSL **55/55**（`tools/wsl-suites.sh`）· 对拍 **276 全通过 exit=0**（WSL
 
 **还没做**：v3.0.4 发版（仓库里的 zip 与 `update.json` 还指着带 `[object Object]` 的 3.0.3）等主人点头；
 33+ 个提交等代理恢复。
+
+## 5.38 库里还有没有多余的（2026-11-04，主人问"拿项目里没别的什么多余的吗"）
+
+按"能否说出它现在被谁用"来量，不看感觉。分母与正对照都写在读数里（正对照不响的扫描不算数）。
+
+| 类别 | 读数 | 结论 |
+|---|---|---|
+| 逐字节重复的已跟踪文件 | 2 对：`rust/golden/excluded.txt` == `backups.txt`、`teesim-profiles.txt` == `teesim-overrides.txt` | **不是重复**：golden 是按命令各存一份，合并要引入清单间接层，不值 |
+| 空文件 | 0 | — |
+| shell 函数定义 | **141 个**，全部至少被引用 1 次（检测器拿合成名 `no_such_function_zzz` 自证会开火） | 0 个死函数 |
+| Rust 编译告警 | 修前 4 条 `value assigned to … is never read`（`read_cmds.rs:597/5356/5357/5770`），修后 **0** | 4 处 `let mut x = String::new();` 后面每个分支都赋值 ⇒ 改成延迟初始化 `let x;` |
+| 没人按名字提的文件 | `tools/` 7 个 + `tests/` 5 个 | 逐一看过：5 套测试靠 CI 的 `tests/*.sh` glob 跑；`icondump/build.sh` 是 `lib/icondump.dex` 的生成器；`per-component.mjs` / `leave-one-out.mjs` 是体积/图标那轮的复现脚本；两个 `package.json/lock` 是 npm 入口。都不是死文件 |
+| 明确"只为历史保留"的 | `tools/mwc-build/`（6 个跟踪文件；28MB 里 27.9M 是没进库的 `node_modules`） | 上一代产物（`@material/web` 2.5.0）的生成器，THIRD_PARTY_NOTICES 自己写明"不再发布，只为历史与复现旧页面"。**唯一可删的候选**，但删它同时要删许可说明，暂留 |
+| 本机没进库的 | `rust/target` 544M · 两个 `node_modules` 46M · `webui/dist` 8.9M · `_harness` 1.4M · 两个发布 zip · 一个对话导出 md | 仓库 663M 里 99% 是这些；都不影响仓库，`.gitignore` 已盖住 |
+| 体积最大的已跟踪文件 | `CHANGELOG.md` 354KB（`update.json` 的 changelog 就指向它）· `docs/HANDOFF.md` 168KB | 只增不减的历史，不是垃圾；真要瘦身得另开一次"归档"决定 |
+
+修完重跑：`cargo test` **77 passed** · 对拍 **276 exit=0** · 55 套全绿。`module/bin/keylens` 本来就不进库（CI 现编），这次改动只删了死赋值，**行为零变化**，设备上那份二进制不用重做。
 
 ## 6. 坑（都踩过）
 

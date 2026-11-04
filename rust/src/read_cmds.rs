@@ -594,7 +594,7 @@ fn json_string_value(text: &str, key: &str) -> String {
 /// 过期值比空着更糟（检测器的 mismatch 与 missing 同为 Danger），所以这里宁可不写。
 /// 绝不缓存：每次调用都重读文件。
 fn boot_hash_source(p: &Paths) -> (String, String) {
-    let mut v = String::new();
+    let v;
     if backend::active(&p.teesim_module) {
         // 与 OMK 不同：TEESim 守护进程每次 push 都把这条 prop 强制成它自己正在证明的值
         // （App.kt:516-523「the value we attest wins unconditionally」），而 overrides.json
@@ -5353,8 +5353,8 @@ pub fn backend_info() {
     };
     let kv = |k: &str, v: &str| println_ok!("{}={}", k, v);
     let mut info: Vec<String> = Vec::new();
-    let mut keybox = String::new();
-    let mut mdir = String::new();
+    let keybox;
+    let mdir;
     let (teesim_module, omk_module, tricky_module) = (
         root.join("/data/adb/modules/teesim"),
         root.join("/data/adb/modules/oh_my_keymint"),
@@ -5767,7 +5767,7 @@ pub fn env_cmd() {
         o
     };
     let mut dark = String::new();
-    let mut dark_src = String::new();
+    let dark_src;
     if uimode.contains("mComputedNightMode=true") {
         dark = "1".to_string();
         dark_src = "mComputedNightMode".to_string();
