@@ -1941,21 +1941,22 @@ async function main() {
   chk('备份列表：点刷新出两行 .bak（未点回滚时没有"再点确认"）',
     !!bbtn && bks.n >= 2 && bks.names.indexOf('injector.toml.bak') >= 0 && !bks.confirm, JSON.stringify(bks).slice(0, 160));
 
-  /* ── 版本与更新（只查、只下载，不装）─────────────────────────────
-     夹具给一份"有新版本"的 API 形状：界面要说出新版本号与大小，并且那颗按钮
-     只调 update-fetch —— 装不装由人在管理器里决定。 */
+  /* ── 版本与更新（查 → 下载 → 安装 → 重启生效；日志画在卡里）────────────
+     夹具给一份"有新版本 + 带发布说明"的 API 形状：界面要说出新版本号与大小，
+     下载完**直接给「安装」**（照管理器的样子），安装走 update-install（递给管理器），
+     装完说清"重启后生效"；发布说明默认收起、点开能读（markdown 子集）。 */
   {
+    const NOTES = ['# KeyLens v9.9.9', '', '### 核心', '- **第一条**改进', '- 第二条改进', '',
+      '> 升级说明', '', '---', '', '正文一段。'].join(String.fromCharCode(10));
     const injU = await send('Page.addScriptToEvaluateOnNewDocument', {
       source: 'window.__KL_DEMO_FIXTURE = { "update-check": ' + JSON.stringify(JSON.stringify({
-        state: 'ok', tag: 'v9.9.9', url: 'https://example.invalid/x.zip', size: 1234567, newer: true,
+        state: 'ok', tag: 'v9.9.9', url: 'https://example.invalid/x.zip', size: 1234567, newer: true, notes: NOTES,
       })) + ' };' });
     await send('Page.navigate', { url: URL0 });
     await sleep(2200);
     await ev(`(function(){ var n=document.getElementById('nav');
       n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true})); return 1; })()`);
     await sleep(700);
-    /* 设置页那几个按钮用真指针事件（与上面体检/备份两处同一条写法）：带 scrollIntoView，
-       版本卡在页面最底下，不滚就是点屏外。 */
     const tapUp = async label => {
       const pos = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
         var b=bs.filter(function(x){return (x.getAttribute('label')||x.textContent||'').indexOf(${JSON.stringify(label)})>=0;})[0];
@@ -1966,29 +1967,36 @@ async function main() {
       await send('Input.dispatchMouseEvent', { type: 'mouseReleased', x: pos.x, y: pos.y, button: 'left', clickCount: 1 });
       return 1;
     };
-    /* 不自动联网检查：先点「检查更新」，夹具才会被读到（真机上这一下就是去问 GitHub） */
+    const readCard = `(function(){ var t=[].slice.call(document.querySelectorAll("#view md-list-item"))
+        .map(function(i){return (i.getAttribute("supporting-text")||"");}).join("|") + "|" +
+        [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
+      var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
+      var md=document.querySelector("#view .md-lite");
+      return { text: t, buttons: bs, md: !!md, lis: md ? md.querySelectorAll("li").length : 0,
+               h1: md ? (md.querySelector(".md-h1")||{}).textContent || "" : "" }; })()`;
     const tapped = await tapUp('检查更新');
     await sleep(700);
-    const up0 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll("#view md-list-item"))
-        .map(function(i){return (i.getAttribute("supporting-text")||"");}).join("|") + "|" +
-        [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
-      var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
-      return { 有新版本: /有新版本 v9\\.9\\.9（1\\.2 MB）/.test(t),
-        按钮: bs.filter(function(l){return l==='下载更新包';}).length,
-        说明: /下载只把包放到模块目录/.test(t) }; })()`);
-    chk('版本卡：点检查后说出新版本（号 + 大小）并给「下载更新包」，明说只下载不安装',
-      tapped === 1 && up0.有新版本 && up0.按钮 === 1 && up0.说明, JSON.stringify(up0));
+    const up0 = await ev(readCard);
+    chk('版本卡：点检查后说出新版本（号 + 大小）并给「下载更新包」',
+      tapped === 1 && /有新版本 v9\.9\.9（1\.2 MB）/.test(up0.text) && up0.buttons.indexOf('下载更新包') >= 0, JSON.stringify(up0).slice(0, 160));
+    chk('更新日志默认收起（只留首行，不铺开正文）',
+      !up0.md && /v9\.9\.9/.test(up0.text) && up0.buttons.indexOf('展开更新日志') >= 0, 'md=' + up0.md);
+    const tappedLog = await tapUp('展开更新日志');
+    await sleep(400);
+    const upLog = await ev(readCard);
+    chk('点开后更新日志按 markdown 画出来（标题 + 两条列表）',
+      tappedLog === 1 && upLog.md && upLog.lis >= 2 && /KeyLens v9\.9\.9/.test(upLog.h1), JSON.stringify({ md: upLog.md, lis: upLog.lis, h1: upLog.h1 }));
     const tapped2 = await tapUp('下载更新包');
     await sleep(900);
-    const up1 = await ev(`(function(){ var t=[].slice.call(document.querySelectorAll("#view md-list-item"))
-        .map(function(i){return (i.getAttribute("supporting-text")||"");}).join("|") + "|" +
-        [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
-      var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
-      return { 已下载: /已下载 1\\.2 MB 到 update\\.zip/.test(t),
-        安装指引: /「从本地安装」/.test(t) && /update\\.zip/.test(t),
-        再查: bs.filter(function(l){return l==='再检查一次';}).length }; })()`);
-    chk('点下载后：状态变「已下载」，并说清包在哪、怎么装',
-      tapped2 === 1 && up1.已下载 && up1.安装指引 && up1.再查 === 1, JSON.stringify(up1));
+    const up1 = await ev(readCard);
+    chk('点下载后：状态变「已下载」并直接给「安装」',
+      tapped2 === 1 && /已下载 1\.2 MB 到 update\.zip/.test(up1.text)
+      && up1.buttons.indexOf('安装') >= 0 && up1.buttons.indexOf('再检查一次') >= 0, JSON.stringify(up1.buttons));
+    const tapped3 = await tapUp('安装');
+    await sleep(900);
+    const up2 = await ev(readCard);
+    chk('点安装后：说「已装好，重启后生效」，不再重复给「安装」',
+      tapped3 === 1 && /已装好，重启后生效/.test(up2.text) && up2.buttons.indexOf('安装') < 0, JSON.stringify(up2.text).slice(0, 160));
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: injU.identifier });
   }
 

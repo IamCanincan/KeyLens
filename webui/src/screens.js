@@ -874,8 +874,10 @@ export function renderSettings() {
   return box;
 }
 
-/* 版本与更新：只查、只下载，不装。查走 api.github.com（raw. 在这台机上不通），
-   包走 release 资产。装那一步留在管理器里 —— 免得一个按钮就把模块换了。 */
+/* 版本与更新：查 → 下载 → 安装（交给管理器）→ 重启生效。更新日志就画在卡里。
+   为什么安装这一颗敢放出来：装的动作不是我们自己解压，而是把包递给管理器的
+   `ksud module install`（KernelSU 管理器按「更新」时走的也是这一步），落点是
+   modules_update，**不重启不生效** —— 所以它比"直接改 /data/adb/modules"安全得多。 */
 function updateCard() {
   const u = S.update || {};
   const cur = (S.status && S.status.mod_version) || '';
@@ -885,6 +887,8 @@ function updateCard() {
   let tone = '';
   if (u.state === 'checking') line += ' · 正在检查…';
   else if (u.state === 'err') { line += ' · 检查失败：' + (u.msg || '网络'); tone = 'warn'; }
+  else if (u.state === 'installing') { line += ' · 正在装 ' + (u.tag || '') + '…'; tone = 'ok'; }
+  else if (u.state === 'installed') { line += ' · ' + (u.tag || '更新') + ' 已装好，重启后生效'; tone = 'ok'; }
   else if (u.state === 'ok') {
     if (u.newer) { line += ' · 有新版本 ' + (u.tag || '') + (u.size ? '（' + bytesLabel(u.size) + '）' : ''); tone = 'ok'; }
     else line += ' · 已是最新';
@@ -894,7 +898,7 @@ function updateCard() {
   }
   s.appendChild(list([item({ headline: 'KeyLens', supporting: line, trailing: u.state === 'ok' && u.newer ? '有新版' : '', tone: tone })]));
   const acts = h('div', 'acts');
-  if (u.state !== 'checking' && u.state !== 'done') {
+  if (u.state !== 'checking' && u.state !== 'done' && u.state !== 'installing') {
     acts.appendChild(button('检查更新', { variant: 'tonal', icon: ICON.sync, on: function () {
       checkUpdate().then(redraw);
     } }));
@@ -905,24 +909,111 @@ function updateCard() {
       call('update-fetch', u.url).then(function (r) {
         if (!r.ok) { toast(failText(r), true); return; }
         const kv = parseKV(r.text || '');
-        S.update = { state: 'done', bytes: Number(kv.bytes || 0) || 0, path: kv.saved || '', tag: u.tag };
+        S.update = { state: 'done', bytes: Number(kv.bytes || 0) || 0, path: kv.saved || '', tag: u.tag, notes: u.notes };
         redraw();
       }, function (e) { toast(String((e && e.message) || e), true); });
     } }));
   }
   if (u.state === 'done') {
+    /* 下载完直接给「安装」——照管理器的样子，下载与安装是一对相邻动作 */
+    acts.appendChild(button('安装', { variant: 'filled', icon: ICON.ok, on: function () {
+      const prev = S.update;
+      S.update = { state: 'installing', tag: prev.tag, notes: prev.notes };
+      redraw();
+      call('update-install').then(function (r) {
+        if (!r.ok) {
+          S.update = prev; redraw();
+          toast(failText(r), true);
+          return;
+        }
+        S.update = { state: 'installed', tag: prev.tag, notes: prev.notes };
+        redraw();
+        toast('已装好，重启后生效', false);
+      }, function (e) {
+        S.update = prev; redraw();
+        toast(String((e && e.message) || e), true);
+      });
+    } }));
+  }
+  if (u.state === 'done' || u.state === 'installed') {
     acts.appendChild(button('再检查一次', { variant: 'text', on: function () { checkUpdate().then(redraw); } }));
   }
   s.appendChild(acts);
   if (u.state === 'done') {
-    s.appendChild(h('p', 'hint', '想让新版本生效：在管理器里用「从本地安装」选 ' + (u.path || '模块目录下的 update.zip') + '。'));
+    s.appendChild(h('p', 'hint', '包已经放在 ' + (u.path || '模块目录下的 update.zip') + '。点「安装」交给管理器：'
+      + '它会装到待生效区，**重启后**才落地；想自己装，也可以在管理器里用「从本地安装」。'));
+  } else if (u.state === 'installed') {
+    s.appendChild(h('p', 'hint', '已经交给管理器了，**重启后生效**。重启完回到这一页会显示新版本号。'));
   } else if (u.state === 'ok' && u.newer) {
-    s.appendChild(h('p', 'hint', '下载只把包放到模块目录，不改现有模块；安装还是你自己点。'));
+    s.appendChild(h('p', 'hint', '下载只把包放到模块目录；装的时候才交给管理器，而且不重启不生效。'));
   } else if (u.state === 'err') {
     s.appendChild(h('p', 'hint', '这台机的 WebView 连不上 GitHub 时就会这样；可以到 Releases 页手动下载。'));
   }
+  /* 更新日志：检查更新时已经拿到发布说明（api.github.com 的 body），以前读完就扔了。
+     和 KSU 一样默认收起，点开看；渲染只认 markdown 的一个子集（标题/列表/引用/粗体/代码/分隔线）。 */
+  if (u.notes) {
+    const box = h('div');
+    s.appendChild(foldButton('updateOpen', '展开更新日志', '收起更新日志'));
+    if (S.updateOpen) box.appendChild(mdLite(u.notes));
+    else box.appendChild(h('p', 'hint', (u.notes.split('\n')[0] || '').slice(0, 60)));
+    s.appendChild(box);
+  }
   c.appendChild(s);
   return c;
+}
+
+/* markdown 的一个小子集 → DOM。只为了让发布说明在卡里能读：不引第三方解析器
+   （产物是单文件、零运行期依赖），也不认 HTML（发布说明里的原文当纯文本）。 */
+export function mdLite(text) {
+  const box = h('div', 'md-lite');
+  const lines = String(text || '').replace(/\r/g, '').split('\n');
+  let ul = null;
+  const inline = function (s) {
+    const frag = document.createDocumentFragment();
+    const re = /(\*\*[^*]+\*\*|`[^`]+`|\[[^\]]+\]\([^)]+\))/g;
+    let at = 0, m;
+    while ((m = re.exec(s))) {
+      if (m.index > at) frag.appendChild(document.createTextNode(s.slice(at, m.index)));
+      const tok = m[0];
+      if (tok.slice(0, 2) === '**') frag.appendChild(h('b', '', tok.slice(2, -2)));
+      else if (tok[0] === '`') { const cd = document.createElement('code'); cd.textContent = tok.slice(1, -1); frag.appendChild(cd); }
+      else {
+        const mm = /^\[([^\]]+)\]\(([^)]+)\)$/.exec(tok);
+        const a = document.createElement('a');
+        a.textContent = mm[1];
+        if (/^https?:/i.test(mm[2])) a.href = mm[2];
+        frag.appendChild(a);
+      }
+      at = m.index + tok.length;
+    }
+    if (at < s.length) frag.appendChild(document.createTextNode(s.slice(at)));
+    return frag;
+  };
+  lines.forEach(function (ln) {
+    const t = ln.replace(/\s+$/, '');
+    if (/^#{1,3} /.test(t)) {
+      ul = null;
+      const lv = (t.match(/^#+/) || ['#'])[0].length;
+      const el = h('p', 'md-h' + lv);
+      el.appendChild(inline(t.replace(/^#+ /, '')));
+      box.appendChild(el);
+      return;
+    }
+    if (/^\s*[-*] /.test(t)) {
+      if (!ul) { ul = document.createElement('ul'); box.appendChild(ul); }
+      const li = document.createElement('li');
+      li.appendChild(inline(t.replace(/^\s*[-*] /, '')));
+      ul.appendChild(li);
+      return;
+    }
+    ul = null;
+    if (/^---+$/.test(t)) { box.appendChild(h('hr')); return; }
+    if (!t.trim()) return;
+    const p = h('p', /^> /.test(t) ? 'md-q' : '');
+    p.appendChild(inline(t.replace(/^> /, '')));
+    box.appendChild(p);
+  });
+  return box;
 }
 
 /* 三家互斥矩阵：抢的是同一个 keymint HAL，同时启用时本模块直接停止写入。

@@ -350,6 +350,32 @@ else
   chk 'update-fetch：失败时没留下半截文件' "gone" "gone"
 fi
 
+echo "── update-install（把包交给管理器；成功那一支要真 ksud，只在真机上量）──"
+# 两支都只走"前置拒绝"：没有包 / 没有 ksud。两侧必须说同一句话、退同一个码 ——
+# 以前这类前置在 Rust 与 shell 各写一份文案，界面上就会"换一层就换一种说法"。
+ui_sh() {
+  MODDIR="$UF/data/adb/modules/keylens" sh -c '. "$1"; cmd_update_install' sh "$UF/w.sh" 2>&1
+}
+ui_rs() {
+  KEYLENS_ROOT="$UF" KEYLENS_MODDIR="$UF/data/adb/modules/keylens" "$B" update-install 2>&1
+}
+rm -f "$UF/data/adb/modules/keylens/update.zip"
+chk 'update-install：没有已下载的包（shell=期望）' '还没有下载好的更新包（先点「下载更新包」）' "$(ui_sh)"
+chk 'update-install：没有已下载的包（Rust=同句）' '还没有下载好的更新包（先点「下载更新包」）' "$(ui_rs)"
+ui_sh >/dev/null 2>&1; ui_rc_sh=$?
+ui_rs >/dev/null 2>&1; ui_rc_rs=$?
+chk 'update-install：没有包时两侧退码同为 1' "1:1" "$ui_rc_sh:$ui_rc_rs"
+printf 'PK\003\004hello-update' > "$UF/data/adb/modules/keylens/update.zip"
+if [ -x /data/adb/ksud ]; then
+  echo "  ·    这台有 /data/adb/ksud —— 有包那一支会真调管理器，跳过（真机上量）"
+else
+  chk 'update-install：有包但管理器没有 ksud（shell=期望）' \
+    '这台管理器没有 ksud；Magisk/APatch 请用管理器自己的「从本地安装」' "$(ui_sh)"
+  chk 'update-install：有包但管理器没有 ksud（Rust=同句）' \
+    '这台管理器没有 ksud；Magisk/APatch 请用管理器自己的「从本地安装」' "$(ui_rs)"
+fi
+rm -f "$UF/data/adb/modules/keylens/update.zip"
+
 echo "── excluded（已装 ∩ ever ∖ 当前目标）──"
 ex_harness() { # <root>
   {

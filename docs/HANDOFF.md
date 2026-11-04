@@ -314,6 +314,21 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 **顺带能让 System Properties 那张变绿的（还没做，代价是断我 adb）**：它现在挂 2 条 review ——
 `service.adb.root: 1`（`adb unroot` 后下次重启自然消失）与 `persist.sys.usb.config: adb`（要关掉 USB 调试）。
 
+### 3.14 发版 v3.0.5（2026-11-04 23:0x）
+
+**这一版**：更新卡下载完直接给「安装」（走 `ksud module install`，重启生效）+ 更新日志画在卡里（新命令
+`update-install`，两侧实现，详见 §5.40）；卸载补收 `/data/adb/keylens-ab`（§5.39 ③）。
+
+**四处一起改**：`module/module.prop`（`v3.0.5` / `2026110423`）、`update.json`、`CHANGELOG.md`（新增 3.0.5 段，
+"未发布"那一条并进去）、`README.md` 版本行；`RELEASE_NOTES.md` 重写成 3.0.5 —— 它同时就是**应用内更新日志**的
+数据源（管理器 API 的 `body`）。
+
+**发布前全量验过**：Git Bash **55/55** · WSL **55/55** · 对拍 **281 exit=0** · `cargo test` **77 passed** ·
+11 条静态闸全 OK · 台架 **178** · 产物两份同版（`build --check`）。真机现量 `update-install` 的两支前置见 §5.40。
+
+**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip`，31 条目；`--check` 全过（0 份 awk、无 `webroot/icons/`、
+`bin/keylens` 恰好一条）。版本与 sha 见本节的发布记录行（上传后回填）。
+
 ### 3.13 发版 v3.0.4（2026-11-04 22:0x）
 
 **这一版装了什么**（相对 v3.0.3，详细条目见 CHANGELOG 的 3.0.4 段）：功能页按任务流重排成**四项**
@@ -1571,6 +1586,43 @@ WSL **55/55**（`tools/wsl-suites.sh`）· 对拍 **276 全通过 exit=0**（WSL
 一直留着** —— 普通用户没有这个目录，可这台机有，卸载后会剩一堆旧代码。现在收掉，`tests/uninstall-scope.sh`
 的夹具里加了目录内两个文件（`module/webui.sh`、`device-ab.sh`），55 套全绿。
 **这条改的是发布包里的文件** ⇒ 机上这份 v3.0.4 没有它，随下一版生效（其余两条不需要发版）。
+
+## 5.40 更新这一步搬进应用：下载完直接「安装」+ 更新日志（2026-11-04，主人："仔细学一下ksu的模块更新"）
+
+**先学，再动。** 学的是**这台机上装着的那个管理器**（`me.weishu.kernelsu`，`adb pull base.apk` 后
+`dexdump`），不是凭印象：
+
+| 问题 | 证据 | 结论 |
+|---|---|---|
+| WebUI 能不能自己装模块？ | JS 接口类（脱敏后 `Lgn4;`）的方法清单：`exec`×3 / `exit` / `fullScreen` / `getPackagesInfo` / `listPackages` / `moduleInfo` / `spawn` / `toast` | **不能**。`installModule` 只出现在别的数据类的 `toString` 里，不在注入给网页的接口上 ⇒ 安装必须走命令行 |
+| 管理器按「更新」时到底做了什么？ | dex 里的 usage 串 `module install  #module is not in the regist…` | 调 `ksud module install <zip>`；落点是 `modules_update`，**重启才生效** |
+| 更新日志怎么显示的？ | `assets/webview/markdown.js` + `markdown.css` + `syntax_*.css` | 按 **markdown 渲染**（不是纯文本） |
+| 更新从哪来？ | dex 里 `updateJson`（3 处）、`changelog`（4 处）；我们的 `module.prop` 早就有 `updateJson=` | 管理器读 module.prop 的 updateJson → update.json → version/zipUrl/changelog |
+
+**所以我们的做法**（照它的形状，不抄它的代码）：
+
+1. **新命令 `update-install`**（shell + Rust 两侧逐字实现）：把 `update.zip` 递给
+   `/data/adb/ksud module install`，只转述它的结果，**不自己解压、不动 `/data/adb/modules`**
+   （那等于在管理器之外再做一个管理器）。没有 ksud（Magisk/APatch）直接说清"请用管理器自己的
+   「从本地安装」"。
+2. **界面**：下载完**直接出现「安装」**（不再是一句"去管理器里装"）；装完那句是
+   「已装好，重启后生效」，并保留「再检查一次」。
+3. **更新日志**：检查更新时 `api.github.com` 的 `body` 本来就拿回来了（`S.update.notes`），
+   以前读完就扔。现在画在卡里、默认收起，渲染只认 markdown 的一个子集
+   （`mdLite()`：标题 / 列表 / 引用 / 粗体 / 行内代码 / 分隔线 / 链接），不引第三方解析器、
+   不认 HTML —— 产物是单文件、零运行期依赖。
+
+**闸与现量**：
+- 对拍 **276 → 281**：`update-install` 的两支前置（没有包 / 没有 ksud）两侧同句同码；
+  成功那一支要真 ksud，parity 里显式跳过。
+- 台架 **175 → 178**：检查 → 下载 → **出现「安装」** → 点安装 → 「已装好，重启后生效」且不再重复给；
+  日志默认收起（`md=false`）→ 点开断言标题 `KeyLens v9.9.9` 与两条 `<li>`。
+- `tests/ui-shape.js` 加"接上了没有"；顺手把"WRITE_CMDS 不许有界面用不到的条目"补上
+  `call('<写命令>')` 这一种合法用法（契约闸本来就在 `call()` 里拦写命令）。
+- 真机现量：没有包 → rc=1 + 那句中文；**假 zip → rc=1 并把 ksud 自己的报错原样转出来**
+  （不吞它的理由）。成功那支留给用户按「安装」自己走。
+- `rust/golden` 的 `contract.txt` / `help.txt` 因新增命令而更新 —— 先 `diff` 确认**只有那一行**
+  多出来，再从当前二进制重录（不是闭眼重录）。
 
 ## 6. 坑（都踩过）
 

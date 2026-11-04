@@ -34,3 +34,4 @@
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
   update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）
+  update-install          把已下载的 update.zip 交给管理器安装（重启生效）

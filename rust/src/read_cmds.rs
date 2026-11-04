@@ -3711,6 +3711,42 @@ pub fn update_fetch(raw: &str) {
     println_ok!("bytes={}", bytes);
 }
 
+/// update-install：把已下载的 update.zip 交给管理器（ksud）安装。
+/// 安装本身是管理器的事 —— `ksud module install <zip>` 把包解到 modules_update，重启才落地，
+/// 这正是管理器自己按「更新」时走的那一步。我们只递包并如实转述它的输出；
+/// 不自己解压、不动 /data/adb/modules（那等于在管理器之外再做一个管理器）。
+/// Magisk / APatch 没有 ksud：直接说清该去哪装，不假装支持。
+pub fn update_install() {
+    let root = Root::from_env();
+    let p = Paths::new(&root);
+    let dir = p.module_prop.parent().map(|d| d.to_path_buf()).unwrap_or_else(|| PathBuf::from("."));
+    let zip = dir.join("update.zip");
+    if !zip.is_file() {
+        eprintln!("还没有下载好的更新包（先点「下载更新包」）");
+        std::process::exit(1);
+    }
+    let ksud = PathBuf::from("/data/adb/ksud");
+    if !ksud.is_file() {
+        eprintln!("这台管理器没有 ksud；Magisk/APatch 请用管理器自己的「从本地安装」");
+        std::process::exit(1);
+    }
+    match std::process::Command::new(&ksud).arg("module").arg("install").arg(&zip).output() {
+        Ok(o) => {
+            // ksud 成功时通常一声不吭；有输出就原样转给界面/日志，别把它的理由吞掉
+            let out = format!("{}{}", String::from_utf8_lossy(&o.stdout), String::from_utf8_lossy(&o.stderr));
+            if !out.trim().is_empty() {
+                eprint!("{}", out);
+                if !out.ends_with('\n') { eprintln!(); }
+            }
+            if !o.status.success() { std::process::exit(1); }
+        }
+        Err(e) => { eprintln!("无法运行 ksud：{}", e); std::process::exit(1); }
+    }
+    println_ok!("installed=1");
+    println_ok!("zip={}", zip.display());
+    println_ok!("how=ksud");
+}
+
 /// cmd_remove_apps：逗号分隔的批量移出（名单至少保留一条）。
 pub fn remove_apps(raw: &str) {
     let root = Root::from_env();

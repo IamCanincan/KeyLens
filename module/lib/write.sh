@@ -1154,3 +1154,27 @@ cmd_update_fetch() {
     kv saved "$dest"
     kv bytes "$bytes"
 }
+
+# ---------- 更新：把已下载的 update.zip 交给管理器安装 ----------
+# 界面「下载更新包」之后那颗「安装」按钮走这里。**安装本身是管理器的事**：
+# KernelSU 的 ksud 有 `module install <zip>`（它把包解到 modules_update，重启才落地），
+# 这正是管理器自己按「更新」时走的那一步。我们只负责递包 + 如实转述结果，不自己解压、
+# 不自己动 /data/adb/modules（那样就成了第二个管理器）。
+# Magisk / APatch 上没有 ksud —— 直接说清该去哪装，不假装支持。
+# 用法：update-install
+# 输出：installed=1 / zip=<包> / how=ksud     （失败时 stderr 一句、退 1）
+cmd_update_install() {
+    local zip="${MODDIR}/update.zip" ksud=/data/adb/ksud out rc
+
+    [ -f "$zip" ] || { echo "还没有下载好的更新包（先点「下载更新包」）" >&2; return 1; }
+    [ -x "$ksud" ] || { echo "这台管理器没有 ksud；Magisk/APatch 请用管理器自己的「从本地安装」" >&2; return 1; }
+    out=$("$ksud" module install "$zip" 2>&1); rc=$?
+    if [ "$rc" != 0 ] || [ -n "$out" ]; then
+        # ksud 成功时通常一声不吭；有输出就原样转给界面/日志，别把它的理由吞掉
+        [ -n "$out" ] && printf '%s\n' "$out" >&2
+    fi
+    [ "$rc" = 0 ] || return 1
+    kv installed 1
+    kv zip "$zip"
+    kv how ksud
+}

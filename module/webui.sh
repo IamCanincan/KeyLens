@@ -95,7 +95,7 @@ KL_COMMANDS="status env targets target-meta apps icons log clear-log props props
 props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode \
 backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save \
 sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides \
-teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch"
+teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch update-install"
 
 # ---------- 通用小工具 ----------
 # 说明：换行常量。查表一律用「$NL + 键 + =」作锚点做参数展开，
@@ -1360,6 +1360,7 @@ cmd_help() {
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
   update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）
+  update-install          把已下载的 update.zip 交给管理器安装（重启生效）
 EOF
 }
 
@@ -1389,7 +1390,7 @@ fi
 KL_WRITE_CMDS="props-apply props-on props-off props-boot-hash restore-app restore-apps \
 remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config \
 tricky-save-patch tricky-drop-patch keybox-save sync clear-log omk-restart \
-teesim-profile-new teesim-profile-del backup-restore"
+teesim-profile-new teesim-profile-del backup-restore update-install"
 
 for _kl_c in $KL_WRITE_CMDS; do
     if [ "$_kl_c" = "$CMD" ]; then
@@ -1647,6 +1648,7 @@ case "$CMD" in
     restore-apps) cmd_restore_apps "$ARG" ;;
     remove-apps) cmd_remove_apps "$ARG" ;;
     update-fetch) cmd_update_fetch "$ARG" ;;
+    update-install) cmd_update_install ;;
     sync)        cmd_sync ;;
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;

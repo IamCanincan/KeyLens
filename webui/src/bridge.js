@@ -36,7 +36,7 @@ export const EXPECT_API = 4;
 /* 写命令：契约不符时全部拒绝。新增写入口必须同时加进这里。 */
 export const WRITE_CMDS = 'props-apply props-on props-off props-boot-hash restore-app restore-apps \
 remove-apps set-mode teesim-save teesim-save-overrides omk-save-injector omk-save-config tricky-save-patch \
-tricky-drop-patch keybox-save sync clear-log omk-restart teesim-profile-new teesim-profile-del backup-restore';
+tricky-drop-patch keybox-save sync clear-log omk-restart teesim-profile-new teesim-profile-del backup-restore update-install';
 
 /* 每条命令必须出现的键 —— 这张表是从线上那版抄的，键名以真机 `webui.sh status`
    的实际输出为准。自己凭想象写一份的后果：每条命令都会被判"形状不符"，
@@ -74,6 +74,7 @@ export const KV_REQUIRED = {
   doctor: 'checks bad warn',
   'backup-restore': 'restored name',
   'update-fetch': 'saved bytes',
+  'update-install': 'installed',
 };
 
 export const BRIDGE_CANDIDATES = ['bridge', 'kernelsu', 'apatch', 'Magisk', 'magisk', 'ksu'];
@@ -129,6 +130,9 @@ export const S = {
      名单那一屏默认**展开**（列表就是这一页要给人看的东西，收起是用户主动要的）。
      都用"默认值 + 取反"的写法存，所以 listOpen 的初值就是 true。 */
   doctorOpen: false, listOpen: true,
+  /* 更新日志（发布说明）默认收起：它可能上千字，展开是用户要看才展开。
+     和体检/名单那几处同一套「默认值 + 取反」写法。 */
+  updateOpen: false,
   /* 「继续显示」点开的进度（0 = 还没点过，用默认上限）。存这里而不是闭包变量，
      整页重画才不会把它抹回 200 行。 */
   shownLimit: 0,
@@ -697,6 +701,10 @@ function demoResult(cmd, arg) {
   if (cmd === 'update-fetch') {
     return { errno: 0, stdout: 'saved=/data/adb/keylens/update.zip\nbytes=1234567\n' };
   }
+  /* 安装交给管理器（ksud module install），真机回 installed / zip / how */
+  if (cmd === 'update-install') {
+    return { errno: 0, stdout: 'installed=1\nzip=/data/adb/keylens/update.zip\nhow=ksud\n' };
+  }
   if (cmd === 'doctor') {
     /* 体检的启动哈希那一格跟着 ?bh= 走（与下面 boot-hash 那一份同一个开关）。
        这一格在界面上只画过"填了/没填"两态，auto 档（一个字没填、值已从后端派生）
@@ -788,7 +796,7 @@ function demoResult(cmd, arg) {
     }
   }
   var body = {
-    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch',
+    contract: 'api=' + EXPECT_API + '\ncommands=status env targets target-meta apps icons log clear-log props props-apply props-on props-off boot-hash props-boot-hash restore-app restore-apps remove-apps set-mode backend-info teesim-save omk-save-injector omk-save-config tricky-save-patch tricky-drop-patch keybox-save sync help contract excluded teesim-profiles tee-status tricky-patches omk-restart teesim-overrides teesim-save-overrides teesim-profile-new teesim-profile-del doctor backups backup-restore update-fetch update-install',
     status: ['state=' + (DEMO_CONFLICT ? 'stopped' : 'ok'),
       /* 冲突时模块是真的停：service.sh:30-34 写 ⛔ + KL_CONFLICT_MSG 并 mark_module_stopped，
          所以这里连 description / daemon_alive 一起改，不然台架看到的是"停写但还在跑"这种

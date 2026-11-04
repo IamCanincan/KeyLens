@@ -34,6 +34,7 @@ const COMMANDS: &[&str] = &[
     "teesim-profiles", "tee-status", "tricky-patches", "omk-restart",
     "teesim-overrides", "teesim-save-overrides", "teesim-profile-new",
     "teesim-profile-del", "doctor", "backups", "backup-restore", "update-fetch",
+    "update-install",
 ];
 
 const USAGE: &str = "\
@@ -72,7 +73,8 @@ const USAGE: &str = "\
   sync                   立即同步一次应用列表
   contract               自报命令层契约号与命令清单
   excluded               列出被人为排除（手动删除）的包名
-  update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）";
+  update-fetch <地址|路径> 把更新包下载到模块目录 update.zip（不安装）
+  update-install          把已下载的 update.zip 交给管理器安装（重启生效）";
 
 /// 预览：在影子根里跑同一条命令，事后比对差异（不碰真实文件）。
 fn preview_run(cmd: &str, arg: &str) -> ! {
@@ -328,6 +330,7 @@ fn main() {
         "restore-apps" => read_cmds::restore_apps(arg),
         "remove-apps" => read_cmds::remove_apps(arg),
         "update-fetch" => read_cmds::update_fetch(arg),
+        "update-install" => read_cmds::update_install(),
         "teesim-save" => read_cmds::teesim_save(arg),
         "omk-save-injector" => read_cmds::omk_save_injector(arg),
         "omk-save-config" => read_cmds::omk_save_config(arg),

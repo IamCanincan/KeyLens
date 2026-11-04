@@ -195,8 +195,13 @@ chk('每个写命令都在 WRITE_CMDS 里（否则契约不符时停不住）', 
    要么是该出现的按钮没接上（两种都得看得见）。豁免必须写清是哪种：
    restore-app 是单条版命令，界面增删一律走批量版（restore-apps / remove-apps），
    它仍由命令层实现、由 tests/restore-app.sh 覆盖 —— 这里是"界面不直调"，不是死代码。 */
+/* call('<写命令>') 也算界面在用：契约闸在 bridge.js 的 call() 里对 WRITE_CMDS 一视同仁
+   （不符就拒），而少数写命令要**拿回结果**才能决定画什么 —— 安装成功才切「已装好」，
+   write() 只负责提示与重画、不给结果。 */
+const calledLiterals = [];
+for (let m, re = /\bcall\(\s*'([a-z0-9-]+)'/g; (m = re.exec(srcAll));) calledLiterals.push(m[1]);
 const EXEMPT_UNUSED = ['restore-app'];
-const neverCalled = writeCmds.filter(c => !used.includes(c) && !EXEMPT_UNUSED.includes(c));
+const neverCalled = writeCmds.filter(c => !used.includes(c) && !calledLiterals.includes(c) && !EXEMPT_UNUSED.includes(c));
 chk('WRITE_CMDS 没有界面用不到的条目', neverCalled.length === 0, neverCalled.join(' '));
 console.log('       已豁免（命令层有、界面不直调）：'
   + writeCmds.filter(c => !used.includes(c) && EXEMPT_UNUSED.includes(c)).join(' '));
@@ -353,6 +358,14 @@ chk('体检并进主页英雄卡（不再是一张单独的卡），设置页不
   && !/doctorCard\(\)|backupCard\(\)/.test(setBody.replace(/\/\*[\s\S]*?\*\//g, ' ')),
   'doctorBlock ' + (screensCode.match(/doctorBlock\(\)/g) || []).length
   + ' 处 · doctorCard ' + (screensCode.match(/doctorCard/g) || []).length + ' 处');
+/* 更新卡：下载完必须**直接给「安装」**（主人的原话"下载应直接有安装按钮，最好像 ksu 那样"），
+   装那一颗走 update-install（递给管理器，不是自己解压）；发布说明画在卡里、默认收起。
+   这条钉的是"接上了没有"，行为由台架那五条驱动（verify.mjs）。 */
+chk('更新卡：下载后给「安装」、安装走 update-install、更新日志有折叠',
+  /call\('update-install'\)/.test(screensCode) && /'安装'/.test(screensCode)
+  && /foldButton\('updateOpen'/.test(screensCode) && /mdLite\(/.test(screensCode),
+  'update-install ' + (screensCode.match(/update-install/g) || []).length
+  + ' 处 · updateOpen ' + (screensCode.match(/updateOpen/g) || []).length + ' 处');
 /* 2026-10-30 用户定稿：功能页 = 一张菜单集成所有功能，长列表默认收进二级 ——
    菜单页本身必须轻（落地即用），列表与表单点进去才画。 */
 /* FUNC_PAGES 声明在 renderFunc 之前、落在 homeBody 切片里 —— 所以注册表查 screens；
