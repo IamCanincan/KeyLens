@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 154;
+const FLOOR_CHKS = 161;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -109,6 +109,38 @@ const PROBE = `(function(){
     cards: document.querySelectorAll('#view md-card').length,
     inSet: w('home'), outSet: w('security'), fam: fam,
     missFam: missFam, declared: Object.keys(declared).join(' ') };
+})()`;
+
+/* 属性通道审计（§5.32 那一类洞的通用闸）：界面往 md-* 上落的属性，
+ *   ① 组件既不 observed、原型上也没有同名 getter ⇒ 设了等于没设；
+ *   ② 组件认了、但屏上出来的字不是我们给的那份（对象当字符串、模板没展开…）。
+ * 完整扫描（55 屏 / 720 个元素 + 仪器自测 + 覆盖下限）在 tools/md3e-build/attr-audit.mjs，
+ * 这里只把同一把尺挂在台架常跑的三屏上，免得以后改了组件用法没人回头看。 */
+const ATTR_AUDIT = `(function(){
+  var GLOBAL = {class:1,id:1,style:1,hidden:1,role:1,tabindex:1,slot:1,part:1,title:1,lang:1,dir:1,draggable:1,inputmode:1,contenteditable:1};
+  var TEXT_ATTR = ['label','headline','supporting-text','message','text','description'];
+  var dead = [], unrendered = [];
+  [].slice.call(document.querySelectorAll('#view *, #nav *, body > *'))
+    .filter(function(e){ return e.tagName.indexOf('MD-') === 0; }).forEach(function(e){
+    var tag = e.tagName.toLowerCase();
+    var ctor = customElements.get(tag);
+    if (!ctor) { dead.push(tag+'|（没注册）'); return; }
+    var O = {}; [].concat(ctor.observedAttributes || []).forEach(function(a){ O[a]=1; });
+    for (var i=0;i<e.attributes.length;i++){
+      var n = e.attributes[i].name;
+      if (O[n] || GLOBAL[n] || n.indexOf('data-')===0 || n.indexOf('aria-')===0) continue;
+      if (n in e) continue;
+      dead.push(tag+'|'+n);
+    }
+    TEXT_ATTR.forEach(function(n){
+      if (!O[n]) return;
+      var want = String(e.getAttribute(n)||'');
+      if (!want || want === 'true') return;
+      var sr = e.shadowRoot ? String(e.shadowRoot.textContent||'') : '';
+      if (sr.indexOf(want) < 0 && String(e.textContent||'').indexOf(want) < 0) dead.push(tag+'|'+n+' 没画出那份字');
+    });
+  });
+  return { dead: dead, n: dead.length };
 })()`;
 
 async function main() {
@@ -311,6 +343,10 @@ async function main() {
     console.log(`${ok ? 'ok  ' : '✗   '} 第 ${i} 格 → ${want.title}  标题=${p.title} 列表项=${p.items} 溢出=${p.scrollW - p.vw}px`
       + (miss.length ? '  缺区块: ' + miss.join('、') : '')
       + (p.missFam ? '  字体落空: ' + p.missFam : ''));
+    /* 同一屏的属性通道（组件认不认 / 认了画没画出那份字）—— 见 ATTR_AUDIT 上面那段 */
+    const at = await ev(ATTR_AUDIT);
+    chk('第 ' + i + ' 格（' + want.title + '）属性通道干净',
+      at.n === 0, at.dead.slice(0, 4).join(' / ') || '（' + at.n + '）');
 
     /* 量"二次进入"：先切走再切回来，此时数据已在 S 里，量到的就是渲染本身 */
     await ev(`(function(){ var n=document.getElementById('nav');
@@ -739,6 +775,18 @@ async function main() {
         /自动 · 取自OhMyKeymint/.test(bhAuto.rows) && /1122334455667788/.test(bhAuto.rows), bhAuto.rows.split('\n').filter(l => /模块应用值/.test(l)).join(''));
       chk('界面给出三个动作：保存并应用 / 改为自动 / 不写 digest',
         /保存并应用/.test(bhAuto.buttons) && /改为自动/.test(bhAuto.buttons) && /不写 digest/.test(bhAuto.buttons), bhAuto.buttons);
+      /* 属性页这一屏：53 行对照 + 三颗动作 + 输入框，组件用得最杂，单独再过一遍尺 */
+      const atProps = await ev(ATTR_AUDIT);
+      chk('属性伪装页属性通道干净', atProps.n === 0, atProps.dead.slice(0, 4).join(' / '));
+      /* 上面「菜单不把未知报成 0 项对照」是**反向**判据 —— 同一条通道得配一条正向的，
+         否则那句摘要压根不渲染，它也照样绿（§5.32 那个 [object Object] 就是这么活下来的）。 */
+      await ev(`(function(){ var n=document.getElementById('nav');
+        n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+      await sleep(700);
+      const mProps = await ev(PROBE);
+      chk('读过属性之后，功能菜单那一行真带出「53 项对照」（同一条通道的正对照）',
+        /53 项对照/.test(mProps.text || ''),
+        (mProps.text.match(/开机写入[^|\n]{0,44}/g) || []).slice(0, 2).join(' / '));
       const bhDaemon = await openProps('&bh=daemon');
       /* daemon = TEESim 那一支：属性里那串是守护进程自己强制的（App.kt:516-523），
          模块采用它而不是覆盖。界面必须说清"取的是它正在证明的值"，不能读成"本模块写的"，
@@ -1186,6 +1234,11 @@ async function main() {
         未知行: labels.filter(function(l){return /当前值未知/.test(l);}).length, 行总数: labels.length }; })()`);
     chk('选中 alt 后：编辑器说明"只上报 default"，且缺值的下拉/开关标成「当前值未知」而不是某个确定档',
       alt.只上报default === true && alt.未知行 >= 2 && alt.行总数 > alt.未知行, JSON.stringify(alt));
+    /* 后端配置这一屏是 md-select / md-option 唯一大量出现的地方（模式下拉、缺值占位），
+       而 md-option 的 value/disabled 恰恰**不在** observedAttributes 里（靠原型 getter 读）——
+       这一屏过尺就是为了盯着这条通道别再退回"设了等于没设"。 */
+    const atCfg = await ev(ATTR_AUDIT);
+    chk('后端配置（TEESim / alt）属性通道干净', atCfg.n === 0, atCfg.dead.slice(0, 4).join(' / '));
 
     /* 删 profile / 删补丁段都是"一弹就没了一份配置"，所以走两段式：第一下只把字换成
        「再点确认 · …」，第二下才发命令（同「备份与回滚」那颗）。这里把两颗各钉一次。 */
