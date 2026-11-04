@@ -356,11 +356,17 @@
   的基线守卫 ⇒ 红 5**，其中一条读数就是「原有条目被吃掉了」；同步那两道守卫单删任一道都仍全绿
   （纵深，台子把这句话写进输出），全删 ⇒ 红 2；M4 分派退 0 ⇒ 红 1；M5 扫描器改名 ⇒ 只有对照响。
   两边环境现量：**WSL(mawk) 55/55、Git Bash(gawk) 55/55**（补下面那套之后重跑），对拍 276 全通过（exit=0）。
-* **第 55 套 `tests/device-fallback.sh`（设备侧 runner，本轮没上机跑过 —— 收尾时手机不在 adb 上）**：
-  把同一份 44 条断言搬到 **mksh + toybox awk** 下再跑一遍。它先自证形状：模块里必须 0 份参照 awk
-  （被推过参照就红，不静默跳过），并现量三条真机判据 —— `KL_USE_RUST=0 … targets` 必须退码非 0
-  且说出"下一步是 bin/keylens"，默认层必须仍读出真名单行数。主机那两遍量的是 gawk 与 mawk，
-  证不了这台机上回退层会说什么；不在设备上时它按 `device-*.sh` 家族的口径自跳（不算假绿）。
+* **第 55 套 `tests/device-fallback.sh`（设备侧 runner，已上机：44 条 + 7 条现量全绿）**：
+  把同一份 44 条断言搬到 **mksh + toybox awk**（`/system/bin/awk`）下再跑一遍（主机那两遍量的是
+  gawk 与 mawk，证不了这台机上回退层会说什么）。它先自证形状（模块里 0 份参照 awk，被推过参照就红，
+  不静默跳过），再现量：`KL_USE_RUST=0 … targets` **rc=2**、0 行、stderr 说出"下一步是 bin/keylens"；
+  `KL_USE_RUST=1 … targets` **131 行**；`KL_USE_RUST=0 … backend-info` 的 `target_entries=` **空**
+  （不是 0）；`target-meta` **rc=2**。不在设备上时它按 `device-*.sh` 家族的口径自跳（不算假绿）。
+* **体检那颗「名单 vs 已装」把读不到的锅甩给了错的输入**：回退层读不到**名单**时（已装 129 条读得好好的），
+  原来那个兜底 `else` 写的是「读不到已装应用列表」。现在按"名单读不到 / 已装读不到 / 都可读"三分支报，
+  并向真机台子加了一条"甩锅就红"的断言。同一轮还抓到自己在**仓库形状的副本**上量生产形状
+  （`use_backend` 会顺着 `$mdir/../tests/fixtures/backends` 找到参照，给出 rc=0 + 131 行的假读数）——
+  现量判据已改成一律跑真模块目录。
 * **`tools/wsl-suites.sh`（新）**：WSL 侧逐套跑并把每套退码落进 `tests-wsl.log`，末行给
   `suites=N failures=M`。理由与 `tools/wsl-parity.sh` 同一件：从 Git Bash 内联
   `wsl -d Debian sh -c 'for t in …; do … $t … $? …'` 时，`$t` 与 `$?` 会被**本地**先展开掉 ——

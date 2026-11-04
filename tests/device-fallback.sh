@@ -53,22 +53,35 @@ printf '  ok   形状确认：模块里 0 份 awk（回退层永远走"缺参照
 printf '  ·    设备侧 awk：%s\n' "$(command -v awk || echo 没有)"
 printf '  ·    设备侧 shell：%s\n' "$(readlink /proc/$$/exe 2>/dev/null || echo 未知)"
 
-# 真机现量的那三条判据（不靠 awk）：回退层必须报错，默认层必须照旧读出真数
-out=$(KL_USE_RUST=0 sh "$D/module/webui.sh" targets 2>&1); rc=$?
+# 真机现量的那三条判据（不靠 awk）：回退层必须报错，默认层必须照旧读出真数。
+# **必须跑在 $MOD 上，不是上面那份副本**：`use_backend` 有第二条解析分支
+# 「仓库布局：$mdir/../tests/fixtures/backends」，而这份副本正是为了跑套件而造的仓库形状
+# （$D/tests/fixtures/backends 里就放着 19 份参照）—— 在它上面量"生产形状"会得到假的 rc=0 + 131 行。
+# 这个坑就是本文件第一版在真机上量到的：判据红，但红的是台子，不是产品。
+out=$(KL_USE_RUST=0 sh "$MOD/webui.sh" targets 2>&1); rc=$?
 rows=$(printf '%s\n' "$out" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
 if [ "$rc" = "0" ] && [ "$rows" = "0" ]; then
     echo "  ✗   回退层又交回「0 行 + 退码 0」—— 这次的事故原样复现了"
     exit 1
 fi
 [ "$rc" != "0" ] && printf '  ok   KL_USE_RUST=0 targets 退码非 0（rc=%s）\n' "$rc" \
-    || { echo "  ✗   KL_USE_RUST=0 targets 退了 0"; exit 1; }
+    || { echo "  ✗   KL_USE_RUST=0 targets 退了 0，读数：$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-100)"; exit 1; }
 printf '%s\n' "$out" | grep -q "bin/keylens" && printf '  ok   stderr 说了下一步（正式实现是 bin/keylens）\n' \
     || { echo "  ✗   stderr 没给下一步，读数：$(printf '%s' "$out" | tr '\n' ' ' | cut -c1-120)"; exit 1; }
 
-rust_out=$(KL_USE_RUST=1 sh "$D/module/webui.sh" targets 2>/dev/null)
+rust_out=$(KL_USE_RUST=1 sh "$MOD/webui.sh" targets 2>/dev/null)
 rust_rows=$(printf '%s\n' "$rust_out" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
 [ "$rust_rows" -gt 0 ] && printf '  ok   默认（Rust）层仍读出真名单：%s 行\n' "$rust_rows" \
     || { echo "  ✗   默认层读出 0 行 —— 这台机没装后端文件？那 A/B 没有对照，先别跑写路径"; exit 1; }
+
+# 体检那一格：名单读不到时必须说"名单读不到"，不许甩锅给已装列表。
+# （这条只能在真机上量 —— 判据要用真的 `cmd package`，台架里那颗是桩。）
+doc0=$(KL_USE_RUST=0 sh "$MOD/webui.sh" doctor 2>/dev/null)
+printf '%s\n' "$doc0" | grep -q "名单读不到" && printf '  ok   回退层体检：名单那一格说"名单读不到"\n' \
+    || { echo "  ✗   回退层体检没说名单读不到，读数：$(printf '%s' "$doc0" | grep -a 名单 | tr '\n' ' ' | cut -c1-120)"; exit 1; }
+printf '%s\n' "$doc0" | grep -q "读不到已装应用列表" \
+    && { echo "  ✗   体检把「名单读不到」甩锅成了「读不到已装应用列表」（已装其实读得到 $rust_rows 条）"; exit 1; } \
+    || printf '  ok   没有把"名单读不到"甩锅给已装列表\n'
 
 echo "── 下面把套件原样跑一遍（toybox awk + 设备 shell）──"
 ( cd "$D" && sh tests/fallback-shape.sh )

@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：写作时 33 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
+- 未推送提交：写作时 34 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
   `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
@@ -86,7 +86,7 @@ shell 测试套 **55 套**，两边都得跑，各有盲区：
 |---|---|---|
 | WSL | 55/55 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
 | Windows Git Bash（有 node） | 55/55 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
-| 设备（mksh + toybox awk） | `tests/device-fallback.sh` **本轮没上机跑过**（收尾时手机不在 adb 上） | 只有这一层能证明"这台机上回退层会说什么"——主机那两遍量的是 gawk / mawk |
+| 设备（mksh + toybox awk） | `tests/device-fallback.sh` **44 条 + 7 条现量全绿**（2026-11-04 18:5x，`XQ-DQ72` / API 37） | 只有这一层能证明"这台机上回退层会说什么"——主机那两遍量的是 gawk / mawk。**量生产形状要跑真模块目录**，别跑仓库形状的副本（§6） |
 
 WSL 侧用 `wsl -d Debian sh -c "cd '/mnt/d/<仓库路径>' && sh tools/wsl-suites.sh"`，
 末行是 `suites=55 failures=0`，逐套退码落 `tests-wsl.log`。**别在 Windows 这边内联 for 循环**：
@@ -1472,17 +1472,46 @@ M1 `|| return 0` ⇒ 红 2；**M2 删掉 `add_target_apps` 那道守卫 ⇒ 红 
 WSL **55/55**（`tools/wsl-suites.sh`）· 对拍 **276 全通过 exit=0**（WSL，`tools/wsl-parity.sh` 落退码）·
 台架 **175** 条 · CI 那 11 条静态闸全 OK + `replay-check` 42 条 · `build.mjs --check` 两条产物同版。
 
-**第 55 套 `tests/device-fallback.sh`（设备侧 runner，本轮没上机跑过 —— 收尾时手机不在 adb 上）**：
-把同一份 44 条断言搬到 **mksh + toybox awk** 下再跑一遍，并先自证两件事：模块里 0 份参照 awk
-（不是生产形状就红，不静默跳过）、`KL_USE_RUST=0 … targets` 在真机上必须"退码非 0 + 说出下一步"，
-而默认层必须仍读出真名单行数。主机那两遍量的是 gawk 与 mawk，证不了这台机上回退层会说什么。
+**第 55 套 `tests/device-fallback.sh`（设备侧 runner）── 2026-11-04 18:5x 上机跑过，全绿**：
+把同一份 44 条断言搬到 **mksh + toybox awk**（`/system/bin/awk`）下再跑一遍，另加 7 条真机现量：
 
-**没做完的那半**：改动的四个 shell 文件**还没推上机**（`sh tools/deploy-webui.sh --shell` 那一类），
-上机后跑上面那个 runner 即可；回退件在 `/data/local/tmp/kl-3.0.3.bak/`。
+| 现量判据 | 读数 |
+|---|---|
+| 模块里参照 awk 份数 | **0**（生产形状成立，被推过参照就红，不静默跳过） |
+| `KL_USE_RUST=0 … targets` | **rc=2** + 「回退实现缺少参照脚本：omk_list.awk —— 这一版的正式实现是 bin/keylens，请重装完整包」 |
+| 同一命令的输出行数 | **0 行**（与退码 2 配对，不再是"0 行 + 成功"） |
+| `KL_USE_RUST=1 … targets` | **131 行**（默认层没受影响） |
+| `KL_USE_RUST=0 … backend-info` | `target_entries=` **空**（不是 0；界面画「—」） |
+| `KL_USE_RUST=0 … target-meta` | **rc=2**（以前折成空 + 成功） |
+| `KL_USE_RUST=0 … doctor` 的「名单」 | `bad　名单读不到：回退实现缺参照脚本`，且**不再**甩锅「读不到已装应用列表」 |
+
+**上机时又抓到自己两处**（都记进 §6）：
+1. 这个 runner 第一版在**仓库形状的副本**上量"生产形状"，得到的是 **rc=0 + 131 行** 的假读数 ——
+   `use_backend` 的第二条解析分支是 `$mdir/../tests/fixtures/backends`，而副本旁边正好放着为跑套件
+   拷进去的 19 份参照。现在三条现量判据一律跑在真模块目录 `$MOD` 上，副本只用来跑套件。
+2. 体检那颗「名单 vs 已装」以前只有一个 `else` 兜底写「读不到已装应用列表」；真机上回退层读不到
+   **名单**时（已装 129 条读得好好的）它把锅甩给了已装。现在按"名单读不到 / 已装读不到 / 都可读"
+   分开报，并向真机台子加了一条断言（甩锅就红）。
+
+**上机落地的文件**（先存 `/data/local/tmp/kl-prepush-20261104/` 再改，逐文件 sha 核对 + 模式 755/644）：
+`webui.sh`、`lib/applist.sh`、`lib/backend.sh`、`lib/write.sh`。命令层每次调用现读文件，**不用重装**，
+界面也不需要重开（这轮改动只在回退分支上生效，默认 Rust 路径输出一字未变）。
+
+**还没做**：v3.0.4 发版（仓库里的 zip 与 `update.json` 还指着带 `[object Object]` 的 3.0.3）等主人点头；
+33+ 个提交等代理恢复。
 
 ## 6. 坑（都踩过）
 
 
+- **"仓库形状的副本"量不出生产行为**（2026-11-04，§5.37）：`lib/backend.sh` 的 `use_backend` 有第二条
+  解析分支 `$mdir/../tests/fixtures/backends`（为的是让仓库里的台子跑得通）。而设备侧的套件 runner
+  必须把模块拷成 `$D/module` 并在旁边放 `$D/tests/fixtures/backends`（19 份参照）—— 于是回退层
+  "找到了参照"，一条本该报错的命令交出 **rc=0 + 131 行**。差点据此判定"修复在真机上没生效"。
+  规矩：**要量生产形状就跑真模块目录**（只读命令安全），副本只用来跑需要夹具的断言。
+- **"读不到"的兜底 `else` 会把锅甩给错的输入**（同日，同一轮在真机上量到的）：体检那颗「名单 vs 已装」
+  原来只有一个 `else` 写「读不到已装应用列表」，而回退层坏掉时**已装是读得到的（129 条）**、
+  读不到的是名单。现在三分支分开报（名单空 → 说名单；已装空 → 说已装；都可读 → 比数量），
+  并在真机台子上钉一条"甩锅就红"。这类文案错不是小事：它指向的下一个动作完全不同。
 - **被自己断言的那条调用把 stderr 丢进 /dev/null ⇒ 套件套死在半路还能一路印 "ok"**（2026-11-04，§5.37）：
   `tests/fallback-shape.sh` 第一版末尾那条 `add_target_apps … >/dev/null 2>&1` 撞上要测的洞了 ——
   夹具没 source `lib/core.sh`，`OMK_STATE_DIR` 未定义，`set -u` 当场打死整个 shell，
