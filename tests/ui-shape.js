@@ -257,8 +257,11 @@ chk('用到 KL_DIR 的读命令自己探测后端',
 chk('备份卡：两段式确认、只认映射表里的名字、回滚走 write 闸门',
   screens.includes("section('备份与回滚'") && screens.includes("armed === name ? '再点确认' : '回滚'")
   && screens.includes("write('backup-restore', name") && screens.includes("setTimeout(function () { armed = ''; paint(); }, 4000)"), '');
-chk('体检卡：只读命令、skip 不涂绿、非 ok 行带下一步',
-  screens.includes("section('体检'") && screens.includes('loadDoctor()')
+chk('体检块：只读命令、skip 不涂绿、非 ok 行带下一步',
+  /* 判据跟着落点搬家：体检不再是单独一张卡（没有 section('体检') 了），
+     改成钉"英雄卡里挂了 doctorBlock（并把统计那一格交给它同步）+ 第四格是结论"。 */
+  screens.includes('doctorBlock(doctorCell)') && screens.includes("['体检', ds[0], ds[1]]")
+  && screens.includes('loadDoctor()')
   && screens.includes("st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''")
   && screens.includes("' · 下一步：'"), '');
 chk('日志关键字按显示文本匹配，且只重画日志台',
@@ -331,14 +334,17 @@ const setBody = RI[3] >= 0 && endSet > RI[3] ? screens.slice(RI[3], endSet) : ''
 chk('四段函数体都切得到（切片没落空）',
   homeBody.length > 60 && funcBody.length > 60 && subBody.length > 60 && setBody.length > 60,
   [homeBody.length, funcBody.length, subBody.length, setBody.length].join('/'));
-/* 2026-11-04 分工重排的账：体检（"现在到底行不行"）归主页，备份回滚（撤的就是配置页
-   写的文件）归后端配置，设置页只留界面自己的事。钉住"搬到了哪"，也钉住"别再搬回去"。
-   判据读的是**剥掉注释**的设置页体 —— 那段的说明注释里正好写着这两个名字。 */
-chk('体检在主页、备份回滚在后端配置，设置页不再挂这两张卡',
-  /box\.appendChild\(doctorCard\(\)\)/.test(homeBody)
+/* 体检的落点，2026-11-04 一天内动过两次：先在设置页 → 挪成主页单独一张卡 →
+   主人"体检可以直接放在主页的大卡片上"，于是并进英雄卡（statusStrip 里挂 doctorBlock，
+   第四格统计就是结论）。这里钉三件事：并进了英雄卡、单独的 doctorCard 真的没了、
+   设置页也没偷偷把两张卡搬回去。注释一律剥掉再判 —— 说明文字里正好写着这些名字。 */
+const screensCode = screens.replace(/\/\*[\s\S]*?\*\//g, ' ');
+chk('体检并进主页英雄卡（不再是一张单独的卡），设置页不挂体检/备份',
+  /c\.appendChild\(doctorBlock\(doctorCell\)\)/.test(screensCode) && !/doctorCard/.test(screensCode)
+  && /'体检', ds\[0\], ds\[1\]/.test(screensCode)
   && !/doctorCard\(\)|backupCard\(\)/.test(setBody.replace(/\/\*[\s\S]*?\*\//g, ' ')),
-  '主页 ' + (homeBody.match(/doctorCard\(\)/g) || []).length + ' 处 · 设置页 '
-  + ((setBody.replace(/\/\*[\s\S]*?\*\//g, ' ').match(/doctorCard\(\)|backupCard\(\)/g) || []).length) + ' 处');
+  'doctorBlock ' + (screensCode.match(/doctorBlock\(\)/g) || []).length
+  + ' 处 · doctorCard ' + (screensCode.match(/doctorCard/g) || []).length + ' 处');
 /* 2026-10-30 用户定稿：功能页 = 一张菜单集成所有功能，长列表默认收进二级 ——
    菜单页本身必须轻（落地即用），列表与表单点进去才画。 */
 /* FUNC_PAGES 声明在 renderFunc 之前、落在 homeBody 切片里 —— 所以注册表查 screens；

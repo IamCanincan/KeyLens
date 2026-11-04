@@ -480,7 +480,7 @@ export function renderPending(text, kind) {
     top.appendChild(lines);
     hero.appendChild(top);
     const stats = h('div', 'sk-hero-stats');
-    [['版本', '42%'], ['生效名单', '48%'], ['属性伪装', '38%']].forEach(function (s) {
+    [['版本', '42%'], ['生效名单', '48%'], ['属性伪装', '38%'], ['体检', '44%']].forEach(function (s) {
       const d = h('div', 'sk-stat');
       d.appendChild(skLine(s[1]));
       d.appendChild(skLine('34%'));
@@ -724,9 +724,6 @@ export function renderHome() {
   const box = h('div', 'stack');
   box.appendChild(statusStrip());
   box.appendChild(backendMatrix());
-  /* 体检挪到主页：它是"现在到底行不行"的答案，以前藏在设置页倒数第二张卡，
-     而打开主页的人最想知道的就是这个（Shneiderman：先总览，再过滤，再细节）。 */
-  box.appendChild(doctorCard());
   return box;
 }
 
@@ -819,42 +816,6 @@ export function onOpenSub(fn) { openSubFn = fn; }
    属性伪装 / Verified Boot 是**功能**（改设备状态），2026-10-30 起在【功能】页；
    这里只留"界面偏好与自检"。 */
 /* 体检卡：只读、可重跑，结果留在 S.doctor 里，切页回来还在。 */
-function doctorCard() {
-  const c = card();
-  const s = section('体检', ICON.ok);
-  s.appendChild(h('p', 'hint', '逐层查"为什么没生效"：只读，不改任何文件。每行末尾是下一步。'));
-  const acts = h('div', 'acts');
-  acts.appendChild(button(S.doctor ? '重新体检' : '运行体检', { variant: 'filled', icon: ICON.ok, on: run }));
-  s.appendChild(acts);
-  const box = h('div');
-  s.appendChild(box);
-  const LABEL = { ok: '正常', warn: '注意', bad: '有问题', skip: '跳过' };
-  function run() {
-    box.textContent = '';
-    box.appendChild(h('p', 'hint', '正在体检…（约 1 秒）'));
-    loadDoctor().then(paint);
-  }
-  function paint() {
-    box.textContent = '';
-    if (S.doctorErr) { box.appendChild(h('p', 'read-err', '体检命令读失败 —— 命令层可能不是这一版。')); return; }
-    if (!S.doctor) { box.appendChild(h('p', 'hint', '点上面的按钮开始。')); return; }
-    const kv = S.doctor.kv || {};
-    box.appendChild(h('p', 'hint', '共 ' + (kv.checks || '?') + ' 项 · 有问题 ' + (kv.bad || '0')
-      + ' · 注意 ' + (kv.warn || '0') + ' · 跳过 ' + (kv.skip || '0')));
-    const l = h('md-list');
-    S.doctor.rows.forEach(function (r) {
-      const st = r[1];
-      /* skip 不染色：它既不是成功也不是问题，涂绿会让人以为"这项也查过了" */
-      const tone = st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : '';
-      l.appendChild(item({ headline: r[0], trailing: LABEL[st] || st, tone: tone || undefined,
-        supporting: (r[2] || '') + (r[3] ? ' · 下一步：' + r[3] : '') }));
-    });
-    box.appendChild(l);
-  }
-  if (S.doctor || S.doctorErr) paint(); else box.appendChild(h('p', 'hint', '点上面的按钮开始。'));
-  c.appendChild(s);
-  return c;
-}
 /* 备份与回滚：回滚是破坏性操作，所以做成两段式 —— 第一下变成"再点确认"，
    4 秒内没再点就自动撤销（WebView 里的 confirm() 不可靠，不靠它）。 */
 function backupCard() {
@@ -1012,6 +973,60 @@ function backendMatrix() {
 /* 状态条：一行讲清"还在不在跑、写的哪一版"，不再占一整屏 */
 /* 状态条：主页的英雄卡。以前是四段小字用 · 连起来 —— 信息都在，
    但"在不在跑、跑的是谁"要凑近看；现在芯片 + 大字后端名 + 三个小统计。 */
+/* 体检不再是一张单独的卡：主人"体检可以直接放在主页的大卡片上"。
+   汇总数进英雄卡的统计行，按钮和逐行结果跟在统计下面同一张卡里展开。 */
+function doctorStat() {
+  if (S.doctorErr) return ['读不到', 'bad'];
+  if (!S.doctor) return ['未跑', ''];
+  const kv = S.doctor.kv || {};
+  const bad = Number(kv.bad || 0), warn = Number(kv.warn || 0);
+  if (bad) return [bad + ' 项有问题', 'bad'];
+  if (warn) return [warn + ' 项注意', 'warn'];
+  return [(kv.checks || '?') + ' 项都过', 'ok'];
+}
+function doctorBlock(statEl) {
+  const wrap = h('div', 'hero-doctor');
+  const LABEL = { ok: '正常', warn: '注意', bad: '有问题', skip: '跳过' };
+  /* 统计行那一格与下面的结果是同一件事的两处读数：跑完必须一起动。
+     以前体检是一张独立的卡，汇总句就在卡里、paint 顺手就改了；搬进英雄卡之后
+     结论在**上面那一格**，不显式同步就会出现"下面 12 行都出来了、上面还写着未跑"。 */
+  function syncStat() {
+    if (!statEl) return;
+    const ds = doctorStat();
+    statEl.textContent = ds[0];
+    statEl.className = 'hero-v' + (ds[1] ? ' is-' + ds[1] : '');
+  }
+  const acts = h('div', 'acts');
+  acts.appendChild(button(S.doctor ? '重新体检' : '运行体检', { variant: 'tonal', icon: ICON.ok, on: run }));
+  wrap.appendChild(acts);
+  const box = h('div');
+  wrap.appendChild(box);
+  function run() {
+    box.textContent = '';
+    box.appendChild(h('p', 'hint', '正在体检…（约 1 秒）'));
+    loadDoctor().then(paint);
+  }
+  function paint() {
+    box.textContent = '';
+    syncStat();
+    if (S.doctorErr) { box.appendChild(h('p', 'read-err', '体检命令读失败 —— 命令层可能不是这一版。')); return; }
+    if (!S.doctor) { box.appendChild(h('p', 'hint', '点上面这颗按钮开始。')); return; }
+    const kv = S.doctor.kv || {};
+    box.appendChild(h('p', 'hint', '共 ' + (kv.checks || '?') + ' 项 · 有问题 ' + (kv.bad || '0')
+      + ' · 注意 ' + (kv.warn || '0') + ' · 跳过 ' + (kv.skip || '0')));
+    const l = h('md-list');
+    S.doctor.rows.forEach(function (r) {
+      const st = r[1];
+      /* skip 不染色：它既不是成功也不是问题，涂绿会让人以为"这项也查过了" */
+      const tone = st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : '';
+      l.appendChild(item({ headline: r[0], trailing: LABEL[st] || st, tone: tone || undefined,
+        supporting: (r[2] || '') + (r[3] ? ' · 下一步：' + r[3] : '') }));
+    });
+    box.appendChild(l);
+  }
+  paint();
+  return wrap;
+}
 function statusStrip() {
   const st = S.status;
   const [tone, label] = toneOfState(st.state);
@@ -1034,15 +1049,25 @@ function statusStrip() {
   top.appendChild(h('span', 'chip chip-' + tone + ' hero-state', label));
   c.appendChild(top);
   const stats = h('div', 'hero-stats');
-  [['版本', st.mod_version || '—'],
-   ['生效名单', (bi_entries() || '—') + ' 条'],
-   ['属性伪装', maskKnown(st) ? (maskOn(st) ? '开' : '关') : '?']].forEach(function (s) {
+  const ds = doctorStat();
+  let doctorCell = null;
+  [['版本', st.mod_version || '—', ''],
+   ['生效名单', (bi_entries() || '—') + ' 条', ''],
+   ['属性伪装', maskKnown(st) ? (maskOn(st) ? '开' : '关') : '?', ''],
+   /* 第四格就是主人要的那个"体检直接放在大卡片上"：没跑过写「未跑」，跑过写结论。 */
+   ['体检', ds[0], ds[1]]].forEach(function (s) {
     const d = h('div', 'hero-stat');
     d.appendChild(h('span', 'hero-k', s[0]));
-    d.appendChild(h('b', 'hero-v', s[1]));
+    /* 体检那一格交给 doctorBlock 持有：跑完由它同步改写，免得"下面 12 行出来了、
+       上面还写着未跑"这种两处读数各说一套。 */
+    const v = h('b', 'hero-v' + (s[2] ? ' is-' + s[2] : ''), s[1]);
+    if (s[0] === '体检') doctorCell = v;
+    d.appendChild(v);
     stats.appendChild(d);
   });
   c.appendChild(stats);
+  /* 体检的按钮与逐行结果跟在统计下面，同一张卡里展开（不再另起一张卡）。 */
+  c.appendChild(doctorBlock(doctorCell));
   /* 契约不匹配横幅：写命令已在传输层被拦，这里只负责说清楚 */
   if (S.contract.bad) {
     c.appendChild(h('p', 'warn-text', '命令层契约不匹配（界面要 api=' + EXPECT_API + '，命令层是 '

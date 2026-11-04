@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 169;
+const FLOOR_CHKS = 171;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1701,7 +1701,7 @@ async function main() {
     cards: document.querySelectorAll('#view md-card').length,
     empty: !document.querySelector('#view > .page') }; })()`);
   chk('契约一到就画壳：状态未到时主页位置已是骨架（不是空屏）',
-    hs.hero && !hs.empty && hs.stats === 3 && hs.rows >= 3 && hs.cards === 0, JSON.stringify(hs));
+    hs.hero && !hs.empty && hs.stats === 4 && hs.rows >= 3 && hs.cards === 0, JSON.stringify(hs));
   /* 再等到启动页真的开始淡出 —— DOM 里有骨架不等于屏上看得见。status 被延后到
      900ms，所以"淡出"与"骨架换成真页"之间还剩一段窗口，截图要落在那一段里。 */
   for (let i = 0; i < 14; i++) {
@@ -1821,15 +1821,25 @@ async function main() {
   }
 
   console.log('\n截图：' + SHOT_DIR);
-  /* 体检：设置页点「运行体检」，demo 里应出 6 行、其中"名单"是 warn 档。
-     同时验它按 TSV 行画成了行（不是一坨文本）。 */
-  /* 体检：2026-11-04 从设置页挪到**主页**（"现在到底行不行"是总览层的问题，不该藏在
-     设置页倒数第二张卡）。demo 里点一次应出 6 行、其中"名单"是 warn 档。 */
+  /* 体检：2026-11-04 一天内动过两次落点 —— 先从设置页挪成主页单独一张卡，
+     主人又说"体检可以直接放在主页的大卡片上"，于是并进英雄卡：统计行第四格是结论，
+     按钮与逐行结果在同一张卡里展开。这里量三件事：真的在 .hero 里、跑之前那格写「未跑」、
+     跑完那格变成结论，以及 12 行与汇总句自洽。 */
   await send('Page.navigate', { url: URL0 });
   await sleep(1500);
   await ev(`(function(){ var n=document.getElementById('nav');
     n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
   await sleep(800);
+  /* 跑之前：英雄卡里就该有那颗按钮，第四格统计写「未跑」（不是空白、也不是问号） */
+  const pre = await ev(`(function(){ var hero=document.querySelector('#view .card.hero');
+    var hd=hero?hero.querySelector('.hero-doctor'):null;
+    var bs=hd?[].slice.call(hd.querySelectorAll('md-button')).map(function(b){return b.getAttribute('label')||'';}):[];
+    var ks=hero?[].slice.call(hero.querySelectorAll('.hero-k')).map(function(k){return k.textContent;}):[];
+    var vs=hero?[].slice.call(hero.querySelectorAll('.hero-v')).map(function(v){return v.textContent;}):[];
+    return { 在英雄卡里: !!hd, 按钮: bs.join(','), 格子: ks.join('/'), 值: vs.join('/') }; })()`);
+  chk('体检就在主页大卡片里：按钮与结果都在 .hero 内，第四格是「体检」且跑之前写「未跑」',
+    pre.在英雄卡里 && /运行体检/.test(pre.按钮) && /体检/.test(pre.格子) && /未跑/.test(pre.值),
+    JSON.stringify(pre));
   const dbtn = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
     var b=bs.filter(function(x){return (x.textContent||'').indexOf('运行体检')>=0;})[0];
     if(!b) return null; var r=b.getBoundingClientRect();
@@ -1843,18 +1853,20 @@ async function main() {
      顺带把"汇总句与行数必须自洽"钉住：demo 的假数据以前是 7 行却报 checks=11 / bad=1，
      汇总句说"有问题 1"而屏上一行红的都没有 —— 台架读的本来就是个自相矛盾的样本。 */
   const doc = await ev(`(function(){
-    var cards=[].slice.call(document.querySelectorAll('#view md-card'));
-    var card=cards.filter(function(c){ return [].slice.call(c.querySelectorAll('md-button'))
-      .some(function(b){ return (b.getAttribute('label')||'').indexOf('运行体检')>=0; }); })[0];
+    var card=document.querySelector('#view .card.hero');
     var rows=card?[].slice.call(card.querySelectorAll('md-list-item')):[];
     var tone=function(x){return x.getAttribute('data-tone')||'';};
     var warn=rows.filter(function(x){return tone(x)==='warn';}).map(function(x){return x.getAttribute('headline');});
     var txt=card?(card.textContent||''):'';
+    var vs=[].slice.call(document.querySelectorAll('#view .card.hero .hero-v')).map(function(v){return v.textContent;});
     return { n: rows.length, warn: warn.join(','), 红行: rows.filter(function(x){return tone(x)==='bad';}).length,
-      汇总: (txt.match(/共 [0-9]+ 项[^\\n]{0,26}/)||[''])[0] }; })()`);
-  chk('体检卡与真机同形：12 行、warn 只有「名单」、没有红行，汇总句的数与行数对得上',
+      第四格: vs[3]||'', 汇总: (txt.match(/共 [0-9]+ 项[^\\n]{0,26}/)||[''])[0] }; })()`);
+  chk('体检与真机同形：英雄卡里 12 行、warn 只有「名单」、没有红行，汇总句的数与行数对得上',
     dbtn && doc.n === 12 && doc.warn === '名单' && doc.红行 === 0 && /^共 12 项 · 有问题 0/.test(doc.汇总),
     JSON.stringify(doc).slice(0, 240));
+  /* 跑完之后第四格必须换成结论（还留着「未跑」就说明统计与结果两处各说一套） */
+  chk('跑完体检，英雄卡第四格从「未跑」变成结论',
+    doc.第四格.indexOf('未跑') < 0 && /项/.test(doc.第四格), '第四格=' + doc.第四格);
 
   /* 备份列表：那张卡跟着"它撤的就是这一页写的文件"挪到了**后端配置**页底。
      demo 里点「刷新列表」应出两行 .bak 且带对应文件。 */

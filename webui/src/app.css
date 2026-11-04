@@ -213,6 +213,14 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .hero-stat{display:flex;flex-direction:column;gap:2px}
 .hero-k{font-size:13px;color:var(--md-sys-color-on-surface-variant)}
 .hero-v{font-size:19px;font-weight:600;font-variant-numeric:tabular-nums}
+/* 体检并到主页大卡片之后：第四格是结论（未跑 / N 项有问题 / 都过），结论用色不用堆表情；
+   按钮与逐行结果跟在统计下面，同一张卡里展开，靠一道分隔线分开而不是再起一张卡。 */
+.hero-v.is-bad{color:var(--md-sys-color-error)}
+.hero-v.is-warn{color:var(--kl-warn)}
+.hero-v.is-ok{color:var(--md-sys-color-primary)}
+.hero-doctor{margin-top:16px;padding-top:4px;
+  border-top:1px solid color-mix(in srgb, var(--md-sys-color-outline-variant) 42%, transparent)}
+.hero-doctor .acts{margin-top:12px}
 .sec-h b{min-width:0;overflow-wrap:anywhere}
 /* 功能菜单行尾的箭头：icon 字体画连字，颜色退一档不抢行 */
 .nav-ic{font-family:var(--md-icon-font-family);font-size:20px;line-height:1;color:var(--md-sys-color-on-surface-variant)}
