@@ -47,6 +47,8 @@ data/adb/omk/.kl_mode.4242
 data/adb/omk/.kl_ov.4242
 data/adb/omk/.kl_prof.4242
 data/adb/omk/restart.injector
+data/adb/keylens-ab/module/webui.sh
+data/adb/keylens-ab/device-ab.sh
 data/misc/keystore/omk/.kl_excl.4242
 data/misc/keystore/omk/.kl_drop.4242
 "

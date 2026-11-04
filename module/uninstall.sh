@@ -69,6 +69,9 @@ done
 # 我们写给 OhMyKeymint 的重启请求（`>` 出来的空文件，消费方读完自己删）：
 # 卸载后留着一个 pending 请求，下一次开机可能被当成"有人还要我重载"。
 rm -f "/data/adb/omk/restart."* 2>/dev/null
+# 我们的 A/B 参照树：deploy 时推上去的整份模块副本 + 真机台子（2 MB）。模块运行时
+# 不碰它，但卸载后它同样是"我们留在 /data/adb 里的东西"（普通用户没有这个目录）。
+rm -rf "/data/adb/keylens-ab" 2>/dev/null
 
 # ---------- 明确不删的东西（归属不在本模块）----------
 # · target.txt / config.json / injector.toml / keybox.xml —— 后端的配置与密钥。
