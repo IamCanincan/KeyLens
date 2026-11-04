@@ -155,6 +155,16 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .acts.filter-grid{display:flex;flex-wrap:nowrap;gap:8px;overflow-x:auto;scrollbar-width:none;padding-bottom:2px}
 .acts.filter-grid::-webkit-scrollbar{display:none}
 .acts.filter-grid md-chip{flex:0 0 auto}
+/* 名单页的吸顶层：芯片 + 搜索 + 计数一起吸在固定顶栏下面。
+   129 行往下滚二十行就够不着搜索框了 —— "想搜得先滚回顶部"在触屏上等于没有搜索。
+   只吸这三样（NN/g 吸顶头：尽可能小、高对比、别浪费屏），说明句和列表照常滚走。
+   注意父级 .page 的入场动画带 transform：动画期间 sticky 会相对它算，
+   300ms 后 transform 撤掉才回到视口坐标 —— 所以别给这条动画加 fill-mode。 */
+.list-head{position:sticky;top:calc(var(--inset-top) + var(--bar-h));z-index:8;
+  background:var(--md-sys-color-surface);padding:6px 0 8px}
+.list-head .hint{margin-top:8px;font-size:12px}
+.view-note{margin-top:10px}
+.stale-row{margin-top:10px}
 /* 溢出时钉一道右侧渐隐（sticky 伪元素，不随内容划走）：
    让人看出"后面还有"，而不是把半颗芯片切在边上当装饰。 */
 .acts.filter-grid[data-scrolls]::after{content:'';flex:0 0 26px;position:sticky;right:0;align-self:stretch;

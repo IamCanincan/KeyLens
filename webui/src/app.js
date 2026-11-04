@@ -392,7 +392,7 @@ function pendingKind() {
 /* 二级页缓存：离开时把**已经画完的整页 DOM**存起来，再次进入直接贴回。
    配置页这类组件多的页面一次构建要几百毫秒；重复构建就是"点进去卡一下"。
    写入/重新读取会清空整仓；keybox 的说明依赖当前 profile，签名不同就不复用。 */
-const CACHE_SUBS = { targets: 1, props: 1, config: 1, sync: 1, keybox: 1 };
+const CACHE_SUBS = { targets: 1, props: 1, config: 1, keybox: 1 };
 /* 重页面首进先挂骨架、延后一拍再构建，点击当帧就有反馈；轻页面（keybox/sync）
    数据通常已在启动时取好，直接画，不额外闪一下骨架。 */
 const HEAVY_SUBS = { targets: 1, props: 1, config: 1 };
@@ -648,7 +648,14 @@ function loadSub(sub, force) {
     return prefetchListIcons().then(function (didIcons) {
       if (force || wasPending || did || didIcons) finishLoad(key);
     });
-  }, function () { finishLoad(key); });
+  }, function () { finishLoad(key); }).then(function () {
+    /* 「系统」那一档的包表在名单页只用来标行（哪条是系统应用、哪条本机已经查不到），
+       不该挡第一帧 —— 后台取，到了再重画一次芯片上的数字。
+       以前它只在用户点了那颗芯片之后才取，所以首屏永远显示「系统 …」。 */
+    if (sub === 'targets' && !S.loaded.system) {
+      ensure('system').then(function () { if (S.tab === 'func' && S.sub === 'targets') draw(); }, function () {});
+    }
+  });
 }
 function reloadAll() {
   S.loaded = {};

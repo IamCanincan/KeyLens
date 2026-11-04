@@ -2884,7 +2884,7 @@ pub fn doctor() {
                 doc("目标文件", "warn", &format!("{} 不可写", b.target.display()), "检查是否被别的模块或后端改成了只读");
             }
         } else {
-            doc("目标文件", "bad", &format!("不存在：{}", b.target.display()), "让后端先跑一轮生成默认文件，或在「自动同步」页点「立即同步一次」");
+            doc("目标文件", "bad", &format!("不存在：{}", b.target.display()), "让后端先跑一轮生成默认文件，或在「目标名单」页底部点「立即同步一次」");
         }
         // 5. 名单 vs 已装（只比数量）
         let nl = if b.target.is_file() {

@@ -214,10 +214,28 @@ export const SYNTAX = {
 };
 export const MODE_LABEL = { auto: '自动', leaf: '叶证书', generate: '证书生成' };
 
+/* 名单页每一档的一句话说明。芯片只有名字和数字，看不出"这一档为什么存在"——
+   主人那句「不够明了」里有一半是这个：五颗芯片里「待加入」「移出过」这种词，
+   不解释就只能靠猜。用词也从行话改过（未纳入→待加入、排除→移出过）。 */
+export const VIEW_NOTE = {
+  targets: '这一档就是后端真正读到的名单。点一行 = 把它移出名单。',
+  apps: '手机上装的第三方应用。勾着的排最前，其余按应用名排。',
+  missing: '装了但还没写进名单的。要一次补齐就点下面的「全选」。',
+  excluded: '你手动移出过的那些：下一次自动同步不会把它们再加回来。',
+  system: '系统包。默认只列有启动器入口的那些，其余收成下面那一句。',
+};
+
 export function baseOf(tok) {
   var t = String(tok);
   if (/^uid:/.test(t)) return '';
   return t.replace(/[?!]$/, '').replace(/@[0-9]+$/, '');
+}
+/* 装了但还没写进名单的条数 —— 菜单摘要与名单页的「待加入」档必须用同一个算法，
+   否则菜单上写 0、点进去却有一串，比不写更糟。 */
+export function pendingCount() {
+  var bs = {};
+  S.targets.forEach(function (t) { const b = baseOf(t); if (b) bs[b] = 1; });
+  return S.apps.filter(function (a) { return !bs[a]; }).length;
 }
 export function tokenValidFor(backend, tok) {
   var s = SYNTAX[backend] || SYNTAX.omk;
@@ -506,7 +524,7 @@ export function swapIcons() {
       if (!ic.label) return '';
       const tok = it.getAttribute('data-tok') || b || '';
       const note = it.getAttribute('data-note') || '';
-      return [tok, note].filter(Boolean).join(' · ');
+      return [tok, note, it.getAttribute('data-flag') || ''].filter(Boolean).join(' · ');
     })();
     if (ic.label) {
       const t = it.querySelector('.app-row-title');
@@ -706,6 +724,9 @@ export function renderHome() {
   const box = h('div', 'stack');
   box.appendChild(statusStrip());
   box.appendChild(backendMatrix());
+  /* 体检挪到主页：它是"现在到底行不行"的答案，以前藏在设置页倒数第二张卡，
+     而打开主页的人最想知道的就是这个（Shneiderman：先总览，再过滤，再细节）。 */
+  box.appendChild(doctorCard());
   return box;
 }
 
@@ -713,13 +734,17 @@ export function renderHome() {
 
 /* 二级页注册表：id → 标题。app.js 的路由、hash、返回箭头都读它；
    长列表（名单、属性）默认只在这里留一个入口，点进去才画 —— 菜单页本身
-   必须轻，落地即用。 */
+   必须轻，落地即用。
+   2026-11-04 按"任务流"重排过（主人："各种功能的排序和整合分工也继续全量优化"）：
+   - 「自动同步」那一页整页只有两颗按钮，而它改的就是这份名单 ⇒ 并进「目标名单」，
+     菜单从 5 条变 4 条（同任务的状态与操作同屏，NN/g 邻近原则）；
+   - 顺序 = 常用在前、破坏性/低频沉底：名单 → 后端配置 → 属性伪装 → keybox
+     （换 keybox 会让旧密钥全部作废，排最后）。 */
 export const FUNC_PAGES = {
   targets: '目标名单',
   config: '后端配置',
-  sync: '自动同步',
-  keybox: 'keybox',
   props: '属性伪装',
+  keybox: 'keybox',
 };
 
 /* 菜单页：所有功能集中在这里，每项带一行**当下的状态摘要**（不是说明书 ——
@@ -731,10 +756,11 @@ export function renderFunc() {
      全路径在二级页的第一行 hint 里本来就有。 */
   const base = p => String(p || '').split('/').filter(Boolean).pop() || '—';
   const entries = [
-    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · ' + base(bi.target_file)],
+    /* 「名单里还有几条没加进来」是这一页最该在菜单上就看见的数（以前只写"当前生效 N 条"，
+       要不要动手看不出来）。同步那颗芯片搬进名单页之后，它的账由这一行接手。 */
+    ['targets', 'list', '目标名单', '当前生效 ' + (bi_entries() || '—') + ' 条 · '
+      + base(bi.target_file) + (pendingCount() > 0 ? ' · 待加入 ' + pendingCount() : '')],
     ['config', 'tune', '后端配置 · ' + (bi.backend_name || '—'), cfgDesc],
-    ['sync', 'refresh', '自动同步',
-      daemonLabel(st) + ' · 上次写入 ' + timeLabel(st.target_mtime)],
     ['keybox', 'https', '密钥箱 keybox', bi.keybox_exists === '1' ? '已设置 · ' + base(bi.keybox_file) : '未设置'],
     /* 对照表进过属性页才有数据；没读过时不能把未知报成 0 项。
        用行数而不是 loaded：写入后 reloadAll 会清 loaded，但已读到的对照表仍然有效。 */
@@ -763,7 +789,9 @@ export function renderFunc() {
 export function renderFuncSub(sub) {
   const bi = S.backendInfo;
   const box = h('div', 'stack');
-  if (sub === 'targets') box.appendChild(listSection());
+  /* 「自动同步」那一页整页只有两颗按钮 + 一行状态，而它改的就是这份名单 —— 搬进名单页，
+     菜单少一条，动作和数据在同一屏（主人："各种功能的排序和整合分工也继续全量优化"）。 */
+  if (sub === 'targets') { box.appendChild(listSection()); box.appendChild(autoSyncCard()); }
   if (sub === 'config') {
     if (bi.backend === 'teesim') { box.appendChild(teesimProfiles()); box.appendChild(teesimOverrides()); }
     if (bi.backend === 'tricky') { box.appendChild(trickyBlocks()); }
@@ -774,8 +802,9 @@ export function renderFuncSub(sub) {
       box.appendChild(h('p', 'read-err', '这一页按当前后端渲染可编辑的字段，而现在没有可用的后端'
         + '（三家都没装/都被禁用，或 backend-info 那一次没读到）。装好并启用其中一家，回到本页重新读取。'));
     }
+    /* 「改坏了往回撤」离改的地方越近越好：以前它在设置页最底下，跟这里写的文件是同一份。 */
+    box.appendChild(backupCard());
   }
-  if (sub === 'sync') box.appendChild(autoSyncCard());
   if (sub === 'keybox') box.appendChild(keyboxCard());
   if (sub === 'props') box.appendChild(propsCards());
   return box;
@@ -881,8 +910,8 @@ export function renderSettings() {
   /* 自检卡不再推迟一帧：它只有五行本地数据，同帧画完页面高度就是最终值；
      推迟挂会让页面进场后再长高约 400px（实测 243 → 641），看起来同样是"拉高"。 */
   box.appendChild(selfCheck());
-  box.appendChild(doctorCard());
-  box.appendChild(backupCard());
+  /* 体检 → 主页（"现在行不行"是总览层的问题）；备份与回滚 → 后端配置（它撤的就是
+     那一页写的文件）。设置页从此只管界面自己的事：外观、自检、版本与更新。 */
   box.appendChild(updateCard());
   return box;
 }
@@ -1048,20 +1077,29 @@ function listSection() {
   }
   const seg = h('div', 'acts filter-grid');
   const sysSp = sysSplit();
-  const missCount = S.apps.filter(function (a) { return !baseSet[a]; }).length;
+  const missCount = pendingCount();
   /* 芯片行的账（417px 视口现量）：五颗标签总宽 505 > 容器 460 ⇒ 第五颗被切掉 45px，
      画成"系统应"半截。两处一起收：① 标签缩短；② 计数为 0 的档不占位
-     （这台机常年「未纳入 0」「已排除 0」，两颗空档挤掉了真正要点的那颗）。
-     当前选中的那一档即使为 0 也留着 —— 不然切进去芯片自己消失，看着像坏了。 */
+     （这台机常年「待加入 0」「移出过 0」，两颗空档挤掉了真正要点的那颗）。
+     当前选中的那一档即使为 0 也留着 —— 不然切进去芯片自己消失，看着像坏了。
+     用词照主人那句"行话看不懂"改过：「未纳入 → 待加入」「排除 → 移出过」，
+     每档另外在芯片下面给一句话（VIEW_NOTE），别让人靠猜。
+     「系统」那一颗以前没读过时写「系统 …」—— 现在 app.js 进这一页就后台预取，
+     真没读到也只说「系统 读不到」，不再留一个像坏掉的省略号。 */
   const chipDefs = [
     ['targets', '名单 ' + S.targets.length, false],
     ['apps', '已装 ' + S.apps.length, false],
-    ['missing', '未纳入 ' + missCount, true],
-    ['excluded', '排除 ' + S.excluded.length, true],
-    ['system', S.system === null ? '系统 …' : '系统 ' + sysSp.apps.length, false],
+    ['missing', '待加入 ' + missCount, true],
+    ['excluded', '移出过 ' + S.excluded.length, true],
+    ['system', S.system === null ? (S.systemErr ? '系统 读不到' : '系统') : '系统 ' + sysSp.apps.length, false],
   ];
   chipDefs.filter(function (d) {
-    return !d[2] || d[1].slice(-1) !== '0' || d[0] === S.view;
+    /* 「计数为 0 的档不占位」以前写成 `d[1].slice(-1) !== '0'` —— 那是按**末位字符**比的，
+       于是「待加入 250」「移出过 10」这种数也被一起藏掉（台架 ?many=1 那档当场撞见：
+       芯片整颗消失，切档切不过去）。要藏的是数值为 0，不是字以 0 结尾。 */
+    if (!d[2]) return true;
+    const n = Number((/([0-9]+)\s*$/.exec(d[1]) || [])[1]);
+    return n !== 0 || d[0] === S.view;
   }).forEach(function (v) {
     seg.appendChild(chip(v[1], v[0] === S.view, function () {
       /* 切档是换一批内容，回页首是对的（同页重画默认会保滚动位置，见 app.js draw） */
@@ -1071,7 +1109,10 @@ function listSection() {
       redraw();
     }));
   });
-  s.appendChild(seg);
+  /* 芯片与搜索框要一起吸顶（NN/g 的吸顶头三原则：尽可能小、高对比、别浪费屏）：
+     129 行往下滚 20 行就够不着搜索框了，而"往上滚回顶部才能搜"在触屏上等于没有搜索。
+     所以这三样（芯片 / 搜索 / 计数）进 .list-head，说明句和列表留在里面滚走。 */
+  const head = h('div', 'list-head');
   /* 溢出时给一道右渐隐：横滑本身是合法模式，"半颗芯片被切掉又没有任何提示"不是 ——
      上一版截图里那颗「系统应」就是这么让人看不出来还能滑。 */
   setTimeout(function () {
@@ -1079,11 +1120,12 @@ function listSection() {
     else seg.removeAttribute('data-scrolls');
   }, 0);
   /* 被启动器判据筛掉的那些（覆盖层 / 服务 / 资源包）收起来，但一句话点名、点得开 ——
-     要 spoof com.android.bluetooth 的人必须还找得到它。 */
+     要 spoof com.android.bluetooth 的人必须还找得到它。先攥在手里，等吸顶那一层装好再挂。 */
+  let sysCompBtn = null;
   if (S.view === 'system' && S.system !== null && sysSp.comps.length) {
-    s.appendChild(button(S.showSysComp ? '收起那 ' + sysSp.comps.length + ' 条系统组件'
+    sysCompBtn = button(S.showSysComp ? '收起那 ' + sysSp.comps.length + ' 条系统组件'
       : '另有 ' + sysSp.comps.length + ' 条系统组件（覆盖层 / 服务 / 资源包）· 点开才列',
-      { variant: 'text', on: function () { S.showSysComp = !S.showSysComp; redraw(); } }));
+      { variant: 'text', on: function () { S.showSysComp = !S.showSysComp; redraw(); } });
   }
   const tf = h('md-text-field');
   tf.setAttribute('variant', 'filled');
@@ -1099,7 +1141,6 @@ function listSection() {
     clearTimeout(searchTimer);
     searchTimer = setTimeout(function () { if (tf.isConnected) paintRows(); }, 90);
   });
-  s.appendChild(tf);
   /* 名单行不用 md-list-item：129 行时，轻量 div 行构建+布局 43ms，
      md-list-item 要 881ms（4 倍 CPU 限速同机实测）—— 后者就是"点进二级页
      卡一下"的根因。轻量行一次画全，页面高度第一帧就是最终值，也不再分批撑高。 */
@@ -1148,7 +1189,10 @@ function listSection() {
     /* 着色只在"这一屏有混有没混"时给：本机「已装」129 条全在名单里，整屏铺同一层色
        反而把对比度拉平了，勾选框已经说清了。 */
     const tinted = inList && S.view !== 'targets' && mixed;
-    const sup = [detail, note].filter(Boolean).join(' · ');
+    /* 名单档里在应用名后面补一句身份（系统应用 / 本机查不到 / 按 UID）——
+       这一档里躺着一批不在「已装」档的东西，不标出来就只能靠人自己猜为什么。 */
+    const flag = rowFlag(tok, b);
+    const sup = [detail, note, flag].filter(Boolean).join(' · ');
     const r = h('div', 'app-row' + (tinted ? ' is-in' : ''));
     r.setAttribute('role', 'button');
     r.tabIndex = 0;
@@ -1161,6 +1205,10 @@ function listSection() {
     r.setAttribute('data-base', b || tok);
     r.setAttribute('data-tok', tok);
     r.setAttribute('data-note', note);
+    /* 身份标记也落到属性上：图标到货时 swapIcons 会原位重写这行的文字，
+       不从这里读回来那句「系统应用 / 本机查不到」就会在那一刻被抹掉
+       （台架"第一次与第二次进入文字一致"那条抓的就是这个）。 */
+    r.setAttribute('data-flag', flag);
     r.setAttribute('data-mono', '');
     /* 记下这一行**打算**用哪个图（真机上可能是 ksu://icon/<包名>）：图打不开时 DOM 里只剩
        首字块，光看 DOM 分不清"没给地址"和"给了但拉不动" —— 台架量的是这个属性。 */
@@ -1301,14 +1349,6 @@ function listSection() {
     page.forEach(function (t) { l.appendChild(rowOf(t, mixed)); });
     /* 批量那一行跟着"这一屏画出来的行"走（搜索/继续显示一变就重建按钮的可用态） */
     if (bulkHost) fillBulk(bulkHost, page);
-    if (!shown.length) {
-      empty.textContent = (S.view === 'system' && S.systemErr)
-        ? '系统应用读不到：' + S.systemErr
-        : (S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。');
-      empty.hidden = false;
-    } else {
-      empty.hidden = true;
-    }
     const rest = shown.length - page.length;
     more.hidden = rest <= 0;
     /* md-button 自己设了 display:flex，会盖掉 UA 的 [hidden]{display:none} ——
@@ -1320,9 +1360,72 @@ function listSection() {
     const moreLabel = rest > 0 ? '继续显示余下 ' + rest + ' 条' : '';
     more.setAttribute('label', moreLabel);
     more.textContent = moreLabel;
-    countHint.textContent = '共 ' + shown.length + ' 条' + (rest > 0 ? ' · 已画 ' + page.length + ' 条' : '');
+    /* 计数挨着筛选器（NN/g：筛选器紧邻总数/已加载/剩余），并把"已勾多少"一起报 ——
+       以前只有画了多少，勾了多少要自己数复选框。 */
+    countHint.textContent = '共 ' + shown.length + ' 条 · 已勾 ' + inCount + ' 条'
+      + (rest > 0 ? ' · 已画 ' + page.length + ' 条' : '');
+    /* 搜索没命中 ≠ 这一档是空的：说清是"没匹配到"，并把清除筛选那颗递到手边。 */
+    if (!shown.length && S.search) {
+      empty.textContent = '没有匹配「' + S.search + '」的条目。换个词，或清掉筛选看全部。';
+      clearBtn.hidden = false;
+      clearBtn.style.display = '';
+    } else {
+      clearBtn.hidden = true;
+      clearBtn.style.display = 'none';
+      empty.textContent = (S.view === 'system' && S.systemErr)
+        ? '系统应用读不到：' + S.systemErr
+        : (S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。');
+    }
+    empty.hidden = shown.length > 0;
     loadIconsFor(page);
   }
+  /* 名单档里"这条是什么身份"要能看出来。判据是两份宇宙（已装 + 系统）**都读到了**
+     才算数 —— 把"没读到"说成"没装"是假消息，所以读不到时一个字都不标。 */
+  const appSet = {};
+  S.apps.forEach(function (p) { appSet[p] = 1; });
+  const sysSet = {};
+  (S.system || []).forEach(function (p) { sysSet[p] = 1; });
+  const universeKnown = S.system !== null && !S.systemErr;
+  function rowFlag(tok, b) {
+    if (S.view !== 'targets' || !universeKnown) return '';
+    if (/^uid:/.test(tok)) return '按 UID 的条目';
+    const k = b || tok;
+    if (!appSet[k] && !sysSet[k]) return '本机查不到';
+    if (sysSet[k]) return '系统应用';
+    return '';
+  }
+  /* 卸载残留单独点名 + 一键清出（走既有 remove-apps，多于一条照样要第二下确认） */
+  let staleHost = null;
+  if (S.view === 'targets' && universeKnown) {
+    const stale = S.targets.filter(function (t) {
+      const b = baseOf(t);
+      return b && !appSet[b] && !sysSet[b];
+    });
+    if (stale.length) {
+      staleHost = h('div', 'stale-row');
+      staleHost.appendChild(h('p', 'hint', '名单里 ' + stale.length + ' 条本机已经查不到这个应用（卸载残留 / 别处带来的）'));
+      staleHost.appendChild(dangerButton('清出这 ' + stale.length + ' 条', { variant: 'text' }, function () {
+        write('remove-apps', stale.map(baseOf).join(','), '已清出 ' + stale.length + ' 条');
+      }));
+    }
+  }
+  const clearBtn = button('清除筛选', { variant: 'tonal', on: function () {
+    S.search = '';
+    tf.value = '';
+    paintRows();
+  } });
+  clearBtn.setAttribute('data-role', 'clear-search');
+  /* 装配顺序：吸顶层（芯片 + 搜索 + 计数）→ 这一档的一句话 → 系统组件那颗 → 残留那几条
+     → 批量行 → 列表 → 空态 → 清除筛选 → 继续显示。
+     吸顶层挂在卡**外面**：md-card 的影子层自己裁边（圆角），sticky 元素被它裁住就永远
+     贴不上去 —— 实测顶栏下面滚 1600px 后那颗搜索框跑到 y=-1364。卡本身是透明底
+     （`md-card.card{--md-card-container-color:transparent}`），挪出来视觉上没区别。 */
+  head.appendChild(seg);
+  head.appendChild(tf);
+  head.appendChild(countHint);
+  s.appendChild(h('p', 'hint view-note', VIEW_NOTE[S.view] || ''));
+  if (sysCompBtn) s.appendChild(sysCompBtn);
+  if (staleHost) s.appendChild(staleHost);
   /* 批量那一行要出现在列表**上面**：先挂空壳、再挂列表（不折腾 insertBefore）。
      按钮在 paintRows 里按"这一屏画出来的行"重建（搜索/继续显示一变就重算可用态）。 */
   let bulkHost = null;
@@ -1330,11 +1433,16 @@ function listSection() {
   s.appendChild(l);
   /* 空态也放列表 **外面**：裸节点塞进列表没有白底、还会压到相邻行上。 */
   s.appendChild(empty);
+  s.appendChild(clearBtn);
   s.appendChild(more);
-  s.appendChild(countHint);
   c.appendChild(s);
   paintRows();
-  return c;
+  /* 吸顶层在卡外面、和卡做兄弟（理由见上面那段）；repaintBulk 找批量行仍走 #view 查询，
+     换父级不影响它。 */
+  const frag = document.createDocumentFragment();
+  frag.appendChild(head);
+  frag.appendChild(c);
+  return frag;
 }
 
 /* TEESim 的第二块可写面：overrides.json（上一版完全没有） */
@@ -1416,8 +1524,9 @@ function teesimOverrides() {
 function autoSyncCard() {
   const st = S.status, env = S.env;
   const c = card();
-  /* 二级页标题就是「自动同步」，不再套同名分组标题。 */
-  const s = h('div');
+  /* 这张卡以前自己占一页，标题在顶栏（「自动同步」），卡里不需要分组标题。
+     现在它挂在名单页下面，得自己说清是哪一块 —— 名字也跟着任务走：这是"把名单补齐"。 */
+  const s = section('同步名单');
   s.appendChild(h('p', 'hint', '三家后端自己都不主动改名单：模块在开机与文件变化时把已装应用同步进'
     + '当前后端的名单文件（「目标名单」里那份）。后端自己的配置在「后端配置」里。'));
   const ino = !env.inotify_mode ? '读取中' : env.inotify_mode === 'none' ? '未找到 inotify 工具' : env.inotify_mode;

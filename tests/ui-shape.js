@@ -216,8 +216,11 @@ console.log('── 假数与假承诺 ──');
 const rawDaemon = (screens.match(/daemon_alive/g) || []).length;
 chk('daemon_alive 只在 bridge 的三态 helper 里出现', rawDaemon === 0,
   '界面里还有 ' + rawDaemon + ' 处直接拼 daemon_alive');
-chk('两处运行状态都走 daemonLabel（菜单与自动同步页）',
-  (screens.match(/daemonLabel\(st\)/g) || []).length >= 2
+/* 运行状态的说法只许走 helper。2026-11-04「自动同步」那一页并进名单页之后，菜单摘要
+   不再打进程数（换成「待加入 N」），所以下限从 2 收到 1 —— 收的是**数量**，不是判据：
+   界面里任何一处自己拼 daemon_alive 仍然当场红（上面那条 chk 管的就是这个）。 */
+chk('运行状态走 daemonLabel/daemonDown，不许界面自己拼字段',
+  (screens.match(/daemonLabel\(st\)/g) || []).length >= 1
   && (screens.match(/daemonDown\(st\)/g) || []).length >= 1,
   'daemonLabel ' + (screens.match(/daemonLabel\(st\)/g) || []).length
   + ' 处 · daemonDown ' + (screens.match(/daemonDown\(st\)/g) || []).length + ' 处');
@@ -328,21 +331,33 @@ const setBody = RI[3] >= 0 && endSet > RI[3] ? screens.slice(RI[3], endSet) : ''
 chk('四段函数体都切得到（切片没落空）',
   homeBody.length > 60 && funcBody.length > 60 && subBody.length > 60 && setBody.length > 60,
   [homeBody.length, funcBody.length, subBody.length, setBody.length].join('/'));
+/* 2026-11-04 分工重排的账：体检（"现在到底行不行"）归主页，备份回滚（撤的就是配置页
+   写的文件）归后端配置，设置页只留界面自己的事。钉住"搬到了哪"，也钉住"别再搬回去"。
+   判据读的是**剥掉注释**的设置页体 —— 那段的说明注释里正好写着这两个名字。 */
+chk('体检在主页、备份回滚在后端配置，设置页不再挂这两张卡',
+  /box\.appendChild\(doctorCard\(\)\)/.test(homeBody)
+  && !/doctorCard\(\)|backupCard\(\)/.test(setBody.replace(/\/\*[\s\S]*?\*\//g, ' ')),
+  '主页 ' + (homeBody.match(/doctorCard\(\)/g) || []).length + ' 处 · 设置页 '
+  + ((setBody.replace(/\/\*[\s\S]*?\*\//g, ' ').match(/doctorCard\(\)|backupCard\(\)/g) || []).length) + ' 处');
 /* 2026-10-30 用户定稿：功能页 = 一张菜单集成所有功能，长列表默认收进二级 ——
    菜单页本身必须轻（落地即用），列表与表单点进去才画。 */
 /* FUNC_PAGES 声明在 renderFunc 之前、落在 homeBody 切片里 —— 所以注册表查 screens；
    负面断言（"菜单页不画长列表"）要用**剥掉注释**的函数体：下一段的说明注释里
    就写着 listSection，注释不算代码。 */
 const funcCode = funcBody.replace(/\/\*[\s\S]*?\*\//g, ' ');
-chk('功能页是菜单：五项入口各带状态摘要，行尾是箭头不是内容',
+chk('功能页是菜单：四项入口各带状态摘要（「自动同步」已并进名单页），行尾是箭头不是内容',
   /export const FUNC_PAGES = \{/.test(screens)
-  && ['targets', 'config', 'sync', 'keybox', 'props'].every(k => new RegExp(k + ": '[^']+'").test(screens))
+  && ['targets', 'config', 'keybox', 'props'].every(k => new RegExp(k + ": '[^']+'").test(screens))
+  /* 反向那一半也要钉住：sync 那一页是被**搬走**的，不是改名 —— 深链 #/func/sync
+     会落回菜单，路由表里不许再留这个键。 */
+  && !/'sync':/.test(screens)
   && /nav-ic/.test(funcCode) && /openSubFn\(/.test(funcCode));
 chk('菜单页不画长列表（listSection 与表单卡都不在菜单函数里）',
   !/listSection|teesimProfiles|teesimOverrides|trickyBlocks|omkReload|keyboxCard|propsCards|autoSyncCard/.test(funcCode));
-chk('二级页按 FUNC_PAGES 分发五个功能面',
-  /'targets'\) box\.appendChild\(listSection\(\)\)/.test(subBody)
-  && /'sync'\) box\.appendChild\(autoSyncCard\(\)\)/.test(subBody)
+chk('二级页按 FUNC_PAGES 分发四个功能面；同步名单挂名单页、备份回滚挂后端配置页',
+  /'targets'\) \{ box\.appendChild\(listSection\(\)\); box\.appendChild\(autoSyncCard\(\)\); \}/.test(subBody)
+  && /box\.appendChild\(backupCard\(\)\)/.test(subBody)
+  && !/'sync'\)/.test(subBody)
   && /'keybox'\) box\.appendChild\(keyboxCard\(\)\)/.test(subBody)
   && /'props'\) box\.appendChild\(propsCards\(\)\)/.test(subBody)
   && /teesimProfiles\(\)/.test(subBody) && /trickyBlocks\(\)/.test(subBody) && /omkReload\(\)/.test(subBody));
@@ -424,7 +439,7 @@ chk('缓存命中不重画当前页（没有新数据就跳过第二次构建）
 /* 配置/属性/名单这类重页面：首进先让骨架屏上屏、延后两帧构建；
    离开时把整页 DOM 存起来，再次进入直接贴回，不再重建。 */
 chk('重页面首进先骨架后构建，重复进入直接贴回缓存',
-  /const CACHE_SUBS = \{ targets: 1, props: 1, config: 1, sync: 1, keybox: 1 \}/.test(app)
+  /const CACHE_SUBS = \{ targets: 1, props: 1, config: 1, keybox: 1 \}/.test(app)
   && /const HEAVY_SUBS = \{ targets: 1, props: 1, config: 1 \}/.test(app)
   && /function stashPage\(\)/.test(app)
   && /pageCache\['func\/' \+ S\.sub\] = \{ el: pg, sig: cacheSig\(S\.sub\) \}/.test(app)

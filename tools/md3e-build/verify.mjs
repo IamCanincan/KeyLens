@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 161;
+const FLOOR_CHKS = 169;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -41,10 +41,10 @@ const WANT = ['md-top-app-bar', 'md-card', 'md-list',
    must 是这一页必须出现的区块标题：缺一个就说明那一格的分支渲染没跑到。 */
 const PAGES = [
   /* 主页回答"在不在跑"：状态条 + 三家互斥矩阵。 */
-  { id: 'home', title: '主页', must: ['三家后端', '未安装', '当前生效的就是这一家'], items: true },
+  { id: 'home', title: '主页', must: ['三家后端', '未安装', '当前生效的就是这一家', '运行体检'], items: true },
   /* 功能格是一张菜单：所有功能集中在这里，每项带状态摘要；
      长列表在二级页里，菜单页本身落地即用。 */
-  { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '自动同步', '密钥箱 keybox', '属性伪装'], items: true },
+  { id: 'func', title: '功能', must: ['目标名单', '后端配置 ·', '密钥箱 keybox', '属性伪装'], items: true },
   { id: 'log', title: '日志', must: ['运行日志', '同步完成'], items: false },
   /* 设置格只留界面自己的事：外观 + 界面自检（伪装/Verified Boot 在【功能】里）。 */
   { id: 'settings', title: '设置', must: ['外观', '界面自检'], items: true },
@@ -591,13 +591,16 @@ async function main() {
       await sleep(400);
     }
     /* 「系统应用」这一档以前在界面上**根本不存在**：数据源是 `pm list packages -3`，
-       系统包没有行可画，连「加入」按钮都摸不到。芯片点开才去读（命令层要跑两次 pm），
-       所以断言"读之前写 …、读之后有行、且数对得上"。 */
+       系统包没有行可画，连「加入」按钮都摸不到。
+       以前芯片是"点进去才取"，所以首屏永远写着「系统 …」—— 一个看着像坏掉的省略号
+       （主人那句「不够明了」里的一条）。现在进这一页就后台预取，判据跟着换成
+       **"永远不许出现省略号"**：要么带数字，要么明写读不到。 */
     {
       const cs0 = await ev(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
         return cs.map(function(c){return c.getAttribute('label');}); })()`);
-      chk('名单页有「系统」这一档，未读时标签写…',
-        cs0.some(function (l) { return l === '系统 …'; }), JSON.stringify(cs0));
+      const sysChip = cs0.filter(function (l) { return /^系统/.test(l); })[0] || '';
+      chk('「系统」芯片不许出现省略号（带数字或明写读不到）',
+        !!sysChip && sysChip.indexOf('…') < 0 && /^系统( [0-9]+| 读不到)$/.test(sysChip), JSON.stringify(cs0));
       const tapChip2 = kw => tap(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
         var e=cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(${JSON.stringify(kw)})===0;})[0];
         /* 这一行是 nowrap + 横滑的（见 app.css 的 .acts.filter-grid），第五颗天然落在 417px
@@ -1096,7 +1099,7 @@ async function main() {
   const L1 = await readList();
   chk('250 条时先画 200 行，并给出「继续显示余下 50 条」',
     L1.rows === 200 && L1.more === '继续显示余下 50 条' && L1.hidden === false
-    && /^共 250 条 · 已画 200 条$/.test(L1.hint), JSON.stringify(L1));
+    && /^共 250 条 · 已勾 0 条 · 已画 200 条$/.test(L1.hint), JSON.stringify(L1));
   await ev(`(function(){ var t=document.querySelector('#view [data-role="list-more"]');
     if (t) t.scrollIntoView(true); return t?1:0; })()`);
   await sleep(300);
@@ -1109,7 +1112,7 @@ async function main() {
   const L2 = await readList();
   chk('点一下画全 250 行，那颗自己退场（**屏上真看不见**：offsetParent 为空或高度 0）',
     L2.rows === 250 && L2.hidden === true && L2.more === ''
-    && (L2.offscreen === true || L2.h === 0) && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
+    && (L2.offscreen === true || L2.h === 0) && /^共 250 条 · 已勾 0 条$/.test(L2.hint), JSON.stringify(L2));
   /* 批量那一行必须跟着"画出来的行"长：不然「全选」嘴上说全选、手里只改前 200 条。
      这一档 250 条一条都不在名单里 ⇒ 只有「全选」，字上的条数就是它要动的条数。 */
   chk('批量按钮的作用范围跟着「这一屏画出来的行」长：200 → 250',
@@ -1309,7 +1312,7 @@ async function main() {
     await send('Page.navigate', { url: URL0 });
     await sleep(1300);
     await toFunc(); await sleep(500);
-    await tapEntry('自动同步'); await sleep(800);
+    await tapEntry('目标名单'); await sleep(900);
     await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
       return bs.filter(function(b){return (b.getAttribute('label')||'')==='立即同步一次';})[0]; })()`);
     await sleep(1000);
@@ -1324,6 +1327,73 @@ async function main() {
       const sT = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-toast-readable.png'), Buffer.from(sT.data, 'base64'));
     }
+
+    /* ── 名单屏"更明了"这一批：吸顶层 / 每档一句话 / 搜索没命中 / 计数带已勾 ──
+       吸顶是这轮的主账：129 行往下滚二十行就够不着搜索框，"想搜得先滚回顶部"等于没有搜索。
+       这里用 ?many=1（250 条）那一档，滚动才量得出来。 */
+    await send('Page.navigate', { url: URL0 + '&many=1' });
+    await sleep(1600);
+    await toFunc(); await sleep(500);
+    await tapEntry('目标名单'); await sleep(1200);
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
+    await sleep(900);
+    await ev('window.scrollTo(0, 1600)'); await sleep(400);
+    const stick = await ev(`(function(){ var hd=document.querySelector('#view .list-head');
+      var tf=hd?hd.querySelector('md-text-field'):null;
+      var r=hd?hd.getBoundingClientRect():null; var tr=tf?tf.getBoundingClientRect():null;
+      var vh=document.documentElement.clientHeight;
+      return { 有吸顶层: !!hd, top: r?Math.round(r.top):-999, 搜索框在视口里: !!tr && tr.top >= 0 && tr.bottom <= vh,
+        芯片数: hd?hd.querySelectorAll('md-chip').length:-1,
+        计数: hd?(hd.querySelector('.hint')||{}).textContent||'':'' }; })()`);
+    chk('滚到列表中段：芯片 + 搜索 + 计数还吸在顶栏下面，搜索框仍在视口里',
+      stick.有吸顶层 && stick.top >= 56 && stick.top <= 130 && stick.搜索框在视口里
+      && stick.芯片数 >= 3 && /^共 [0-9]+ 条 · 已勾 [0-9]+ 条/.test(stick.计数), JSON.stringify(stick));
+    /* 「计数为 0 的档不占位」这条老规矩以前是按**末位字符**判的 —— 「待加入 250」也被一起
+       藏掉，芯片整颗消失、切档切不过去（?many=1 这一档当场撞见）。两头都要钉：
+       末位是 0 但不为 0 的必须留着，真为 0 的才藏。 */
+    const chipLabels = await ev(`[].slice.call(document.querySelectorAll('#view .list-head md-chip'))
+      .map(function(c){return c.getAttribute('label');})`);
+    chk('计数末位是 0 的档不许被藏（这里就是「待加入 250」）',
+      chipLabels.some(function (l) { return l === '待加入 250'; }), JSON.stringify(chipLabels));
+    /* 切档那一段先回顶部：吸顶层现在是 sticky，scrollIntoView 对"已经看得见"的元素
+       不做事，坐标算出来会落在固定顶栏那一行里（点下去打的是顶栏）。 */
+    await ev('window.scrollTo(0, 0)'); await sleep(300);
+    const notes = [];
+    for (const kw of ['待加入', '移出过', '名单']) {
+      await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+        return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf(${JSON.stringify(kw)})===0;})[0]; })()`);
+      await sleep(700);
+      notes.push(kw + '→' + await ev(`(function(){ var n=document.querySelector('#view .view-note');
+        var s=[].slice.call(document.querySelectorAll('#view md-chip[selected]')).map(function(c){return c.getAttribute('label');})[0]||'';
+        return '［选中 ' + s + '］' + (n?(n.textContent||''):''); })()`));
+    }
+    chk('每一档都换一句话说明这档是什么（芯片名字不再是行话，还有「待加入 / 移出过」改名后的账）',
+      notes.every(function (s) { return /→.{8,}/.test(s); })
+      && notes.join('|').indexOf('装了但还没写进名单') >= 0 && notes.join('|').indexOf('手动移出过') >= 0,
+      JSON.stringify(notes));
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('名单')===0;})[0]; })()`);
+    await sleep(600);
+    await ev(`(function(){ var tf=document.querySelector('#view .list-head md-text-field');
+      tf.value = '这个包名不存在'; tf.dispatchEvent(new Event('input',{bubbles:true})); return 1; })()`);
+    await sleep(700);
+    const nm = await ev(`(function(){ var e=document.querySelector('#view p.empty');
+      var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var c=bs.filter(function(b){return (b.getAttribute('label')||'')==='清除筛选';})[0];
+      var r=c?c.getBoundingClientRect():null;
+      return { 那句: e?((e.hidden?'(藏着)':'')+(e.textContent||'')):'(没有空态)',
+        那颗: c?(r.width>0?'看得见':'看不见'):'(没有那颗)' }; })()`);
+    chk('搜索没命中时说「没有匹配…」并给一颗看得见的「清除筛选」（不是"这一类现在是空的"）',
+      /没有匹配「这个包名不存在」/.test(nm.那句) && nm.那颗 === '看得见', JSON.stringify(nm));
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'')==='清除筛选';})[0]; })()`);
+    await sleep(700);
+    const nm2 = await ev(`(function(){ var tf=document.querySelector('#view .list-head md-text-field');
+      return { 框里: tf?String(tf.value||''):'(没有框)', 行: document.querySelectorAll('#view .app-row').length,
+        空态收起: !!document.querySelector('#view p.empty[hidden]') }; })()`);
+    chk('点「清除筛选」真的清掉：框空了、行回来了、空态收起',
+      nm2.框里 === '' && nm2.行 > 0 && nm2.空态收起 === true, JSON.stringify(nm2));
 
     /* 名单这一屏的三根轴（主人原话："还是不够人性化…主要哪些选了哪些没选都不明了"）。
        本机现量：235 个系统包里按平台启动器判据只有 17 个是应用；相机排在第 201 行。 */
@@ -1520,8 +1590,12 @@ async function main() {
       source: (function () {
         var pk = [];
         for (var i = 0; i < 129; i++) pk.push('com.real.app' + (i < 10 ? '00' : (i < 100 ? '0' : '')) + i);
-        var t = pk.slice(); t.push('com.gone.a', 'com.gone.b');
-        return 'window.__KL_DEMO_FIXTURE = { apps: ' + JSON.stringify(pk.join('\n'))
+        /* 两份宇宙都要给：只有已装时"查不到"是不能下结论的（读不到 ≠ 没装）。
+           名单 = 129 条已装 + 1 条本机查不到的（卸载残留）= 130 条。 */
+        var sys = ['com.android.vending', 'com.google.android.gms'];
+        var t = pk.slice(); t.push('com.gone.app');
+        return 'window.__KL_DEMO_FIXTURE = { apps: '
+          + JSON.stringify({ '': pk.join('\n'), system: sys.join('\n'), launchable: sys.join('\n') })
           + ', targets: ' + JSON.stringify(t.join('\n')) + ' };';
       })() });
     await send('Page.navigate', { url: URL0 });
@@ -1540,9 +1614,16 @@ async function main() {
     await sleep(500);
     const devState1 = await bulkState();
     const devW1 = await nWrites();
-    chk('真机形状（129 条全在 131 条名单里）：只给一颗写着条数的「全不选」，第一点不写',
+    chk('真机形状（129 条全在 130 条名单里）：只给一颗写着条数的「全不选」，第一点不写',
       devState0.join('|') === 'del=全不选（129 条）' && devState1.join('|') === 'del=再点确认（129 条）'
       && devW1 === devW0, JSON.stringify({ 状态: [devState0, devState1], 写次数: [devW0, devW1] }));
+    /* 另一头：这一份夹具里「待加入」真的是 0（129 条已装全在名单里）⇒ 该藏。
+       和上面那条配成一对，才说清"藏的是数值 0，不是字以 0 结尾"。 */
+    const devChips = await ev(`[].slice.call(document.querySelectorAll('#view .list-head md-chip'))
+      .map(function(c){return c.getAttribute('label');})`);
+    chk('计数真为 0 的那一档才不占位（这份夹具里「待加入」= 0，确实被藏）',
+      devChips.join('|').indexOf('待加入') < 0 && devChips.some(function (l) { return /^已装 129$/.test(l); }),
+      JSON.stringify(devChips));
     await tapBulkKey('del');
     await sleep(1200);
     const devWrite = await ev(`(function(){ var w=(window.__klWrites||[]).filter(function(x){return x.cmd==='remove-apps';});
@@ -1551,6 +1632,43 @@ async function main() {
     chk('第二下才写：就发一条 remove-apps，参数正是那 129 个包名（逗号分隔，没有空格）',
       devWrite.次数 === 1 && devWrite.条数 === 129 && devWrite.首个 === 'com.real.app000'
       && devWrite.带空格 === false, JSON.stringify(devWrite));
+    /* 同一份夹具切回「名单」档：名单 130 条里有 1 条（com.gone.app）既不在已装也不在
+       系统包里 = 卸载残留。以前它在屏上就是一个认不出来的包名，现在要：行上点名 +
+       列表上面一句话 + 一颗「清出这 1 条」（两段式，走 remove-apps）。 */
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('名单')===0;})[0]; })()`);
+    await sleep(900);
+    const stale = await ev(`(function(){ var hints=[].slice.call(document.querySelectorAll('#view p.hint'))
+        .map(function(p){return p.textContent;});
+      var bs=[].slice.call(document.querySelectorAll('#view md-button'))
+        .filter(function(b){return /^清出这/.test(b.getAttribute('label')||'');});
+      var gone=[].slice.call(document.querySelectorAll('#view .app-row'))
+        .filter(function(r){return r.getAttribute('data-base')==='com.gone.app';})[0];
+      return { 那句: hints.filter(function(h){return /本机已经查不到/.test(h);})[0] || '',
+        那颗: bs.length ? (bs[0].getAttribute('label')||'') : '', 按住: bs.length ? (bs[0].hasAttribute('data-armed')?1:0) : -1,
+        行标: gone ? (gone.getAttribute('data-flag')||'') : '(没有那行)',
+        行文字: gone ? (gone.getAttribute('supporting-text')||'') : '' }; })()`);
+    chk('名单档点名卸载残留：行上「本机查不到」+ 上面一句话 + 一颗「清出这 1 条」',
+      /名单里 1 条本机已经查不到/.test(stale.那句) && stale.那颗 === '清出这 1 条'
+      && stale.行标 === '本机查不到' && /本机查不到/.test(stale.行文字), JSON.stringify(stale));
+    await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){return /^清出这/.test(x.getAttribute('label')||'');})[0];
+      if (b) b.scrollIntoView({block:'nearest'}); return b?1:0; })()`);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return /^清出这|再点确认 · 清出这/.test(x.getAttribute('label')||'');})[0]; })()`);
+    await sleep(500);
+    const staleArm = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){return /清出这/.test(x.getAttribute('label')||'');})[0];
+      return { 字: b?(b.getAttribute('label')||''):'', 写: (window.__klWrites||[]).filter(function(x){return x.cmd==='remove-apps';}).length }; })()`);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return /清出这/.test(x.getAttribute('label')||'');})[0]; })()`);
+    await sleep(1000);
+    const staleFire = await ev(`(function(){ var w=(window.__klWrites||[]).filter(function(x){return x.cmd==='remove-apps';});
+      var last=w.length?w[w.length-1].arg:''; return { 次数: w.length, 参数: last }; })()`);
+    chk('清出残留也要第二下：第一点只换字不写，第二点发的那条参数就是那个包名',
+      staleArm.字 === '再点确认 · 清出这 1 条' && staleArm.写 === 1
+      && staleFire.次数 === 2 && staleFire.参数 === 'com.gone.app',
+      JSON.stringify({ 按住: staleArm, 落地: staleFire }));
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj2.identifier });
   }
 
@@ -1631,7 +1749,9 @@ async function main() {
   await ev(`(function(){ var n=document.getElementById('nav');
     n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
   await sleep(700);
-  await tapEntry('自动同步');
+  /* 「自动同步」那一页 2026-11-04 并进「目标名单」了（整页只有两颗按钮，而它改的就是这份名单）
+     —— 这两处跟着改成进名单页找那张同步卡。 */
+  await tapEntry('目标名单');
   await sleep(900);
   /* 行的文字是 md-list-item 的 **属性**（headline/trailing-text），渲染在 shadow 里 ——
      `view.textContent` 看不见它们。这一屏的判据必须把属性一起捞进来，
@@ -1648,7 +1768,7 @@ async function main() {
     return { undef: /undefined|NaN/.test(t), unread: t.indexOf('运行状态读不到') >= 0,
       claimsOff: t.indexOf('开机写入已关闭') >= 0, claimsOn: t.indexOf('开机写入已开启') >= 0,
       peek: t.replace(/\\s+/g, ' ').slice(-200) }; })()`);
-  chk('status 读失败：自动同步页报"运行状态读不到"，屏上没有 undefined，也不猜开关方向',
+  chk('status 读失败：名单页的同步卡报"运行状态读不到"，屏上没有 undefined，也不猜开关方向',
     !sfail.undef && sfail.unread && !sfail.claimsOff && !sfail.claimsOn, JSON.stringify(sfail));
   /* 正对照：同一份判据在 status 正常时必须看得见「N 个进程」。
      没有这一条，上面那个 unread=false 既可能是"没显示读不到"也可能是"探针看不见属性"。 */
@@ -1657,7 +1777,7 @@ async function main() {
   await ev(`(function(){ var n=document.getElementById('nav');
     n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
   await sleep(700);
-  await tapEntry('自动同步');
+  await tapEntry('目标名单');
   await sleep(900);
   const sok = await ev(ALLTEXT);
   chk('正对照：status 正常时同一行看得见「N 个进程」（上面那条判据不是瞎的）',
@@ -1703,10 +1823,12 @@ async function main() {
   console.log('\n截图：' + SHOT_DIR);
   /* 体检：设置页点「运行体检」，demo 里应出 6 行、其中"名单"是 warn 档。
      同时验它按 TSV 行画成了行（不是一坨文本）。 */
+  /* 体检：2026-11-04 从设置页挪到**主页**（"现在到底行不行"是总览层的问题，不该藏在
+     设置页倒数第二张卡）。demo 里点一次应出 6 行、其中"名单"是 warn 档。 */
   await send('Page.navigate', { url: URL0 });
   await sleep(1500);
   await ev(`(function(){ var n=document.getElementById('nav');
-    n.dispatchEvent(new CustomEvent('change',{detail:{index:3},bubbles:true})); return 1; })()`);
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:0},bubbles:true})); return 1; })()`);
   await sleep(800);
   const dbtn = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
     var b=bs.filter(function(x){return (x.textContent||'').indexOf('运行体检')>=0;})[0];
@@ -1725,7 +1847,13 @@ async function main() {
   chk('体检：点一次出 6 行 TSV，名单那行是 warn 档，且有汇总句',
     dbtn && doc.n >= 6 && doc.warn.indexOf('名单') >= 0 && doc.hasSummary, JSON.stringify(doc).slice(0, 220));
 
-  /* 备份列表：设置页点「刷新列表」，demo 里应出两行 .bak 且带对应文件。 */
+  /* 备份列表：那张卡跟着"它撤的就是这一页写的文件"挪到了**后端配置**页底。
+     demo 里点「刷新列表」应出两行 .bak 且带对应文件。 */
+  await ev(`(function(){ var n=document.getElementById('nav');
+    n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+  await sleep(700);
+  await tapEntry('后端配置');
+  await sleep(1000);
   const bbtn = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
     var b=bs.filter(function(x){return (x.textContent||'').indexOf('刷新列表')>=0;})[0];
     if(!b) return null; b.scrollIntoView({ block: 'center' }); var r=b.getBoundingClientRect();
