@@ -1972,20 +1972,22 @@ async function main() {
         [].slice.call(document.querySelectorAll("#view p.hint")).map(function(p){return p.textContent;}).join("|");
       var bs=[].slice.call(document.querySelectorAll("#view md-button")).map(function(b){return b.getAttribute("label")||"";});
       var md=document.querySelector("#view .md-lite");
-      return { text: t, buttons: bs, md: !!md, lis: md ? md.querySelectorAll("li").length : 0,
+      return { text: t, buttons: bs, md: !!md, preview: document.querySelectorAll('#view .md-preview').length, lis: md ? md.querySelectorAll("li").length : 0,
                h1: md ? (md.querySelector(".md-h1")||{}).textContent || "" : "" }; })()`;
     const tapped = await tapUp('检查更新');
     await sleep(700);
     const up0 = await ev(readCard);
     chk('版本卡：点检查后说出新版本（号 + 大小）并给「下载更新包」',
       tapped === 1 && /有新版本 v9\.9\.9（1\.2 MB）/.test(up0.text) && up0.buttons.indexOf('下载更新包') >= 0, JSON.stringify(up0).slice(0, 160));
-    chk('更新日志默认收起（只留首行，不铺开正文）',
-      !up0.md && /v9\.9\.9/.test(up0.text) && up0.buttons.indexOf('展开更新日志') >= 0, 'md=' + up0.md);
+    chk('更新日志默认收起（只留一行纯文本预览，不铺开正文）',
+      !up0.md && up0.preview === 1 && /v9\.9\.9/.test(up0.text) && up0.buttons.indexOf('展开更新日志') >= 0,
+      'md=' + up0.md + ' preview=' + up0.preview);
     const tappedLog = await tapUp('展开更新日志');
     await sleep(400);
     const upLog = await ev(readCard);
-    chk('点开后更新日志按 markdown 画出来（标题 + 两条列表）',
-      tappedLog === 1 && upLog.md && upLog.lis >= 2 && /KeyLens v9\.9\.9/.test(upLog.h1), JSON.stringify({ md: upLog.md, lis: upLog.lis, h1: upLog.h1 }));
+    chk('点开后更新日志按 markdown 画出来（标题 + 两条列表），且不再多一行预览',
+      tappedLog === 1 && upLog.md && upLog.preview === 0 && upLog.lis >= 2 && /KeyLens v9\.9\.9/.test(upLog.h1),
+      JSON.stringify({ md: upLog.md, preview: upLog.preview, lis: upLog.lis, h1: upLog.h1 }));
     const tapped2 = await tapUp('下载更新包');
     await sleep(900);
     const up1 = await ev(readCard);
@@ -1997,6 +1999,8 @@ async function main() {
     const up2 = await ev(readCard);
     chk('点安装后：说「已装好，重启后生效」，不再重复给「安装」',
       tapped3 === 1 && /已装好，重启后生效/.test(up2.text) && up2.buttons.indexOf('安装') < 0, JSON.stringify(up2.text).slice(0, 160));
+    { const sU = await send('Page.captureScreenshot', { format: 'png' });
+      fs.writeFileSync(path.join(SHOT_DIR, 'new-update.png'), Buffer.from(sU.data, 'base64')); }
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: injU.identifier });
   }
 

@@ -3668,7 +3668,8 @@ pub fn update_fetch(raw: &str) {
     let _ = std::fs::remove_file(&tmp);
     if src.starts_with("http://") || src.starts_with("https://") {
         let ran = std::process::Command::new("curl")
-            .args(["-L", "--max-time", "180", "-fsS", "-o"]).arg(&tmp).arg("--").arg(src)
+            .args(["-L", "--max-time", "180", "--retry", "2", "--retry-connrefused", "--retry-delay", "2", "-fsS", "-o"])
+            .arg(&tmp).arg("--").arg(src)
             .output()
             .map(|o| o.status.success())
             .unwrap_or(false);

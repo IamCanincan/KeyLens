@@ -1127,7 +1127,7 @@ cmd_update_fetch() {
     case "$src" in
         http://*|https://*)
             if command -v curl >/dev/null 2>&1; then
-                curl -L --max-time 180 -fsS -o "$tmp" -- "$src" >/dev/null 2>&1 || { rm -f "$tmp"; echo "下载失败：$src" >&2; return 1; }
+                curl -L --max-time 180 --retry 2 --retry-connrefused --retry-delay 2 -fsS -o "$tmp" -- "$src" >/dev/null 2>&1 || { rm -f "$tmp"; echo "下载失败：$src" >&2; return 1; }
             elif command -v wget >/dev/null 2>&1; then
                 wget -q -O "$tmp" "$src" >/dev/null 2>&1 || { rm -f "$tmp"; echo "下载失败：$src" >&2; return 1; }
             else

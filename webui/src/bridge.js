@@ -508,7 +508,10 @@ export function checkUpdate() {
       var asset = (j.assets || []).filter(function (a) { return /\.zip$/i.test(String(a.name || '')); })[0] || {};
       S.update = {
         state: 'ok', tag: tag, url: String(asset.browser_download_url || ''),
-        size: Number(asset.size || 0), notes: String(j.body || '').slice(0, 1200),
+        size: Number(asset.size || 0),
+        /* 发布说明整段拿：1200 字会从中间截断（3.0.5 自己的说明就 1.5KB），
+           折叠起来本来就不占屏，所以给到 6000 再兜底。 */
+        notes: String(j.body || '').slice(0, 6000), notesCut: String(j.body || '').length > 6000,
         page: String(j.html_url || ''), current: cur, newer: isNewer(tag, cur),
       };
       return S.update;

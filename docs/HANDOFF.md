@@ -326,8 +326,13 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 **发布前全量验过**：Git Bash **55/55** · WSL **55/55** · 对拍 **281 exit=0** · `cargo test` **77 passed** ·
 11 条静态闸全 OK · 台架 **178** · 产物两份同版（`build --check`）。真机现量 `update-install` 的两支前置见 §5.40。
 
-**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip`，31 条目；`--check` 全过（0 份 awk、无 `webroot/icons/`、
-`bin/keylens` 恰好一条）。版本与 sha 见本节的发布记录行（上传后回填）。
+**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip` **549,6xx 字节 / 31 条目**，
+sha256 `78cffab59d13d9cf…`；`--check` 全过（0 份 awk、无 `webroot/icons/`、`bin/keylens` 恰好一条）。
+
+**发布前一轮「看图改」**（台架第一次给更新卡存截图）：一眼看见三个真缺陷 —— 提示文案里的 `**` 原样印成星号、
+装完后「检查更新」和「再检查一次」两颗按钮做同一件事、以及展开日志时下面还多一行原始 `# KeyLens v9.9.9`
+（悬空 `else` 绑到了第二个 `if` 上）。三个都修了，并给预览行加了 `.md-preview` 标记、台架补成
+"收起=1 行预览 / 展开=0 行预览" 两条断言 —— 原来只断言"md 在、li≥2"，看不见多出来的那一行。
 
 ### 3.13 发版 v3.0.4（2026-11-04 22:0x）
 

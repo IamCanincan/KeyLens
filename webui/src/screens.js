@@ -898,7 +898,7 @@ function updateCard() {
   }
   s.appendChild(list([item({ headline: 'KeyLens', supporting: line, trailing: u.state === 'ok' && u.newer ? '有新版' : '', tone: tone })]));
   const acts = h('div', 'acts');
-  if (u.state !== 'checking' && u.state !== 'done' && u.state !== 'installing') {
+  if (u.state !== 'checking' && u.state !== 'done' && u.state !== 'installing' && u.state !== 'installed') {
     acts.appendChild(button('检查更新', { variant: 'tonal', icon: ICON.sync, on: function () {
       checkUpdate().then(redraw);
     } }));
@@ -941,9 +941,9 @@ function updateCard() {
   s.appendChild(acts);
   if (u.state === 'done') {
     s.appendChild(h('p', 'hint', '包已经放在 ' + (u.path || '模块目录下的 update.zip') + '。点「安装」交给管理器：'
-      + '它会装到待生效区，**重启后**才落地；想自己装，也可以在管理器里用「从本地安装」。'));
+      + '它会装到待生效区，重启后才落地；想自己装，也可以在管理器里用「从本地安装」。'));
   } else if (u.state === 'installed') {
-    s.appendChild(h('p', 'hint', '已经交给管理器了，**重启后生效**。重启完回到这一页会显示新版本号。'));
+    s.appendChild(h('p', 'hint', '已经交给管理器了，重启后生效。重启完回到这一页会显示新版本号。'));
   } else if (u.state === 'ok' && u.newer) {
     s.appendChild(h('p', 'hint', '下载只把包放到模块目录；装的时候才交给管理器，而且不重启不生效。'));
   } else if (u.state === 'err') {
@@ -954,12 +954,31 @@ function updateCard() {
   if (u.notes) {
     const box = h('div');
     s.appendChild(foldButton('updateOpen', '展开更新日志', '收起更新日志'));
-    if (S.updateOpen) box.appendChild(mdLite(u.notes));
-    else box.appendChild(h('p', 'hint', (u.notes.split('\n')[0] || '').slice(0, 60)));
+    /* 悬空 else 踩过一次：`if (open) A; if (open && cut) B; else C;` 里的 else 绑在**第二个** if 上，
+       于是"展开着且没截断"时照样补一行首行预览 —— 屏上就是正文下面又冒出一行 "# KeyLens v9.9.9"。
+       台架当时只断言了"md 在、li≥2"，没断言"展开后不该再有预览"，是看图看出来的。 */
+    if (S.updateOpen) {
+      box.appendChild(mdLite(u.notes));
+      if (u.notesCut) box.appendChild(h('p', 'hint', '（发布说明较长，这里只显示前 6000 字）'));
+    } else {
+      box.appendChild(h('p', 'hint md-preview', plainFirstLine(u.notes)));
+    }
     s.appendChild(box);
   }
   c.appendChild(s);
   return c;
+}
+
+/* 发布说明的首行纯文本（折叠态那一行）：去掉标题/列表/引用记号与行内 emphasis/代码记号，
+   否则屏上会原样印出 "# " 与星号。这里刻意不用正则转义 —— 一行预览值不上。
+   （上一版就是这么写坏一次的：转义在传输里丢了，esbuild 当场报字符串未闭合。） */
+function plainFirstLine(text) {
+  const first = String(text || '').split(String.fromCharCode(10))
+    .filter(function (l) { return l.trim(); })[0] || '';
+  let line = first.trim();
+  while (line && '#-*>'.indexOf(line.charAt(0)) >= 0) line = line.slice(1).trim();
+  line = line.split('**').join('').split('\u0060').join('');
+  return line.slice(0, 60);
 }
 
 /* markdown 的一个小子集 → DOM。只为了让发布说明在卡里能读：不引第三方解析器
