@@ -297,6 +297,12 @@ async function main() {
   chk('没有"命令超时"', (p.text || '').indexOf('超时') < 0, '');
   chk('没有"桥接未就绪"', (p.text || '').indexOf('桥接未就绪') < 0, '');
   chk('主页没有"读不到"', (p.text || '').indexOf('读不到') < 0, '');
+  /* 主页那张英雄卡（统计行第四格 = 体检结论）是这一版的门面，三张既有截图里偏偏没有它 ——
+     留一张，出事时不用靠"台架说主页有数据"反推屏上长什么样。 */
+  {
+    const s0 = await ws.send('Page.captureScreenshot', { format: 'png' });
+    fs.writeFileSync(path.join(OUT, 'replay-home.png'), Buffer.from(s0.data, 'base64'));
+  }
   chk('横向不溢出', p.scrollW - p.vw <= 0, '溢出 ' + (p.scrollW - p.vw) + 'px');
   chk('无未捕获异常', !(ws.errs || []).length, (ws.errs || []).slice(0, 2).join(' | '));
 
