@@ -272,3 +272,86 @@ mod tests {
         assert_eq!(check(b"  \n", "tricky").unwrap_err(), "keybox 是空文件");
     }
 }
+
+// ---------------- 证书有效期（keybox 的叶证书什么时候到期） ----------------
+// 只为了体检那一行：**不判链、不判签名**（那是 O 段上面写明的边界），只读每张证书的
+// notAfter，取最早的那个。为什么要它：2026-11 这台机的 keybox 叶证书只有 12 天寿命，
+// 到期后 attestation 会整个失效，而体检只查结构时报的仍是 ok。
+
+fn der_tlv(b: &[u8], at: usize) -> Option<(u8, usize, usize)> {
+    if at + 2 > b.len() { return None; }
+    let tag = b[at];
+    let mut i = at + 1;
+    let first = b[i];
+    i += 1;
+    let len = if first & 0x80 == 0 {
+        first as usize
+    } else {
+        let n = (first & 0x7f) as usize;
+        if n == 0 || n > 3 || i + n > b.len() { return None; }
+        let mut v = 0usize;
+        for _ in 0..n { v = (v << 8) | b[i] as usize; i += 1; }
+        v
+    };
+    if i + len > b.len() { return None; }
+    Some((tag, i, i + len))
+}
+
+/// X.509 Reference ::= 从 DER 里取 validity 的 notAfter（`YYYY-MM-DD` 与那一天的序号）。
+fn cert_not_after(der: &[u8]) -> Option<(String, i64)> {
+    let (t, s, _e) = der_tlv(der, 0)?;
+    if t != 0x30 { return None; }
+    let (t2, s2, _e2) = der_tlv(der, s)?;       // tbsCertificate
+    if t2 != 0x30 { return None; }
+    let mut p = s2;
+    // [0] version（可选）
+    if der.get(p) == Some(&0xa0) { let (_, _, e) = der_tlv(der, p)?; p = e; }
+    let (_, _, e) = der_tlv(der, p)?; p = e;    // serialNumber
+    let (_, _, e) = der_tlv(der, p)?; p = e;    // signature
+    let (_, _, e) = der_tlv(der, p)?; p = e;    // issuer
+    let (t5, s5, _) = der_tlv(der, p)?;         // validity
+    if t5 != 0x30 { return None; }
+    let (_, _, e1) = der_tlv(der, s5)?;         // notBefore
+    let (tn, sn, en) = der_tlv(der, e1)?;       // notAfter
+    let raw = std::str::from_utf8(&der[sn..en]).ok()?;
+    let (y, rest) = if tn == 0x17 {
+        let yy: i64 = raw.get(0..2)?.parse().ok()?;
+        (if yy < 50 { 2000 + yy } else { 1900 + yy }, raw.get(2..)?
+            .trim_end_matches('Z'))
+    } else if tn == 0x18 { (raw.get(0..4)?.parse().ok()?, raw.get(4..)?.trim_end_matches('Z')) }
+    else { return None; };
+    let mo: i64 = rest.get(0..2)?.parse().ok()?;
+    let da: i64 = rest.get(2..4)?.parse().ok()?;
+    Some((format!("{:04}-{:02}-{:02}", y, mo, da), days_from_civil(y, mo, da)))
+}
+
+/// Howard Hinnant 的 days_from_civil（公历 → 1970-01-01 起的天数）。
+fn days_from_civil(y: i64, m: i64, d: i64) -> i64 {
+    let y = if m <= 2 { y - 1 } else { y };
+    let era = if y >= 0 { y } else { y - 399 } / 400;
+    let yoe = y - era * 400;
+    let mp = (m + 9) % 12;
+    let doy = (153 * mp + 2) / 5 + d - 1;
+    let doe = yoe * 365 + yoe / 4 - yoe / 100 + doy;
+    era * 146097 + doe - 719468
+}
+
+/// keybox 里所有证书 notAfter 的最早一张。返回 (日期, 距今还有多少天；负数=已过期)。
+pub fn nearest_expiry(data: &[u8]) -> Option<(String, i64)> {
+    let text = String::from_utf8_lossy(data);
+    let mut best: Option<(String, i64)> = None;
+    let mut rest = text.as_ref();
+    while let Some(p) = rest.find("-----BEGIN CERTIFICATE-----") {
+        let body = &rest[p + 27..];
+        let end = match body.find("-----END CERTIFICATE-----") { Some(e) => e, None => break };
+        let b64: String = body[..end].chars().filter(|c| !c.is_whitespace()).collect();
+        rest = &body[end..];
+        let der = match crate::b64::decode(&b64) { Some(d) => d, None => continue };
+        if let Some((iso, day)) = cert_not_after(&der) {
+            if best.as_ref().map(|b| day < b.1).unwrap_or(true) { best = Some((iso, day)); }
+        }
+    }
+    let today = (std::time::SystemTime::now().duration_since(std::time::UNIX_EPOCH).ok()?
+        .as_secs() / 86400) as i64;
+    best.map(|(iso, day)| (iso, day - today))
+}

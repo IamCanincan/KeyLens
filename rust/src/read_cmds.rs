@@ -2916,7 +2916,19 @@ pub fn doctor() {
             match crate::keybox::check(&data, b.id.as_str()) {
                 Ok(()) => {
                     let base = kb.file_name().map(|s| s.to_string_lossy().into_owned()).unwrap_or_default();
-                    doc("keybox", "ok", &format!("{} 结构通过校验", base), "");
+                    /* 结构合格之后再看**有效期**：这一版加它，是因为这台机的 keybox 叶证书
+                       只有 12 天寿命、到期后 attestation 整个失效，而只查结构的话体检照报 ok。 */
+                    match crate::keybox::nearest_expiry(&data) {
+                        Some((iso, days)) if days < 0 => doc("keybox", "bad",
+                            &format!("证书已于 {} 过期（早 {} 天）", iso, -days),
+                            "在「密钥箱」页换一份有效期内（未过期）的 keybox"),
+                        Some((iso, days)) if days <= 7 => doc("keybox", "warn",
+                            &format!("{} 结构通过校验 · 证书 {} 到期（还有 {} 天）", base, iso, days),
+                            "快到期的 keybox 会在到期那天让 attestation 失效，提前换一份"),
+                        Some((iso, _)) => doc("keybox", "ok",
+                            &format!("{} 结构通过校验 · 证书 {} 到期", base, iso), ""),
+                        None => doc("keybox", "ok", &format!("{} 结构通过校验", base), ""),
+                    }
                 }
                 Err(msg) => {
                     doc("keybox", "bad", &format!("结构不合格：{}", msg), "在「密钥箱」页重新粘贴一份完整的 keybox.xml");

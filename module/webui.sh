@@ -1496,7 +1496,38 @@ cmd_doctor() {
             raw="${AWK_CMD:-$(find_awk)}"
             if [ -n "$raw" ] && [ -f "${KL_PATCH%/*}/keybox_check.awk" ]; then
                 if ino=$($raw -v backend="$KL_BACKEND" -f "${KL_PATCH%/*}/keybox_check.awk" "$KEYBOX_PATH" 2>&1); then
-                    _doc 'keybox' ok "${KEYBOX_PATH##*/} 结构通过校验" ''
+                    # 结构合格之后再看**有效期**（与 Rust 侧同一句话）。只在有 openssl 的机器上算：
+                    # 设备上没有 openssl，这一格就照旧只说"结构通过" —— 回退层本来就是参照实现。
+                    # 注意这段必须**内联在 cmd_doctor 里**：对拍的 harness 只 sed 抽 cmd_doctor 本体，
+                    # 放在函数外面的辅助函数它看不到（第一版就是这么红的：not found）。
+                    _kx=""
+                    if command -v openssl >/dev/null 2>&1; then
+                        _kdir=$(mktemp -d 2>/dev/null)
+                        if [ -n "$_kdir" ]; then
+                            "$raw" -v d="$_kdir" '/BEGIN CERTIFICATE/{n++; cur=d "/c" n ".pem"} cur{print > cur} /END CERTIFICATE/{cur=""}' "$KEYBOX_PATH" 2>/dev/null
+                            _kbest=""; _kday=""
+                            for _one in "$_kdir"/c*.pem; do
+                                [ -f "$_one" ] || continue
+                                _end=$(openssl x509 -in "$_one" -noout -enddate 2>/dev/null | sed 's/^notAfter=//')
+                                [ -n "$_end" ] || continue
+                                _iso=$(date -u -d "$_end" +%Y-%m-%d 2>/dev/null) || continue
+                                _d=$(( ( $(date -u -d "$_end" +%s 2>/dev/null || echo 0) - $(date -u +%s) ) / 86400 ))
+                                if [ -z "$_kday" ] || [ "$_d" -lt "$_kday" ]; then _kday="$_d"; _kbest="$_iso"; fi
+                            done
+                            [ -n "$_kbest" ] && _kx="$_kbest $_kday"
+                            rm -rf "$_kdir" 2>/dev/null
+                        fi
+                    fi
+                    _kd=${_kx##* }; _ki=${_kx% *}
+                    if [ -n "$_kx" ] && [ "$_kd" -lt 0 ] 2>/dev/null; then
+                        _doc 'keybox' bad "证书已于 $_ki 过期（早 $((-_kd)) 天）" '在「密钥箱」页换一份有效期内（未过期）的 keybox'
+                    elif [ -n "$_kx" ] && [ "$_kd" -le 7 ] 2>/dev/null; then
+                        _doc 'keybox' warn "${KEYBOX_PATH##*/} 结构通过校验 · 证书 $_ki 到期（还有 $_kd 天）" '快到期的 keybox 会在到期那天让 attestation 失效，提前换一份'
+                    elif [ -n "$_kx" ]; then
+                        _doc 'keybox' ok "${KEYBOX_PATH##*/} 结构通过校验 · 证书 $_ki 到期" ''
+                    else
+                        _doc 'keybox' ok "${KEYBOX_PATH##*/} 结构通过校验" ''
+                    fi
                 else
                     _doc 'keybox' bad "结构不合格：${ino#err$TAB}" '在「密钥箱」页重新粘贴一份完整的 keybox.xml'
                 fi

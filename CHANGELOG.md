@@ -2,6 +2,20 @@
 
 ---
 
+### 3.0.7 - 2026-11-05
+
+#### 新增
+
+* **体检的 keybox 那一格开始看「有效期」**：以前只查 XML 结构 —— 这台机的 keybox 叶证书
+  **2026-11-06 到期**（现量：`warn 证书 2026-11-06 到期（还有 2 天）`），只查结构的话体检照报 ok，
+  到期那天 attestation 整个失效却没人预警。现在：已过期 → `bad`（说你早过期了几天）；
+  ≤7 天 → `warn`（点出日期与天数）；否则 `ok` 里带上到期日。
+  两侧同实现：Rust 自己走 DER（不依赖 openssl，设备上也能算）；shell 回退层在有 openssl 时用 openssl，
+  没有就照旧只报结构（回退层本来就是参照实现）。
+* 这条与 DuckDetector 那份报告对得上：它报的 TEE `Local chain: Failed` / Bootloader 的
+  `Key attestation: Unavailable` 都是"拿不到链"，同一时刻 Play Store 也在 `KeyStoreException -10021` ——
+  keybox 到期会让这一类更糟，所以先让体检把它喊出来。
+
 ### 3.0.6 - 2026-11-05
 
 #### 修复
