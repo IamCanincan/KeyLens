@@ -326,8 +326,14 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 **发布前全量验过**：Git Bash **55/55** · WSL **55/55** · 对拍 **281 exit=0** · `cargo test` **77 passed** ·
 11 条静态闸全 OK · 台架 **178** · 产物两份同版（`build --check`）。真机现量 `update-install` 的两支前置见 §5.40。
 
-**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip` **549,6xx 字节 / 31 条目**，
-sha256 `6c2bf93cec796464…`（含底栏/四格/收尾三处改动后的最终包）；`--check` 全过（0 份 awk、无 `webroot/icons/`、`bin/keylens` 恰好一条）。
+**资产已上传（2026-11-05 00:0x 本地）** —— `https://github.com/IamCanincan/KeyLens/releases/tag/v3.0.5`
+（tag `b645add`，非 draft / 非 prerelease；资产 551,075 字节）。**GitHub 自己算的 digest 就是
+`sha256:6c2bf93c…`，与本地逐字节相同**；`update.json` 线上已指向 v3.0.5。
+界面本体另外**热推过一次**到机上（`deploy-webui.sh`，webroot `d0ec0708…`）—— 主人当场确认「不透明了」，
+那时模块还是 3.0.4；正式包装上后两边就一致了。
+
+**包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip` **551,075 字节 / 31 条目**，
+sha256 `6c2bf93cec796464ca872816f258fe5ade6337ce0b9b6a327ecca5d7ef006439`（含底栏/四格/收尾三处改动后的最终包）；`--check` 全过（0 份 awk、无 `webroot/icons/`、`bin/keylens` 恰好一条）。
 
 **底栏不透明 + 统计四格同一行**（主人："底栏我不要透明的"，接着看截图发现四格会换行）：
 药丸底色从 `86% + blur(18px)` 换成实色 `--navigation-container`（模糊一并删，它只剩开销）；
