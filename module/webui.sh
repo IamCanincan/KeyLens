@@ -583,7 +583,7 @@ cmd_contract() {
 #   teesim  kind = plain|user|uid，detail = 用户号或 UID
 #   omk     kind = plain
 cmd_target_meta() {
-    local ac
+    local ac _cta
 
     detect_backend "$MODDIR"
     [ -f "$TARGET_FILE" ] || { echo "目标文件不存在：$TARGET_FILE" >&2; return 1; }
@@ -591,7 +591,11 @@ cmd_target_meta() {
     [ -n "$ac" ] || ac=$(find_awk)
     [ -n "$ac" ] || return 1
 
-    current_target_apps | $ac -v backend="$KL_BACKEND" '
+    # 名单读不到就报错退出：以前写成 `current_target_apps | awk …`，管道最后的 awk 退 0，
+    # 于是"读不到"在界面上变成"这份名单没有详情"而不是"读不到"。
+    _cta=$(current_target_apps) || return 2
+    [ -n "$_cta" ] || return 0
+    printf '%s\n' "$_cta" | $ac -v backend="$KL_BACKEND" '
         {
             tok = $0; b = tok; kind = "plain"; detail = ""
             if (backend == "tricky") {
@@ -706,10 +710,17 @@ cmd_backend_info() {
     kv module_version "$ver"
 
     if [ -f "$TARGET_FILE" ]; then
-        n=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+        # 读不到 ≠ 0 条。以前这里 `current_target_apps 2>/dev/null | wc -l` 把管道最后的
+        # 退码当成功，awk 缺参照时折成 "0" ⇒ 菜单写「当前生效 0 条」，而真名单有 131 条。
+        # 空值交给界面画成「—」，与"真的有 0 条"是两件事。
+        if _te=$(current_target_apps 2>/dev/null); then
+            n=$(printf '%s\n' "$_te" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+        else
+            n=""
+        fi
     fi
     kv target_file "$TARGET_FILE"
-    kv target_entries "${n:-0}"
+    kv target_entries "${n:-}"
 
     if [ -n "$keybox" ] && [ -f "$keybox" ]; then
         kb_exists=1
@@ -1451,10 +1462,17 @@ cmd_doctor() {
             _doc '目标文件' bad "不存在：$TARGET_FILE" '让后端先跑一轮生成默认文件，或在「目标名单」页底部点「立即同步一次」'
         fi
 
-        # 名单 vs 已装：**只比数量**（不逐个对），所以文案里写清"可能"
-        nl_=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+        # 名单 vs 已装：**只比数量**（不逐个对），所以文案里写清"可能"。
+        # 读不到时不许折成 0 条 —— 那会把"回退实现坏了"报成"你的名单少了 131 条"，
+        # 还会顺手递给你一个「立即同步一次」的按钮。
+        if _nl=$(current_target_apps 2>/dev/null); then
+            nl_=$(printf '%s\n' "$_nl" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+        else
+            nl_=""
+            _doc '名单' bad '名单读不到：回退实现缺参照脚本' '重装完整包（这一版的正式实现是 bin/keylens）'
+        fi
         ni=$(cmd package list packages -3 --user all 2>/dev/null | grep -c . )
-        if [ "${ni:-0}" -gt 0 ]; then
+        if [ -n "$nl_" ] && [ "${ni:-0}" -gt 0 ]; then
             if [ "${nl_:-0}" -lt "$ni" ]; then
                 _doc '名单' warn "已装 $ni 个 · 名单 $nl_ 条（只比数量，可能只是你手动排除过）" '点「立即同步一次」，或等下一次安装/卸载自动触发'
             else
@@ -1627,6 +1645,10 @@ case "$CMD" in
     help)        cmd_help ;;
     *) echo "未知命令：$CMD（可用：sh webui.sh help）" >&2; exit 1 ;;
 esac
+# ↑ 分派的结果必须先存下来：以前脚本走到这里就自然结束，**任何命令的失败都被吞成退码 0**
+#   （`cmd_targets` 里 `return 1`、awk 缺参照的退码 2 全都到不了界面）。界面拿退码判成败，
+#   于是"名单读不到"被画成"名单是空的"，而「立即同步一次」在 shell 层允许把空当真处理。
+_rc=$?
 
 # 预览收尾：差异交给界面（base64，免得换行破坏 kv 的逐行解析）
 if [ "${KL_PREVIEW:-0}" = "1" ]; then
@@ -1635,3 +1657,5 @@ if [ "${KL_PREVIEW:-0}" = "1" ]; then
     kv changed "$changed"
     kv diff "$(printf '%s' "${KL_PREVIEW_DIFF:-}" | base64 | tr -d '\n' 2>/dev/null)"
 fi
+
+exit "$_rc"

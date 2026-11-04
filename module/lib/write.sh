@@ -65,7 +65,7 @@ cmd_restore_app() {
   case "$rc" in
     0)
       # 恢复后顺手把模块描述里的条数刷新，管理器里不用等下一轮同步
-      KL_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      KL_COUNT=$(target_count 2>/dev/null) || KL_COUNT=0
       [ "${KL_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$KL_COUNT"
       log_info "🧩 WebUI 把 $pkg 加回目标名单"
       kv restored 1
@@ -118,7 +118,7 @@ cmd_restore_apps() {
 
   case "$rc" in
     0)
-      KL_COUNT=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+      KL_COUNT=$(target_count 2>/dev/null) || KL_COUNT=0
       [ "${KL_COUNT:-0}" -gt 0 ] 2>/dev/null && update_module_desc "$PROP_FILE" "$KL_COUNT"
       log_info "🧩 WebUI 批量加入目标名单（$n 个包名）"
       kv restored 1
@@ -166,7 +166,8 @@ cmd_remove_apps() {
   webui_lock || { rm -f "$file" 2>/dev/null; return 1; }
   remove_target_apps "$file"
   rc=$?
-  after=$(current_target_apps 2>/dev/null | sed 's/\r$//' | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' ')
+  # 读不到就留空（界面对空值画「—」）：以前折成 0，移出成功后会报"名单现在 0 条"
+  after=$(target_count 2>/dev/null) || after=""
   release_lock "${KL_DIR}/.kl_lock"
   rm -f "$file" 2>/dev/null
 

@@ -309,10 +309,13 @@ async function main() {
     fs.writeFileSync(path.join(OUT, 'replay-settings.png'), Buffer.from(s3.data, 'base64'));
   }
 
-  /* 功能页 = 一张菜单；长列表要点进「目标名单」二级才画 */
+  /* 功能页 = 一张菜单；长列表要点进「目标名单」二级才画。
+     四项是 2026-11-04 重排的结果：自动同步并进了「目标名单」页，备份回滚搬进了「后端配置」，
+     体检进了主页那张大卡片 —— 菜单从五项减到四项。这条以前写死 5，UI 一改就自己变红，
+     所以判据改成"恰好这四项、且没有第五项"，比数一个数更经得起下一次重排。 */
   await goto(1); await sleep(1500);
   const pf = await ev(PROBE);
-  chk('功能页是菜单（五项入口）', pf.items === 5 && /目标名单|后端配置|属性伪装/.test(pf.text || ''),
+  chk('功能页是菜单（四项入口）', pf.items === 4 && /目标名单[\s\S]*后端配置[\s\S]*密钥箱 keybox[\s\S]*属性伪装/.test(pf.text || ''),
     'items=' + pf.items);
   chk('菜单摘要画的是真数（生效 ' + entries + ' 条）', !entries || (pf.text || '').indexOf('生效 ' + entries + ' 条') >= 0,
     '找「生效 ' + entries + ' 条」');

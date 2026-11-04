@@ -107,20 +107,56 @@ use_backend() {
 
 # ---------- 当前目标文件里有哪些包名 ----------
 # 说明：只读，给"保留人工条目"用。读不到就输出空（调用方按"文件里什么都没有"处理）。
+# 参照 awk 自阶段 5 起不随模块发布（正式实现是 bin/keylens，见 docs/AWK-REMOVAL.md）。
+# 缺参照时**必须报错，不许交出空结果**：静默的空 = 界面把"读不到"画成"名单是空的"，
+# 而「立即同步一次」在 shell 层允许把"读到空"当真处理（KL_EMPTY_OK=1）。
+# 真机上叠了三层才变成事故：`awk -f 不存在的脚本` 退 2 → stderr 被 `2>/dev/null` 吞 →
+# 分派又不看命令的退码 ⇒ "名单 0 条 + 成功"。这里管住中间那一层。
+# 用法：kl_ref_ok <脚本名…>   → 0 全在 / 2 缺（并往 stderr 说清缺哪个、该怎么办）
+kl_ref_ok() {
+    local _d="${KL_PATCH%/*}" _f _miss=""
+    if [ -z "$_d" ] || [ ! -d "$_d" ]; then
+        echo "回退实现不可用：找不到参照目录（这一版的正式实现是 bin/keylens，请重装完整包）" >&2
+        return 2
+    fi
+    for _f in "$@"; do
+        [ -f "$_d/$_f" ] || _miss="$_miss$_f "
+    done
+    [ -n "$_miss" ] || return 0
+    echo "回退实现缺少参照脚本：$_miss—— 这一版的正式实现是 bin/keylens，请重装完整包" >&2
+    return 2
+}
+
+# 名单条数。**读不到时退 2、不返回 0** —— 0 的含义是"名单真的是空的"，
+# 两者混起来就会把"回退实现坏了"报成"你一条都没加"。
+# 用法：target_count   → stdout：条数
+target_count() {
+    local _l
+    _l=$(current_target_apps 2>/dev/null) || return 2
+    printf '%s\n' "$_l" | sed '/^[[:space:]]*$/d' | wc -l | tr -d ' '
+}
+
 # 用法：current_target_apps
 current_target_apps() {
     [ -f "$TARGET_FILE" ] || return 0
+    # 三条分支都必须"缺参照就报错"：这里以前是 `|| return 0`，配合 awk 的退码被分派吞掉，
+    # 真机上（发布包不带 awk）交出的就是"名单 0 条 + 成功"。
     if [ "$KL_BACKEND" = "teesim" ]; then
-        [ -n "$AWK_CMD" ] || return 0
+        [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+        [ -n "$AWK_CMD" ] || { echo "回退实现找不到 awk 命令 —— 这一版的正式实现是 bin/keylens，请重装完整包" >&2; return 2; }
+        kl_ref_ok teesim_list.awk || return 2
         $AWK_CMD -f "${KL_PATCH%/*}/teesim_list.awk" "$TARGET_FILE" 2>/dev/null
     elif [ "$KL_BACKEND" = "omk" ]; then
-        [ -n "$AWK_CMD" ] || return 0
+        [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
+        [ -n "$AWK_CMD" ] || { echo "回退实现找不到 awk 命令 —— 这一版的正式实现是 bin/keylens，请重装完整包" >&2; return 2; }
+        kl_ref_ok omk_list.awk || return 2
         $AWK_CMD -f "${KL_PATCH%/*}/omk_list.awk" "$TARGET_FILE" 2>/dev/null
     else
         # Tricky Store OSS：行内 # 注释、?/! 模式后缀都按它自己的解析规则处理；
         # 同一个包名出现多次时后出现的模式生效（与它的 Map 一致）。
         [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
-        [ -n "$AWK_CMD" ] || return 0
+        [ -n "$AWK_CMD" ] || { echo "回退实现找不到 awk 命令 —— 这一版的正式实现是 bin/keylens，请重装完整包" >&2; return 2; }
+        kl_ref_ok tricky_list.awk || return 2
         $AWK_CMD -f "${KL_PATCH%/*}/tricky_list.awk" "$TARGET_FILE" 2>/dev/null
     fi
 }
@@ -166,10 +202,16 @@ ever_add_list() {
 # 用法：add_target_apps <每行一个包名的文件>
 # 返回：0=至少加入一个 1=这些包本来都在 2=失败
 add_target_apps() {
-    local list="$1" cur dir out status rc=2
+    local list="$1" cur dir out status rc=2 _cta
     [ -f "$list" ] || return 2
 
-    cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d')
+    # 基线读不到就**不写**：这一行以前是 `cur=$(current_target_apps 2>/dev/null | sed …)`，
+    # 管道最后的 sed 退 0 ⇒ awk 缺参照时 cur 是空串，而下面把 cur 当"名单原本是这样"，
+    # 一次「加入一个应用」就会把整份名单重写成只剩新加的那一条。
+    # 空名单（真的 0 条）与读不到是两件事：前者继续走，后者退 2。
+    local _cta
+    _cta=$(current_target_apps) || return 2
+    cur=$(printf '%s\n' "$_cta" | sed '/^[[:space:]]*$/d')
     dir="${KL_DIR}/.kl_restore.$$"
     mkdir -p "$dir" 2>/dev/null || return 2
     printf '%s\n' "$cur" | sed '/^$/d' | sort -u > "$dir/cur" 2>/dev/null
@@ -474,7 +516,7 @@ backend_name() {
 # 用法：omk_write_list <每行一个包名的文件>
 # 返回：0=已写入 1=内容一致 2=失败
 omk_write_list() {
-    local list="$1" out status uid gid mode ctx rc=2
+    local list="$1" out status uid gid mode ctx rc=2 _cn
 
     [ -f "$TARGET_FILE" ] || return 2
     [ -n "$AWK_CMD" ] || AWK_CMD=$(find_awk)
@@ -585,7 +627,10 @@ sync_omk_injector() {
 
     # 集合相同就不落盘：首次接入沿用现有 scoop 时集合本来就没变，
     # 不该为了统一排版去改用户的 injector.toml（也不该触发 OMK 重载）。
-    cur_now=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u)
+    # 集合比较的基线也必须带退码：读不到时当成"不一样"就会继续往下写，
+    # 等于拿一份空基线去比、再把新内容落盘。
+    _cn=$(current_target_apps 2>/dev/null) || { rm -f "$tmp" 2>/dev/null; return 2; }
+    cur_now=$(printf '%s\n' "$_cn" | sed '/^[[:space:]]*$/d' | sort -u)
     new_now=$(sed '/^[[:space:]]*$/d' "$tmp" 2>/dev/null | sort -u)
     if [ "$cur_now" = "$new_now" ]; then
         rc=1

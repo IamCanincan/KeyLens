@@ -139,13 +139,17 @@ entries_to_bases() {
 # 用法：build_app_list <输出文件>
 build_app_list() {
     local tmp="$1"
-    local apps_raw user_list cur base seed adopt
+    local apps_raw user_list cur base seed adopt _kl_cur
 
     mkdir -p "$KL_DIR" 2>/dev/null
 
     apps_raw=$(cmd package list packages -3 --user all 2>/dev/null || pm list packages -3 2>/dev/null)
     user_list=$(printf '%s\n' "$apps_raw" | sed -n 's/^package://p' | sed '/^$/d' | sort -u)
-    cur=$(current_target_apps 2>/dev/null | sed '/^[[:space:]]*$/d' | sort -u)
+    # 现名单必须**带着退码**一起拿：以前写成 `cur=$(current_target_apps 2>/dev/null | …)`，
+    # 命令替换只看到管道最后的 sort —— awk 缺参照的退码 2 和那句报错一起被吞，
+    # 于是"读不到"在这里变成"名单是空的"，而同步下一步就是把这份"空"写回目标文件。
+    _kl_cur=$(current_target_apps) || { rm -f "$tmp" 2>/dev/null; return 2; }
+    cur=$(printf '%s\n' "$_kl_cur" | sed '/^[[:space:]]*$/d' | sort -u)
 
     # 已装列表读空但基线非空：更像是一次读取失败，而不是真的把应用全卸了。
     # 自动同步放弃（不写、不提交基线）；界面「立即同步」/管理器「操作」按钮会
@@ -254,7 +258,8 @@ excluded_apps() {
     #   同步的"新装"口径仍然按 `-3`（那是有意的，见本文件头部），两件事别混。
     inst=$(cmd package list packages --user all 2>/dev/null || pm list packages 2>/dev/null)
     inst=$(printf '%s\n' "$inst" | sed -n 's/^package://p' | sed '/^$/d')
-    cur=$(current_target_apps 2>/dev/null)
+    # 读不到就报错，不交空表：空表在界面上是「没有排除过任何应用」，那是另一句假话
+    cur=$(current_target_apps 2>/dev/null) || return 2
 
     # 只读命令不创建状态目录；没有 ever 时排除表就是空
     [ -d "$KL_DIR" ] || return 0

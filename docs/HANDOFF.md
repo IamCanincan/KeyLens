@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：写作时 129 个，每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
+- 未推送提交：写作时 32 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
   `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
@@ -40,7 +40,7 @@
 | 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53；固定表今天试过 15→18、装了机，又被 Duck 源码推翻撤回 15，见 §5.23/§5.24）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
-| shell 测试套 | **53 套，两套环境全绿**（WSL 与 Windows Git Bash 各一遍；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell 测试套 | **54 套，两套环境全绿**（WSL 54/54 与 Windows Git Bash 54/54，2026-11-04 现量；新增的那套是 `tests/fallback-shape.sh`，见 §5.37；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | 装了 3.0.3 的现场：**16/17**（只读，红的就是 `doctor`，见 §5.17）；补上 §5.17 的两处改动后在临时副本里 **38/38 全过**（2026-11-03 现量，未发版）。台子怎么跑见 §3，参照 awk 要先推上去 | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
@@ -80,12 +80,17 @@ sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 wsl -d Debian sh /mnt/d/<仓库路径>/tools/wsl-parity.sh   # 末行 = parity exit=N｜结论
 ```
 
-shell 测试套 **53 套**，两边都得跑，各有盲区：
+shell 测试套 **54 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
-| WSL | 50/50 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
-| Windows Git Bash（有 node） | 50/50 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
+| WSL | 54/54 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
+| Windows Git Bash（有 node） | 54/54 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
+
+WSL 侧用 `wsl -d Debian sh -c "cd '/mnt/d/<仓库路径>' && sh tools/wsl-suites.sh"`，
+末行是 `suites=54 failures=0`，逐套退码落 `tests-wsl.log`。**别在 Windows 这边内联 for 循环**：
+`$t` / `$?` 会被本地先展开，本轮据此拿到过一份四行"FAIL "（连套名都被吞掉）的假失败清单，
+真跑是 54/54 —— 同一个理由已经有 `tools/wsl-parity.sh` 了（见 §6）。
 
 > `tests/rust-dispatch.sh` 以前在 Git Bash 恒红，是台子自己用了 `env VAR=x sh -c …`：
 > 这台的 `env` 会把 `env sh 脚本` 跑成**空输出且退 0**，与被测代码无关。已改成在一个 shell 里赋值。
@@ -1419,8 +1424,77 @@ sticky 元素贴不出去。卡本身是透明底（`md-card.card{--md-card-cont
 变异自证：收起时照样建行 ⇒ 只有那条收起红；把进度从 `S.shownLimit` 退回闭包 ⇒ 红 **5** 条
 （继续显示、批量作用范围 200→250、图标问全、收起、展开回来 —— 老闸和新闸一起抓住同一个回归）。
 
+## 5.37 回退层不再把"读不到"交成"0 条 + 成功"（2026-11-04，主人："全量优化"）
+
+**真机现量的原始症状**（这台机是 omk 后端，Rust 层读 131 条）：
+
+| 跑法 | 修之前 | 修之后 |
+|---|---|---|
+| `KL_USE_RUST=0 … webui.sh targets` | **0 行 · 退码 0** | 0 行 · **退码 2** + stderr 一句"回退实现缺少参照脚本：omk_list.awk —— 这一版的正式实现是 bin/keylens，请重装完整包" |
+| 界面（若哪天回退层接管） | 名单画成"是空的"，还给一颗「立即同步一次」 | 计数画「—」、体检「名单」那格报 bad 并指同一条下一步 |
+| 「加入一个应用」在回退层 | **拿空基线把 129 条重写成 1 条** | 直接拒绝（rc=2），目标文件一个字节不动 |
+
+**为什么三层叠起来才变成事故**（每一层单独看都"合理"）：
+① 参照 awk 自阶段 5 起不随模块发布（docs/AWK-REMOVAL.md 的计划第 2 步只落了装机期的那半 ——
+`customize.sh` 会中止，**运行期那句"必须显式失败"从来没写**）；② 每个调用点都挂 `2>/dev/null`；
+③ 分派走到脚本结尾自然退 0。Rust 接管是默认（`KL_USE_RUST=1`），所以界面四年没露馅。
+
+**改法：读不到 ≠ 0 条，是两种不同的回答**。`lib/backend.sh` 新增两颗公共件 ——
+`kl_ref_ok <参照名…>`（缺就 stderr 说清缺什么 + 该怎么办 + 退 2）与 `target_count`（读不到退 2，
+不返回 0）；`current_target_apps` 三条后端分支各自 `|| return 2`（以前是 `|| return 0`）；
+`add_target_apps` / `remove_target_apps` / `build_app_list` / `sync_omk_injector` / `omk_write_list`
+全部改成"基线带着退码一起拿，拿不到就不写"；`webui.sh` 末尾 `exit "$_rc"` 把命令退码带出分派；
+`cmd_target_meta` 与 `backend-info` 的 `target_entries` 不再把失败折成空/0。
+
+**为什么 276 项对拍一路绿**：它把 `KL_PATCH` 指向 `tests/fixtures/backends/`（awk 齐全）——
+那台子本身就是个消音器，生产形状（一个 awk 都不发）从来没被任何闸跑过。补的 permanent 闸是
+**第 54 套 `tests/fallback-shape.sh`**（44 条断言，CI 的 `for t in tests/*.sh` 自动收）：
+
+* ① 三后端 × 缺参照 = 各 4 条（退码、不交空、stderr 点名参照、给出下一步）＋ 连 awk 都没有的形状；
+* ② **两条形状分开钉**：全缺（writer 也死）与**半坏**（`omk.awk` 在、`omk_list.awk` 不在 ——
+  只有这一种才能测出"拿空基线落盘"，全缺形状里那条拒绝有一半是 writer 自己挡的）；
+* ③ 形状判据：模块里 0 个 `.awk`、夹具里 19 份齐、**不许有管道读名单**、**不许有吞 stderr 不带退码**
+  （两条扫描都先折掉 `||`、认 `if/while/until` 条件位 —— 第一版各冤枉过一处正确写法）、分派带退码；
+* ④ 反向对照：参照齐全时读得到 / 加得动 / 真落盘 / 发了 OMK 重载 —— 证明上面的红不是函数坏了。
+
+**变异自证**（`tools/mutate-fallback-shape.sh`，把修好的行改回修之前；本地按需跑，**不进 CI** —— 它动的是生产文件，跑完自己证明四个文件逐字节还原）：
+M1 `|| return 0` ⇒ 红 2；**M2 删掉 `add_target_apps` 那道守卫 ⇒ 红 5**，其中一条读数就是
+「原有条目被吃掉了」—— 这次事故的正主；M3a/M3b 各单删同步的两道守卫 ⇒ **仍全绿**（纵深防御，
+不是漏检，台子上明写）；M3c 两道全删 ⇒ 红 2；M4 分派退 0 ⇒ 红 1；M5 把扫描器的函数名改错一个字母
+⇒ 3.3/3.4 安静全绿、**只有开火对照响**。还原后 44 条全绿、四个文件逐字节一致。
+
+**顺带修的一件旧账**：`tools/replay-check.mjs`（本机真机回放台子，不在 CI 的 11 条里）还钉着
+"功能页菜单五项"，§5.34 把菜单减到四项后它自己变红了 —— 判据从"数一个数"改成
+**恰好这四项、按顺序**（目标名单 → 后端配置 → 密钥箱 keybox → 属性伪装）。
+
+**闸门读数（本轮最后一次全跑）**：shell 套 **54/54** 绿（Git Bash）· 对拍 **276 全通过 exit=0**
+（WSL，`tools/wsl-parity.sh` 落退码）· 台架 **175** 条 · CI 那 11 条静态闸全 OK + `replay-check` 42 条 ·
+`build.mjs --check` 两条产物同版。
+
+**没做完的那半**：改动的四个 shell 文件**还没推上机**（这轮收尾时手机没连着 adb）。
+上机后要验的三条已在 §3 的形状里：`KL_USE_RUST=0 … targets` 必须非 0 退码 + 那句提示；
+默认层仍 131 条；不带 awk 的命令两侧一致。回退件在 `/data/local/tmp/kl-3.0.3.bak/`。
+
 ## 6. 坑（都踩过）
 
+
+- **被自己断言的那条调用把 stderr 丢进 /dev/null ⇒ 套件套死在半路还能一路印 "ok"**（2026-11-04，§5.37）：
+  `tests/fallback-shape.sh` 第一版末尾那条 `add_target_apps … >/dev/null 2>&1` 撞上要测的洞了 ——
+  夹具没 source `lib/core.sh`，`OMK_STATE_DIR` 未定义，`set -u` 当场打死整个 shell，
+  而"打死了"这件事唯一的表现是**退码 1**（打印出来的全是 ok）。规矩改成三条：
+  ① 每条被断言的调用各留一份 `.err`，失败时把原文印进读数；② **EXIT trap 里证明走到了最后一行**
+  （没走到就红，并报告停在第几条）；③ 末尾自报断言条数（trap 抓"死在半路"，抓不到"少写了几条断言"）。
+- **一条断言绿的原因可能不是它声称的那件事**（同日）：`fallback-shape` 第 2 节用"参照全缺"的形状
+  断言"写路径拒绝" —— 但那道拒绝有一半是 writer 自己的 `[ -f "$KL_PATCH" ]` 挡的，
+  把 `add_target_apps` 里的基线守卫删掉它照样绿。**真正会吃数据的形状是"半坏"**：
+  `omk.awk` 在（writer 能落盘）、`omk_list.awk` 不在（reader 会失败）。补成独立的 2b 之后，
+  那颗变异一次红 5 条（读数里就有「原有条目被吃掉了」）。同理：同步那条路有**两道**独立守卫
+  （`build_app_list` 与 `sync_omk_injector`），单删任一道都是绿的 —— 台子把这件事**写进输出**
+  （M3a/M3b 明说"由另一道兜住"），否则下一次有人"清理重复守卫"就会安静地拆掉纵深。
+- **变异台子的判据关键字要写「失败分支」那句话**（同日）：`report M2 "$LOG" "基线读不到 → 加入必须拒绝"`
+  这种写法把 ok 分支的文案当判据 —— 而 `[ x ] && ok "A" || no "B"` 的 A 与 B 是两句话，
+  红了也匹配不上。一轮里连错三处（M2 / M3c / M4），三颗都差点被记成"这套闸没有牙"，
+  实际每颗都红了好几行。**判据关键字要从真红日志里逐字抄**。
 
 - **`position: sticky` 装进 md-card 里就等于没装**（2026-11-04，§5.34）：卡是透明底，直觉上
   "装哪儿都一样"；实际组件影子层为了圆角自己裁边，被裁住的 sticky 元素贴不出去 ——
