@@ -389,13 +389,13 @@ md-list-item[data-tone="warn"]{outline:1px solid color-mix(in srgb, var(--kl-war
 /* 更新日志（markdown 的子集）：卡片里的一段只读说明。字号按"内容"给，
    不套展示字级 —— 它跟体检那 12 行、属性对照表是同一层信息。 */
 .md-lite{margin-top:8px;padding:12px 14px;border-radius:12px;background:var(--md-sys-color-surface-container-high);color:var(--md-sys-color-on-surface);overflow-wrap:anywhere}
-.md-lite p{margin:6px 0;line-height:1.6;font-size:.875rem}
-.md-lite .md-h1{font-weight:600;font-size:1rem;margin-top:4px}
-.md-lite .md-h2{font-weight:600;font-size:.9375rem}
-.md-lite .md-h3{font-weight:600;font-size:.875rem}
+.md-lite p{margin:6px 0;line-height:1.6;font-size:14px}
+.md-lite .md-h1{font-weight:600;font-size:16px;margin-top:4px}
+.md-lite .md-h2{font-weight:600;font-size:15px}
+.md-lite .md-h3{font-weight:600;font-size:14px}
 .md-lite ul{margin:6px 0;padding-left:18px}
-.md-lite li{line-height:1.6;font-size:.875rem;margin:3px 0}
+.md-lite li{line-height:1.6;font-size:14px;margin:3px 0}
 .md-lite hr{border:0;border-top:1px solid var(--md-sys-color-outline-variant);margin:10px 0}
 .md-lite .md-q{border-left:3px solid var(--md-sys-color-outline-variant);padding-left:10px;color:var(--md-sys-color-on-surface-variant)}
-.md-lite code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--md-sys-color-surface-container-highest);padding:1px 4px;border-radius:4px;font-size:.8125rem}
+.md-lite code{font-family:ui-monospace,SFMono-Regular,Menlo,monospace;background:var(--md-sys-color-surface-container-highest);padding:1px 4px;border-radius:4px;font-size:13px}
 .md-lite a{color:var(--md-sys-color-primary);text-decoration:none}

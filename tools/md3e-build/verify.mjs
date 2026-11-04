@@ -1997,8 +1997,10 @@ async function main() {
     const tapped3 = await tapUp('安装');
     await sleep(900);
     const up2 = await ev(readCard);
-    chk('点安装后：说「已装好，重启后生效」，不再重复给「安装」',
-      tapped3 === 1 && /已装好，重启后生效/.test(up2.text) && up2.buttons.indexOf('安装') < 0, JSON.stringify(up2.text).slice(0, 160));
+    chk('点安装后：说「已装好，重启后生效」，不再给「安装」也不再给「再检查一次」',
+      tapped3 === 1 && /已装好，重启后生效/.test(up2.text)
+      && up2.buttons.indexOf('安装') < 0 && up2.buttons.indexOf('再检查一次') < 0,
+      JSON.stringify(up2.buttons));
     { const sU = await send('Page.captureScreenshot', { format: 'png' });
       fs.writeFileSync(path.join(SHOT_DIR, 'new-update.png'), Buffer.from(sU.data, 'base64')); }
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: injU.identifier });

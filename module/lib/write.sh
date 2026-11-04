@@ -1174,6 +1174,9 @@ cmd_update_install() {
         [ -n "$out" ] && printf '%s\n' "$out" >&2
     fi
     [ "$rc" = 0 ] || return 1
+    # ksud 已经把它拷进 modules_update 了；留在模块目录里只是一份 538 KB 的死文件
+    # （以后也不会再被读 —— 装完界面就把「安装」收了）。装失败时保留，方便重试。
+    rm -f "$zip" 2>/dev/null
     kv installed 1
     kv zip "$zip"
     kv how ksud

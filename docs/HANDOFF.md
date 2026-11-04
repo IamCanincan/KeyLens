@@ -327,12 +327,17 @@ Keystore，探针自己崩了），报告自己写着 "Attestation and trust-pat
 11 条静态闸全 OK · 台架 **178** · 产物两份同版（`build --check`）。真机现量 `update-install` 的两支前置见 §5.40。
 
 **包**：`node tools/build-zip.mjs` → `KeyLens-v3.0.5.zip` **549,6xx 字节 / 31 条目**，
-sha256 `78cffab59d13d9cf…`；`--check` 全过（0 份 awk、无 `webroot/icons/`、`bin/keylens` 恰好一条）。
+sha256 `6c2bf93cec796464…`（含底栏/四格/收尾三处改动后的最终包）；`--check` 全过（0 份 awk、无 `webroot/icons/`、`bin/keylens` 恰好一条）。
 
 **底栏不透明 + 统计四格同一行**（主人："底栏我不要透明的"，接着看截图发现四格会换行）：
 药丸底色从 `86% + blur(18px)` 换成实色 `--navigation-container`（模糊一并删，它只剩开销）；
 `.hero-stats` 从 flex+wrap+28px 改成每格 `min-width:0` + 长值格内换行。两条都写成了闸：
 底栏是**反向**断言（实色 / 不许 color-mix / 不许 backdrop-filter），四格是"不许 wrap + 必须 min-width:0"。
+
+**这一版再加两条收尾**：安装成功后删掉 `update.zip`（ksud 已拷走，538 KB 死文件；失败保留以便重试）；
+装完不再给「再检查一次」（模块版本要等重启才变，这时再查必然还是"有新版本"，会让人以为没装上）。
+顺带把我自己新写的 `md-lite` 那 6 处 `rem` 改回 `px` —— 全站本来是 px，只有这六行是 rem
+（数值相同、渲染不变，只是别再引入第二种写法）。
 
 **发布前一轮「看图改」**（台架第一次给更新卡存截图）：一眼看见三个真缺陷 —— 提示文案里的 `**` 原样印成星号、
 装完后「检查更新」和「再检查一次」两颗按钮做同一件事、以及展开日志时下面还多一行原始 `# KeyLens v9.9.9`

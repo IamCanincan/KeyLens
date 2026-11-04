@@ -3743,6 +3743,9 @@ pub fn update_install() {
         }
         Err(e) => { eprintln!("无法运行 ksud：{}", e); std::process::exit(1); }
     }
+    // ksud 已经把它拷进 modules_update 了；留在模块目录里只是一份 538 KB 的死文件
+    // （以后也不会再被读 —— 装完界面就把「安装」收了）。装失败时保留，方便重试。
+    let _ = std::fs::remove_file(&zip);
     println_ok!("installed=1");
     println_ok!("zip={}", zip.display());
     println_ok!("how=ksud");

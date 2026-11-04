@@ -935,7 +935,9 @@ function updateCard() {
       });
     } }));
   }
-  if (u.state === 'done' || u.state === 'installed') {
+  /* 装完之后不再给「再检查一次」：模块版本要等重启才变，这时再查一次必然还是"有新版本"，
+     用户会以为没装上。重启回来这一页是新的，自然重新查。 */
+  if (u.state === 'done') {
     acts.appendChild(button('再检查一次', { variant: 'text', on: function () { checkUpdate().then(redraw); } }));
   }
   s.appendChild(acts);
