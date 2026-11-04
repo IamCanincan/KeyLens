@@ -42,8 +42,11 @@ cd "$ROOT" || fail "进不去仓库根"
 
 # ── 要推的文件清单（相对仓库根 → 设备上 mode）────────────────────────
 FILES=""
+# 第三个参数是"设备上的相对路径"，只有少数条目给（awk 进 backends/）。
+# 以前写的是裸 $3，在 set -u 下**只推界面那一组会当场失败**（$3 未定义）——
+# 而 --shell 那组每条都带 $3，所以这个 bug 一直没露头。
 add() { FILES="$FILES
-$1|$2|$3"; }
+$1|$2|${3:-}"; }
 want_webui=0; want_shell=0
 case "$GROUP" in
     webui) want_webui=1 ;;
