@@ -145,10 +145,15 @@ tr -d '\n' < "$T/out" | grep -q 'attestationVersion.*attestationSecurityLevel.*f
     && ok '新键插在末尾且原有顺序没动' || bad '顺序/插入不对'
 # 产物必须是合法 JSON —— 手工删逗号这种事只有解析器会立刻抓出来
 if command -v node >/dev/null 2>&1; then
+    # MSYS 的 mktemp 给 `/tmp/tmp.xxx`，而 node 是 Windows 原生程序 —— 它把这个路径读成
+    # `D:\tmp\tmp.xxx`，报 ENOENT。2026-11-04 全量跑时红过一次（再跑又绿）：**台子喂错了路径**，
+    # 不是产品错。凡是把 shell 临时路径交给非 MSYS 程序的，都先过一遍 cygpath。
+    _np="$T/out"
+    command -v cygpath >/dev/null 2>&1 && _np=$(cygpath -w "$_np")
     node -e 'const fs=require("fs");const d=JSON.parse(fs.readFileSync(process.argv[1],"utf8"));
       const k=Object.keys(d).sort().join(",");
       if (k!=="attestationSecurityLevel,attestationVersion,futureField") { console.log("键集不对:"+k); process.exit(1) }
-      if (d.futureField!=="keep") { console.log("未知键的值没保住"); process.exit(1) }' "$T/out" \
+      if (d.futureField!=="keep") { console.log("未知键的值没保住"); process.exit(1) }' "$_np" \
         && ok '产物是合法 JSON，未知键原样保住' || bad '产物 JSON 不对'
 else
     printf '  ·    本机没有 node，跳过 JSON 解析这一步（设备上正常）\n'
