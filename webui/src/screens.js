@@ -127,6 +127,29 @@ export function button(label, o) {
   return b;
 }
 
+/* 破坏性动作的两段式按钮：第一下只把字换成「再点确认 · …」，4 秒内没有第二下就收回。
+   不用 confirm()（WebView 里它可能被静默忽略，「备份与回滚」那一段就是这么做的）。
+   「目标名单」里那三个批量按钮是同一个思路，但它们要把条数写进字里、且屏幕换了一批
+   行之前那一下就该作废，所以那边按签名自己管状态，没共用这一颗。 */
+function dangerButton(label, o, run) {
+  const b = button(label, o);
+  const set = function (t) { b.setAttribute('label', t); b.textContent = t; };
+  let timer = 0;
+  b.addEventListener('click', function () {
+    if (b.hasAttribute('data-armed')) {
+      b.removeAttribute('data-armed');
+      clearTimeout(timer);
+      set(label);
+      run();
+      return;
+    }
+    b.setAttribute('data-armed', '');
+    set('再点确认 · ' + label);
+    timer = setTimeout(function () { b.removeAttribute('data-armed'); set(label); }, 4000);
+  });
+  return b;
+}
+
 /* 筛选芯片：四颗 md-button 在 417px 里放不下，会折成两排（截图里第四颗掉到第二行）。
    md-chip 的 filter 变体正是 MD3 里做筛选的标准控件，宽度也只到按钮的三分之二。 */
 export function chip(label, selected, on) {
@@ -1192,51 +1215,85 @@ function listSection() {
     });
     return shown;
   }
-  /* 这一屏真正画出来的行（= 全选/反选的作用范围） */
-  function paintedTokens() { return filteredTokens().slice(0, shownLimit); }
-  /* 移走这些 token 之后名单会不会空 —— 命令层拒绝清空，界面先在按钮上拦住 */
-  function wouldEmpty(removeToks) {
+  /* 移走这些包名之后名单会不会空 —— 命令层拒绝清空，界面先在按钮上拦住 */
+  function wouldEmpty(basesCsv) {
     const kill = {};
-    removeToks.forEach(function (t) { const b = baseOf(t); if (b) kill[b] = 1; });
+    String(basesCsv || '').split(/[,;\s]+/).filter(Boolean).forEach(function (b) { kill[b] = 1; });
     return S.targets.filter(function (t) { const b = baseOf(t); return !(b && kill[b]); }).length === 0;
+  }
+  function csvCount(s) { return s ? s.split(',').length : 0; }
+  function basesOf(rows) { return rows.map(baseOf).filter(Boolean).join(','); }
+  /* 批量动作的账：先算清「这一下会动几条」，再决定画不画、要不要第二下。
+     - 没得动的动作不画（一排点不动的字比没有这一行更让人迷惑）；
+     - 会把名单清空的留着但置灰 + 点名原因（命令层本来就拒绝清空，界面先拦住）；
+     - 「反选」只在这屏既有勾着的又有没有勾的时候才存在：一侧为空时它跟旁边那颗
+       做的是同一件事，并排两颗一样的字就是迷惑；
+     - 一次动多于一条的要第二下确认：本机现量「已装」129 条全在 131 条名单里，
+       旧版那一记「全不选」一弹就抹掉 129 条。点一行只动一条，那一下不需要确认 ——
+       乘以一百二十九就不是同一个动作了（两段式同「备份与回滚」）。 */
+  function bulkPlan(page) {
+    const on = page.filter(function (t) { return !!baseSet[baseOf(t)]; });
+    const off = page.filter(function (t) { return !baseSet[baseOf(t)]; });
+    const acts = [];
+    if (off.length) acts.push({ key: 'add', label: '全选', n: off.length, add: basesOf(off), del: '' });
+    if (on.length) acts.push({ key: 'del', label: '全不选', n: on.length, add: '', del: basesOf(on) });
+    if (on.length && off.length) acts.push({ key: 'inv', label: '反选', n: page.length, add: basesOf(off), del: basesOf(on) });
+    acts.forEach(function (a) { a.empty = !!a.del && wouldEmpty(a.del); });
+    return { acts: acts, off: off };
+  }
+  function runBulk(a) {
+    const doAdd = function () {
+      if (a.add) write('restore-apps', a.add, '已加入 ' + csvCount(a.add) + ' 条');
+    };
+    if (!a.del) { doAdd(); return; }
+    /* 反选先移后加：顺序反了会把刚加进去的又删掉 */
+    write('remove-apps', a.del, '已移出 ' + csvCount(a.del) + ' 条').then(doAdd);
+  }
+  /* 「再点确认」的签名带完整参数：搜索一改或点了「继续显示」，画出来的行就换了一批 ——
+     之前按住的那一下已经不是这个动作，不能算数。 */
+  let lastPage = [];
+  let armedSig = '';
+  let armTimer = 0;
+  function repaintBulk() {
+    if (bulkHost && bulkHost.isConnected) fillBulk(bulkHost, lastPage);
   }
   function fillBulk(host, page) {
     host.textContent = '';
-    const on = page.filter(function (t) { return !!baseSet[baseOf(t)]; });
-    const off = page.filter(function (t) { return !baseSet[baseOf(t)]; });
-    /* 三个动作都做不了（这一屏全在名单里、或一条都没有）时不留三颗灰按钮，
-       改成一句话 —— 一排点不动的字比没有这一行更让人迷惑。 */
-    const empty = wouldEmpty(on);
     if (!page.length) return;
-    if (!off.length && empty) {
-      host.appendChild(h('span', 'hint', '这一屏 ' + page.length + ' 条都已在名单里'));
-      return;
-    }
-    const mk = function (label, disabled, fn) {
-      const b = button(label, { variant: 'text', disabled: disabled, on: fn });
+    const plan = bulkPlan(page);
+    /* 整屏都已在名单里：先说一句状态，再给那颗真的还动得了的「全不选」（带条数） */
+    if (!plan.off.length) host.appendChild(h('span', 'hint', '这一屏 ' + page.length + ' 条都已在名单里'));
+    let blocked = false;
+    plan.acts.forEach(function (a) {
+      const sig = a.key + '|' + a.del + '|' + a.add;
+      const armed = !a.empty && armedSig === sig;
+      /* 条数写在字上：要确认的那一下，人点的应该是「这 129 条」这个数字本身 */
+      const label = (a.empty ? a.label : (armed ? '再点确认' : a.label))
+        + (a.n > 1 ? '（' + a.n + ' 条）' : '');
+      const b = button(label, { variant: 'text', disabled: a.empty });
       b.setAttribute('data-role', 'bulk');
+      b.setAttribute('data-bulk', a.key);
+      if (a.empty) { blocked = true; }
+      else b.addEventListener('click', function () {
+        if (a.n > 1 && !armed) {
+          armedSig = sig;
+          clearTimeout(armTimer);
+          armTimer = setTimeout(repaintBulk, 4000);
+          repaintBulk();
+          return;
+        }
+        armedSig = '';
+        clearTimeout(armTimer);
+        runBulk(a);
+      });
       host.appendChild(b);
-      return b;
-    };
-    mk('全选', !off.length, function () {
-      write('restore-apps', off.map(baseOf).join(','), '已加入 ' + off.length + ' 条');
     });
-    mk('反选', !page.length || empty, function () {
-      /* 先移后加：两侧都走既有命令（逗号分隔），写完各自 reload —— 顺序不能反，
-         反了会把刚加进去的又删掉 */
-      write('remove-apps', on.map(baseOf).join(','), '已移出 ' + on.length + ' 条')
-        .then(function () {
-          if (off.length) write('restore-apps', off.map(baseOf).join(','), '已加入 ' + off.length + ' 条');
-        });
-    });
-    mk('全不选', !on.length || empty, function () {
-      write('remove-apps', on.map(baseOf).join(','), '已移出 ' + on.length + ' 条');
-    });
-    if (on.length && empty && off.length) host.appendChild(h('span', 'hint', '会清空名单的那一下不给（至少要留一条）'));
+    if (blocked) host.appendChild(h('span', 'hint', '会清空名单的那一下不给（至少要留一条）'));
   }
   function paintRows() {
     const shown = filteredTokens();
     const page = shown.slice(0, shownLimit);
+    lastPage = page;
     /* 这一屏是不是"混着"（有在名单里的、也有不在的）：着色只在这时候有信息量 */
     const inCount = shown.filter(function (t) { return !!baseSet[baseOf(t)]; }).length;
     const mixed = inCount > 0 && inCount < shown.length;
@@ -1627,10 +1684,10 @@ function teesimProfiles() {
      不能指向一个已经不存在的 profile。 */
   const mg = h('div', 'acts');
   if (!cur.isDefault) {
-    mg.appendChild(button('删除 · ' + cur.name, { variant: 'text', icon: ICON.del, on: function () {
+    mg.appendChild(dangerButton('删除 · ' + cur.name, { variant: 'text', icon: ICON.del }, function () {
       const n = cur.name; S.profile = 'default';
       write('teesim-profile-del', n, '已删除 profile：' + n);
-    } }));
+    }));
   }
   s.appendChild(mg);
   s.appendChild(fold(function () {
@@ -1718,10 +1775,10 @@ function trickyBlocks() {
   /* 按包段可删：先把选择挪回全局，再发删除 —— 删掉的正好是当前选中的段时，
      表单不该还指着一个已经不存在的作用域。全局段不给删（命令层也会拒）。 */
   if (S.scope !== 'global') {
-    seg.appendChild(button('删除这一段', { variant: 'text', icon: ICON.del, on: function () {
+    seg.appendChild(dangerButton('删除这一段', { variant: 'text', icon: ICON.del }, function () {
       const sc = S.scope; S.scope = 'global';
       write('tricky-drop-patch', sc, '已删除补丁段：' + sc);
-    } }));
+    }));
   }
   ps.appendChild(seg);
   const nsRow = h('div', 'row');

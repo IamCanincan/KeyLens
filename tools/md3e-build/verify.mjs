@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 144;
+const FLOOR_CHKS = 153;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1039,6 +1039,9 @@ async function main() {
       h: r ? Math.round(r.height) : -1,
       hint: hints.filter(function(t){ return /共 [0-9]+ 条/.test(t); })[0] || '',
       chips: [].slice.call(document.querySelectorAll('#view md-chip')).map(function(c){return c.getAttribute('label');}),
+      /* 批量那一行的作用范围 = 这一屏**画出来**的行，不是整档 */
+      bulk: [].slice.call(document.querySelectorAll('#view .bulk-row md-button')).map(function(x){
+        return x.getAttribute('data-bulk') + '=' + (x.getAttribute('label')||''); }),
       sk: !!document.querySelector('#view .load-card'),
       allHints: hints.slice(0, 4),
       titles: [].slice.call(document.querySelectorAll('#view .page-title')).map(function(t){return t.textContent;}) }; })()`);
@@ -1059,6 +1062,11 @@ async function main() {
   chk('点一下画全 250 行，那颗自己退场（**屏上真看不见**：offsetParent 为空或高度 0）',
     L2.rows === 250 && L2.hidden === true && L2.more === ''
     && (L2.offscreen === true || L2.h === 0) && /^共 250 条$/.test(L2.hint), JSON.stringify(L2));
+  /* 批量那一行必须跟着"画出来的行"长：不然「全选」嘴上说全选、手里只改前 200 条。
+     这一档 250 条一条都不在名单里 ⇒ 只有「全选」，字上的条数就是它要动的条数。 */
+  chk('批量按钮的作用范围跟着「这一屏画出来的行」长：200 → 250',
+    L1.bulk.join('|') === 'add=全选（200 条）' && L2.bulk.join('|') === 'add=全选（250 条）',
+    JSON.stringify({ 前: L1.bulk, 后: L2.bulk }));
   /* 名字到底问没问全：台架在 demo 里记录每次 icons 请求的包。
      旧写法一次问 200、命令层只答 120，剩下的**没被请求却被标成"问过了"** ⇒ 永远首字块。 */
   const reqs = await ev(`(function(){ var r=window.__klIconReqs||[]; var seen={}, n=0;
@@ -1176,6 +1184,32 @@ async function main() {
     chk('选中 alt 后：编辑器说明"只上报 default"，且缺值的下拉/开关标成「当前值未知」而不是某个确定档',
       alt.只上报default === true && alt.未知行 >= 2 && alt.行总数 > alt.未知行, JSON.stringify(alt));
 
+    /* 删 profile / 删补丁段都是"一弹就没了一份配置"，所以走两段式：第一下只把字换成
+       「再点确认 · …」，第二下才发命令（同「备份与回滚」那颗）。这里把两颗各钉一次。 */
+    const dangerExpr = `(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){ var t=x.getAttribute('label')||''; return /^删除/.test(t) || /^再点确认/.test(t); })[0]; })()`;
+    const dangerLabel = () => ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){ var t=x.getAttribute('label')||''; return /^删除/.test(t) || /^再点确认/.test(t); })[0];
+      return b ? ((b.getAttribute('label')||'') + (b.hasAttribute('data-armed') ? '/按住' : '')) : ''; })()`);
+    const wCount = cmd => ev(`(function(){ return (window.__klWrites||[]).filter(function(x){return x.cmd===${JSON.stringify(cmd)};}).length; })()`);
+    const dl0 = await dangerLabel();
+    await tapHere2(dangerExpr);
+    await sleep(500);
+    const dl1 = await dangerLabel();
+    const w0 = await wCount('teesim-profile-del');
+    chk('删 profile 第一下不写：字换成「再点确认 · 删除 · alt」',
+      dl0 === '删除 · alt' && dl1 === '再点确认 · 删除 · alt/按住' && w0 === 0,
+      JSON.stringify({ 第一下: dl0, 按住: dl1, 写: w0 }));
+    await tapHere2(dangerExpr);
+    await sleep(900);
+    const w1 = await wCount('teesim-profile-del');
+    chk('第二下才真删：正好发一条 teesim-profile-del', w1 === 1, '写次数 ' + w0 + '→' + w1);
+    /* 这一段自己把选择挪回了 default，后面两条（名单页点名 alt / keybox 不给点）都要求
+       还选中 alt —— demo 的 profile 清单是写死的，删了也还在，重新点回去就行。 */
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'').indexOf('alt')===0;})[0]; })()`);
+    await sleep(800);
+
     await toFunc(); await sleep(500);
     await tapEntry('目标名单'); await sleep(700);
     const scope = await ev(`(function(){ var hints=[].slice.call(document.querySelectorAll('#view p.hint')).map(function(p){return p.textContent;});
@@ -1191,6 +1225,28 @@ async function main() {
       return { found: b?1:0, disabled: b?(b.hasAttribute('disabled')?1:0):-1, 说明: errs.join(' | ').slice(0, 80) }; })()`);
     chk('选中非默认 profile 时 keybox 那颗按钮不给（不再回"已替换 keybox"骗人）',
       kb.found === 1 && kb.disabled === 1 && /这条路还没有/.test(kb.说明), JSON.stringify(kb));
+
+    /* 删补丁段是第二颗"一弹就没了一份配置"的按钮：同一套两段式，另一个接线点。
+       先把选择挪到那个按包段，「删除这一段」才会出现（全局段不给删）。 */
+    await send('Page.navigate', { url: URL0 + '&backend=tricky' });
+    await sleep(1400);
+    await toFunc(); await sleep(500);
+    await tapEntry('后端配置'); await sleep(800);
+    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(b){return (b.getAttribute('label')||'')==='com.android.vending';})[0]; })()`);
+    await sleep(700);
+    const dp1a = await dangerLabel();
+    await tapHere2(dangerExpr);
+    await sleep(500);
+    const dp1b = await dangerLabel();
+    const dp0 = await wCount('tricky-drop-patch');
+    chk('删补丁段第一下也不写：那颗同样换成「再点确认 · 删除这一段」',
+      dp1a === '删除这一段' && dp1b === '再点确认 · 删除这一段/按住' && dp0 === 0,
+      JSON.stringify({ 第一: dp1a, 按住: dp1b, 写: dp0 }));
+    await tapHere2(dangerExpr);
+    await sleep(900);
+    const dp1 = await wCount('tricky-drop-patch');
+    chk('第二下才真删：正好发一条 tricky-drop-patch', dp1 === 1, '写次数 ' + dp0 + '→' + dp1);
 
     /* 名单这一屏的三根轴（主人原话："还是不够人性化…主要哪些选了哪些没选都不明了"）。
        本机现量：235 个系统包里按平台启动器判据只有 17 个是应用；相机排在第 201 行。 */
@@ -1212,18 +1268,41 @@ async function main() {
       sy1.rows === 2 && /^另有 3 条系统组件/.test(sy1.折叠句), JSON.stringify(sy1));
     chk('系统档里在名单中的那行是勾选态，其余不勾',
       sy1.勾选.filter(Boolean).length === 1, JSON.stringify(sy1.勾选));
-    /* 反选：这一屏 2 行、1 条在名单 → 翻过来还是 1 条（不会清空名单，允许） */
-    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
-      return bs.filter(function(x){return (x.getAttribute('label')||'')==='反选';})[0]; })()`);
+    /* 批量按钮一律按 data-bulk 找：字会随状态变（多于一行带条数、要确认时换成「再点确认」），
+       拿字当锚等于把上一版那个"一弹抹掉 129 条"的形状钉死在台架里。 */
+    const bulkBtnExpr = k => `(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return x.getAttribute('data-bulk')===${JSON.stringify(k)};})[0]; })()`;
+    const tapBulkKey = k => tapHere2(bulkBtnExpr(k));
+    const bulkState = () => ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      return bs.filter(function(x){return x.getAttribute('data-bulk');}).map(function(x){
+        return x.getAttribute('data-bulk') + '=' + (x.getAttribute('label')||'') + (x.hasAttribute('disabled') ? '/灰' : ''); }); })()`);
+    const nWrites = () => ev(`(window.__klWrites||[]).length`);
+    /* 反选：这一屏 2 行、1 条在名单 → 翻过来还是 1 条（不会清空名单，允许）。
+       但这一下动 2 行 ⇒ 第一点只亮「再点确认」，一个字都不写。 */
+    const wA0 = await nWrites();
+    await tapBulkKey('inv');
+    await sleep(500);
+    const stArm = await bulkState();
+    const wA1 = await nWrites();
+    chk('动多于一条的批量按钮：第一点不写，字换成「再点确认（2 条）」',
+      wA1 === wA0 && stArm.join('|') === 'add=全选|del=全不选|inv=再点确认（2 条）',
+      JSON.stringify({ 状态: stArm, 写次数: [wA0, wA1] }));
+    await tapBulkKey('inv');
     await sleep(900);
     const inv = await ev(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
       var on=rs.filter(function(r){return r.getAttribute('aria-pressed')==='true';});
       return { n: rs.length, pressed: on.length, 新的那行: on[0] ? on[0].getAttribute('data-base') : '' }; })()`);
     chk('反选：把勾着的那条换掉（vending → settings），不是整档全清',
       inv.n === 2 && inv.pressed === 1 && inv.新的那行 === 'com.android.settings', JSON.stringify(inv));
+    /* 写完那一瞬确认态要自己收回（新 closure，armedSig 归零）—— 留在「再点确认」上
+       就意味着第三下会直接动手。 */
+    const stAfter = await bulkState();
+    chk('写完之后确认态收回，字回到「反选（2 条）」',
+      stAfter.join('|') === 'add=全选|del=全不选|inv=反选（2 条）', JSON.stringify(stAfter));
     /* 再反选一次回到原样（反两次 = 恒等），免得后面的块读到被这段改过的名单 */
-    await tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
-      return bs.filter(function(x){return (x.getAttribute('label')||'')==='反选';})[0]; })()`);
+    await tapBulkKey('inv');
+    await sleep(400);
+    await tapBulkKey('inv');
     await sleep(900);
     const inv2 = await ev(`(function(){ var rs=[].slice.call(document.querySelectorAll('#view .app-row'));
       var on=rs.filter(function(r){return r.getAttribute('aria-pressed')==='true';});
@@ -1286,24 +1365,28 @@ async function main() {
     chk('同一行再点一次就移出名单（正反两面是同一条命令）',
       afterDel.pressed === 'false' && afterDel.all === beforeAdd.all, JSON.stringify(afterDel));
 
-    /* 全选 / 反选 / 全不选：作用范围是**这一屏画出来的行**；会清空名单的那一下禁用。
-       台架这屏 4 条：3 在名单 / 1 不在。 */
+    /* 全选 / 反选 / 全不选：作用范围是**这一屏画出来的行**。
+       台架这屏 4 条：3 在名单 / 1 不在 ⇒「全选」只动 1 条，和点那一行等价，不该要第二下。 */
     const pressedN = () => ev(`(function(){ return [].slice.call(document.querySelectorAll('#view .app-row'))
       .filter(function(r){return r.getAttribute('aria-pressed')==='true';}).length; })()`);
-    const tapBulk = label => tapHere2(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
-      return bs.filter(function(x){return (x.getAttribute('label')||'')===${JSON.stringify(label)};})[0]; })()`);
     const p0 = await pressedN();
-    await tapBulk('全选');
+    const stPre = await bulkState();
+    await tapBulkKey('add');
     await sleep(900);
     const p1 = await pressedN();
-    chk('全选：这一屏全部勾上（4 条都在名单里）', p0 === 3 && p1 === 4, p0 + '→' + p1);
-    /* 这一屏 4 条全在名单里：三个动作都做不了 —— 不留三颗灰按钮，改成一句话。
-       （会清空名单的那一下命令层本来就不允许，界面先在按钮上拦住。） */
+    chk('只动一条的「全选」不拦第二下：一弹就全部勾上（4 条都在名单里）',
+      stPre.join('|') === 'add=全选|del=全不选（3 条）/灰|inv=反选（4 条）/灰' && p0 === 3 && p1 === 4,
+      JSON.stringify({ 状态: stPre, 勾选: [p0, p1] }));
+    /* 这一屏 4 条全在名单里、而名单一共就这 4 条：不给点不动的「全选」/重复的「反选」，
+       留一句状态 + 那颗唯一还动得了的「全不选」置灰并点名原因（命令层本来就拒绝清空）。 */
     const guards = await ev(`(function(){ var r=document.querySelector('#view .bulk-row');
-      return { hint: r ? ((r.querySelector('.hint')||{}).textContent||'') : '',
-        按钮: r ? r.querySelectorAll('md-button').length : -1 }; })()`);
-    chk('整屏都在名单里时不留灰按钮，改成一句话',
-      /这一屏 4 条都已在名单里/.test(guards.hint) && guards.按钮 === 0, JSON.stringify(guards));
+      return { hints: [].slice.call(r.querySelectorAll('.hint')).map(function(x){return x.textContent;}),
+        按钮: [].slice.call(r.querySelectorAll('md-button')).map(function(x){
+          return x.getAttribute('data-bulk') + '=' + (x.getAttribute('label')||'') + (x.hasAttribute('disabled') ? '/灰' : ''); }) }; })()`);
+    chk('整屏都在名单里：只剩一颗置灰的「全不选」，两句话各说一件（状态 / 为什么不给）',
+      guards.按钮.join('|') === 'del=全不选（4 条）/灰'
+      && guards.hints.indexOf('这一屏 4 条都已在名单里') >= 0
+      && guards.hints.join('|').indexOf('至少要留一条') >= 0, JSON.stringify(guards));
 
     /* 原生快路（KernelSU 3.x 的 ksu.pm + ksu://icon）：台架用一个假 ksu 顶上，
        必须看到三件事 —— 一次 icons 命令都不发（真机上那一批 120 个要 1823ms）、
@@ -1350,6 +1433,48 @@ async function main() {
     chk('整屏全在名单里：勾选框照画，但不着色（混着才着色）',
       nat.勾选 === 2 && nat.着色 === 0, JSON.stringify({ 勾选: nat.勾选, 着色: nat.着色 }));
     await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj.identifier });
+
+    /* 真机那一屏的形状（本机现量：已装 129 条**全在** 131 条名单里，一个没勾的都没有）。
+       上一版在这种形状下给的是三颗按钮：「反选」和「全不选」做的是同一件事，而「全不选」
+       一弹就抹掉 129 条 —— 默认夹具只有 4 行、off=1，永远走不到这一格，所以台架一路绿。
+       这里用真机条数把这一屏钉下来：不给重复的那颗、条数写在字上、第一点不写、
+       第二点发出去的就是那 129 个包名。 */
+    const inj2 = await send('Page.addScriptToEvaluateOnNewDocument', {
+      source: (function () {
+        var pk = [];
+        for (var i = 0; i < 129; i++) pk.push('com.real.app' + (i < 10 ? '00' : (i < 100 ? '0' : '')) + i);
+        var t = pk.slice(); t.push('com.gone.a', 'com.gone.b');
+        return 'window.__KL_DEMO_FIXTURE = { apps: ' + JSON.stringify(pk.join('\n'))
+          + ', targets: ' + JSON.stringify(t.join('\n')) + ' };';
+      })() });
+    await send('Page.navigate', { url: URL0 });
+    await sleep(1500);
+    await ev(`(function(){ var n=document.getElementById('nav');
+      n.dispatchEvent(new CustomEvent('change',{detail:{index:1},bubbles:true})); return 1; })()`);
+    await sleep(700);
+    await tapEntry('目标名单');
+    await sleep(900);
+    await tapHere2(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view md-chip'));
+      return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
+    await sleep(900);
+    const devState0 = await bulkState();
+    const devW0 = await nWrites();
+    await tapBulkKey('del');
+    await sleep(500);
+    const devState1 = await bulkState();
+    const devW1 = await nWrites();
+    chk('真机形状（129 条全在 131 条名单里）：只给一颗写着条数的「全不选」，第一点不写',
+      devState0.join('|') === 'del=全不选（129 条）' && devState1.join('|') === 'del=再点确认（129 条）'
+      && devW1 === devW0, JSON.stringify({ 状态: [devState0, devState1], 写次数: [devW0, devW1] }));
+    await tapBulkKey('del');
+    await sleep(1200);
+    const devWrite = await ev(`(function(){ var w=(window.__klWrites||[]).filter(function(x){return x.cmd==='remove-apps';});
+      var last = w.length ? w[w.length-1].arg : '';
+      return { 次数: w.length, 条数: last ? last.split(',').length : 0, 首个: last.split(',')[0], 带空格: / /.test(last) }; })()`);
+    chk('第二下才写：就发一条 remove-apps，参数正是那 129 个包名（逗号分隔，没有空格）',
+      devWrite.次数 === 1 && devWrite.条数 === 129 && devWrite.首个 === 'com.real.app000'
+      && devWrite.带空格 === false, JSON.stringify(devWrite));
+    await send('Page.removeScriptToEvaluateOnNewDocument', { identifier: inj2.identifier });
   }
 
   /* 打开 WebUI 的启动页：把 env 延后 900ms（?slow=env），先看到品牌页；
