@@ -879,94 +879,91 @@ export function renderSettings() {
    `ksud module install`（KernelSU 管理器按「更新」时走的也是这一步），落点是
    modules_update，**不重启不生效** —— 所以它比"直接改 /data/adb/modules"安全得多。 */
 function updateCard() {
-  const u = S.update || {};
-  const cur = (S.status && S.status.mod_version) || '';
   const c = card();
   const s = section('版本与更新', ICON.about);
-  let line = '当前 ' + (cur || '读不到版本');
-  let tone = '';
-  if (u.state === 'checking') line += ' · 正在检查…';
-  else if (u.state === 'err') { line += ' · 检查失败：' + (u.msg || '网络'); tone = 'warn'; }
-  else if (u.state === 'installing') { line += ' · 正在装 ' + (u.tag || '') + '…'; tone = 'ok'; }
-  else if (u.state === 'installed') { line += ' · ' + (u.tag || '更新') + ' 已装好，重启后生效'; tone = 'ok'; }
-  else if (u.state === 'ok') {
-    if (u.newer) { line += ' · 有新版本 ' + (u.tag || '') + (u.size ? '（' + bytesLabel(u.size) + '）' : ''); tone = 'ok'; }
-    else line += ' · 已是最新';
-  } else if (u.state === 'done') {
-    line += ' · 已下载 ' + bytesLabel(u.bytes || 0) + ' 到 update.zip';
-    tone = 'ok';
-  }
-  s.appendChild(list([item({ headline: 'KeyLens', supporting: line, trailing: u.state === 'ok' && u.newer ? '有新版' : '', tone: tone })]));
-  const acts = h('div', 'acts');
-  if (u.state !== 'checking' && u.state !== 'done' && u.state !== 'installing' && u.state !== 'installed') {
-    acts.appendChild(button('检查更新', { variant: 'tonal', icon: ICON.sync, on: function () {
-      checkUpdate().then(redraw);
-    } }));
-  }
-  if (u.state === 'ok' && u.newer && u.url) {
-    acts.appendChild(button('下载更新包', { variant: 'filled', icon: ICON.read, on: function () {
-      /* 走 call 而不是 write()：这里要读回 saved/bytes 才能把状态画成"已下载" */
-      call('update-fetch', u.url).then(function (r) {
-        if (!r.ok) { toast(failText(r), true); return; }
-        const kv = parseKV(r.text || '');
-        S.update = { state: 'done', bytes: Number(kv.bytes || 0) || 0, path: kv.saved || '', tag: u.tag, notes: u.notes };
-        redraw();
-      }, function (e) { toast(String((e && e.message) || e), true); });
-    } }));
-  }
-  if (u.state === 'done') {
-    /* 下载完直接给「安装」——照管理器的样子，下载与安装是一对相邻动作 */
-    acts.appendChild(button('安装', { variant: 'filled', icon: ICON.ok, on: function () {
-      const prev = S.update;
-      S.update = { state: 'installing', tag: prev.tag, notes: prev.notes };
-      redraw();
-      call('update-install').then(function (r) {
-        if (!r.ok) {
-          S.update = prev; redraw();
-          toast(failText(r), true);
-          return;
-        }
-        S.update = { state: 'installed', tag: prev.tag, notes: prev.notes };
-        redraw();
-        toast('已装好，重启后生效', false);
-      }, function (e) {
-        S.update = prev; redraw();
-        toast(String((e && e.message) || e), true);
-      });
-    } }));
-  }
-  /* 装完之后不再给「再检查一次」：模块版本要等重启才变，这时再查一次必然还是"有新版本"，
-     用户会以为没装上。重启回来这一页是新的，自然重新查。 */
-  if (u.state === 'done') {
-    acts.appendChild(button('再检查一次', { variant: 'text', on: function () { checkUpdate().then(redraw); } }));
-  }
-  s.appendChild(acts);
-  if (u.state === 'done') {
-    s.appendChild(h('p', 'hint', '包已经放在 ' + (u.path || '模块目录下的 update.zip') + '。点「安装」交给管理器：'
-      + '它会装到待生效区，重启后才落地；想自己装，也可以在管理器里用「从本地安装」。'));
-  } else if (u.state === 'installed') {
-    s.appendChild(h('p', 'hint', '已经交给管理器了，重启后生效。重启完回到这一页会显示新版本号。'));
-  } else if (u.state === 'ok' && u.newer) {
-    s.appendChild(h('p', 'hint', '下载只把包放到模块目录；装的时候才交给管理器，而且不重启不生效。'));
-  } else if (u.state === 'err') {
-    s.appendChild(h('p', 'hint', '这台机的 WebView 连不上 GitHub 时就会这样；可以到 Releases 页手动下载。'));
-  }
-  /* 更新日志：检查更新时已经拿到发布说明（api.github.com 的 body），以前读完就扔了。
-     和 KSU 一样默认收起，点开看；渲染只认 markdown 的一个子集（标题/列表/引用/粗体/代码/分隔线）。 */
-  if (u.notes) {
-    const box = h('div');
-    s.appendChild(foldButton('updateOpen', '展开更新日志', '收起更新日志'));
-    /* 悬空 else 踩过一次：`if (open) A; if (open && cut) B; else C;` 里的 else 绑在**第二个** if 上，
-       于是"展开着且没截断"时照样补一行首行预览 —— 屏上就是正文下面又冒出一行 "# KeyLens v9.9.9"。
-       台架当时只断言了"md 在、li≥2"，没断言"展开后不该再有预览"，是看图看出来的。 */
-    if (S.updateOpen) {
-      box.appendChild(mdLite(u.notes));
-      if (u.notesCut) box.appendChild(h('p', 'hint', '（发布说明较长，这里只显示前 6000 字）'));
-    } else {
-      box.appendChild(h('p', 'hint md-preview', plainFirstLine(u.notes)));
+  const body = h('div');
+  s.appendChild(body);
+  /* 局部重画：查/下载/安装每一步只重建这张卡。以前每步都 redraw() 整页 —— 页面被清空再重建，
+     屏上闪一下，滚动位置也要重新夹一遍（主人："界面还会闪一下并向上跳"）。体检那张卡早就是
+     局部 paint，这里照同一套。 */
+  function paint() {
+    body.textContent = '';
+    const u = S.update || {};
+    const cur = (S.status && S.status.mod_version) || '';
+    let line = '当前 ' + (cur || '读不到版本');
+    let tone = '';
+    if (u.state === 'checking') line += ' · 正在检查…';
+    else if (u.state === 'err') { line += ' · 检查失败：' + (u.msg || '网络'); tone = 'warn'; }
+    else if (u.state === 'installing') { line += ' · 正在装 ' + (u.tag || '') + '…'; tone = 'ok'; }
+    else if (u.state === 'installed') { line += ' · ' + (u.tag || '更新') + ' 已装好，重启后生效'; tone = 'ok'; }
+    else if (u.state === 'ok') {
+      if (u.newer) { line += ' · 有新版本 ' + (u.tag || '') + (u.size ? '（' + bytesLabel(u.size) + '）' : ''); tone = 'ok'; }
+      else line += ' · 已是最新';
+    } else if (u.state === 'done') {
+      line += ' · 已下载 ' + bytesLabel(u.bytes || 0) + ' 到 update.zip';
+      tone = 'ok';
     }
-    s.appendChild(box);
+    body.appendChild(list([item({ headline: 'KeyLens', supporting: line, trailing: u.state === 'ok' && u.newer ? '有新版' : '', tone: tone })]));
+    const acts = h('div', 'acts');
+    if (u.state !== 'checking' && u.state !== 'done' && u.state !== 'installing' && u.state !== 'installed') {
+      acts.appendChild(button('检查更新', { variant: 'tonal', icon: ICON.sync, on: function () {
+        checkUpdate().then(paint);
+      } }));
+    }
+    if (u.state === 'ok' && u.newer && u.url) {
+      acts.appendChild(button('下载更新包', { variant: 'filled', icon: ICON.read, on: function () {
+        call('update-fetch', u.url).then(function (r) {
+          if (!r.ok) { toast(failText(r), true); return; }
+          const kv = parseKV(r.text || '');
+          S.update = { state: 'done', bytes: Number(kv.bytes || 0) || 0, path: kv.saved || '', tag: u.tag, notes: u.notes };
+          paint();
+        }, function (e) { toast(String((e && e.message) || e), true); });
+      } }));
+    }
+    if (u.state === 'done') {
+      acts.appendChild(button('安装', { variant: 'filled', icon: ICON.ok, on: function () {
+        const prev = S.update;
+        S.update = { state: 'installing', tag: prev.tag, notes: prev.notes };
+        paint();
+        call('update-install').then(function (r) {
+          if (!r.ok) {
+            /* 失败时状态其实没变：只把"正在装…"换回去，不整页重画 */
+            S.update = prev; paint();
+            toast(failText(r), true);
+            return;
+          }
+          S.update = { state: 'installed', tag: prev.tag, notes: prev.notes };
+          paint();
+          toast('已装好，重启后生效', false);
+        }, function (e) {
+          S.update = prev; paint();
+          toast(String((e && e.message) || e), true);
+        });
+      } }));
+      acts.appendChild(button('再检查一次', { variant: 'text', on: function () { checkUpdate().then(paint); } }));
+    }
+    body.appendChild(acts);
+    if (u.state === 'done') {
+      body.appendChild(h('p', 'hint', '包已经放在 ' + (u.path || '模块目录下的 update.zip') + '。点「安装」交给管理器：'
+        + '它会装到待生效区，重启后才落地；想自己装，也可以在管理器里用「从本地安装」。'));
+    } else if (u.state === 'installed') {
+      body.appendChild(h('p', 'hint', '已经交给管理器了，重启后生效。重启完回到这一页会显示新版本号。'));
+    } else if (u.state === 'ok' && u.newer) {
+      body.appendChild(h('p', 'hint', '下载只把包放到模块目录；装的时候才交给管理器，而且不重启不生效。'));
+    } else if (u.state === 'err') {
+      body.appendChild(h('p', 'hint', '这台机的 WebView 连不上 GitHub 时就会这样；可以到 Releases 页手动下载。'));
+    }
+    if (u.notes) {
+      body.appendChild(foldButton('updateOpen', '展开更新日志', '收起更新日志', paint));
+      if (S.updateOpen) {
+        body.appendChild(mdLite(u.notes));
+        if (u.notesCut) body.appendChild(h('p', 'hint', '（发布说明较长，这里只显示前 6000 字）'));
+      } else {
+        body.appendChild(h('p', 'hint md-preview', plainFirstLine(u.notes)));
+      }
+    }
   }
+  paint();
   c.appendChild(s);
   return c;
 }
@@ -1087,9 +1084,11 @@ function backendMatrix() {
    ① 按钮放在列表**上面** —— 列表一长，压在底下就得先滚到底才找得到；
    ② 收起不是全藏 —— 把"没有信息量"的那些（一致 / 正常）藏掉，有问题的留在屏上。
    状态存 S 上的键：整页重画、切页回来都还是用户选的那一面。 */
-function foldButton(key, labelWhenShut, labelWhenOpen) {
+function foldButton(key, labelWhenShut, labelWhenOpen, repaint) {
+  /* 第 4 个参数是"只重画这一处"的回调：整页 redraw 会把 #view 清空再重建，
+     屏上闪一下、滚动位置也被重新夹一遍（主人报的"闪一下并向上跳"）。没有就给整页重画。 */
   const b = button(!!S[key] ? labelWhenOpen : labelWhenShut, {
-    variant: 'text', on: function () { S[key] = !S[key]; redraw(); } });
+    variant: 'text', on: function () { S[key] = !S[key]; (repaint || redraw)(); } });
   b.setAttribute('data-fold', key);
   return b;
 }

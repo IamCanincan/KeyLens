@@ -1994,9 +1994,20 @@ async function main() {
     chk('点下载后：状态变「已下载」并直接给「安装」',
       tapped2 === 1 && /已下载 1\.2 MB 到 update\.zip/.test(up1.text)
       && up1.buttons.indexOf('安装') >= 0 && up1.buttons.indexOf('再检查一次') >= 0, JSON.stringify(up1.buttons));
+    /* 打一个"节点身份"钉子：整页 redraw 会把 #view 的子树整体换掉，标记随之消失；
+       局部重画只动更新卡内部，旁边的卡还是原来那个节点。这比只看 scrollTop 硬 ——
+       页面短的时候 scrollTop 恒 0，等于什么都没验。 */
+    await ev("(function(){ var n=document.querySelector('#view'); if(n&&n.firstElementChild) n.firstElementChild.__klKeep=1; return 1; })()");
     const tapped3 = await tapUp('安装');
+    /* 主人报过"界面还会闪一下并向上跳"：那是每一步都 redraw() 整页、清空再重建造成的。
+       现在更新卡只局部重画 —— 从这一刻到画完，滚动位置不许动（±2px 容差给布局像素）。 */
+    const y0 = await ev('(document.scrollingElement||document.documentElement).scrollTop');
     await sleep(900);
     const up2 = await ev(readCard);
+    const y1 = await ev('(document.scrollingElement||document.documentElement).scrollTop');
+    chk('点安装后滚动位置不动（不再整页重画、不闪不跳）', Math.abs(y1 - y0) <= 2, 'y0=' + y0 + ' y1=' + y1);
+    const stillSame = await ev("(function(){ var n=document.querySelector('#view'); return !!(n&&n.firstElementChild&&n.firstElementChild.__klKeep===1); })()");
+    chk('点安装只重画更新卡，不重建整页（节点身份没换）', stillSame === true, 'same=' + stillSame);
     chk('点安装后：说「已装好，重启后生效」，不再给「安装」也不再给「再检查一次」',
       tapped3 === 1 && /已装好，重启后生效/.test(up2.text)
       && up2.buttons.indexOf('安装') < 0 && up2.buttons.indexOf('再检查一次') < 0,

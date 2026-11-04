@@ -1,7 +1,7 @@
 id=keylens
 name=KeyLens
-version=v3.0.5
-versionCode=2026110423
+version=v3.0.6
+versionCode=2026110501
 author=IamCanincan
 description=密钥认证后端控制台（Tricky Store / TEE Simulator / OhMyKeymint 三家统一读写：名单、补丁级别、keybox、伪装属性）；附加功能：应用列表自动同步。三家同时启用时模块自动停止。
 updateJson=https://raw.githubusercontent.com/IamCanincan/KeyLens/main/update.json

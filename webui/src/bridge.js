@@ -285,6 +285,14 @@ export function call(cmd, arg) {
   }
   return run(cmd, arg).then(function (r) {
     var res = { ok: r.errno === 0, code: r.errno, text: r.stdout, timeout: !!r.timeout };
+    /* 命令层不认识这条命令 = 界面比命令层新（典型：热推了界面、模块还是旧版）。
+       这种"版本错位"以前只会变成一句 toast「未知命令」，用户以为是按钮坏了；
+       和 api 不匹配一样处理：挂横幅 + 停写，把"两边不是同一版"说清楚。 */
+    if (!res.ok && /未知命令/.test(String(res.text || ''))) {
+      S.contract.bad = true;
+      S.contract.shape = '命令层不认识「' + cmd + '」—— 界面比命令层新（多半是热推了界面、模块还是旧版），'
+        + '装一个同版本的模块包就一致了';
+    }
     if (res.ok) {
       var miss = kvMissing(cmd, res.text);
       if (miss) {
