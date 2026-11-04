@@ -123,7 +123,16 @@ export const S = {
   backendInfo: {}, profiles: [], teeStatus: null, teeWhy: '', trickyPatches: [],
   view: 'targets', search: '',
   profile: 'default', scope: 'global', overrides: [],
-  propsOpen: false, icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
+  propsOpen: false,
+  /* 三处长列表的收起状态（一处机制，见 screens.js 的 foldButton）：
+     属性对照与体检结果默认**收起**（一致/正常的行没有信息量，留着只是把主页撑高一屏）；
+     名单那一屏默认**展开**（列表就是这一页要给人看的东西，收起是用户主动要的）。
+     都用"默认值 + 取反"的写法存，所以 listOpen 的初值就是 true。 */
+  doctorOpen: false, listOpen: true,
+  /* 「继续显示」点开的进度（0 = 还没点过，用默认上限）。存这里而不是闭包变量，
+     整页重画才不会把它抹回 200 行。 */
+  shownLimit: 0,
+  icons: {}, log: [], logErr: false, logFilter: 'all', logQuery: '', tail: 60, props: [], propsErr: false, boot: null,
   excluded: [], update: null, theme: 'auto', doctor: null, doctorErr: false, backups: [], backupsErr: false,
   /* 正在输入但还没保存的表单值（key = 命令 + '|' + 字段）。整页重建（写入后的
      reloadAll、切视图、换 profile）以前会把它一并抹掉：OMK 那一页有两份 toml 表单，

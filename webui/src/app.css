@@ -163,6 +163,11 @@ md-card.hero{--md-card-container-color:var(--md-sys-color-surface-container-high
 .list-head{position:sticky;top:calc(var(--inset-top) + var(--bar-h));z-index:8;
   background:var(--md-sys-color-surface);padding:6px 0 8px}
 .list-head .hint{margin-top:8px;font-size:12px}
+/* 计数与「收起这 N 行」同一行：吸顶那一行里既报总数也给了出口，不多占一层高度 */
+.list-count-row{display:flex;align-items:center;gap:12px;flex-wrap:wrap}
+.list-count-row .hint{flex:1 1 auto;min-width:0}
+.list-fold{flex:0 0 auto;display:flex;align-items:center}
+.list-fold md-button{--md-button-height:32px;font-size:13px}
 .view-note{margin-top:10px}
 .stale-row{margin-top:10px}
 /* 溢出时钉一道右侧渐隐（sticky 伪元素，不随内容划走）：

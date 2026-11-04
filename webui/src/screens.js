@@ -636,14 +636,11 @@ function propsCards() {
   /* 展开/收起这颗**放在列表上面**：收起时列表本身短，但真机上"不符"也可能十几行，
      按钮压在列表底下就要先滚到底才找得到。数量和文案跟着实际情况走。 */
   if (okCount) {
-    s1.appendChild(button(S.propsOpen
-      ? '收起 ' + okCount + ' 行一致的'
-      : (healthy ? '展开其余 ' + okCount + ' 行（全部一致）' : '展开全部 ' + okCount + ' 行对照'),
-      { variant: 'text', on: function () {
-        /* 滚动位置由 app.js 的 draw() 统一保住（同页重画都保）—— 这里只管状态 */
-        S.propsOpen = !S.propsOpen;
-        redraw();
-      } }));
+    /* 展开/收起这颗**放在列表上面**：收起时列表本身短，但真机上"不符"也可能十几行，
+       按钮压在列表底下就要先滚到底才找得到。数量和文案跟着实际情况走。 */
+    s1.appendChild(foldButton('propsOpen',
+      healthy ? '展开其余 ' + okCount + ' 行（全部一致）' : '展开全部 ' + okCount + ' 行对照',
+      '收起 ' + okCount + ' 行一致的'));
   }
   s1.appendChild(l);
   c1.appendChild(s1);
@@ -973,6 +970,18 @@ function backendMatrix() {
 /* 状态条：一行讲清"还在不在跑、写的哪一版"，不再占一整屏 */
 /* 状态条：主页的英雄卡。以前是四段小字用 · 连起来 —— 信息都在，
    但"在不在跑、跑的是谁"要凑近看；现在芯片 + 大字后端名 + 三个小统计。 */
+/* 长列表的收起/展开，一处机制三处用（体检结果 / 属性对照表 / 名单那一屏的应用列表）。
+   主人："像这种长列表可以做个收起按钮"。两条规矩是从属性页那一轮学来的：
+   ① 按钮放在列表**上面** —— 列表一长，压在底下就得先滚到底才找得到；
+   ② 收起不是全藏 —— 把"没有信息量"的那些（一致 / 正常）藏掉，有问题的留在屏上。
+   状态存 S 上的键：整页重画、切页回来都还是用户选的那一面。 */
+function foldButton(key, labelWhenShut, labelWhenOpen) {
+  const b = button(!!S[key] ? labelWhenOpen : labelWhenShut, {
+    variant: 'text', on: function () { S[key] = !S[key]; redraw(); } });
+  b.setAttribute('data-fold', key);
+  return b;
+}
+
 /* 体检不再是一张单独的卡：主人"体检可以直接放在主页的大卡片上"。
    汇总数进英雄卡的统计行，按钮和逐行结果跟在统计下面同一张卡里展开。 */
 function doctorStat() {
@@ -1014,8 +1023,19 @@ function doctorBlock(statEl) {
     const kv = S.doctor.kv || {};
     box.appendChild(h('p', 'hint', '共 ' + (kv.checks || '?') + ' 项 · 有问题 ' + (kv.bad || '0')
       + ' · 注意 ' + (kv.warn || '0') + ' · 跳过 ' + (kv.skip || '0')));
+    /* 12 行全留在英雄卡里，主页从 200px 长到 900px、后端矩阵被顶出首屏 ——
+       所以这里照属性页那条规矩收起：默认只留**不正常的那几行**（全正常时就一行都不留，
+       汇总句已经说清了），要逐条看的人点一下展开。 */
+    const rows = S.doctor.rows;
+    const okN = rows.filter(function (r) { return r[1] === 'ok'; }).length;
+    const shown = okN && !S.doctorOpen ? rows.filter(function (r) { return r[1] !== 'ok'; }) : rows;
+    if (okN) {
+      box.appendChild(foldButton('doctorOpen',
+        (rows.length - okN ? '展开其余 ' : '展开全部 ') + okN + ' 项（都正常）',
+        '收起这 ' + okN + ' 项正常的'));
+    }
     const l = h('md-list');
-    S.doctor.rows.forEach(function (r) {
+    shown.forEach(function (r) {
       const st = r[1];
       /* skip 不染色：它既不是成功也不是问题，涂绿会让人以为"这项也查过了" */
       const tone = st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : '';
@@ -1127,8 +1147,10 @@ function listSection() {
     return n !== 0 || d[0] === S.view;
   }).forEach(function (v) {
     seg.appendChild(chip(v[1], v[0] === S.view, function () {
-      /* 切档是换一批内容，回页首是对的（同页重画默认会保滚动位置，见 app.js draw） */
+      /* 切档是换一批内容，回页首是对的（同页重画默认会保滚动位置，见 app.js draw）；
+         「继续显示」的进度也在这里归零 —— 新的一档从头画起 */
       S.jumpTop = 1;
+      S.shownLimit = 0;
       S.view = v[0];
       if (v[0] === 'system' && S.system === null) loadSystem().then(redraw);
       redraw();
@@ -1177,8 +1199,12 @@ function listSection() {
   /* 一次只画 LIMIT 行是给首屏让路的。但"截断"以前只留一句「只画前 200 条」：
      「系统应用」这一档有 235 条（本机现量），余下 35 条在界面上**摸都摸不到**，
      只能靠搜索框碰运气 —— 所以补一颗「继续显示」，点一次多画一档。 */
-  let shownLimit = LIMIT;
-  const more = button('继续显示', { variant: 'tonal', on: function () { shownLimit += LIMIT; paintRows(); } });
+  /* 「继续显示」的进度存在 S 上，不放闭包：以前它是局部变量，任何一次整页重画
+     （写入后的 reload、展开/收起体检、切页回来）都会把它悄悄抹回 200 ——
+     刚点开的那 50 行又没了，而且没有任何地方说过为什么。切档时才归零（换了一批内容）。 */
+  const more = button('继续显示', { variant: 'tonal', on: function () {
+    S.shownLimit = (S.shownLimit || LIMIT) + LIMIT; paintRows();
+  } });
   more.setAttribute('data-role', 'list-more');
   more.hidden = true;
   function letterBlock(text) {
@@ -1365,30 +1391,42 @@ function listSection() {
   }
   function paintRows() {
     const shown = filteredTokens();
-    const page = shown.slice(0, shownLimit);
+    const page = shown.slice(0, S.shownLimit || LIMIT);
     lastPage = page;
     /* 这一屏是不是"混着"（有在名单里的、也有不在的）：着色只在这时候有信息量 */
     const inCount = shown.filter(function (t) { return !!baseSet[baseOf(t)]; }).length;
     const mixed = inCount > 0 && inCount < shown.length;
+    /* 收起这一屏（主人："像这种长列表可以做个收起按钮"）：132 行压在头上，
+       下面的「同步名单」够不着。收起时**一行都不建** —— 省的不只是滚动距离，
+       还有那 132 行的构建与图标请求（现量 43ms + 一批 icons 命令）。 */
+    const openList = S.listOpen !== false;
     l.textContent = '';
-    page.forEach(function (t) { l.appendChild(rowOf(t, mixed)); });
+    if (openList) page.forEach(function (t) { l.appendChild(rowOf(t, mixed)); });
     /* 批量那一行跟着"这一屏画出来的行"走（搜索/继续显示一变就重建按钮的可用态） */
-    if (bulkHost) fillBulk(bulkHost, page);
+    if (bulkHost) fillBulk(bulkHost, openList ? page : []);
+    /* 收起/展开那颗放在列表上面（属性页那一轮的教训：列表一长，压在底下就得先滚到底才找得到） */
+    foldHost.textContent = '';
+    if (shown.length) {
+      foldHost.appendChild(foldButton('listOpen',
+        '展开这 ' + shown.length + ' 行', '收起这 ' + shown.length + ' 行'));
+    }
     const rest = shown.length - page.length;
-    more.hidden = rest <= 0;
+    more.hidden = rest <= 0 || !openList;
     /* md-button 自己设了 display:flex，会盖掉 UA 的 [hidden]{display:none} ——
        只写 hidden 的话那颗画全之后还占着一格 48px 的空壳在台架上量得到、人也看得见
        （台架那条"屏上真看不见"的断言就是为这个红的）。所以显式收掉。 */
-    more.style.display = rest > 0 ? '' : 'none';
+    more.style.display = (rest > 0 && openList) ? '' : 'none';
     /* 藏起来的时候把标签也清空：留着一句"继续显示余下 N 条"会被台架的 peek 读成
        屏上的文字（它在 DOM 里，只是不可见），对照就不干净了。 */
-    const moreLabel = rest > 0 ? '继续显示余下 ' + rest + ' 条' : '';
+    const moreLabel = (rest > 0 && openList) ? '继续显示余下 ' + rest + ' 条' : '';
     more.setAttribute('label', moreLabel);
     more.textContent = moreLabel;
     /* 计数挨着筛选器（NN/g：筛选器紧邻总数/已加载/剩余），并把"已勾多少"一起报 ——
-       以前只有画了多少，勾了多少要自己数复选框。 */
+       以前只有画了多少，勾了多少要自己数复选框。收起时这句就是全部信息，
+       所以"已收起"要写进去，不能让人对着一行数字猜屏上为什么是空的。 */
     countHint.textContent = '共 ' + shown.length + ' 条 · 已勾 ' + inCount + ' 条'
-      + (rest > 0 ? ' · 已画 ' + page.length + ' 条' : '');
+      + (rest > 0 && openList ? ' · 已画 ' + page.length + ' 条' : '')
+      + (openList ? '' : ' · 列表已收起');
     /* 搜索没命中 ≠ 这一档是空的：说清是"没匹配到"，并把清除筛选那颗递到手边。 */
     if (!shown.length && S.search) {
       empty.textContent = '没有匹配「' + S.search + '」的条目。换个词，或清掉筛选看全部。';
@@ -1402,7 +1440,8 @@ function listSection() {
         : (S.listErr ? '读不到，所以这一类画不出来。' : '这一类现在是空的。');
     }
     empty.hidden = shown.length > 0;
-    loadIconsFor(page);
+    /* 收起时连图标都不问：那一屏的行不在屏上，取名字/图标是给看不见的东西花钱 */
+    if (openList) loadIconsFor(page);
   }
   /* 名单档里"这条是什么身份"要能看出来。判据是两份宇宙（已装 + 系统）**都读到了**
      才算数 —— 把"没读到"说成"没装"是假消息，所以读不到时一个字都不标。 */
@@ -1440,14 +1479,21 @@ function listSection() {
     paintRows();
   } });
   clearBtn.setAttribute('data-role', 'clear-search');
-  /* 装配顺序：吸顶层（芯片 + 搜索 + 计数）→ 这一档的一句话 → 系统组件那颗 → 残留那几条
+  /* 收起/展开那颗的容器：内容由 paintRows 填（条数要跟着这一档与搜索词变）。
+     它不放在列表上面 —— 列表一长，那颗按钮要么被吸顶层挡住、要么得往上翻才找得到
+     （台架第一版就是这么打不中它的）；改成和计数并排，**在吸顶那一行里**，滚到哪儿都点得到。 */
+  const foldHost = h('div', 'list-fold');
+  const countRow = h('div', 'list-count-row');
+  /* 装配顺序：吸顶层（芯片 + 搜索 + 计数与收起）→ 这一档的一句话 → 系统组件那颗 → 残留那几条
      → 批量行 → 列表 → 空态 → 清除筛选 → 继续显示。
      吸顶层挂在卡**外面**：md-card 的影子层自己裁边（圆角），sticky 元素被它裁住就永远
      贴不上去 —— 实测顶栏下面滚 1600px 后那颗搜索框跑到 y=-1364。卡本身是透明底
-     （`md-card.card{--md-card-container-color:transparent}`），挪出来视觉上没区别。 */
+     （md-card.card 的容器色就是 transparent），挪出来视觉上没区别。 */
   head.appendChild(seg);
   head.appendChild(tf);
-  head.appendChild(countHint);
+  countRow.appendChild(countHint);
+  countRow.appendChild(foldHost);
+  head.appendChild(countRow);
   s.appendChild(h('p', 'hint view-note', VIEW_NOTE[S.view] || ''));
   if (sysCompBtn) s.appendChild(sysCompBtn);
   if (staleHost) s.appendChild(staleHost);

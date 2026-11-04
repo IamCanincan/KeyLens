@@ -21,7 +21,7 @@ const PORT = Number(process.env.PORT || 9251);
 const URL0 = 'file:///' + FILE.replace(/\\/g, '/') + '?demo=1';
 const SHOT_DIR = path.join(os.tmpdir(), 'md3e-verify');
 /* 台架断言条数下限（跑完会打印实际条数）。改台架时同步这里与 CHANGELOG 的「界面台架 N 项」。 */
-const FLOOR_CHKS = 171;
+const FLOOR_CHKS = 175;
 
 if (!fs.existsSync(FILE)) { console.error('✗ 找不到产物 ' + FILE + '，先跑 build.mjs'); process.exit(1); }
 if (!fs.existsSync(CHROME)) { console.error('✗ 找不到 Chrome：' + CHROME); process.exit(1); }
@@ -1126,6 +1126,44 @@ async function main() {
   chk('整屏 250 行的名字都问到（分批问完，批次数 ≥ 2 且没有漏掉的行）',
     reqs.批次 >= 2 && reqs.去重包数 >= 250, JSON.stringify(reqs));
 
+  /* 名单那一屏的收起（主人："像这种长列表可以做个收起按钮"）。250 行时下面的
+     「同步名单」要滚很久才够得着，而这一屏的总数/已勾在吸顶那行本来就看得见 ——
+     所以收起要的是"一行都不建"：量行数归零、页面高度真的塌下去、计数句写明已收起。 */
+  const foldTap = () => tapHere(`(function(){ var f=document.querySelector('#view [data-fold="listOpen"]');
+    if (f) f.scrollIntoView({ block: 'nearest' }); return f; })()`);
+  const foldRead = () => ev(`(function(){ var f=document.querySelector('#view [data-fold="listOpen"]');
+    var pg=document.querySelector('#view > .page');
+    return { 那颗: f?(f.getAttribute('label')||''):'(没有那颗)',
+      行: document.querySelectorAll('#view .app-row').length,
+      页高: pg ? Math.round(pg.getBoundingClientRect().height) : -1,
+      计数: ((document.querySelector('#view .list-head .hint')||{}).textContent||'') }; })()`);
+  const foldA = await foldRead();
+  await foldTap();
+  await sleep(900);
+  const foldB = await foldRead();
+  chk('点「收起这 250 行」：一行都不建、页面高度塌下去、计数句改口成「列表已收起」',
+    foldA.那颗 === '收起这 250 行' && foldA.行 === 250
+    && foldB.行 === 0 && foldB.那颗 === '展开这 250 行'
+    && foldA.页高 - foldB.页高 > 800 && /列表已收起/.test(foldB.计数)
+    && /^共 250 条 · 已勾 0 条 · 列表已收起$/.test(foldB.计数),
+    JSON.stringify({ 展开: foldA, 收起: foldB }));
+  await foldTap();
+  await sleep(900);
+  const foldC = await foldRead();
+  chk('再点「展开这 250 行」原样回来（收起不是把数据弄丢，「继续显示」点开的那档也不许没）',
+    foldC.行 === 250 && foldC.那颗 === '收起这 250 行' && foldC.计数.indexOf('已收起') < 0,
+    JSON.stringify(foldC));
+  /* 切档要把「继续显示」的进度归零（换了一批内容，从头画起才是对的） */
+  await tapHere(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view .list-head md-chip'));
+    return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('名单')===0;})[0]; })()`);
+  await sleep(700);
+  await tapHere(`(function(){ var cs=[].slice.call(document.querySelectorAll('#view .list-head md-chip'));
+    return cs.filter(function(c){return (c.getAttribute('label')||'').indexOf('已装')===0;})[0]; })()`);
+  await sleep(900);
+  const foldD = await foldRead();
+  chk('切档回来「继续显示」的进度归零：还是先画 200 行、那颗重新给得出',
+    foldD.行 === 200 && foldD.那颗 === '收起这 250 行', JSON.stringify(foldD));
+
   /* 同页重画不许把人踢回页首：整页重建时 page 先被清空、高度塌到 0，浏览器会把
      scrollTop 夹成 0 —— 以前点一行、展开一次属性表，都直接回顶（主人："每次都会直接回顶部"）。
      这里量的是"点一行 → 写入 → 重读 → 重画"之后滚动位置还在不在。 */
@@ -1859,11 +1897,23 @@ async function main() {
     var warn=rows.filter(function(x){return tone(x)==='warn';}).map(function(x){return x.getAttribute('headline');});
     var txt=card?(card.textContent||''):'';
     var vs=[].slice.call(document.querySelectorAll('#view .card.hero .hero-v')).map(function(v){return v.textContent;});
+    var f=card?card.querySelector('[data-fold="doctorOpen"]'):null;
     return { n: rows.length, warn: warn.join(','), 红行: rows.filter(function(x){return tone(x)==='bad';}).length,
-      第四格: vs[3]||'', 汇总: (txt.match(/共 [0-9]+ 项[^\\n]{0,26}/)||[''])[0] }; })()`);
-  chk('体检与真机同形：英雄卡里 12 行、warn 只有「名单」、没有红行，汇总句的数与行数对得上',
-    dbtn && doc.n === 12 && doc.warn === '名单' && doc.红行 === 0 && /^共 12 项 · 有问题 0/.test(doc.汇总),
+      第四格: vs[3]||'', 那颗: f?(f.getAttribute('label')||''):'',
+      汇总: (txt.match(/共 [0-9]+ 项[^\\n]{0,26}/)||[''])[0] }; })()`);
+  chk('体检结果默认收起：英雄卡里只留不正常的那 1 行，汇总句仍说 12 项，那颗写着「展开其余 11 项」',
+    dbtn && doc.n === 1 && doc.warn === '名单' && doc.红行 === 0
+    && /^共 12 项 · 有问题 0 · 注意 1/.test(doc.汇总) && doc.那颗 === '展开其余 11 项（都正常）',
     JSON.stringify(doc).slice(0, 240));
+  /* 展开那一颗真点得动：12 行齐全、字换成「收起」 */
+  await tapHere(`(function(){ var f=document.querySelector('#view .card.hero [data-fold="doctorOpen"]');
+    if (f) f.scrollIntoView({ block: 'center' }); return f; })()`);
+  await sleep(900);
+  const docOpen = await ev(`(function(){ var card=document.querySelector('#view .card.hero');
+    var f=card.querySelector('[data-fold="doctorOpen"]');
+    return { n: card.querySelectorAll('md-list-item').length, 那颗: f?(f.getAttribute('label')||''):'' }; })()`);
+  chk('点「展开其余 11 项」→ 12 行一行不少，那颗换成「收起这 11 项正常的」',
+    docOpen.n === 12 && docOpen.那颗 === '收起这 11 项正常的', JSON.stringify(docOpen));
   /* 跑完之后第四格必须换成结论（还留着「未跑」就说明统计与结果两处各说一套） */
   chk('跑完体检，英雄卡第四格从「未跑」变成结论',
     doc.第四格.indexOf('未跑') < 0 && /项/.test(doc.第四格), '第四格=' + doc.第四格);

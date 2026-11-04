@@ -264,6 +264,14 @@ chk('体检块：只读命令、skip 不涂绿、非 ok 行带下一步',
   && screens.includes('loadDoctor()')
   && screens.includes("st === 'bad' ? 'bad' : st === 'warn' ? 'warn' : st === 'ok' ? 'ok' : ''")
   && screens.includes("' · 下一步：'"), '');
+/* 长列表的收起（主人："像这种长列表可以做个收起按钮"）：一处机制，三处用。
+   属性页那颗以前是手写的 toggle —— 迁过来以后不许再留旧写法，两处各写一套就会
+   一处保滚动、一处不保。 */
+chk('长列表的收起只有一颗机制：foldButton 三处用（属性对照 / 体检结果 / 名单列表）',
+  (screens.match(/foldButton\('/g) || []).length >= 3
+  && ['propsOpen', 'doctorOpen', 'listOpen'].every(function (k) { return screens.includes("'" + k + "'"); })
+  && !/S\.propsOpen = !S\.propsOpen/.test(screens),
+  'foldButton ' + (screens.match(/foldButton\(/g) || []).length + ' 处');
 chk('日志关键字按显示文本匹配，且只重画日志台',
   screens.includes('S.logQuery = String(qTf.value') && screens.includes('stripEmoji(l).toLowerCase().indexOf(q)')
   && screens.includes("q ? '没有匹配「'"), '');
