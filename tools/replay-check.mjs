@@ -34,7 +34,7 @@ fs.mkdirSync(OUT, { recursive: true });
    在用户手机上真动了手，这条清单就是用来不再犯第二次的。 */
 const READ = ['contract', 'status', 'env', 'backend-info', 'targets', 'target-meta', 'apps',
   'excluded', 'props', 'boot-hash', 'tee-status', 'tricky-patches', 'teesim-profiles',
-  'teesim-overrides', 'log'];
+  'teesim-overrides', 'log', 'doctor'];
 
 function adb(...args) {
   return execFileSync('adb', args, { encoding: 'utf8', maxBuffer: 32 * 1024 * 1024 });
@@ -302,6 +302,46 @@ async function main() {
   {
     const s0 = await ws.send('Page.captureScreenshot', { format: 'png' });
     fs.writeFileSync(path.join(OUT, 'replay-home.png'), Buffer.from(s0.data, 'base64'));
+  }
+  /* 「运行体检」在**真机数据**上按一下。这个交互台架只用 demo 数据验过（verify.mjs 那套），
+     真机上 doctor 的输出解析、第四格同步、收起/展开的读数一条都没量过 —— 而它是这一版的门面。 */
+  {
+    const btnPos = await ev(`(function(){ var bs=[].slice.call(document.querySelectorAll('#view md-button'));
+      var b=bs.filter(function(x){ return (x.textContent||'').indexOf('运行体检')>=0; })[0];
+      if(!b) return null; var r=b.getBoundingClientRect();
+      return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+    chk('主页有「运行体检」那颗按钮', !!btnPos, btnPos ? '' : '找不到按钮');
+    if (btnPos) {
+      const readDoc = `(function(){
+        var cs=[].slice.call(document.querySelectorAll('#view .hero-stat'));
+        var c=cs.filter(function(x){ var k=x.querySelector('.hero-k');
+          return k && (k.textContent||'').indexOf('体检')>=0; })[0];
+        var d=document.querySelector('#view .hero-doctor');
+        if(!c||!d) return null;
+        var v=c.querySelector('.hero-v');
+        return { stat:(v&&v.textContent)||'', txt:(d.textContent||''),
+                 rows:d.querySelectorAll('md-list-item').length }; })()`;
+      await tapAt(btnPos); await sleep(1600);
+      const pd = await ev(readDoc);
+      chk('体检跑完：第四格从「未跑」变成结论', pd && pd.stat.indexOf('未跑') < 0, pd ? '第四格=' + pd.stat : '没读到');
+      chk('体检跑完：汇总句项数与真机一致（共 12 项）', pd && pd.txt.indexOf('共 12 项') >= 0,
+        pd ? (pd.txt || '').slice(0, 50) : '');
+      chk('体检默认收起（全正常时一行都不留）', pd && pd.rows === 0, pd ? 'rows=' + pd.rows : '');
+      const foldPos = await ev(`(function(){ var b=document.querySelector('#view .hero-doctor [data-fold]');
+        if(!b) return null; var r=b.getBoundingClientRect();
+        return { x: Math.round(r.left + r.width/2), y: Math.round(r.top + r.height/2) }; })()`);
+      chk('收起态的折叠按钮在', !!foldPos, foldPos ? '' : '找不到 [data-fold]');
+      if (foldPos) { await tapAt(foldPos); await sleep(400); }
+      const pd2 = await ev(`(function(){ var d=document.querySelector('#view .hero-doctor');
+        return d ? d.querySelectorAll('md-list-item').length : -1; })()`);
+      chk('点开后 12 行都在', pd2 === 12, 'rows=' + pd2);
+      {
+        const s1 = await ws.send('Page.captureScreenshot', { format: 'png' });
+        fs.writeFileSync(path.join(OUT, 'replay-doctor.png'), Buffer.from(s1.data, 'base64'));
+      }
+      /* 折回去：台架自己改过的状态不许留给下一段（否则后面的"主页高度/溢出"量的是展开态） */
+      if (foldPos) { await tapAt(foldPos); await sleep(300); }
+    }
   }
   chk('横向不溢出', p.scrollW - p.vw <= 0, '溢出 ' + (p.scrollW - p.vw) + 'px');
   chk('无未捕获异常', !(ws.errs || []).length, (ws.errs || []).slice(0, 2).join(' | '));
