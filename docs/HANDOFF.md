@@ -7,7 +7,7 @@
 
 - 仓库：本机这个 clone（模块的 name/id 都已改 KeyLens；**目录名仍是改名前的旧名**，本文按残留闸的要求不复述它）
 - 分支：`main`，HEAD 见 `git log -1`
-- 未推送提交：写作时 32 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
+- 未推送提交：写作时 33 个（代理拒连，`origin/main` 还停在推送那一刻），每提交一条就 +1；以 `git rev-list --count origin/main..main` 为准
 - 离线兜底：别再在这里写死文件名（每提交一次就过期）。要备份就跑
   `git bundle create "D:\Github Repositories\keylens-unpushed-<日期-时刻>.bundle" main && git bundle verify <同一个文件>`
   ——`main` 是全历史，几百 KB 到 3 MB 级别；恢复：`git fetch <bundle> main:recovered`。
@@ -40,7 +40,7 @@
 | 真机属性伪装 | **17 条断言全过**（现跑的 ok 行数）：台子**自己种出待改状态**（不能指望现场正好在泄漏），臂 A 实测改写 11 个属性（正对照）、两臂 43 个键逐字节相同、属性区无新增键、`applied=1 / mismatch=0`、toybox 与 busybox 两种 awk 同结果、跑完逐个还原并复核 | `sh tests/device-props-mask.sh --write`（不加 `--write` 直接 skip） |
 | **属性页真的画出来看过** | **4 条新断言 + 5 个变异全响**：53 行逐行上屏（rows=53；固定表今天试过 15→18、装了机，又被 Duck 源码推翻撤回 15，见 §5.23/§5.24）、absent 画「本机无」+ 灰点而不是红色「不符」、标题只数 diff/missing（9 项而非 13 项）、absent 行不挂 warn 色。台架假数据换成**真机现量的行**（`sh webui.sh props`），不再是手写的 5 行 | `node tools/md3e-build/verify.mjs`、`node tools/md3e-build/mutate-verify.mjs`；图在 `%TEMP%/md3e-verify/new-props*.png` |
 | 启动哈希三态（auto/manual/off） | 单元 **64 条**（这一版前是 52 条；文档旧写的「22 条」早就过期了，本轮按 `sh tests/props-boot-hash.sh` 现数的 ok 行改口。含两处变异：摘掉「只认 hex」的守卫 ⇒ random 被写进 prop；摘掉「属性已有值就采用它」那行 ⇒ override 覆盖守护进程）；对拍 **23+3+5 条**（auto 派生 / random 熄火 / 手动优先 / off 一个字节都不写 / 改配置立刻跟着变 / 没后端不派生；3 条钉 `current=` 读数口径；5 条钉 teesim 那一支不覆盖，见 §5.15）；真机 **20 条**——**夹具里只放后端配置、不放 boot_hash 文件，auto 算出的值与主人手抄那串逐字节相同**（新用户免抄的正对照），且全程只读不动现场；**另外把现场本身切到 auto 真跑了一遍**（跑完原样还原） | `sh tests/props-boot-hash.sh`、`sh rust/parity.sh`、`sh tests/device-boot-hash.sh` |
-| shell 测试套 | **54 套，两套环境全绿**（WSL 54/54 与 Windows Git Bash 54/54，2026-11-04 现量；新增的那套是 `tests/fallback-shape.sh`，见 §5.37；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
+| shell 测试套 | **55 套，两套环境全绿**（WSL 55/55 与 Windows Git Bash 55/55，2026-11-04 现量；`tests/device-*.sh` 家族不在设备上时自跳，不算假绿；新增的两套见 §5.37；`rust-dispatch` 的 Git Bash 恒红已修，成因见 §6） | 见 §2 |
 | 真机 A/B（只读 17 + 写 21） | 装了 3.0.3 的现场：**16/17**（只读，红的就是 `doctor`，见 §5.17）；补上 §5.17 的两处改动后在临时副本里 **38/38 全过**（2026-11-03 现量，未发版）。台子怎么跑见 §3，参照 awk 要先推上去 | `sh tests/device-ab.sh [--write]` |
 | 真机 preview 对拍 | 三条腿逐字节相同（shell 原地 / 直调二进制 / 经界面入口），16 条断言全过 | 见 §4（脚本要先推到 `/data/adb/keylens-ab`） |
 | 真机 run_sync 分支 | 14 条全过（含"拿掉锁接力必须看见自抢"的变异对照） | `sh tests/device-run-sync.sh`，见 §5.2 |
@@ -80,17 +80,18 @@ sh rust/parity.sh rust/target/x86_64-unknown-linux-musl/release/keylens
 wsl -d Debian sh /mnt/d/<仓库路径>/tools/wsl-parity.sh   # 末行 = parity exit=N｜结论
 ```
 
-shell 测试套 **54 套**，两边都得跑，各有盲区：
+shell 测试套 **55 套**，两边都得跑，各有盲区：
 
 | 环境 | 结果 | 盲区 |
 |---|---|---|
-| WSL | 54/54 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
-| Windows Git Bash（有 node） | 54/54 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
+| WSL | 55/55 绿 | 没有 node：`tools/name-residue-check.mjs` 那类静态子闸走 skip 分支（`tests/legacy-migrate.sh` 的「零残留」段就是其一） |
+| Windows Git Bash（有 node） | 55/55 绿 | 没有 cargo/链接器：Rust 单测与对拍只能在这里之外的 WSL 跑；`rust/target` 里的 Linux 二进制在这儿 exec 不了，依赖它的套子会自己 skip |
+| 设备（mksh + toybox awk） | `tests/device-fallback.sh` **本轮没上机跑过**（收尾时手机不在 adb 上） | 只有这一层能证明"这台机上回退层会说什么"——主机那两遍量的是 gawk / mawk |
 
 WSL 侧用 `wsl -d Debian sh -c "cd '/mnt/d/<仓库路径>' && sh tools/wsl-suites.sh"`，
-末行是 `suites=54 failures=0`，逐套退码落 `tests-wsl.log`。**别在 Windows 这边内联 for 循环**：
+末行是 `suites=55 failures=0`，逐套退码落 `tests-wsl.log`。**别在 Windows 这边内联 for 循环**：
 `$t` / `$?` 会被本地先展开，本轮据此拿到过一份四行"FAIL "（连套名都被吞掉）的假失败清单，
-真跑是 54/54 —— 同一个理由已经有 `tools/wsl-parity.sh` 了（见 §6）。
+真跑是 55/55 —— 同一个理由已经有 `tools/wsl-parity.sh` 了（见 §6）。
 
 > `tests/rust-dispatch.sh` 以前在 Git Bash 恒红，是台子自己用了 `env VAR=x sh -c …`：
 > 这台的 `env` 会把 `env sh 脚本` 跑成**空输出且退 0**，与被测代码无关。已改成在一个 shell 里赋值。
@@ -1467,13 +1468,17 @@ M1 `|| return 0` ⇒ 红 2；**M2 删掉 `add_target_apps` 那道守卫 ⇒ 红 
 "功能页菜单五项"，§5.34 把菜单减到四项后它自己变红了 —— 判据从"数一个数"改成
 **恰好这四项、按顺序**（目标名单 → 后端配置 → 密钥箱 keybox → 属性伪装）。
 
-**闸门读数（本轮最后一次全跑）**：shell 套 **54/54** 绿（Git Bash）· 对拍 **276 全通过 exit=0**
-（WSL，`tools/wsl-parity.sh` 落退码）· 台架 **175** 条 · CI 那 11 条静态闸全 OK + `replay-check` 42 条 ·
-`build.mjs --check` 两条产物同版。
+**闸门读数（本轮最后一次全跑，收尾时又补了第 55 套再重跑一遍）**：shell 套 Git Bash **55/55** ·
+WSL **55/55**（`tools/wsl-suites.sh`）· 对拍 **276 全通过 exit=0**（WSL，`tools/wsl-parity.sh` 落退码）·
+台架 **175** 条 · CI 那 11 条静态闸全 OK + `replay-check` 42 条 · `build.mjs --check` 两条产物同版。
 
-**没做完的那半**：改动的四个 shell 文件**还没推上机**（这轮收尾时手机没连着 adb）。
-上机后要验的三条已在 §3 的形状里：`KL_USE_RUST=0 … targets` 必须非 0 退码 + 那句提示；
-默认层仍 131 条；不带 awk 的命令两侧一致。回退件在 `/data/local/tmp/kl-3.0.3.bak/`。
+**第 55 套 `tests/device-fallback.sh`（设备侧 runner，本轮没上机跑过 —— 收尾时手机不在 adb 上）**：
+把同一份 44 条断言搬到 **mksh + toybox awk** 下再跑一遍，并先自证两件事：模块里 0 份参照 awk
+（不是生产形状就红，不静默跳过）、`KL_USE_RUST=0 … targets` 在真机上必须"退码非 0 + 说出下一步"，
+而默认层必须仍读出真名单行数。主机那两遍量的是 gawk 与 mawk，证不了这台机上回退层会说什么。
+
+**没做完的那半**：改动的四个 shell 文件**还没推上机**（`sh tools/deploy-webui.sh --shell` 那一类），
+上机后跑上面那个 runner 即可；回退件在 `/data/local/tmp/kl-3.0.3.bak/`。
 
 ## 6. 坑（都踩过）
 
